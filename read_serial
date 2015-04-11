@@ -1,11 +1,30 @@
 #!/usr/bin/python
+import ConfigParser
+import json
+import os
 import serial
 
+from ftplib import FTP
 from time import sleep
 
+APP=os.path.basename(__file__)
 EXPECTED_FIELDS=6
 
-com1 = serial.Serial(port='/dev/ttyACM0', baudrate=9600)
+config = ConfigParser.ConfigParser()
+config.read([os.path.expanduser('~/.{}'.format(APP))])
+
+def field_labels():
+    if config.has_section('field_labels'):
+        return map(lambda s: s[1], config.items('field_labels'))
+    return None
+
+def xlate_field_name(name):
+    if config.has_section('field_labels'):
+        if config.has_option('field_labels', name):
+            return config.get('field_labels', name)
+    return name
+
+com1 = serial.Serial(port=config.get('serial', 'port'), baudrate=config.getint('serial', 'baudrate'))
 while True:
     try:
         data = com1.readline()
@@ -14,8 +33,23 @@ while True:
         fields = data.rstrip().split(',')
         if len(fields) != EXPECTED_FIELDS:
             continue
-        samples = map(lambda s: int(s.split(':')[1]), fields)
-        print str(samples)
+        try:
+            # extract the pairs from each line read
+            pairs = map(lambda s: s.split(':'), fields)
+            # convert tuples to dict
+            samples = dict(pairs)
+            # translate field names and cast keys to int
+            samples = {xlate_field_name(k):int(v) for k,v in samples.items()}
+        except (IndexError, ValueError):
+            continue
+        # strip out undefined fields
+        labels = field_labels()
+        if labels is not None:
+            reduced_samples = {}
+            for label in labels:
+                reduced_samples[label] = samples[label]
+            samples = reduced_samples
+        print json.dumps(samples)
     except(KeyboardInterrupt, SystemExit):
         com1.close()
         break
