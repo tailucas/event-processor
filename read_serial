@@ -61,19 +61,29 @@ def upload(payload=None):
     tempfile.close()
     filename = str(time.time())
     log(json.dumps(output))
-    log('FTP {} bytes to ftp://{}@{}'.format(os.stat(tempfile.name).st_size, ftp_user, os.path.sep.join([ftp_server, ftp_dir, filename])))
-    ftp = FTP(host=ftp_server, timeout=1)
-    ftp.login(user=ftp_user, passwd=ftp_password)
-    ftp.cwd(ftp_dir)
-    ftp.storbinary('STOR {}'.format(filename), open(tempfile.name))
-    ftp.close()
+    while True:
+        try:
+            log('FTP {} bytes to ftp://{}@{}'.format(os.stat(tempfile.name).st_size, ftp_user, os.path.sep.join([ftp_server, ftp_dir, filename])))
+            ftp = FTP(host=ftp_server, timeout=UPLOAD_TIMEOUT)
+            ftp.login(user=ftp_user, passwd=ftp_password)
+            ftp.cwd(ftp_dir)
+            ftp.storbinary('STOR {}'.format(filename), open(tempfile.name))
+            break
+        except Exception as e:
+            log(str(e))
+        else:
+            ftp.close()
     os.remove(tempfile.name)
 
 def uploader():
     while True:
         sample = upload_queue.get()
-        upload(sample)
-        upload_queue.task_done()
+        try:
+            upload(sample)
+        except Exception as e:
+            log(str(e))
+        else:
+            upload_queue.task_done()
 
 uploader = Thread(target=uploader)
 uploader.daemon = True
