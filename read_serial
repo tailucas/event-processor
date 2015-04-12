@@ -1,15 +1,18 @@
 #!/usr/bin/python
-import ConfigParser
 import json
 import os
 import pytz
 import serial
-import thread
 import time
+import umsgpack
+
+from ConfigParser import ConfigParser
+from Queue import Queue
 
 from datetime import datetime
 from ftplib import FTP
 from syslog import LOG_PID, syslog, openlog
+from threading import Thread
 from time import sleep
 
 openlog(logoption=LOG_PID)
@@ -18,8 +21,10 @@ APP=os.path.basename(__file__)
 EXPECTED_FIELDS=6
 SAMPLE_THRESHOLD=50
 
-config = ConfigParser.ConfigParser()
+config = ConfigParser()
 config.read([os.path.expanduser('~/.{}'.format(APP))])
+
+upload_queue = Queue()
 
 def log(msg):
     print msg
@@ -36,7 +41,7 @@ def xlate_field_name(name):
             return config.get('field_labels', name)
     return name
 
-def upload(payload):
+def upload(payload=None):
     now = datetime.utcnow()
     now = now.replace(tzinfo=pytz.utc)
     ts = now.strftime("%Y-%m-%dT%H:%M:%S%z")
@@ -45,7 +50,17 @@ def upload(payload):
     if payload is not None and len(payload) > 0:
 	output['data'] = payload
     log(json.dumps(output))
+    bdata = umsgpack.dumps(output)
 
+def uploader():
+    while True:
+        sample = upload_queue.get()
+        upload(sample)
+        upload_queue.task_done()
+
+uploader = Thread(target=uploader)
+uploader.daemon = True
+uploader.start()
 com1 = serial.Serial(port=config.get('serial', 'port'), baudrate=config.getint('serial', 'baudrate'))
 while True:
     try:
@@ -73,7 +88,10 @@ while True:
                     reduced_samples[label] = samples[label]
             samples = reduced_samples
 	if len(samples) > 0:
-            upload(samples)
+            upload_queue.put(samples)
     except(KeyboardInterrupt, SystemExit):
+        log("Closing serial connection...")
         com1.close()
+        log("Waiting for queue threads...")
+        upload_queue.join()
         break
