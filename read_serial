@@ -2,16 +2,28 @@
 import ConfigParser
 import json
 import os
+import pytz
 import serial
+import thread
+import time
 
+from datetime import datetime
 from ftplib import FTP
+from syslog import LOG_PID, syslog, openlog
 from time import sleep
+
+openlog(logoption=LOG_PID)
 
 APP=os.path.basename(__file__)
 EXPECTED_FIELDS=6
+SAMPLE_THRESHOLD=50
 
 config = ConfigParser.ConfigParser()
 config.read([os.path.expanduser('~/.{}'.format(APP))])
+
+def log(msg):
+    print msg
+    syslog(msg)
 
 def field_labels():
     if config.has_section('field_labels'):
@@ -23,6 +35,16 @@ def xlate_field_name(name):
         if config.has_option('field_labels', name):
             return config.get('field_labels', name)
     return name
+
+def upload(payload):
+    now = datetime.utcnow()
+    now = now.replace(tzinfo=pytz.utc)
+    ts = now.strftime("%Y-%m-%dT%H:%M:%S%z")
+    output = {}
+    output['timestamp'] = ts
+    if payload is not None and len(payload) > 0:
+	output['data'] = payload
+    log(json.dumps(output))
 
 com1 = serial.Serial(port=config.get('serial', 'port'), baudrate=config.getint('serial', 'baudrate'))
 while True:
@@ -42,14 +64,16 @@ while True:
             samples = {xlate_field_name(k):int(v) for k,v in samples.items()}
         except (IndexError, ValueError):
             continue
-        # strip out undefined fields
+        # strip out undefined fields or fields under threshold
         labels = field_labels()
         if labels is not None:
             reduced_samples = {}
             for label in labels:
-                reduced_samples[label] = samples[label]
+		if samples[label] >= SAMPLE_THRESHOLD:
+                    reduced_samples[label] = samples[label]
             samples = reduced_samples
-        print json.dumps(samples)
+	if len(samples) > 0:
+            upload(samples)
     except(KeyboardInterrupt, SystemExit):
         com1.close()
         break
