@@ -1,8 +1,11 @@
 #!/usr/bin/python
 import json
+import logging
+import logging.handlers
 import os
 import pytz
 import serial
+import sys
 import time
 import umsgpack
 
@@ -11,27 +14,29 @@ from Queue import Queue
 
 from datetime import datetime
 from ftplib import FTP
-from syslog import LOG_PID, syslog, openlog
 from tempfile import NamedTemporaryFile
 from threading import Thread
 from time import sleep
 
-openlog(logoption=LOG_PID)
-
 APP=os.path.basename(__file__)
+log = logging.getLogger(APP)
+log.setLevel(logging.DEBUG)
+syslog_handler = logging.handlers.SysLogHandler(address = '/dev/log')
+formatter = logging.Formatter('%(name)s [%(levelname)s] %(message)s')
+syslog_handler.setFormatter(formatter)
+log.addHandler(syslog_handler)
+stream_handler = logging.StreamHandler(stream=sys.stdout)
+log.addHandler(stream_handler)
+
 EXPECTED_FIELDS=6
-SAMPLE_THRESHOLD=65
+SAMPLE_THRESHOLD=50
 UPLOAD_TIMEOUT=1
-HEARTBEAT_INTERVAL=2
+HEARTBEAT_INTERVAL=60
 
 config = ConfigParser()
 config.read([os.path.expanduser('~/.{}'.format(APP))])
 
 upload_queue = Queue()
-
-def log(msg):
-    print msg
-    syslog(msg)
 
 def field_labels():
     if config.has_section('field_labels'):
@@ -61,17 +66,17 @@ def upload(payload=None):
     umsgpack.dump(output, tempfile)
     tempfile.close()
     filename = str(time.time())
-    log(json.dumps(output))
+    log.debug(json.dumps(output))
     while True:
         try:
-            log('FTP {} bytes to ftp://{}@{}'.format(os.stat(tempfile.name).st_size, ftp_user, os.path.sep.join([ftp_server, ftp_dir, filename])))
+            log.info('FTP {} bytes to ftp://{}@{}'.format(os.stat(tempfile.name).st_size, ftp_user, os.path.sep.join([ftp_server, ftp_dir, filename])))
             ftp = FTP(host=ftp_server, timeout=UPLOAD_TIMEOUT)
             ftp.login(user=ftp_user, passwd=ftp_password)
             ftp.cwd(ftp_dir)
             ftp.storbinary('STOR {}'.format(filename), open(tempfile.name))
             break
         except Exception as e:
-            log(str(e))
+            log.error(e)
         else:
             ftp.close()
     os.remove(tempfile.name)
@@ -84,7 +89,7 @@ def uploader():
         try:
             upload(sample)
         except Exception as e:
-            log(str(e))
+            log.error(e)
         else:
             upload_queue.task_done()
         last_upload = time.time()
@@ -131,8 +136,8 @@ while True:
 	if len(samples) > 0:
             upload_queue.put(samples)
     except(KeyboardInterrupt, SystemExit):
-        log("Closing serial connection...")
+        log.info("Closing serial connection...")
         com1.close()
-        log("Waiting for queue threads...")
+        log.info("Waiting for queue threads...")
         upload_queue.join()
         break
