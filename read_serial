@@ -12,6 +12,7 @@ from Queue import Queue
 from datetime import datetime
 from ftplib import FTP
 from syslog import LOG_PID, syslog, openlog
+from tempfile import NamedTemporaryFile
 from threading import Thread
 from time import sleep
 
@@ -20,6 +21,7 @@ openlog(logoption=LOG_PID)
 APP=os.path.basename(__file__)
 EXPECTED_FIELDS=6
 SAMPLE_THRESHOLD=50
+UPLOAD_TIMEOUT=1
 
 config = ConfigParser()
 config.read([os.path.expanduser('~/.{}'.format(APP))])
@@ -41,16 +43,31 @@ def xlate_field_name(name):
             return config.get('field_labels', name)
     return name
 
+ftp_server=config.get('ftp', 'server')
+ftp_user=config.get('ftp', 'user')
+ftp_password=config.get('ftp', 'password')
+ftp_dir = config.get('ftp', 'dir')
+
 def upload(payload=None):
     now = datetime.utcnow()
     now = now.replace(tzinfo=pytz.utc)
-    ts = now.strftime("%Y-%m-%dT%H:%M:%S%z")
+    ts = now.strftime("%Y-%m-%dT%H:%M:%S.%f%z")
     output = {}
     output['timestamp'] = ts
     if payload is not None and len(payload) > 0:
 	output['data'] = payload
+    tempfile = NamedTemporaryFile(delete=False, dir='/tmp/')
+    umsgpack.dump(output, tempfile)
+    tempfile.close()
+    filename = str(time.time())
     log(json.dumps(output))
-    bdata = umsgpack.dumps(output)
+    log('FTP {} bytes to ftp://{}@{}'.format(os.stat(tempfile.name).st_size, ftp_user, os.path.sep.join([ftp_server, ftp_dir, filename])))
+    ftp = FTP(host=ftp_server, timeout=1)
+    ftp.login(user=ftp_user, passwd=ftp_password)
+    ftp.cwd(ftp_dir)
+    ftp.storbinary('STOR {}'.format(filename), open(tempfile.name))
+    ftp.close()
+    os.remove(tempfile.name)
 
 def uploader():
     while True:
@@ -84,7 +101,7 @@ while True:
         if labels is not None:
             reduced_samples = {}
             for label in labels:
-		if samples[label] >= SAMPLE_THRESHOLD:
+                if label in samples and samples[label] >= SAMPLE_THRESHOLD:
                     reduced_samples[label] = samples[label]
             samples = reduced_samples
 	if len(samples) > 0:
