@@ -20,8 +20,9 @@ openlog(logoption=LOG_PID)
 
 APP=os.path.basename(__file__)
 EXPECTED_FIELDS=6
-SAMPLE_THRESHOLD=50
+SAMPLE_THRESHOLD=65
 UPLOAD_TIMEOUT=1
+HEARTBEAT_INTERVAL=2
 
 config = ConfigParser()
 config.read([os.path.expanduser('~/.{}'.format(APP))])
@@ -76,6 +77,8 @@ def upload(payload=None):
     os.remove(tempfile.name)
 
 def uploader():
+    global last_upload
+    last_upload = 0
     while True:
         sample = upload_queue.get()
         try:
@@ -84,10 +87,21 @@ def uploader():
             log(str(e))
         else:
             upload_queue.task_done()
+        last_upload = time.time()
+
+def heartbeat():
+    while True:
+        sleep(HEARTBEAT_INTERVAL)
+        inactivity = time.time() - last_upload
+        if inactivity > HEARTBEAT_INTERVAL:
+            upload()
 
 uploader = Thread(target=uploader)
 uploader.daemon = True
 uploader.start()
+heartbeat = Thread(target=heartbeat)
+heartbeat.daemon = True
+heartbeat.start()
 com1 = serial.Serial(port=config.get('serial', 'port'), baudrate=config.getint('serial', 'baudrate'))
 while True:
     try:
