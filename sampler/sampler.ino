@@ -28,6 +28,13 @@ void toggle_led() {
 
 void setup() {
   pinMode(LED_PIN, OUTPUT);
+  // enable pull-ups
+  pinMode(A0, INPUT_PULLUP);
+  pinMode(A1, INPUT_PULLUP);
+  pinMode(A2, INPUT_PULLUP);
+  pinMode(A3, INPUT_PULLUP);
+  pinMode(A4, INPUT_PULLUP);
+  pinMode(A5, INPUT_PULLUP);
   // warm-up
   for (int i=0; i<20; i++) {
     toggle_led();
@@ -36,7 +43,6 @@ void setup() {
   Serial.begin(9600);
 }
 
-bool high_value = false;
 int sampled[ACHANS];
 int normalized = 0;
 void loop() {
@@ -55,7 +61,6 @@ void loop() {
     // write the normalized value with rounding trick
     normalized = (sampled[c]/1023.0)*100 + 0.0;
     Serial.print(normalized);
-    high_value = high_value || (normalized >= SAMPLE_HIGH);
     if (c<ACHANS-1) {
       Serial.print(FIELD_SEP);
     }
@@ -63,13 +68,8 @@ void loop() {
   // finish the row and flush
   Serial.println();
   Serial.flush();
-  // indicate a high value seen
-  if (high_value) {
-    digitalWrite(LED_PIN, HIGH);
-  } else {
-    digitalWrite(LED_PIN, LOW);
-  }
-  high_value = false;
+  // show activity (beyond the tx LED)
+  toggle_led();
   // rest here for a moment
   delay(SAMPLE_INTERVAL_MS);
 }
