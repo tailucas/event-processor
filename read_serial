@@ -20,13 +20,6 @@ from time import sleep
 
 APP=os.path.basename(__file__)
 log = logging.getLogger(APP)
-log.setLevel(logging.DEBUG)
-syslog_handler = logging.handlers.SysLogHandler(address = '/dev/log')
-formatter = logging.Formatter('%(name)s [%(levelname)s] %(message)s')
-syslog_handler.setFormatter(formatter)
-log.addHandler(syslog_handler)
-stream_handler = logging.StreamHandler(stream=sys.stdout)
-log.addHandler(stream_handler)
 
 EXPECTED_FIELDS=6
 SAMPLE_THRESHOLD=50
@@ -101,43 +94,52 @@ def heartbeat():
         if inactivity > HEARTBEAT_INTERVAL:
             upload()
 
-uploader = Thread(target=uploader)
-uploader.daemon = True
-uploader.start()
-heartbeat = Thread(target=heartbeat)
-heartbeat.daemon = True
-heartbeat.start()
-com1 = serial.Serial(port=config.get('serial', 'port'), baudrate=config.getint('serial', 'baudrate'))
-while True:
+if __name__ == "__main__":
+    # set up logging
+    log.setLevel(logging.DEBUG)
+    syslog_handler = logging.handlers.SysLogHandler(address = '/dev/log')
+    formatter = logging.Formatter('%(name)s [%(levelname)s] %(message)s')
+    syslog_handler.setFormatter(formatter)
+    log.addHandler(syslog_handler)
+    stream_handler = logging.StreamHandler(stream=sys.stdout)
+    log.addHandler(stream_handler)
+    # start up threads
+    uploader = Thread(target=uploader)
+    uploader.daemon = True
+    uploader.start()
+    heartbeat = Thread(target=heartbeat)
+    heartbeat.daemon = True
+    heartbeat.start()
+    com1 = serial.Serial(port=config.get('serial', 'port'), baudrate=config.getint('serial', 'baudrate'))
     try:
-        data = com1.readline()
-        if data is None:
-            continue
-        fields = data.rstrip().split(',')
-        if len(fields) != EXPECTED_FIELDS:
-            continue
-        try:
-            # extract the pairs from each line read
-            pairs = map(lambda s: s.split(':'), fields)
-            # convert tuples to dict
-            samples = dict(pairs)
-            # translate field names and cast keys to int
-            samples = {xlate_field_name(k):int(v) for k,v in samples.items()}
-        except (IndexError, ValueError):
-            continue
-        # strip out undefined fields or fields under threshold
-        labels = field_labels()
-        if labels is not None:
-            reduced_samples = {}
-            for label in labels:
-                if label in samples and samples[label] >= SAMPLE_THRESHOLD:
-                    reduced_samples[label] = samples[label]
-            samples = reduced_samples
-	if len(samples) > 0:
-            upload_queue.put(samples)
+        while True:
+            data = com1.readline()
+            if data is None:
+                continue
+            fields = data.rstrip().split(',')
+            if len(fields) != EXPECTED_FIELDS:
+                continue
+            try:
+                # extract the pairs from each line read
+                pairs = map(lambda s: s.split(':'), fields)
+                # convert tuples to dict
+                samples = dict(pairs)
+                # translate field names and cast keys to int
+                samples = {xlate_field_name(k):int(v) for k,v in samples.items()}
+            except (IndexError, ValueError):
+                continue
+            # strip out undefined fields or fields under threshold
+            labels = field_labels()
+            if labels is not None:
+                reduced_samples = {}
+                for label in labels:
+                    if label in samples and samples[label] >= SAMPLE_THRESHOLD:
+                        reduced_samples[label] = samples[label]
+                samples = reduced_samples
+	    if len(samples) > 0:
+                upload_queue.put(samples)
     except(KeyboardInterrupt, SystemExit):
         log.info("Closing serial connection...")
         com1.close()
         log.info("Waiting for queue threads...")
         upload_queue.join()
-        break
