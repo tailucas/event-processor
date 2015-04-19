@@ -9,6 +9,7 @@ import umsgpack
 
 from ConfigParser import ConfigParser
 
+from abc import ABCMeta, abstractmethod, abstractproperty
 from datetime import datetime
 from threading import Thread
 from time import sleep
@@ -21,11 +22,64 @@ log = logging.getLogger(APP)
 config = ConfigParser()
 config.read([os.path.expanduser('~/.{}'.format(APP))])
 
+snapshot_root = config.get('snapshots', 'root_dir')
+sample_snapshots_dir = config.get('sample_snapshots', 'dir')
+
+class Snapshot(object):
+    __metaclass__ = ABCMeta
+
+    def __init__(self, file_path):
+        self.file_path = file_path
+
+    @abstractproperty
+    def timestamp(self):
+        return NotImplemented
+
+    @abstractproperty
+    def data(self):
+        return NotImplemented
+
+    @abstractproperty
+    def devices(self):
+        return NotImplemented
+
+
+class SampledSnapshot(Snapshot):
+
+    def __init__(self, file_path):
+        super(SampledSnapshot, self).__init__(file_path=file_path)
+        f = open(file_path)
+        # TODO: exception handling
+        self.snapshot_data = umsgpack.unpack(f)
+
+    @property
+    def timestamp(self):
+        pass
+
+    @property
+    def data(self):
+        return self.snapshot_data
+
+    @property
+    def devices(self):
+        pass
+
+
 class UploadEventHandler(FileSystemEventHandler):
+    # we listen to on-modified events because the file is
+    # created and then written to subsequently.
     def on_modified(self, event):
         super(UploadEventHandler, self).on_modified(event)
         what = 'directory' if event.is_directory else 'file'
-        log.info("Modified {}: {}".format(what, event.src_path))
+        # the file has been written to and has valid content
+        if not event.is_directory:
+            log.info("Modified {}: {}".format(what, event.src_path))
+            snapshot_path = event.src_path
+            # cross-check that we're in the right place
+            if snapshot_path.startswith(snapshot_root):
+                if sample_snapshots_dir in snapshot_path:
+                    snapshot = SampledSnapshot(file_path=snapshot_path)
+                    log.info("Loaded snapshot data {}".format(snapshot.data))
 
 if __name__ == "__main__":
     # set up logging
@@ -38,11 +92,13 @@ if __name__ == "__main__":
     log.addHandler(stream_handler)
     # start threads
     observer = Observer()
-    observer.schedule(UploadEventHandler(), '/storage/ftp/', recursive=True)
+    observer.schedule(UploadEventHandler(), config.get('snapshots', 'root_dir'), recursive=True)
     observer.start()
     try:
         while True:
             time.sleep(1)
     except(KeyboardInterrupt, SystemExit):
+        log.info("Stopping threads.")
         observer.stop()
+        log.info("Waiting for completion.")
         observer.join()
