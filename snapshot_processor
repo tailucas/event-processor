@@ -1,5 +1,6 @@
 #!/usr/bin/python
 import dateutil.parser
+import hashlib
 import logging
 import logging.handlers
 import os
@@ -7,6 +8,7 @@ import pprint
 import sys
 import time
 import umsgpack
+import urllib2
 
 from ConfigParser import ConfigParser
 
@@ -22,11 +24,39 @@ sys.displayhook = pprint.pprint
 APP=os.path.basename(__file__)
 log = logging.getLogger(APP)
 
+TTS_URL = 'http://translate.google.com/translate_tts'
+
 config = ConfigParser()
 config.read([os.path.expanduser('~/.{}'.format(APP))])
 
 snapshot_root = config.get('snapshots', 'root_dir')
 sample_snapshots_dir = config.get('sample_snapshots', 'dir')
+
+
+def checksum(message):
+    m = hashlib.md5()
+    m.update(message)
+    return m.hexdigest()
+
+
+class TTSProcessor(object):
+
+    def __init__(self):
+        pass
+
+    def say(self, message):
+        msg_checksum = checksum(message)
+
+        values = {'tl': 'en', 'q', message}
+        data = urllib.urlencode(values)
+        request = urllib2.Request(TTS_URL, data)
+        request.add_header('User-agent', 'Mozilla/5.0')
+        opener = urllib2.build_opener()
+
+        tts_file = "{}.mp3".format(msg_checksum)
+        f = open(tts_file, "wb")
+        f.write(opener.open(request).read())
+        f.close()
 
 class Snapshot(object):
     __metaclass__ = ABCMeta
@@ -92,6 +122,7 @@ class UploadEventHandler(FileSystemEventHandler):
                         log.exception("Cannot unpack snapshot data in {}".format(snapshot_path))
                     except Exception:
                         log.exception("Cannot process {}".format(snapshot_path))
+
 
 if __name__ == "__main__":
     # set up logging
