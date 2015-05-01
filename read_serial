@@ -25,26 +25,17 @@ APP=os.path.basename(__file__)
 log = logging.getLogger(APP)
 
 EXPECTED_FIELDS=6
-SAMPLE_THRESHOLD=50
-UPLOAD_TIMEOUT=1
-HEARTBEAT_INTERVAL=60
+SAMPLE_DEVIATION_TOLERANCE=3
+UPLOAD_TIMEOUT_SECONDS=1
+HEARTBEAT_INTERVAL_SECONDS=60
+SAMPLE_INTERVAL_SECONDS=1
 DATE_FORMAT='%Y-%m-%dT%H:%M:%S.%f%z'
 
 config = ConfigParser()
+config.optionxform=str
 config.read([os.path.expanduser('~/.{}'.format(APP))])
 
 upload_queue = Queue()
-
-def field_labels():
-    if config.has_section('field_labels'):
-        return map(lambda s: s[1], config.items('field_labels'))
-    return None
-
-def xlate_field_name(name):
-    if config.has_section('field_labels'):
-        if config.has_option('field_labels', name):
-            return config.get('field_labels', name)
-    return name
 
 ftp_server=config.get('ftp', 'server')
 ftp_user=config.get('ftp', 'user')
@@ -67,7 +58,7 @@ def upload(payload=None):
     while True:
         try:
             log.info('FTP {} bytes to ftp://{}@{}'.format(os.stat(tempfile.name).st_size, ftp_user, os.path.sep.join([ftp_server, ftp_dir, filename])))
-            ftp = FTP(host=ftp_server, timeout=UPLOAD_TIMEOUT)
+            ftp = FTP(host=ftp_server, timeout=UPLOAD_TIMEOUT_SECONDS)
             ftp.login(user=ftp_user, passwd=ftp_password)
             ftp.cwd(ftp_dir)
             ftp.storbinary('STOR {}'.format(filename), open(tempfile.name))
@@ -93,9 +84,9 @@ def uploader():
 
 def heartbeat():
     while True:
-        sleep(HEARTBEAT_INTERVAL)
+        sleep(HEARTBEAT_INTERVAL_SECONDS)
         inactivity = time.time() - last_upload
-        if inactivity > HEARTBEAT_INTERVAL:
+        if inactivity > HEARTBEAT_INTERVAL_SECONDS:
             upload()
 
 if __name__ == "__main__":
@@ -115,6 +106,8 @@ if __name__ == "__main__":
     heartbeat.daemon = True
     heartbeat.start()
     com1 = serial.Serial(port=config.get('serial', 'port'), baudrate=config.getint('serial', 'baudrate'))
+    field_labels = dict(config.items('field_labels'))
+    field_normal_values = dict(config.items('field_normal_values'))
     try:
         while True:
             data = com1.readline()
@@ -127,21 +120,32 @@ if __name__ == "__main__":
                 # extract the pairs from each line read
                 pairs = map(lambda s: s.split(':'), fields)
                 # convert tuples to dict
-                samples = dict(pairs)
-                # translate field names and cast keys to int
-                samples = {xlate_field_name(k):int(v) for k,v in samples.items()}
+                samples = dict({k:int(v) for k,v in pairs})
             except (IndexError, ValueError):
                 continue
-            # strip out undefined fields or fields under threshold
-            labels = field_labels()
-            if labels is not None:
-                reduced_samples = {}
-                for label in labels:
-                    if label in samples and samples[label] >= SAMPLE_THRESHOLD:
-                        reduced_samples[label] = samples[label]
-                samples = reduced_samples
-	    if len(samples) > 0:
-                upload_queue.put(samples)
+            output_samples = {}
+            # if there are no label mappings, upload as is
+            if field_labels is None or len(field_labels) == 0:
+                output_samples = samples
+            # otherwise, upload only samples with labels
+            for label in field_labels:
+                try:
+                    # serial interface can truncate labels too
+                    sample_value = samples[label]
+                except KeyError:
+                    continue
+                sample_label = field_labels[label]
+                # filter out values in the normal range
+                if label in field_normal_values:
+                    normal_value = int(field_normal_values[label])
+                    if abs(sample_value - normal_value) <= SAMPLE_DEVIATION_TOLERANCE:
+                        continue
+                output_samples[sample_label] = sample_value
+	    if len(output_samples) > 0:
+                log.debug("{} samples enqueued behind {} others for upload.".format(len(output_samples), upload_queue.qsize()))
+                upload_queue.put(output_samples)
+                # do not overwhelm the uploader, but keep sample rate as high as the input provides it
+                sleep(SAMPLE_INTERVAL_SECONDS)
     except(KeyboardInterrupt, SystemExit):
         log.info("Closing serial connection...")
         com1.close()
