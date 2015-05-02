@@ -11,6 +11,7 @@ import umsgpack
 from ConfigParser import ConfigParser
 
 from abc import ABCMeta, abstractmethod, abstractproperty
+from Queue import Queue, Empty
 from threading import Thread
 from time import sleep
 from umsgpack import UnpackException
@@ -23,10 +24,15 @@ APP=os.path.basename(__file__)
 log = logging.getLogger(APP)
 
 config = ConfigParser()
+config.optionxform=str
 config.read([os.path.expanduser('~/.{}'.format(APP))])
 
 snapshot_root = config.get('snapshots', 'root_dir')
+heartbeat_interval_seconds = int(config.get('snapshots', 'heartbeat_interval_seconds'))
 sample_snapshots_dir = config.get('sample_snapshots', 'dir')
+
+snapshot_queue = Queue()
+
 
 class Snapshot(object):
     __metaclass__ = ABCMeta
@@ -87,11 +93,36 @@ class UploadEventHandler(FileSystemEventHandler):
                 if sample_snapshots_dir in snapshot_path:
                     try:
                         snapshot = SampledSnapshot(file_path=snapshot_path)
-                        log.info("Loaded snapshot data {}".format(snapshot))
+                        log.debug("Loaded snapshot data {}".format(snapshot))
+                        snapshot_queue.put(snapshot)
                     except UnpackException:
                         log.exception("Cannot unpack snapshot data in {}".format(snapshot_path))
                     except Exception:
                         log.exception("Cannot process {}".format(snapshot_path))
+
+
+class SnapshotProcessor(Thread):
+
+    def __init__(self):
+        super(SnapshotProcessor, self).__init__()
+        self.last_snapshot = 0
+
+    def run(self):
+        while True:
+            try:
+                snapshot = snapshot_queue.get(timeout=heartbeat_interval_seconds)
+                print snapshot
+            except Empty:
+                # deal with the heartbeat deficit below
+                pass
+            except Exception as e:
+                log.error(e)
+            else:
+                snapshot_queue.task_done()
+
+            if snapshot is not None:
+                self.last_snapshot = time.time()
+
 
 if __name__ == "__main__":
     # set up logging
@@ -106,11 +137,16 @@ if __name__ == "__main__":
     observer = Observer()
     observer.schedule(UploadEventHandler(), config.get('snapshots', 'root_dir'), recursive=True)
     observer.start()
+    processor = SnapshotProcessor()
+    processor.daemon = True
+    processor.start()
     try:
         while True:
             time.sleep(1)
     except(KeyboardInterrupt, SystemExit):
-        log.info("Stopping threads.")
+        log.info("Stopping threads...")
         observer.stop()
-        log.info("Waiting for completion.")
+        log.info("Waiting for completion...")
         observer.join()
+        log.info("Waiting for queue threads...")
+        snapshot_queue.join()
