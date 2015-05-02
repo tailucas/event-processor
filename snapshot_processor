@@ -3,6 +3,7 @@ import dateutil.parser
 import hashlib
 import logging
 import logging.handlers
+import mplayer
 import os
 import pprint
 import sys
@@ -13,16 +14,19 @@ import urllib2
 from ConfigParser import ConfigParser
 
 from abc import ABCMeta, abstractmethod, abstractproperty
+from mplayer import Player
 from Queue import Queue, Empty
 from threading import Thread
 from time import sleep
 from umsgpack import UnpackException
+from urllib import urlencode
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
 sys.displayhook = pprint.pprint
 
 APP=os.path.basename(__file__)
+DIR=os.path.abspath(os.path.dirname(__file__))
 log = logging.getLogger(APP)
 
 TTS_URL = 'http://translate.google.com/translate_tts'
@@ -36,32 +40,55 @@ heartbeat_interval_seconds = int(config.get('snapshots', 'heartbeat_interval_sec
 sample_snapshots_dir = config.get('sample_snapshots', 'dir')
 
 snapshot_queue = Queue()
+notification_queue = Queue()
 
-
-def checksum(message):
-    m = hashlib.md5()
-    m.update(message)
-    return m.hexdigest()
-
-
-class TTSProcessor(object):
+class TTSProcessor(Thread):
 
     def __init__(self):
-        pass
+        super(TTSProcessor, self).__init__()
+        self.player = None
+
+    def run(self):
+        self.player = Player(stdout=open('/dev/null', 'w'), stderr=open('/dev/null', 'w'), autospawn=True)
+        while True:
+            notification = None
+            try:
+                notification = notification_queue.get()
+            except Exception as e:
+                log.error(e)
+            else:
+                notification_queue.task_done()
+            self.say(str(notification))
+
+    def stop(self):
+        if self.player:
+            self.player.quit()
 
     def say(self, message):
-        msg_checksum = checksum(message)
-
-        values = {'tl': 'en', 'q': message}
-        data = urllib.urlencode(values)
-        request = urllib2.Request(TTS_URL, data)
-        request.add_header('User-agent', 'Mozilla/5.0')
-        opener = urllib2.build_opener()
-
+        msg_checksum = TTSProcessor.checksum(message)
+        log.debug("Checksum for \"{}\" is [{}]".format(message, msg_checksum))
         tts_file = "{}.mp3".format(msg_checksum)
-        f = open(tts_file, "wb")
-        f.write(opener.open(request).read())
-        f.close()
+        tts_path = os.path.join(DIR, tts_file)
+        log.debug("{} exists? {}".format(tts_path, os.path.isfile(tts_path)))
+        if not os.path.isfile(tts_path):
+            values = {'tl': 'en', 'q': message}
+            data = urlencode(values)
+            request = urllib2.Request(TTS_URL, data)
+            request.add_header('User-agent', 'Mozilla/5.0')
+            opener = urllib2.build_opener()
+            log.debug("Fetching \"{}\" from {}".format(message, TTS_URL))
+            f = open(tts_path, "wb")
+            f.write(opener.open(request).read())
+            f.close()
+            log.debug("Written {} bytes to {}".format(os.path.getsize(tts_path), tts_path))
+        # now play
+        self.player.loadfile(tts_path)
+
+    @staticmethod
+    def checksum(message):
+        m = hashlib.md5()
+        m.update(message)
+        return m.hexdigest()
 
 
 class Snapshot(object):
@@ -90,7 +117,10 @@ class SampledSnapshot(Snapshot):
         f = open(file_path)
         self.snapshot_data = umsgpack.unpack(f)
         self.timestamp_data = dateutil.parser.parse(self.snapshot_data['timestamp'])
-        self.devices_data = self.snapshot_data['data']
+        if 'data' in self.snapshot_data:
+            self.devices_data = self.snapshot_data['data']
+        else:
+            self.devices_data = None
 
     @property
     def timestamp(self):
@@ -105,10 +135,19 @@ class SampledSnapshot(Snapshot):
         return self.devices_data
 
     def __str__(self):
-        return "{}: {} devices: {}".format(self.timestamp.strftime('%X %x %Z'), len(self.devices), ','.join(self.devices.keys()))
+        string = "{}".format(self.timestamp.strftime('%X %x %Z'))
+        if self.devices:
+            return string + ": {} devices: {}".format(len(self.devices), ','.join(self.devices.keys()))
+        return string
 
 
 class UploadEventHandler(FileSystemEventHandler):
+
+    def __init__(self):
+        super(UploadEventHandler, self).__init__()
+        self.last_modified = None
+
+
     # we listen to on-modified events because the file is
     # created and then written to subsequently.
     def on_modified(self, event):
@@ -116,15 +155,21 @@ class UploadEventHandler(FileSystemEventHandler):
         what = 'directory' if event.is_directory else 'file'
         # the file has been written to and has valid content
         if not event.is_directory:
-            log.info("Modified {}: {}".format(what, event.src_path))
             snapshot_path = event.src_path
+            # de-duplication
+            if snapshot_path != self.last_modified:
+                self.last_modified = snapshot_path
+            else:
+                return
+            log.info("Modified {}: {}".format(what, snapshot_path))
             # cross-check that we're in the right place
             if snapshot_path.startswith(snapshot_root):
                 if sample_snapshots_dir in snapshot_path:
                     try:
                         snapshot = SampledSnapshot(file_path=snapshot_path)
-                        log.debug("Loaded snapshot data {}".format(snapshot))
+                        log.debug("Loaded snapshot data {} from {}".format(snapshot, snapshot_path))
                         snapshot_queue.put(snapshot)
+                        last_snapshot_path = snapshot_path
                     except UnpackException:
                         log.exception("Cannot unpack snapshot data in {}".format(snapshot_path))
                     except Exception:
@@ -139,9 +184,9 @@ class SnapshotProcessor(Thread):
 
     def run(self):
         while True:
+            snapshot = None
             try:
                 snapshot = snapshot_queue.get(timeout=heartbeat_interval_seconds)
-                print snapshot
             except Empty:
                 # deal with the heartbeat deficit below
                 pass
@@ -152,6 +197,13 @@ class SnapshotProcessor(Thread):
 
             if snapshot is not None:
                 self.last_snapshot = time.time()
+                log.debug("Processing snapshot {}".format(snapshot))
+                notification_queue.put("yes")
+            else:
+                inactivity = time.time() - self.last_snapshot
+                if inactivity > heartbeat_interval_seconds:
+                    log.warn("A snapshot is overdue (after {} seconds)".format(heartbeat_interval_seconds))
+                    notification_queue.put("no")
 
 
 if __name__ == "__main__":
@@ -170,6 +222,9 @@ if __name__ == "__main__":
     processor = SnapshotProcessor()
     processor.daemon = True
     processor.start()
+    notifier = TTSProcessor()
+    notifier.daemon = True
+    notifier.start()
     try:
         while True:
             time.sleep(1)
@@ -180,3 +235,5 @@ if __name__ == "__main__":
         observer.join()
         log.info("Waiting for queue threads...")
         snapshot_queue.join()
+        notification_queue.join()
+        notifier.stop()
