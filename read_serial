@@ -146,6 +146,8 @@ if __name__ == "__main__":
                 upload_queue.put(output_samples)
                 # do not overwhelm the uploader, but keep sample rate as high as the input provides it
                 sleep(SAMPLE_INTERVAL_SECONDS)
+                # throw away the intermediate data if the external sample rate exceeded our own
+                com1.flushInput()
     except(KeyboardInterrupt, SystemExit):
         log.info("Closing serial connection...")
         com1.close()
