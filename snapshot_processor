@@ -38,6 +38,7 @@ config.read([os.path.expanduser('~/.{}'.format(APP))])
 snapshot_root = config.get('snapshots', 'root_dir')
 heartbeat_interval_seconds = int(config.get('snapshots', 'heartbeat_interval_seconds'))
 sample_snapshots_dir = config.get('sample_snapshots', 'dir')
+notification_interval_seconds = int(config.get('snapshots', 'notification_interval_seconds'))
 
 snapshot_queue = Queue()
 notification_queue = Queue()
@@ -49,7 +50,8 @@ class TTSProcessor(Thread):
         self.player = None
 
     def run(self):
-        self.player = Player(stdout=open('/dev/null', 'w'), stderr=open('/dev/null', 'w'), autospawn=True)
+        # black-holding STDOUT causes properties to not work
+        self.player = Player(stderr=open('/dev/null', 'w'), autospawn=True)
         while True:
             notification = None
             try:
@@ -83,6 +85,10 @@ class TTSProcessor(Thread):
             log.debug("Written {} bytes to {}".format(os.path.getsize(tts_path), tts_path))
         # now play
         self.player.loadfile(tts_path)
+        delay = int(self.player.length)
+        # block for the duration of this audio sample
+        log.debug("Saying \"{}\" for {}s".format(message, delay))
+        sleep(delay)
 
     @staticmethod
     def checksum(message):
@@ -132,6 +138,8 @@ class SampledSnapshot(Snapshot):
 
     @property
     def devices(self):
+        if self.devices_data is None:
+            return {}
         return self.devices_data
 
     def __str__(self):
@@ -181,6 +189,8 @@ class SnapshotProcessor(Thread):
     def __init__(self):
         super(SnapshotProcessor, self).__init__()
         self.last_snapshot = 0
+        self.active_devices = {}
+        self.last_notification = 0
 
     def run(self):
         while True:
@@ -196,14 +206,35 @@ class SnapshotProcessor(Thread):
                 snapshot_queue.task_done()
 
             if snapshot is not None:
+                new_devices = False
                 self.last_snapshot = time.time()
                 log.debug("Processing snapshot {}".format(snapshot))
-                notification_queue.put("yes")
+                if len(snapshot.devices) == 0:
+                    self.active_devices.clear()
+                else:
+                    new_device_names = snapshot.devices.keys()
+                    # first purge dead keys
+                    for device_name in self.active_devices.keys():
+                        if device_name not in new_device_names:
+                            del self.active_devices[device_name]
+                    # now add new ones
+                    for device_name in new_device_names:
+                        if device_name not in self.active_devices:
+                            new_devices = True
+                            self.active_devices[device_name] = snapshot.timestamp
+                log.debug("{} active device(s).".format(len(self.active_devices)))
+                last_notified = time.time() - self.last_notification
+                if (last_notified > notification_interval_seconds or new_devices) and len(self.active_devices) > 0:
+                    self.last_notification = time.time()
+                    log.info("Sending notification for {}".format(str(self.active_devices.keys())))
+                    notification_queue.put("Activity notice!")
+                    for device_name in self.active_devices.keys():
+                        notification_queue.put(device_name)
             else:
                 inactivity = time.time() - self.last_snapshot
                 if inactivity > heartbeat_interval_seconds:
                     log.warn("A snapshot is overdue (after {} seconds)".format(heartbeat_interval_seconds))
-                    notification_queue.put("no")
+                    notification_queue.put("Overdue heartbeat.")
 
 
 if __name__ == "__main__":
