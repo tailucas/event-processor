@@ -11,7 +11,7 @@ import time
 import umsgpack
 
 from ConfigParser import ConfigParser
-from Queue import Queue
+from Queue import LifoQueue
 
 from datetime import datetime
 from ftplib import FTP
@@ -35,7 +35,7 @@ config = ConfigParser()
 config.optionxform=str
 config.read([os.path.expanduser('~/.{}'.format(APP))])
 
-upload_queue = Queue()
+upload_queue = LifoQueue()
 
 ftp_server=config.get('ftp', 'server')
 ftp_user=config.get('ftp', 'user')
