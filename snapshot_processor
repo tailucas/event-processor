@@ -6,6 +6,7 @@ import logging.handlers
 import mplayer
 import os
 import pprint
+import pytz
 import sys
 import time
 import umsgpack
@@ -14,6 +15,7 @@ import urllib2
 from ConfigParser import ConfigParser
 
 from abc import ABCMeta, abstractmethod, abstractproperty
+from datetime import datetime
 from mplayer import Player
 from Queue import Queue, Empty
 from threading import Thread
@@ -190,6 +192,7 @@ class SnapshotProcessor(Thread):
         super(SnapshotProcessor, self).__init__()
         self.last_snapshot = 0
         self.active_devices = {}
+        self.latest_snapshot = datetime.utcnow().replace(tzinfo=pytz.utc)
         self.last_notification = 0
 
     def run(self):
@@ -224,17 +227,18 @@ class SnapshotProcessor(Thread):
                             self.active_devices[device_name] = snapshot.timestamp
                 log.debug("{} active device(s).".format(len(self.active_devices)))
                 last_notified = time.time() - self.last_notification
-                if (last_notified > notification_interval_seconds or new_devices) and len(self.active_devices) > 0:
+                if (last_notified > notification_interval_seconds or new_devices) \
+                    and len(self.active_devices) > 0 \
+                    and self.latest_snapshot < snapshot.timestamp:
+                    self.latest_snapshot = snapshot.timestamp
                     self.last_notification = time.time()
                     log.info("Sending notification for {}".format(str(self.active_devices.keys())))
-                    notification_queue.put("Activity notice!")
                     for device_name in self.active_devices.keys():
                         notification_queue.put(device_name)
             else:
                 inactivity = time.time() - self.last_snapshot
                 if inactivity > heartbeat_interval_seconds:
                     log.warn("A snapshot is overdue (after {} seconds)".format(heartbeat_interval_seconds))
-                    notification_queue.put("Overdue heartbeat.")
 
 
 if __name__ == "__main__":
