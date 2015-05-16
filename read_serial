@@ -29,6 +29,7 @@ SAMPLE_DEVIATION_TOLERANCE=3
 UPLOAD_TIMEOUT_SECONDS=1
 HEARTBEAT_INTERVAL_SECONDS=5
 SAMPLE_INTERVAL_SECONDS=1
+SAMPLE_DEBOUNCE_COOLDOWN_SECONDS=1
 DATE_FORMAT='%Y-%m-%dT%H:%M:%S.%f%z'
 
 config = ConfigParser()
@@ -109,8 +110,15 @@ if __name__ == "__main__":
     field_labels = dict(config.items('field_labels'))
     field_normal_values = dict(config.items('field_normal_values'))
     try:
+        # we map samples to values
+        sample_value_history = {}
+        for label in field_labels:
+            # we map sample values to the last time that value was seen
+            sample_label = field_labels[label]
+            sample_value_history[sample_label] = {}
         while True:
             data = com1.readline()
+            sample_time = time.time()
             if data is None:
                 continue
             fields = data.rstrip().split(',')
@@ -140,7 +148,19 @@ if __name__ == "__main__":
                     normal_value = int(field_normal_values[label])
                     if abs(sample_value - normal_value) <= SAMPLE_DEVIATION_TOLERANCE:
                         continue
-                output_samples[sample_label] = sample_value
+                # when last did we see this value?
+                value_last_seen = 0
+                if normal_value in sample_value_history[sample_label]:
+                    value_last_seen = sample_value_history[sample_label][normal_value]
+                # update the last time seen for this value
+                sample_value_history[sample_label][normal_value] = sample_time
+                # output the value only if it was seen more than the debounce tolerance ago
+                if time.time() - value_last_seen < SAMPLE_DEBOUNCE_COOLDOWN_SECONDS:
+                    log.debug("Debouncing {} value of {} seen within {} seconds ago.".format(sample_label, normal_value, SAMPLE_DEBOUNCE_COOLDOWN_SECONDS))
+                    continue
+                # we upload the normal value here because that is what is
+                # expected as the active value for the field
+                output_samples[sample_label] = normal_value
 	    if len(output_samples) > 0:
                 log.debug("{} samples enqueued behind {} others for upload.".format(len(output_samples), upload_queue.qsize()))
                 upload_queue.put(output_samples)
