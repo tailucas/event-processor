@@ -109,6 +109,13 @@ if __name__ == "__main__":
     com1 = serial.Serial(port=config.get('serial', 'port'), baudrate=config.getint('serial', 'baudrate'))
     field_labels = dict(config.items('field_labels'))
     field_normal_values = dict(config.items('field_normal_values'))
+    field_range_labels = dict(config.items('field_range_labels'))
+    # split the range labels for easy processing
+    expanded_field_range_labels = {}
+    for field in field_range_labels:
+        pairs = map(lambda s: s.split(':'), field_range_labels[field].split(','))
+        expanded_field_range_labels[field] = dict({k:int(v) for k,v in pairs})
+    field_range_labels = expanded_field_range_labels
     try:
         # we map samples to values
         sample_value_history = {}
@@ -150,17 +157,21 @@ if __name__ == "__main__":
                         continue
                 # when last did we see this value?
                 value_last_seen = 0
-                if normal_value in sample_value_history[sample_label]:
-                    value_last_seen = sample_value_history[sample_label][normal_value]
+                if sample_value in sample_value_history[sample_label]:
+                    value_last_seen = sample_value_history[sample_label][sample_value]
                 # update the last time seen for this value
-                sample_value_history[sample_label][normal_value] = sample_time
+                sample_value_history[sample_label][sample_value] = sample_time
                 # output the value only if it was seen more than the debounce tolerance ago
                 if time.time() - value_last_seen < SAMPLE_DEBOUNCE_COOLDOWN_SECONDS:
-                    log.debug("Debouncing {} value of {} seen within {} seconds ago.".format(sample_label, normal_value, SAMPLE_DEBOUNCE_COOLDOWN_SECONDS))
+                    log.debug("Debouncing {} value of {} seen within {} seconds ago.".format(sample_label, sample_value, SAMPLE_DEBOUNCE_COOLDOWN_SECONDS))
                     continue
-                # we upload the normal value here because that is what is
-                # expected as the active value for the field
-                output_samples[sample_label] = normal_value
+                # now annotate the label with the range label
+                if label in field_range_labels:
+                    for range_label,range_value in field_range_labels[label]:
+                        if abs(sample_value - range_value) <= SAMPLE_DEVIATION_TOLERANCE:
+                            sample_label = ' '.join([sample_label, range_label])
+                # add the sample to the output
+                output_samples[sample_label] = sample_value
 	    if len(output_samples) > 0:
                 log.debug("{} samples enqueued behind {} others for upload.".format(len(output_samples), upload_queue.qsize()))
                 upload_queue.put(output_samples)
