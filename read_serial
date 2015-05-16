@@ -167,7 +167,7 @@ if __name__ == "__main__":
                     continue
                 # now annotate the label with the range label
                 if label in field_range_labels:
-                    for range_label,range_value in field_range_labels[label]:
+                    for range_label,range_value in field_range_labels[label].iteritems():
                         if abs(sample_value - range_value) <= SAMPLE_DEVIATION_TOLERANCE:
                             sample_label = ' '.join([sample_label, range_label])
                 # add the sample to the output
