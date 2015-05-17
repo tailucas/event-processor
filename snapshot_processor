@@ -171,13 +171,12 @@ class UploadEventHandler(FileSystemEventHandler):
                 self.last_modified = snapshot_path
             else:
                 return
-            log.info("Modified {}: {}".format(what, snapshot_path))
             # cross-check that we're in the right place
             if snapshot_path.startswith(snapshot_root):
                 if sample_snapshots_dir in snapshot_path:
                     try:
                         snapshot = SampledSnapshot(file_path=snapshot_path)
-                        log.debug("Loaded snapshot data {} from {}".format(snapshot, snapshot_path))
+                        log.info("Loaded snapshot data {} from {}".format(snapshot, snapshot_path))
                         snapshot_queue.put(snapshot)
                         last_snapshot_path = snapshot_path
                     except UnpackException:
@@ -211,7 +210,6 @@ class SnapshotProcessor(Thread):
             if snapshot is not None:
                 new_devices = False
                 self.last_snapshot = time.time()
-                log.debug("Processing snapshot {}".format(snapshot))
                 if len(snapshot.devices) == 0:
                     self.active_devices.clear()
                 else:
@@ -225,7 +223,8 @@ class SnapshotProcessor(Thread):
                         if device_name not in self.active_devices:
                             new_devices = True
                             self.active_devices[device_name] = snapshot.timestamp
-                log.debug("{} active device(s).".format(len(self.active_devices)))
+                if len(self.active_devices) > 0:
+                    log.debug("{} active device(s).".format(len(self.active_devices)))
                 last_notified = time.time() - self.last_notification
                 if (last_notified > notification_interval_seconds or new_devices) \
                     and len(self.active_devices) > 0 \
