@@ -15,7 +15,7 @@ import urllib2
 from ConfigParser import ConfigParser
 
 from abc import ABCMeta, abstractmethod, abstractproperty
-from datetime import datetime
+from datetime import datetime, timedelta
 from mplayer import Player
 from Queue import Queue, Empty
 from threading import Thread
@@ -41,6 +41,7 @@ snapshot_root = config.get('snapshots', 'root_dir')
 heartbeat_interval_seconds = int(config.get('snapshots', 'heartbeat_interval_seconds'))
 sample_snapshots_dir = config.get('sample_snapshots', 'dir')
 notification_interval_seconds = int(config.get('snapshots', 'notification_interval_seconds'))
+snapshot_validity_seconds = int(config.get('snapshots', 'snapshot_validity_seconds'))
 
 snapshot_queue = Queue()
 notification_queue = Queue()
@@ -102,11 +103,16 @@ class TTSProcessor(Thread):
 class Snapshot(object):
     __metaclass__ = ABCMeta
 
-    def __init__(self, file_path):
+    def __init__(self, file_path, validity_seconds):
         self.file_path = file_path
+        self.validity_seconds = validity_seconds
 
     @abstractproperty
     def timestamp(self):
+        return NotImplemented
+
+    @abstractproperty
+    def is_expired(self):
         return NotImplemented
 
     @abstractproperty
@@ -120,8 +126,8 @@ class Snapshot(object):
 
 class SampledSnapshot(Snapshot):
 
-    def __init__(self, file_path):
-        super(SampledSnapshot, self).__init__(file_path=file_path)
+    def __init__(self, file_path, validity_seconds):
+        super(SampledSnapshot, self).__init__(file_path=file_path, validity_seconds=validity_seconds)
         f = open(file_path)
         self.snapshot_data = umsgpack.unpack(f)
         self.timestamp_data = dateutil.parser.parse(self.snapshot_data['timestamp'])
@@ -133,6 +139,11 @@ class SampledSnapshot(Snapshot):
     @property
     def timestamp(self):
         return self.timestamp_data
+
+    @property
+    def is_expired(self):
+        now = datetime.utcnow().replace(tzinfo=pytz.utc)
+        return now - self.timestamp_data > timedelta(seconds=self.validity_seconds)
 
     @property
     def data(self):
@@ -175,8 +186,8 @@ class UploadEventHandler(FileSystemEventHandler):
             if snapshot_path.startswith(snapshot_root):
                 if sample_snapshots_dir in snapshot_path:
                     try:
-                        snapshot = SampledSnapshot(file_path=snapshot_path)
-                        log.info("Loaded snapshot data {} from {}".format(snapshot, snapshot_path))
+                        snapshot = SampledSnapshot(file_path=snapshot_path, validity_seconds=snapshot_validity_seconds)
+                        log.info("Snapshot: {} from {}".format(snapshot, snapshot_path))
                         snapshot_queue.put(snapshot)
                         last_snapshot_path = snapshot_path
                     except UnpackException:
@@ -208,7 +219,11 @@ class SnapshotProcessor(Thread):
                 snapshot_queue.task_done()
 
             if snapshot is not None:
+                if snapshot.is_expired:
+                    log.debug("Discarding expired snapshot {}".format(snapshot))
+                    pass
                 new_devices = False
+                # only non-expired snapshots qualify as recent updates
                 self.last_snapshot = time.time()
                 if len(snapshot.devices) == 0:
                     self.active_devices.clear()
@@ -237,7 +252,7 @@ class SnapshotProcessor(Thread):
             else:
                 inactivity = time.time() - self.last_snapshot
                 if inactivity > heartbeat_interval_seconds:
-                    log.warn("A snapshot is overdue (after {} seconds)".format(heartbeat_interval_seconds))
+                    log.warn("A heartbeat or snapshot is overdue (after {} seconds)".format(heartbeat_interval_seconds))
 
 
 if __name__ == "__main__":
