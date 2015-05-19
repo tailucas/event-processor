@@ -17,6 +17,9 @@ from ConfigParser import ConfigParser
 from abc import ABCMeta, abstractmethod, abstractproperty
 from datetime import datetime, timedelta
 from mplayer import Player
+from pydrive.auth import GoogleAuth
+from pydrive.drive import GoogleDrive
+from pydrive.files import FileNotUploadedError
 from Queue import Queue, Empty
 from threading import Thread
 from time import sleep
@@ -39,9 +42,12 @@ config.read([os.path.expanduser('~/.{}'.format(APP))])
 
 snapshot_root = config.get('snapshots', 'root_dir')
 heartbeat_interval_seconds = int(config.get('snapshots', 'heartbeat_interval_seconds'))
-sample_snapshots_dir = config.get('sample_snapshots', 'dir')
 notification_interval_seconds = int(config.get('snapshots', 'notification_interval_seconds'))
 snapshot_validity_seconds = int(config.get('snapshots', 'snapshot_validity_seconds'))
+
+# watch-dogged directories
+image_snapshots_dir = config.get('image_snapshots', 'dir')
+sample_snapshots_dir = config.get('sample_snapshots', 'dir')
 
 snapshot_queue = Queue()
 notification_queue = Queue()
@@ -167,7 +173,9 @@ class UploadEventHandler(FileSystemEventHandler):
     def __init__(self):
         super(UploadEventHandler, self).__init__()
         self.last_modified = None
-
+        gauth = GoogleAuth()
+        self.drive = GoogleDrive(gauth)
+        log.debug("Monitoring directories in {} for changes: {}".format(snapshot_root, str([sample_snapshots_dir, image_snapshots_dir])))
 
     # we listen to on-modified events because the file is
     # created and then written to subsequently.
@@ -184,16 +192,25 @@ class UploadEventHandler(FileSystemEventHandler):
                 return
             # cross-check that we're in the right place
             if snapshot_path.startswith(snapshot_root):
-                if sample_snapshots_dir in snapshot_path:
-                    try:
-                        snapshot = SampledSnapshot(file_path=snapshot_path, validity_seconds=snapshot_validity_seconds)
-                        log.info("Snapshot: {} from {}".format(snapshot, snapshot_path))
-                        snapshot_queue.put(snapshot)
-                        last_snapshot_path = snapshot_path
-                    except UnpackException:
-                        log.exception("Cannot unpack snapshot data in {}".format(snapshot_path))
-                    except Exception:
-                        log.exception("Cannot process {}".format(snapshot_path))
+                try:
+                    if sample_snapshots_dir in snapshot_path:
+                        try:
+                            snapshot = SampledSnapshot(file_path=snapshot_path, validity_seconds=snapshot_validity_seconds)
+                            log.info("Snapshot: {} from {}".format(snapshot, snapshot_path))
+                            snapshot_queue.put(snapshot)
+                            last_snapshot_path = snapshot_path
+                        except UnpackException:
+                            log.exception("Cannot unpack snapshot data in {}".format(snapshot_path))
+                    elif image_snapshots_dir in snapshot_path:
+                        try:
+                            log.info("Image snapshot from {}".format(snapshot_path))
+                            file_list = self.drive.ListFile({'q': "'root' in parents and trashed=false"}).GetList()
+                            for file1 in file_list:
+                                  log.debug('title: %s, id: %s' % (file1['title'], file1['id']))
+                        except FileNotUploadedError:
+                            log.exception("Cannot upload {} to Google Drive".format(snapshot_path))
+                except Exception:
+                    log.exception("Cannot process {}".format(snapshot_path))
 
 
 class SnapshotProcessor(Thread):
