@@ -170,12 +170,40 @@ class SampledSnapshot(Snapshot):
 
 class UploadEventHandler(FileSystemEventHandler):
 
-    def __init__(self):
+    def __init__(self, gauth_creds_file, gdrive_folder):
         super(UploadEventHandler, self).__init__()
         self.last_modified = None
-        gauth = GoogleAuth()
-        self.drive = GoogleDrive(gauth)
+        self._gdrive_folder = gdrive_folder
+        if '~' in gauth_creds_file:
+            self._gauth_creds_file = os.path.expanduser(gauth_creds_file)
+        else:
+            self._gauth_creds_file = os.path.abspath(gauth_creds_file)
+        self._gauth = None
+        self.drive = GoogleDrive(self.gauth)
         log.debug("Monitoring directories in {} for changes: {}".format(snapshot_root, str([sample_snapshots_dir, image_snapshots_dir])))
+
+    @property
+    def gauth(self):
+        if self._gauth is None:
+            self._gauth = GoogleAuth()
+        if not os.path.exists(self._gauth_creds_file):
+            log.debug("Google credentials not found in [{}]. Interactive setup may follow.".format(self._gauth_creds_file))
+        # Try to load saved client credentials
+        self._gauth.LoadCredentialsFile(self._gauth_creds_file)
+        if self._gauth.credentials is None:
+            # Authenticate if they're not there
+            self._gauth.LocalWebserverAuth()
+        elif self._gauth.access_token_expired:
+            # Refresh them if expired
+            self._gauth.Refresh()
+        else:
+            # Initialize the saved creds
+            self._gauth.Authorize()
+        if not os.path.exists(self._gauth_creds_file):
+            # Save the current credentials to a file
+            self._gauth.SaveCredentialsFile(self._gauth_creds_file)
+            log.debug("Saved Google credentials to {}".format(self._gauth_creds_file))
+        return self._gauth
 
     # we listen to on-modified events because the file is
     # created and then written to subsequently.
@@ -281,9 +309,11 @@ if __name__ == "__main__":
     log.addHandler(syslog_handler)
     stream_handler = logging.StreamHandler(stream=sys.stdout)
     log.addHandler(stream_handler)
+    # ensure that auth is properly set up first
+    upload_event_handler = UploadEventHandler(gauth_creds_file=config.get('gdrive', 'creds_file'), gdrive_folder=config.get('gdrive', 'folder'))
     # start threads
     observer = Observer()
-    observer.schedule(UploadEventHandler(), config.get('snapshots', 'root_dir'), recursive=True)
+    observer.schedule(upload_event_handler, config.get('snapshots', 'root_dir'), recursive=True)
     observer.start()
     processor = SnapshotProcessor()
     processor.daemon = True
