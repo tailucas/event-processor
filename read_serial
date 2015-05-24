@@ -50,7 +50,7 @@ def upload(payload=None):
     output = {}
     output['timestamp'] = ts
     if payload is not None and len(payload) > 0:
-	output['data'] = payload
+    output['data'] = payload
     tempfile = NamedTemporaryFile(delete=False, dir='/tmp/')
     umsgpack.dump(output, tempfile)
     tempfile.close()
@@ -63,7 +63,7 @@ def upload(payload=None):
             ftp.login(user=ftp_user, passwd=ftp_password)
             ftp.cwd(ftp_dir)
             ftp.storbinary('STOR {}'.format(filename), open(tempfile.name))
-            break
+            pass
         except Exception as e:
             log.error(e)
         else:
@@ -172,7 +172,7 @@ if __name__ == "__main__":
                             sample_label = ' '.join([sample_label, range_label])
                 # add the sample to the output
                 output_samples[sample_label] = sample_value
-	    if len(output_samples) > 0:
+        if len(output_samples) > 0:
                 log.debug("{} samples enqueued behind {} others for upload.".format(len(output_samples), upload_queue.qsize()))
                 upload_queue.put(output_samples)
                 # do not overwhelm the uploader, but keep sample rate as high as the input provides it
