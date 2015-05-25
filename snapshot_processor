@@ -180,6 +180,7 @@ class UploadEventHandler(FileSystemEventHandler):
             self._gauth_creds_file = os.path.abspath(gauth_creds_file)
         self._gauth = None
         self.drive = GoogleDrive(self.gauth)
+        self._gdrive_folder_id = self._get_gdrive_folder_id(self.drive, gdrive_folder)
         log.debug("Monitoring directories in {} for changes: {}".format(snapshot_root, str([sample_snapshots_dir, image_snapshots_dir])))
 
     @property
@@ -204,6 +205,18 @@ class UploadEventHandler(FileSystemEventHandler):
             self._gauth.SaveCredentialsFile(self._gauth_creds_file)
             log.debug("Saved Google credentials to {}".format(self._gauth_creds_file))
         return self._gauth
+
+    @staticmethod
+    def _get_gdrive_folder_id(gdrive, gdrive_folder):
+        file_list = gdrive.ListFile({'q': "'root' in parents and trashed=false"}).GetList()
+        log.debug("Listed {} files in Google Drive".format(len(file_list)))
+        for f in file_list:
+            log.debug('title: %s, id: %s' % (f['title'], f['id']))
+        #log.debug("Creating a file in Google Drive")
+        #file4 = gdrive.CreateFile({'description': 'fooscription', 'title':'foodata.json', 'mimeType':'application/json'})
+        #file4.SetContentString('{"firstname": "John", "lastname": "Smith"}')
+        #file4.Upload() # Upload file
+        return None
 
     # we listen to on-modified events because the file is
     # created and then written to subsequently.
