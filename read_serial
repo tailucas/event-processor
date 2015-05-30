@@ -21,27 +21,28 @@ from time import sleep
 
 sys.displayhook = pprint.pprint
 
-APP=os.path.basename(__file__)
+APP = os.path.basename(__file__)
 log = logging.getLogger(APP)
 
-EXPECTED_FIELDS=6
-SAMPLE_DEVIATION_TOLERANCE=3
-UPLOAD_TIMEOUT_SECONDS=1
-HEARTBEAT_INTERVAL_SECONDS=5
-SAMPLE_INTERVAL_SECONDS=1
-SAMPLE_DEBOUNCE_COOLDOWN_SECONDS=60
-DATE_FORMAT='%Y-%m-%dT%H:%M:%S.%f%z'
+EXPECTED_FIELDS = 6
+SAMPLE_DEVIATION_TOLERANCE = 3
+UPLOAD_TIMEOUT_SECONDS = 1
+HEARTBEAT_INTERVAL_SECONDS = 5
+SAMPLE_INTERVAL_SECONDS = 1
+SAMPLE_DEBOUNCE_COOLDOWN_SECONDS = 60
+DATE_FORMAT = '%Y-%m-%dT%H:%M:%S.%f%z'
 
 config = ConfigParser()
-config.optionxform=str
+config.optionxform = str
 config.read([os.path.expanduser('~/.{}'.format(APP))])
 
 upload_queue = LifoQueue()
 
-ftp_server=config.get('ftp', 'server')
-ftp_user=config.get('ftp', 'user')
-ftp_password=config.get('ftp', 'password')
+ftp_server = config.get('ftp', 'server')
+ftp_user = config.get('ftp', 'user')
+ftp_password = config.get('ftp', 'password')
 ftp_dir = config.get('ftp', 'dir')
+
 
 def upload(payload=None):
     now = datetime.utcnow()
@@ -58,7 +59,10 @@ def upload(payload=None):
     log.debug(json.dumps(output))
     while True:
         try:
-            log.info('FTP {} bytes to ftp://{}@{}'.format(os.stat(tempfile.name).st_size, ftp_user, os.path.sep.join([ftp_server, ftp_dir, filename])))
+            log.info('FTP {} bytes to ftp://{}@{}'.format(
+                os.stat(tempfile.name).st_size,
+                ftp_user,
+                os.path.sep.join([ftp_server, ftp_dir, filename])))
             ftp = FTP(host=ftp_server, timeout=UPLOAD_TIMEOUT_SECONDS)
             ftp.login(user=ftp_user, passwd=ftp_password)
             ftp.cwd(ftp_dir)
@@ -69,6 +73,7 @@ def upload(payload=None):
         else:
             ftp.close()
     os.remove(tempfile.name)
+
 
 def uploader():
     global last_upload
@@ -83,6 +88,7 @@ def uploader():
             upload_queue.task_done()
         last_upload = time.time()
 
+
 def heartbeat():
     while True:
         sleep(HEARTBEAT_INTERVAL_SECONDS)
@@ -93,7 +99,7 @@ def heartbeat():
 if __name__ == "__main__":
     # set up logging
     log.setLevel(logging.DEBUG)
-    syslog_handler = logging.handlers.SysLogHandler(address = '/dev/log')
+    syslog_handler = logging.handlers.SysLogHandler(address='/dev/log')
     formatter = logging.Formatter('%(name)s [%(levelname)s] %(message)s')
     syslog_handler.setFormatter(formatter)
     log.addHandler(syslog_handler)
@@ -114,7 +120,7 @@ if __name__ == "__main__":
     expanded_field_range_labels = {}
     for field in field_range_labels:
         pairs = map(lambda s: s.split(':'), field_range_labels[field].split(','))
-        expanded_field_range_labels[field] = dict({k:int(v) for k,v in pairs})
+        expanded_field_range_labels[field] = dict({k: int(v) for k, v in pairs})
     field_range_labels = expanded_field_range_labels
     try:
         # we map samples to values
@@ -135,7 +141,7 @@ if __name__ == "__main__":
                 # extract the pairs from each line read
                 pairs = map(lambda s: s.split(':'), fields)
                 # convert tuples to dict
-                samples = dict({k:int(v) for k,v in pairs})
+                samples = dict({k: int(v) for k, v in pairs})
             except (IndexError, ValueError):
                 continue
             output_samples = {}
@@ -163,17 +169,20 @@ if __name__ == "__main__":
                 sample_value_history[sample_label][sample_value] = sample_time
                 # output the value only if it was seen more than the debounce tolerance ago
                 if time.time() - value_last_seen < SAMPLE_DEBOUNCE_COOLDOWN_SECONDS:
-                    log.debug("Debouncing {} value of {} seen within {} seconds ago.".format(sample_label, sample_value, SAMPLE_DEBOUNCE_COOLDOWN_SECONDS))
+                    log.debug("Debouncing {} value of {} seen within {} seconds ago.".format(
+                        sample_label, sample_value, SAMPLE_DEBOUNCE_COOLDOWN_SECONDS))
                     continue
                 # now annotate the label with the range label
                 if label in field_range_labels:
-                    for range_label,range_value in field_range_labels[label].iteritems():
+                    for range_label, range_value in field_range_labels[label].iteritems():
                         if abs(sample_value - range_value) <= SAMPLE_DEVIATION_TOLERANCE:
                             sample_label = ' '.join([sample_label, range_label])
                 # add the sample to the output
                 output_samples[sample_label] = sample_value
-        if len(output_samples) > 0:
-                log.debug("{} samples enqueued behind {} others for upload.".format(len(output_samples), upload_queue.qsize()))
+            if len(output_samples) > 0:
+                log.debug("{} samples enqueued behind {} others for upload.".format(
+                    len(output_samples),
+                    upload_queue.qsize()))
                 upload_queue.put(output_samples)
                 # do not overwhelm the uploader, but keep sample rate as high as the input provides it
                 sleep(SAMPLE_INTERVAL_SECONDS)
