@@ -16,6 +16,7 @@ from ConfigParser import ConfigParser
 
 from abc import ABCMeta, abstractmethod, abstractproperty
 from datetime import datetime, timedelta
+from mimetypes import MimeTypes
 from mplayer import Player
 from pydrive.auth import GoogleAuth
 from pydrive.drive import GoogleDrive
@@ -24,7 +25,7 @@ from Queue import Queue, Empty
 from threading import Thread
 from time import sleep
 from umsgpack import UnpackException
-from urllib import urlencode
+from urllib import pathname2url, urlencode
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
@@ -182,6 +183,7 @@ class UploadEventHandler(FileSystemEventHandler):
         self.drive = GoogleDrive(self.gauth)
         self._gdrive_folder_id = self._get_gdrive_folder_id(self.drive, gdrive_folder)
         log.debug("Monitoring directories in {} for changes: {}".format(snapshot_root, str([sample_snapshots_dir, image_snapshots_dir])))
+        self.mime = MimeTypes()
 
     @property
     def gauth(self):
@@ -208,15 +210,23 @@ class UploadEventHandler(FileSystemEventHandler):
 
     @staticmethod
     def _get_gdrive_folder_id(gdrive, gdrive_folder):
-        file_list = gdrive.ListFile({'q': "'root' in parents and trashed=false"}).GetList()
-        log.debug("Listed {} files in Google Drive".format(len(file_list)))
-        for f in file_list:
-            log.debug('title: %s, id: %s' % (f['title'], f['id']))
-        #log.debug("Creating a file in Google Drive")
-        #file4 = gdrive.CreateFile({'description': 'fooscription', 'title':'foodata.json', 'mimeType':'application/json'})
-        #file4.SetContentString('{"firstname": "John", "lastname": "Smith"}')
-        #file4.Upload() # Upload file
-        return None
+        log.debug("Checking for existence of Google Drive folder '{}'".format(gdrive_folder))
+        file_list = gdrive.ListFile({
+            'q': "'root' in parents and trashed=false and mimeType = 'application/vnd.google-apps.folder'"
+            " and title = '{}'".format(gdrive_folder)
+        }).GetList()
+        if len(file_list) == 0:
+            log.debug("Creating Google Drive folder '{}'".format(gdrive_folder))
+            folder = gdrive.CreateFile({
+                'description': "Created by {}".format(APP), 'title':gdrive_folder, 'mimeType':'application/vnd.google-apps.folder'})
+            folder.Upload()
+            folder_id = folder['id']
+        elif len(file_list) == 1:
+            folder_id = file_list[0]['id']
+        else:
+            raise RuntimeError("Unexpected result listing Google Drive for {}: {}".format(gdrive_folder, str(file_list)))
+        log.debug("Google Drive folder ID for folder '{}' is '{}'".format(gdrive_folder, folder_id))
+        return folder_id
 
     # we listen to on-modified events because the file is
     # created and then written to subsequently.
@@ -243,11 +253,20 @@ class UploadEventHandler(FileSystemEventHandler):
                         except UnpackException:
                             log.exception("Cannot unpack snapshot data in {}".format(snapshot_path))
                     elif image_snapshots_dir in snapshot_path:
+                        mime_type = self.mime.guess_type(pathname2url(snapshot_path))
+                        if mime_type is not None:
+                            mime_type = mime_type[0]
+                        log.info("'{}' snapshot from {}".format(mime_type, snapshot_path))
                         try:
-                            log.info("Image snapshot from {}".format(snapshot_path))
-                            file_list = self.drive.ListFile({'q': "'root' in parents and trashed=false"}).GetList()
-                            for file1 in file_list:
-                                  log.debug('title: %s, id: %s' % (file1['title'], file1['id']))
+                            f = self.drive.CreateFile({
+                                'title': os.path.basename(snapshot_path),
+                                'mimeType': mime_type,
+                                'parents': [{"kind": "drive#fileLink", "id": self._gdrive_folder_id}]
+                            })
+                            f.SetContentFile(snapshot_path)
+                            f.Upload()
+                            log.info("Uploaded '{}' to Google Drive folder '{}' (ID: '{}')".format(
+                                os.path.basename(snapshot_path), self._gdrive_folder, f['id']))
                         except FileNotUploadedError:
                             log.exception("Cannot upload {} to Google Drive".format(snapshot_path))
                 except Exception:
