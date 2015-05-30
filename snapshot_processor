@@ -3,7 +3,7 @@ import dateutil.parser
 import hashlib
 import logging
 import logging.handlers
-import mplayer
+
 import os
 import pprint
 import pytz
@@ -14,7 +14,7 @@ import urllib2
 
 from ConfigParser import ConfigParser
 
-from abc import ABCMeta, abstractmethod, abstractproperty
+import abc
 from datetime import datetime, timedelta
 from mimetypes import MimeTypes
 from mplayer import Player
@@ -26,19 +26,19 @@ from threading import Thread
 from time import sleep
 from umsgpack import UnpackException
 from urllib import pathname2url, urlencode
-from watchdog.events import FileSystemEventHandler
+from watchdog.events import FileSystemEventHandler, FileModifiedEvent
 from watchdog.observers import Observer
 
 sys.displayhook = pprint.pprint
 
-APP=os.path.basename(__file__)
-DIR=os.path.abspath(os.path.dirname(__file__))
+APP = os.path.basename(__file__)
+DIR = os.path.abspath(os.path.dirname(__file__))
 log = logging.getLogger(APP)
 
 TTS_URL = 'http://translate.google.com/translate_tts'
 
 config = ConfigParser()
-config.optionxform=str
+config.optionxform = str
 config.read([os.path.expanduser('~/.{}'.format(APP))])
 
 snapshot_root = config.get('snapshots', 'root_dir')
@@ -52,6 +52,7 @@ sample_snapshots_dir = config.get('sample_snapshots', 'dir')
 
 snapshot_queue = Queue()
 notification_queue = Queue()
+
 
 class TTSProcessor(Thread):
 
@@ -108,25 +109,25 @@ class TTSProcessor(Thread):
 
 
 class Snapshot(object):
-    __metaclass__ = ABCMeta
+    __metaclass__ = abc.ABCMeta
 
     def __init__(self, file_path, validity_seconds):
         self.file_path = file_path
         self.validity_seconds = validity_seconds
 
-    @abstractproperty
+    @abc.abstractproperty
     def timestamp(self):
         return NotImplemented
 
-    @abstractproperty
+    @abc.abstractproperty
     def is_expired(self):
         return NotImplemented
 
-    @abstractproperty
+    @abc.abstractproperty
     def data(self):
         return NotImplemented
 
-    @abstractproperty
+    @abc.abstractproperty
     def devices(self):
         return NotImplemented
 
@@ -182,15 +183,20 @@ class UploadEventHandler(FileSystemEventHandler):
         self._gauth = None
         self.drive = GoogleDrive(self.gauth)
         self._gdrive_folder_id = self._get_gdrive_folder_id(self.drive, gdrive_folder)
-        log.debug("Monitoring directories in {} for changes: {}".format(snapshot_root, str([sample_snapshots_dir, image_snapshots_dir])))
+        log.debug("Monitoring directories in {} for changes: {}".format(
+            snapshot_root, str([sample_snapshots_dir, image_snapshots_dir])))
         self.mime = MimeTypes()
 
     @property
     def gauth(self):
+        """
+        :type self: UploadEventHandler
+        """
         if self._gauth is None:
             self._gauth = GoogleAuth()
         if not os.path.exists(self._gauth_creds_file):
-            log.debug("Google credentials not found in [{}]. Interactive setup may follow.".format(self._gauth_creds_file))
+            log.debug("Google credentials not found in [{}]. Interactive setup may follow.".format(
+                self._gauth_creds_file))
         # Try to load saved client credentials
         self._gauth.LoadCredentialsFile(self._gauth_creds_file)
         if self._gauth.credentials is None:
@@ -218,21 +224,25 @@ class UploadEventHandler(FileSystemEventHandler):
         if len(file_list) == 0:
             log.debug("Creating Google Drive folder '{}'".format(gdrive_folder))
             folder = gdrive.CreateFile({
-                'description': "Created by {}".format(APP), 'title':gdrive_folder, 'mimeType':'application/vnd.google-apps.folder'})
+                'description': "Created by {}".format(APP), 'title': gdrive_folder,
+                'mimeType': 'application/vnd.google-apps.folder'})
             folder.Upload()
             folder_id = folder['id']
         elif len(file_list) == 1:
             folder_id = file_list[0]['id']
         else:
-            raise RuntimeError("Unexpected result listing Google Drive for {}: {}".format(gdrive_folder, str(file_list)))
+            raise RuntimeError("Unexpected result listing Google Drive for {}: {}".format(
+                gdrive_folder, str(file_list)))
         log.debug("Google Drive folder ID for folder '{}' is '{}'".format(gdrive_folder, folder_id))
         return folder_id
 
     # we listen to on-modified events because the file is
     # created and then written to subsequently.
     def on_modified(self, event):
+        """
+        :type event: FileModifiedEvent
+        """
         super(UploadEventHandler, self).on_modified(event)
-        what = 'directory' if event.is_directory else 'file'
         # the file has been written to and has valid content
         if not event.is_directory:
             snapshot_path = event.src_path
@@ -243,13 +253,15 @@ class UploadEventHandler(FileSystemEventHandler):
                 return
             # cross-check that we're in the right place
             if snapshot_path.startswith(snapshot_root):
+                # noinspection PyBroadException
                 try:
                     if sample_snapshots_dir in snapshot_path:
                         try:
-                            snapshot = SampledSnapshot(file_path=snapshot_path, validity_seconds=snapshot_validity_seconds)
+                            snapshot = SampledSnapshot(
+                                file_path=snapshot_path,
+                                validity_seconds=snapshot_validity_seconds)
                             log.info("Snapshot: {} from {}".format(snapshot, snapshot_path))
                             snapshot_queue.put(snapshot)
-                            last_snapshot_path = snapshot_path
                         except UnpackException:
                             log.exception("Cannot unpack snapshot data in {}".format(snapshot_path))
                     elif image_snapshots_dir in snapshot_path:
@@ -320,7 +332,7 @@ class SnapshotProcessor(Thread):
                 last_notified = time.time() - self.last_notification
                 if (last_notified > notification_interval_seconds or new_devices) \
                     and len(self.active_devices) > 0 \
-                    and self.latest_snapshot < snapshot.timestamp:
+                        and self.latest_snapshot < snapshot.timestamp:
                     self.latest_snapshot = snapshot.timestamp
                     self.last_notification = time.time()
                     log.info("Sending notification for {}".format(str(self.active_devices.keys())))
@@ -335,14 +347,16 @@ class SnapshotProcessor(Thread):
 if __name__ == "__main__":
     # set up logging
     log.setLevel(logging.DEBUG)
-    syslog_handler = logging.handlers.SysLogHandler(address = '/dev/log')
+    syslog_handler = logging.handlers.SysLogHandler(address='/dev/log')
     formatter = logging.Formatter('%(name)s [%(levelname)s] %(message)s')
     syslog_handler.setFormatter(formatter)
     log.addHandler(syslog_handler)
     stream_handler = logging.StreamHandler(stream=sys.stdout)
     log.addHandler(stream_handler)
     # ensure that auth is properly set up first
-    upload_event_handler = UploadEventHandler(gauth_creds_file=config.get('gdrive', 'creds_file'), gdrive_folder=config.get('gdrive', 'folder'))
+    upload_event_handler = UploadEventHandler(
+        gauth_creds_file=config.get('gdrive', 'creds_file'),
+        gdrive_folder=config.get('gdrive', 'folder'))
     # start threads
     observer = Observer()
     observer.schedule(upload_event_handler, config.get('snapshots', 'root_dir'), recursive=True)
