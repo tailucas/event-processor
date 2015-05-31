@@ -67,11 +67,10 @@ def upload(payload=None):
             ftp.login(user=ftp_user, passwd=ftp_password)
             ftp.cwd(ftp_dir)
             ftp.storbinary('STOR {}'.format(filename), open(tempfile.name))
+            ftp.close()
             break
         except Exception as e:
             log.error(e)
-        else:
-            ftp.close()
     os.remove(tempfile.name)
 
 
@@ -186,7 +185,7 @@ if __name__ == "__main__":
                 upload_queue.put(output_samples)
                 # do not overwhelm the uploader, but keep sample rate as high as the input provides it
                 sleep(SAMPLE_INTERVAL_SECONDS)
-                # throw away the intermediate data if the external sample rate exceededs our ability to consume it
+                # throw away the intermediate data if the external sample rate exceeds our ability to consume it
                 com1.flushInput()
     except(KeyboardInterrupt, SystemExit):
         log.info("Closing serial connection...")
