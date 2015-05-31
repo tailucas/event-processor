@@ -25,7 +25,7 @@ APP = os.path.basename(__file__)
 log = logging.getLogger(APP)
 
 EXPECTED_FIELDS = 6
-SAMPLE_DEVIATION_TOLERANCE = 3
+SAMPLE_DEVIATION_TOLERANCE = 4
 UPLOAD_TIMEOUT_SECONDS = 1
 HEARTBEAT_INTERVAL_SECONDS = 5
 SAMPLE_INTERVAL_SECONDS = 1
@@ -115,12 +115,18 @@ if __name__ == "__main__":
     field_labels = dict(config.items('field_labels'))
     field_normal_values = dict(config.items('field_normal_values'))
     field_range_labels = dict(config.items('field_range_labels'))
+    field_debounce_values = dict(config.items('field_debounce_values'))
     # split the range labels for easy processing
     expanded_field_range_labels = {}
     for field in field_range_labels:
         pairs = map(lambda s: s.split(':'), field_range_labels[field].split(','))
         expanded_field_range_labels[field] = dict({k: int(v) for k, v in pairs})
     field_range_labels = expanded_field_range_labels
+    # split out the debounce values
+    expanded_field_debounce_values = {}
+    for field in field_debounce_values:
+        expanded_field_debounce_values[field] = list({int(v) for v in field_debounce_values[field].split(',')})
+    field_debounce_values = expanded_field_debounce_values
     try:
         # we map samples to values
         sample_value_history = {}
@@ -160,17 +166,24 @@ if __name__ == "__main__":
                     normal_value = int(field_normal_values[label])
                     if abs(sample_value - normal_value) <= SAMPLE_DEVIATION_TOLERANCE:
                         continue
+                # clamp the value based on the debounce settings
+                if label in field_debounce_values:
+                    for debounce_value in field_debounce_values[label]:
+                        if abs(sample_value - debounce_value) <= SAMPLE_DEVIATION_TOLERANCE:
+                            sample_value = debounce_value
                 # when last did we see this value?
                 value_last_seen = 0
                 if sample_value in sample_value_history[sample_label]:
                     value_last_seen = sample_value_history[sample_label][sample_value]
-                # update the last time seen for this value
-                sample_value_history[sample_label][sample_value] = sample_time
                 # output the value only if it was seen more than the debounce tolerance ago
-                if time.time() - value_last_seen < SAMPLE_DEBOUNCE_COOLDOWN_SECONDS:
-                    log.debug("Debouncing {} value of {} seen within {} seconds ago.".format(
-                        sample_label, sample_value, SAMPLE_DEBOUNCE_COOLDOWN_SECONDS))
+                time_delta = time.time() - value_last_seen
+                if time_delta < SAMPLE_DEBOUNCE_COOLDOWN_SECONDS:
+                    log.debug("Debouncing {} value of {} for another {} seconds.".format(
+                        sample_label, sample_value, int(SAMPLE_DEBOUNCE_COOLDOWN_SECONDS-time_delta)))
                     continue
+                else:
+                    # update the last time seen for this value
+                    sample_value_history[sample_label][sample_value] = sample_time
                 # now annotate the label with the range label
                 if label in field_range_labels:
                     for range_label, range_value in field_range_labels[label].iteritems():
