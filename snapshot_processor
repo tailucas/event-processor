@@ -184,6 +184,54 @@ class SampledSnapshot(Snapshot):
         return string
 
 
+class ImageSnapshot(Snapshot):
+
+    def __init__(self, source_label, file_path, validity_seconds):
+        super(ImageSnapshot, self).__init__(
+            source_label=source_label,
+            file_path=file_path,
+            validity_seconds=validity_seconds)
+        #TODO: parse out time from file path
+        #self.timestamp_data = dateutil.parser.parse(self.snapshot_data['timestamp'])
+        self.timestamp_data = datetime.utcnow().replace(tzinfo=pytz.utc)
+        self.devices_data = {'camera': None}
+
+    @property
+    def timestamp(self):
+        return self.timestamp_data
+
+    @property
+    def is_expired(self):
+        now = datetime.utcnow().replace(tzinfo=pytz.utc)
+        return now - self.timestamp_data > timedelta(seconds=self.validity_seconds)
+
+    @property
+    def data(self):
+        return None
+
+    @property
+    def device_names(self):
+        if self.devices_data is None:
+            return None
+        names = []
+        for device_name in self.devices_data.keys():
+            names.append(' '.join([self.source_label, device_name]))
+        return names
+
+    @property
+    def devices(self):
+        if self.devices_data is None:
+            return {}
+        return self.devices_data
+
+    def __str__(self):
+        string = "{} at {}".format(self.timestamp.strftime('%X %x %Z'), self.source_label)
+        if self.devices:
+            return string + ": {} devices: {}".format(
+                len(self.devices), ','.join(self.devices.keys()))
+        return string
+
+
 class UploadEventHandler(FileSystemEventHandler):
 
     def __init__(self, gauth_creds_file, gdrive_folder):
@@ -303,7 +351,11 @@ class UploadEventHandler(FileSystemEventHandler):
                                 source_label=source_label,
                                 file_path=snapshot_path,
                                 validity_seconds=snapshot_validity_seconds)
-                            log.info("Snapshot: {} from {}".format(snapshot, snapshot_path))
+                            log_msg = "Snapshot: {} from {}".format(snapshot, snapshot_path)
+                            if len(snapshot.devices) > 0:
+                                log.info(log_msg)
+                            else:
+                                log.debug(log_msg)
                             snapshot_queue.put(snapshot)
                             pass
                         except UnpackException:
@@ -311,6 +363,18 @@ class UploadEventHandler(FileSystemEventHandler):
                     # image snapshot?
                     source_label = self._image_dir_label(snapshot_path)
                     if source_label:
+                        # create the snapshot data
+                        snapshot = ImageSnapshot(
+                            source_label=source_label,
+                            file_path=snapshot_path,
+                            validity_seconds=snapshot_validity_seconds)
+                        log_msg = "Snapshot: {} from {}".format(snapshot, snapshot_path)
+                        if len(snapshot.devices) > 0:
+                            log.info(log_msg)
+                        else:
+                            log.debug(log_msg)
+                        snapshot_queue.put(snapshot)
+                        # upload the snapshot
                         mime_type = self.mime.guess_type(pathname2url(snapshot_path))
                         if mime_type is not None:
                             mime_type = mime_type[0]
