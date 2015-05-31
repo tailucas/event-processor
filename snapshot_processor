@@ -177,10 +177,10 @@ class SampledSnapshot(Snapshot):
         return self.devices_data
 
     def __str__(self):
-        string = "{}".format(self.timestamp.strftime('%X %x %Z'))
+        string = "{} at {}".format(self.timestamp.strftime('%X %x %Z'), self.source_label)
         if self.devices:
-            return string + ": {} {} devices: {}".format(
-                len(self.devices), self.source_label, ','.join(self.devices.keys()))
+            return string + ": {} devices: {}".format(
+                len(self.devices), ','.join(self.devices.keys()))
         return string
 
 
@@ -297,8 +297,6 @@ class UploadEventHandler(FileSystemEventHandler):
                 try:
                     # sampled snapshot?
                     source_label = self._sample_dir_label(snapshot_path)
-                    if source_label is not None:
-                        log.debug("Derived label '{}' from path {}".format(source_label, snapshot_path))
                     if source_label:
                         try:
                             snapshot = SampledSnapshot(
@@ -312,13 +310,11 @@ class UploadEventHandler(FileSystemEventHandler):
                             log.exception("Cannot unpack snapshot data in {}".format(snapshot_path))
                     # image snapshot?
                     source_label = self._image_dir_label(snapshot_path)
-                    if source_label is not None:
-                        log.debug("Derived label '{}' from path {}".format(source_label, snapshot_path))
                     if source_label:
                         mime_type = self.mime.guess_type(pathname2url(snapshot_path))
                         if mime_type is not None:
                             mime_type = mime_type[0]
-                        log.info("'{}' snapshot from {}".format(mime_type, snapshot_path))
+                        log.info("'{}' snapshot at {} from {}".format(mime_type, source_label, snapshot_path))
                         try:
                             f = self.drive.CreateFile({
                                 'title': os.path.basename(snapshot_path),
@@ -332,8 +328,6 @@ class UploadEventHandler(FileSystemEventHandler):
                             pass
                         except FileNotUploadedError:
                             log.exception("Cannot upload {} to Google Drive".format(snapshot_path))
-                    # unknown
-                    #raise RuntimeError("Unexpected snapshot at {}".format(snapshot_path))
                 except Exception:
                     log.exception("Cannot process {}".format(snapshot_path))
 
@@ -370,7 +364,7 @@ class SnapshotProcessor(Thread):
                 if len(snapshot.devices) == 0:
                     self.active_devices.clear()
                 else:
-                    new_device_names = snapshot.device_names()
+                    new_device_names = snapshot.device_names
                     # first purge dead keys
                     for device_name in self.active_devices.keys():
                         if device_name not in new_device_names:
