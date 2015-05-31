@@ -46,10 +46,6 @@ heartbeat_interval_seconds = int(config.get('snapshots', 'heartbeat_interval_sec
 notification_interval_seconds = int(config.get('snapshots', 'notification_interval_seconds'))
 snapshot_validity_seconds = int(config.get('snapshots', 'snapshot_validity_seconds'))
 
-# watch-dogged directories
-image_snapshots_dir = config.get('image_snapshots', 'dir')
-sample_snapshots_dir = config.get('sample_snapshots', 'dir')
-
 snapshot_queue = Queue()
 notification_queue = Queue()
 
@@ -111,7 +107,8 @@ class TTSProcessor(Thread):
 class Snapshot(object):
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, file_path, validity_seconds):
+    def __init__(self, source_label, file_path, validity_seconds):
+        self.source_label = source_label
         self.file_path = file_path
         self.validity_seconds = validity_seconds
 
@@ -128,14 +125,21 @@ class Snapshot(object):
         return NotImplemented
 
     @abc.abstractproperty
+    def device_names(self):
+        return NotImplemented
+
+    @abc.abstractproperty
     def devices(self):
         return NotImplemented
 
 
 class SampledSnapshot(Snapshot):
 
-    def __init__(self, file_path, validity_seconds):
-        super(SampledSnapshot, self).__init__(file_path=file_path, validity_seconds=validity_seconds)
+    def __init__(self, source_label, file_path, validity_seconds):
+        super(SampledSnapshot, self).__init__(
+            source_label=source_label,
+            file_path=file_path,
+            validity_seconds=validity_seconds)
         f = open(file_path)
         self.snapshot_data = umsgpack.unpack(f)
         self.timestamp_data = dateutil.parser.parse(self.snapshot_data['timestamp'])
@@ -158,6 +162,15 @@ class SampledSnapshot(Snapshot):
         return self.snapshot_data
 
     @property
+    def device_names(self):
+        if self.devices_data is None:
+            return None
+        names = []
+        for device_name in self.devices_data.keys():
+            names.append(' '.join([self.source_label, device_name]))
+        return names
+
+    @property
     def devices(self):
         if self.devices_data is None:
             return {}
@@ -166,7 +179,8 @@ class SampledSnapshot(Snapshot):
     def __str__(self):
         string = "{}".format(self.timestamp.strftime('%X %x %Z'))
         if self.devices:
-            return string + ": {} devices: {}".format(len(self.devices), ','.join(self.devices.keys()))
+            return string + ": {} {} devices: {}".format(
+                len(self.devices), self.source_label, ','.join(self.devices.keys()))
         return string
 
 
@@ -183,9 +197,35 @@ class UploadEventHandler(FileSystemEventHandler):
         self._gauth = None
         self.drive = GoogleDrive(self.gauth)
         self._gdrive_folder_id = self._get_gdrive_folder_id(self.drive, gdrive_folder)
-        log.debug("Monitoring directories in {} for changes: {}".format(
-            snapshot_root, str([sample_snapshots_dir, image_snapshots_dir])))
         self.mime = MimeTypes()
+        self.sample_dirs = {}
+        self.image_dirs = {}
+
+    def add_sample_dir(self, source_label, sample_dir):
+        if source_label in self.sample_dirs:
+            raise RuntimeError("Sample source label {} is already configured.".format(source_label))
+        self.sample_dirs[source_label] = sample_dir
+
+    def _sample_dir_label(self, event_directory):
+        for dir_label, sample_dir in self.sample_dirs.iteritems():
+            if sample_dir in event_directory:
+                return dir_label
+        return None
+
+    def add_image_dir(self, source_label, image_dir):
+        if source_label in self.image_dirs:
+            raise RuntimeError("Image source label {} is already configured.".format(source_label))
+        self.image_dirs[source_label] = image_dir
+
+    def _image_dir_label(self, event_directory):
+        for dir_label, image_dir in self.image_dirs.iteritems():
+            if image_dir in event_directory:
+                return dir_label
+        return None
+
+    @property
+    def watched_dirs(self):
+        return self.sample_dirs.items() + self.image_dirs.items()
 
     @property
     def gauth(self):
@@ -255,16 +295,26 @@ class UploadEventHandler(FileSystemEventHandler):
             if snapshot_path.startswith(snapshot_root):
                 # noinspection PyBroadException
                 try:
-                    if sample_snapshots_dir in snapshot_path:
+                    # sampled snapshot?
+                    source_label = self._sample_dir_label(snapshot_path)
+                    if source_label is not None:
+                        log.debug("Derived label '{}' from path {}".format(source_label, snapshot_path))
+                    if source_label:
                         try:
                             snapshot = SampledSnapshot(
+                                source_label=source_label,
                                 file_path=snapshot_path,
                                 validity_seconds=snapshot_validity_seconds)
                             log.info("Snapshot: {} from {}".format(snapshot, snapshot_path))
                             snapshot_queue.put(snapshot)
+                            pass
                         except UnpackException:
                             log.exception("Cannot unpack snapshot data in {}".format(snapshot_path))
-                    elif image_snapshots_dir in snapshot_path:
+                    # image snapshot?
+                    source_label = self._image_dir_label(snapshot_path)
+                    if source_label is not None:
+                        log.debug("Derived label '{}' from path {}".format(source_label, snapshot_path))
+                    if source_label:
                         mime_type = self.mime.guess_type(pathname2url(snapshot_path))
                         if mime_type is not None:
                             mime_type = mime_type[0]
@@ -279,8 +329,11 @@ class UploadEventHandler(FileSystemEventHandler):
                             f.Upload()
                             log.info("Uploaded '{}' to Google Drive folder '{}' (ID: '{}')".format(
                                 os.path.basename(snapshot_path), self._gdrive_folder, f['id']))
+                            pass
                         except FileNotUploadedError:
                             log.exception("Cannot upload {} to Google Drive".format(snapshot_path))
+                    # unknown
+                    #raise RuntimeError("Unexpected snapshot at {}".format(snapshot_path))
                 except Exception:
                     log.exception("Cannot process {}".format(snapshot_path))
 
@@ -317,7 +370,7 @@ class SnapshotProcessor(Thread):
                 if len(snapshot.devices) == 0:
                     self.active_devices.clear()
                 else:
-                    new_device_names = snapshot.devices.keys()
+                    new_device_names = snapshot.device_names()
                     # first purge dead keys
                     for device_name in self.active_devices.keys():
                         if device_name not in new_device_names:
@@ -353,10 +406,25 @@ if __name__ == "__main__":
     log.addHandler(syslog_handler)
     stream_handler = logging.StreamHandler(stream=sys.stdout)
     log.addHandler(stream_handler)
+    # set up config
+    sample_labels = dict(config.items('sample_sources'))
+    image_labels = dict(config.items('images_sources'))
+    sample_snapshot_dirs = dict(config.items('sample_snapshot_dirs'))
+    image_snapshot_dirs = dict(config.items('image_snapshot_dirs'))
+    # remap the labels to the directories
+    if len(sample_labels) != len(sample_snapshot_dirs) or len(image_labels) != len(image_snapshot_dirs):
+        raise RuntimeError("Invalid configuration. Sources and associated labels must match.")
     # ensure that auth is properly set up first
     upload_event_handler = UploadEventHandler(
         gauth_creds_file=config.get('gdrive', 'creds_file'),
         gdrive_folder=config.get('gdrive', 'folder'))
+    # monitor these directories
+    for source, label in sample_labels.iteritems():
+        upload_event_handler.add_sample_dir(source_label=label, sample_dir=sample_snapshot_dirs[source])
+    for source, label in image_labels.iteritems():
+        upload_event_handler.add_image_dir(source_label=label, image_dir=image_snapshot_dirs[source])
+    log.debug("Monitoring directories in {} for changes: {}".format(
+        snapshot_root, str(upload_event_handler.watched_dirs)))
     # start threads
     observer = Observer()
     observer.schedule(upload_event_handler, config.get('snapshots', 'root_dir'), recursive=True)
