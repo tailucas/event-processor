@@ -16,6 +16,7 @@ from ConfigParser import ConfigParser
 
 import abc
 from datetime import datetime, timedelta
+from dateutil import tz
 from mimetypes import MimeTypes
 from mplayer import Player
 from pydrive.auth import GoogleAuth
@@ -145,6 +146,8 @@ class SampledSnapshot(Snapshot):
         f = open(file_path)
         self.snapshot_data = umsgpack.unpack(f)
         self.timestamp_data = dateutil.parser.parse(self.snapshot_data['timestamp'])
+        if self.timestamp_data.tzinfo is None:
+            self.timestamp_data = self.timestamp_data.replace(tzinfo=tz.tzlocal())
         if 'data' in self.snapshot_data:
             self.devices_data = self.snapshot_data['data']
         else:
@@ -193,9 +196,20 @@ class ImageSnapshot(Snapshot):
             source_label=source_label,
             file_path=file_path,
             validity_seconds=validity_seconds)
-        #TODO: parse out time from file path
-        #self.timestamp_data = dateutil.parser.parse(self.snapshot_data['timestamp'])
+        # default timestamp data to 'now'
         self.timestamp_data = datetime.utcnow().replace(tzinfo=pytz.utc)
+        try:
+            file_base_name = os.path.splitext(os.path.basename(file_path))[0]
+            if '_' in file_base_name:
+                date_string = file_base_name.split('_')[1]
+            else:
+                date_string = file_base_name
+            self.timestamp_data = dateutil.parser.parse(date_string)
+            if self.timestamp_data.tzinfo is None:
+                self.timestamp_data = self.timestamp_data.replace(tzinfo=tz.tzlocal())
+            log.debug("Parsed timestamp data from {}: {}".format(file_base_name, str(self.timestamp_data)))
+        except ValueError:
+            log.exception("Cannot parse date-like string {}. Defaulting to 'now'.".format(date_string))
         self.devices_data = {'camera': None}
 
     @property
@@ -234,11 +248,18 @@ class ImageSnapshot(Snapshot):
         return string
 
 
-class UploadEventHandler(FileSystemEventHandler):
+class CloudStorage(object):
+    __metaclass__ = abc.ABCMeta
+
+    @abc.abstractmethod
+    def upload(self, file_path, created_time):
+        return NotImplemented
+
+
+class GoogleDriveManager(Thread, CloudStorage):
 
     def __init__(self, gauth_creds_file, gdrive_folder):
-        super(UploadEventHandler, self).__init__()
-        self.last_modified = None
+        super(GoogleDriveManager, self).__init__()
         self._gdrive_folder = gdrive_folder
         if '~' in gauth_creds_file:
             self._gauth_creds_file = os.path.expanduser(gauth_creds_file)
@@ -248,34 +269,28 @@ class UploadEventHandler(FileSystemEventHandler):
         self.drive = GoogleDrive(self.gauth)
         self._gdrive_folder_id = self._get_gdrive_folder_id(self.drive, gdrive_folder)
         self.mime = MimeTypes()
-        self.sample_dirs = {}
-        self.image_dirs = {}
+        # start the internal cleaning function
+        self.daemon = True
+        self.start()
 
-    def add_sample_dir(self, source_label, sample_dir):
-        if source_label in self.sample_dirs:
-            raise RuntimeError("Sample source label {} is already configured.".format(source_label))
-        self.sample_dirs[source_label] = sample_dir
-
-    def _sample_dir_label(self, event_directory):
-        for dir_label, sample_dir in self.sample_dirs.iteritems():
-            if sample_dir in event_directory:
-                return dir_label
-        return None
-
-    def add_image_dir(self, source_label, image_dir):
-        if source_label in self.image_dirs:
-            raise RuntimeError("Image source label {} is already configured.".format(source_label))
-        self.image_dirs[source_label] = image_dir
-
-    def _image_dir_label(self, event_directory):
-        for dir_label, image_dir in self.image_dirs.iteritems():
-            if image_dir in event_directory:
-                return dir_label
-        return None
-
-    @property
-    def watched_dirs(self):
-        return self.sample_dirs.items() + self.image_dirs.items()
+    def run(self):
+        while True:
+            log.debug("Listing files in {} ({})".format(self._gdrive_folder, self._gdrive_folder_id))
+            file_list = self.drive.ListFile({
+                'q': "'{}' in parents and trashed=false".format(self._gdrive_folder_id),
+                'maxResults': 50,
+            })
+            try:
+                while True:
+                    page = file_list.GetList()
+                    for file1 in page:
+                        print 'title: %s, id: %s' % (file1['title'], file1['id'])
+                    # TODO: REMOVE
+                    print "Showing only latest files."
+                    break
+            except StopIteration:
+                pass
+            sleep(60)
 
     @property
     def gauth(self):
@@ -325,6 +340,65 @@ class UploadEventHandler(FileSystemEventHandler):
                 gdrive_folder, str(file_list)))
         log.debug("Google Drive folder ID for folder '{}' is '{}'".format(gdrive_folder, folder_id))
         return folder_id
+
+    def upload(self, file_path, created_time=None):
+        # upload the snapshot
+        mime_type = self.mime.guess_type(pathname2url(file_path))
+        if mime_type is not None:
+            mime_type = mime_type[0]
+        log.info("'{}' file {}".format(mime_type, file_path))
+        try:
+            log.debug("Uploading '{}' to Google Drive with created time of {}".format(file_path, created_time.isoformat('T')))
+            f = self.drive.CreateFile({
+                'title': os.path.basename(file_path),
+                'mimeType': mime_type,
+                # Invalid value for: Invalid format: "2015-06-16T15:54:25+02:00" is malformed at "+02:00"
+                #'createdDate': created_time.isoformat('T'),
+                'parents': [{"kind": "drive#fileLink", "id": self._gdrive_folder_id}]
+            })
+            f.SetContentFile(file_path)
+            f.Upload()
+            log.info("Uploaded '{}' to Google Drive folder '{}' (ID: '{}')".format(
+                os.path.basename(file_path), self._gdrive_folder, f['id']))
+            pass
+        except FileNotUploadedError:
+            log.exception("Cannot upload {} to Google Drive".format(file_path))
+
+
+class UploadEventHandler(FileSystemEventHandler):
+
+    def __init__(self, cloud_storage=None):
+        super(UploadEventHandler, self).__init__()
+        self.last_modified = None
+        self._cloud_storage = cloud_storage
+        self.sample_dirs = {}
+        self.image_dirs = {}
+
+    def add_sample_dir(self, source_label, sample_dir):
+        if source_label in self.sample_dirs:
+            raise RuntimeError("Sample source label {} is already configured.".format(source_label))
+        self.sample_dirs[source_label] = sample_dir
+
+    def _sample_dir_label(self, event_directory):
+        for dir_label, sample_dir in self.sample_dirs.iteritems():
+            if sample_dir in event_directory:
+                return dir_label
+        return None
+
+    def add_image_dir(self, source_label, image_dir):
+        if source_label in self.image_dirs:
+            raise RuntimeError("Image source label {} is already configured.".format(source_label))
+        self.image_dirs[source_label] = image_dir
+
+    def _image_dir_label(self, event_directory):
+        for dir_label, image_dir in self.image_dirs.iteritems():
+            if image_dir in event_directory:
+                return dir_label
+        return None
+
+    @property
+    def watched_dirs(self):
+        return self.sample_dirs.items() + self.image_dirs.items()
 
     # we listen to on-modified events because the file is
     # created and then written to subsequently.
@@ -376,24 +450,11 @@ class UploadEventHandler(FileSystemEventHandler):
                         else:
                             log.debug(log_msg)
                         snapshot_queue.put(snapshot)
-                        # upload the snapshot
-                        mime_type = self.mime.guess_type(pathname2url(snapshot_path))
-                        if mime_type is not None:
-                            mime_type = mime_type[0]
-                        log.info("'{}' snapshot at {} from {}".format(mime_type, source_label, snapshot_path))
-                        try:
-                            f = self.drive.CreateFile({
-                                'title': os.path.basename(snapshot_path),
-                                'mimeType': mime_type,
-                                'parents': [{"kind": "drive#fileLink", "id": self._gdrive_folder_id}]
-                            })
-                            f.SetContentFile(snapshot_path)
-                            f.Upload()
-                            log.info("Uploaded '{}' to Google Drive folder '{}' (ID: '{}')".format(
-                                os.path.basename(snapshot_path), self._gdrive_folder, f['id']))
-                            pass
-                        except FileNotUploadedError:
-                            log.exception("Cannot upload {} to Google Drive".format(snapshot_path))
+                        # upload the image snapshot
+                        if self._cloud_storage:
+                            self._cloud_storage.upload(
+                                file_path=snapshot_path,
+                                created_time=snapshot.timestamp)
                 except Exception:
                     log.exception("Cannot process {}".format(snapshot_path))
 
@@ -475,9 +536,10 @@ if __name__ == "__main__":
     if len(sample_labels) != len(sample_snapshot_dirs) or len(image_labels) != len(image_snapshot_dirs):
         raise RuntimeError("Invalid configuration. Sources and associated labels must match.")
     # ensure that auth is properly set up first
-    upload_event_handler = UploadEventHandler(
+    google_drive = GoogleDriveManager(
         gauth_creds_file=config.get('gdrive', 'creds_file'),
         gdrive_folder=config.get('gdrive', 'folder'))
+    upload_event_handler = UploadEventHandler(cloud_storage=google_drive)
     # monitor these directories
     for source, label in sample_labels.iteritems():
         upload_event_handler.add_sample_dir(source_label=label, sample_dir=sample_snapshot_dirs[source])
