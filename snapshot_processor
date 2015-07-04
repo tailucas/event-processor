@@ -5,7 +5,6 @@ import logging
 import logging.handlers
 
 import os
-import pprint
 import pytz
 import sys
 import time
@@ -19,6 +18,7 @@ from datetime import datetime, timedelta
 from dateutil import tz
 from mimetypes import MimeTypes
 from mplayer import Player
+from pprint import pprint
 from pydrive.auth import GoogleAuth
 from pydrive.drive import GoogleDrive
 from pydrive.files import FileNotUploadedError
@@ -30,7 +30,7 @@ from urllib import pathname2url, urlencode
 from watchdog.events import FileSystemEventHandler, FileModifiedEvent
 from watchdog.observers import Observer
 
-sys.displayhook = pprint.pprint
+sys.displayhook = pprint
 
 APP = os.path.basename(__file__)
 DIR = os.path.abspath(os.path.dirname(__file__))
@@ -268,29 +268,82 @@ class GoogleDriveManager(Thread, CloudStorage):
         self._gauth = None
         self.drive = GoogleDrive(self.gauth)
         self._gdrive_folder_id = self._get_gdrive_folder_id(self.drive, gdrive_folder)
+        self._folder_id_cache = {}
         self.mime = MimeTypes()
         # start the internal cleaning function
         self.daemon = True
         self.start()
 
+    def archive(self, gdrive_file):
+        filename = gdrive_file['title']
+        now = datetime.utcnow().replace(tzinfo=pytz.utc)
+        created_date = dateutil.parser.parse(gdrive_file['createdDate'])
+        td = now - created_date
+        if td > timedelta(days=1):
+            log.info('Archiving {} created {} days ago.'.format(filename, td.days))
+            ymd_date = created_date.strftime('%Y-%m-%d')
+            if ymd_date in self._folder_id_cache:
+                gdrive_folder_id = self._folder_id_cache[ymd_date]
+            else:
+                # create the required folder structure
+                year_folder_name = created_date.strftime('%Y')
+                year_folder_id = self._get_gdrive_folder_id(self.drive, year_folder_name, self._gdrive_folder_id)
+                month_folder_name = created_date.strftime('%m')
+                month_folder_id = self._get_gdrive_folder_id(self.drive, month_folder_name, year_folder_id)
+                day_folder_name = created_date.strftime('%d')
+                day_folder_id = self._get_gdrive_folder_id(self.drive, day_folder_name, month_folder_id)
+                self._folder_id_cache[ymd_date] = day_folder_id
+                gdrive_folder_id = day_folder_id
+            log.debug('{} => folder key {} => folder ID {}'.format(filename, ymd_date, gdrive_folder_id))
+            # reset the parent folders, include the existing parents if starred
+            if gdrive_file['labels']['starred']:
+                parents = []
+                for parent in gdrive_file['parents']:
+                    parent_id = parent['id']
+                    parents.append(parent_id)
+                    log.debug('Comparing parent {} with archive folder id {}'.format(parent_id, gdrive_folder_id))
+                    if gdrive_folder_id == parent_id:
+                        log.debug('{} already archived to {}'.format(filename, gdrive_folder_id))
+                        return False
+                log.info('Archiving starred file {}, but leaving existing parents intact.'.format(filename))
+                # new parent for archival
+                gdrive_parents = [{"kind": "drive#parentReference", "id": gdrive_folder_id}]
+                # existing parents
+                for parent in parents:
+                    # simply appending the parents array returned by the service is insufficient
+                    # possibly due to PyDrive's change detection, or Drive
+                    gdrive_parents.append({"kind": "drive#parentReference", "id": parent})
+                gdrive_file['parents'] = gdrive_parents
+            else:
+                # otherwise, clobber the existing parent information
+                gdrive_file['parents'] = [{"kind": "drive#parentReference", "id": gdrive_folder_id}]
+            # update the file metadata
+            gdrive_file.Upload()
+            return True
+        return False
+
     def run(self):
         while True:
             log.debug("Listing files in {} ({})".format(self._gdrive_folder, self._gdrive_folder_id))
             file_list = self.drive.ListFile({
-                'q': "'{}' in parents and trashed=false".format(self._gdrive_folder_id),
-                'maxResults': 50,
+                'q': "'{}' in parents and trashed=false and mimeType != 'application/vnd.google-apps.folder'".format(
+                    self._gdrive_folder_id
+                ),
+                'maxResults': 100,
             })
+            archived = 0
             try:
                 while True:
                     page = file_list.GetList()
                     for file1 in page:
-                        print 'title: %s, id: %s' % (file1['title'], file1['id'])
-                    # TODO: REMOVE
-                    print "Showing only latest files."
-                    break
+                        if self.archive(gdrive_file=file1):
+                            archived += 1
+                    log.info('Archived {} image snapshots, continuing...'.format(str(archived)))
             except StopIteration:
+                log.info('Archived {} image snapshots.'.format(str(archived)))
                 pass
-            sleep(60)
+            # sleep until tomorrow
+            sleep(60*60*24)
 
     @property
     def gauth(self):
@@ -320,17 +373,21 @@ class GoogleDriveManager(Thread, CloudStorage):
         return self._gauth
 
     @staticmethod
-    def _get_gdrive_folder_id(gdrive, gdrive_folder):
+    def _get_gdrive_folder_id(gdrive, gdrive_folder, parent_id='root', create=True):
         log.debug("Checking for existence of Google Drive folder '{}'".format(gdrive_folder))
         file_list = gdrive.ListFile({
-            'q': "'root' in parents and trashed=false and mimeType = 'application/vnd.google-apps.folder'"
-            " and title = '{}'".format(gdrive_folder)
+            'q': "'{}' in parents and trashed=false and mimeType = 'application/vnd.google-apps.folder'"
+            " and title = '{}'".format(parent_id, gdrive_folder)
         }).GetList()
         if len(file_list) == 0:
-            log.debug("Creating Google Drive folder '{}'".format(gdrive_folder))
+            if not create:
+                return None
+            log.debug("Creating Google Drive folder '{}' in parent folder '{}'".format(gdrive_folder, parent_id))
             folder = gdrive.CreateFile({
                 'description': "Created by {}".format(APP), 'title': gdrive_folder,
-                'mimeType': 'application/vnd.google-apps.folder'})
+                'mimeType': 'application/vnd.google-apps.folder',
+                'parents': [{"kind": "drive#parentReference", "id": parent_id}]
+            })
             folder.Upload()
             folder_id = folder['id']
         elif len(file_list) == 1:
@@ -348,12 +405,21 @@ class GoogleDriveManager(Thread, CloudStorage):
             mime_type = mime_type[0]
         log.info("'{}' file {}".format(mime_type, file_path))
         try:
-            log.debug("Uploading '{}' to Google Drive with created time of {}".format(file_path, created_time.isoformat('T')))
+            created_date = None
+            if created_time is None:
+                log.debug("Uploading '{}' to Google Drive".format(file_path))
+            else:
+                # datetime.isoformat doesn't work because of the seconds
+                # separator required by RFC3339, and the extra requirement to have
+                # the colon in the TZ offset if not in UTC.
+                offset = created_time.strftime('%z')
+                created_date = created_time.strftime('%Y-%m-%dT%H:%M:%S.00') + offset[:3] + ':' + offset[3:]
+                log.debug("Uploading '{}' to Google Drive with created time of {}".format(file_path, created_date))
+
             f = self.drive.CreateFile({
                 'title': os.path.basename(file_path),
                 'mimeType': mime_type,
-                # Invalid value for: Invalid format: "2015-06-16T15:54:25+02:00" is malformed at "+02:00"
-                #'createdDate': created_time.isoformat('T'),
+                'createdDate': created_date,
                 'parents': [{"kind": "drive#fileLink", "id": self._gdrive_folder_id}]
             })
             f.SetContentFile(file_path)
