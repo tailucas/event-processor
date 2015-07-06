@@ -265,16 +265,17 @@ class GoogleDriveManager(Thread, CloudStorage):
             self._gauth_creds_file = os.path.expanduser(gauth_creds_file)
         else:
             self._gauth_creds_file = os.path.abspath(gauth_creds_file)
-        self._gauth = None
         self.drive = GoogleDrive(self.gauth)
         self._gdrive_folder_id = self._get_gdrive_folder_id(self.drive, gdrive_folder)
+        # separate connection for archiver thread to prevent PyDrive lock-up
+        self._archive_drive = GoogleDrive(self.gauth)
         self._folder_id_cache = {}
         self.mime = MimeTypes()
         # start the internal cleaning function
         self.daemon = True
         self.start()
 
-    def archive(self, gdrive_file):
+    def archive(self, gdrive, gdrive_file, root_folder_id):
         filename = gdrive_file['title']
         now = datetime.utcnow().replace(tzinfo=pytz.utc)
         created_date = dateutil.parser.parse(gdrive_file['createdDate'])
@@ -287,11 +288,11 @@ class GoogleDriveManager(Thread, CloudStorage):
             else:
                 # create the required folder structure
                 year_folder_name = created_date.strftime('%Y')
-                year_folder_id = self._get_gdrive_folder_id(self.drive, year_folder_name, self._gdrive_folder_id)
+                year_folder_id = self._get_gdrive_folder_id(gdrive, year_folder_name, root_folder_id)
                 month_folder_name = created_date.strftime('%m')
-                month_folder_id = self._get_gdrive_folder_id(self.drive, month_folder_name, year_folder_id)
+                month_folder_id = self._get_gdrive_folder_id(gdrive, month_folder_name, year_folder_id)
                 day_folder_name = created_date.strftime('%d')
-                day_folder_id = self._get_gdrive_folder_id(self.drive, day_folder_name, month_folder_id)
+                day_folder_id = self._get_gdrive_folder_id(gdrive, day_folder_name, month_folder_id)
                 self._folder_id_cache[ymd_date] = day_folder_id
                 gdrive_folder_id = day_folder_id
             log.debug('{} => folder key {} => folder ID {}'.format(filename, ymd_date, gdrive_folder_id))
@@ -325,7 +326,7 @@ class GoogleDriveManager(Thread, CloudStorage):
     def run(self):
         while True:
             log.debug("Listing files in {} ({})".format(self._gdrive_folder, self._gdrive_folder_id))
-            file_list = self.drive.ListFile({
+            file_list = self._archive_drive.ListFile({
                 'q': "'{}' in parents and trashed=false and mimeType != 'application/vnd.google-apps.folder'".format(
                     self._gdrive_folder_id
                 ),
@@ -336,41 +337,40 @@ class GoogleDriveManager(Thread, CloudStorage):
                 while True:
                     page = file_list.GetList()
                     for file1 in page:
-                        if self.archive(gdrive_file=file1):
+                        if self.archive(gdrive=self._archive_drive,
+                                        gdrive_file=file1,
+                                        root_folder_id=self._gdrive_folder_id):
                             archived += 1
                     log.info('Archived {} image snapshots, continuing...'.format(str(archived)))
             except StopIteration:
                 log.info('Archived {} image snapshots.'.format(str(archived)))
-                pass
+            # prevent memory leaks
+            self._folder_id_cache.clear()
             # sleep until tomorrow
             sleep(60*60*24)
 
     @property
     def gauth(self):
-        """
-        :type self: UploadEventHandler
-        """
-        if self._gauth is None:
-            self._gauth = GoogleAuth()
+        auth = GoogleAuth()
         if not os.path.exists(self._gauth_creds_file):
             log.debug("Google credentials not found in [{}]. Interactive setup may follow.".format(
                 self._gauth_creds_file))
         # Try to load saved client credentials
-        self._gauth.LoadCredentialsFile(self._gauth_creds_file)
-        if self._gauth.credentials is None:
+        auth.LoadCredentialsFile(self._gauth_creds_file)
+        if auth.credentials is None:
             # Authenticate if they're not there
-            self._gauth.LocalWebserverAuth()
-        elif self._gauth.access_token_expired:
+            auth.LocalWebserverAuth()
+        elif auth.access_token_expired:
             # Refresh them if expired
-            self._gauth.Refresh()
+            auth.Refresh()
         else:
             # Initialize the saved creds
-            self._gauth.Authorize()
+            auth.Authorize()
         if not os.path.exists(self._gauth_creds_file):
             # Save the current credentials to a file
-            self._gauth.SaveCredentialsFile(self._gauth_creds_file)
+            auth.SaveCredentialsFile(self._gauth_creds_file)
             log.debug("Saved Google credentials to {}".format(self._gauth_creds_file))
-        return self._gauth
+        return auth
 
     @staticmethod
     def _get_gdrive_folder_id(gdrive, gdrive_folder, parent_id='root', create=True):
@@ -424,8 +424,13 @@ class GoogleDriveManager(Thread, CloudStorage):
             })
             f.SetContentFile(file_path)
             f.Upload()
-            log.info("Uploaded '{}' to Google Drive folder '{}' (ID: '{}')".format(
-                os.path.basename(file_path), self._gdrive_folder, f['id']))
+            link = f['thumbnailLink']
+            # specify our own thumbnail size
+            if '=' in link:
+                link = link.rsplit('=')[0]
+                link += '=s1024'
+            log.info("Uploaded '{}' to Google Drive folder '{}' (ID: '{}'). Thumbnail at {}".format(
+                os.path.basename(file_path), self._gdrive_folder, f['id'], link))
             pass
         except FileNotUploadedError:
             log.exception("Cannot upload {} to Google Drive".format(file_path))
