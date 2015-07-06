@@ -275,54 +275,6 @@ class GoogleDriveManager(Thread, CloudStorage):
         self.daemon = True
         self.start()
 
-    def archive(self, gdrive, gdrive_file, root_folder_id):
-        filename = gdrive_file['title']
-        now = datetime.utcnow().replace(tzinfo=pytz.utc)
-        created_date = dateutil.parser.parse(gdrive_file['createdDate'])
-        td = now - created_date
-        if td > timedelta(days=1):
-            log.info('Archiving {} created {} days ago.'.format(filename, td.days))
-            ymd_date = created_date.strftime('%Y-%m-%d')
-            if ymd_date in self._folder_id_cache:
-                gdrive_folder_id = self._folder_id_cache[ymd_date]
-            else:
-                # create the required folder structure
-                year_folder_name = created_date.strftime('%Y')
-                year_folder_id = self._get_gdrive_folder_id(gdrive, year_folder_name, root_folder_id)
-                month_folder_name = created_date.strftime('%m')
-                month_folder_id = self._get_gdrive_folder_id(gdrive, month_folder_name, year_folder_id)
-                day_folder_name = created_date.strftime('%d')
-                day_folder_id = self._get_gdrive_folder_id(gdrive, day_folder_name, month_folder_id)
-                self._folder_id_cache[ymd_date] = day_folder_id
-                gdrive_folder_id = day_folder_id
-            log.debug('{} => folder key {} => folder ID {}'.format(filename, ymd_date, gdrive_folder_id))
-            # reset the parent folders, include the existing parents if starred
-            if gdrive_file['labels']['starred']:
-                parents = []
-                for parent in gdrive_file['parents']:
-                    parent_id = parent['id']
-                    parents.append(parent_id)
-                    log.debug('Comparing parent {} with archive folder id {}'.format(parent_id, gdrive_folder_id))
-                    if gdrive_folder_id == parent_id:
-                        log.debug('{} already archived to {}'.format(filename, gdrive_folder_id))
-                        return False
-                log.info('Archiving starred file {}, but leaving existing parents intact.'.format(filename))
-                # new parent for archival
-                gdrive_parents = [{"kind": "drive#parentReference", "id": gdrive_folder_id}]
-                # existing parents
-                for parent in parents:
-                    # simply appending the parents array returned by the service is insufficient
-                    # possibly due to PyDrive's change detection, or Drive
-                    gdrive_parents.append({"kind": "drive#parentReference", "id": parent})
-                gdrive_file['parents'] = gdrive_parents
-            else:
-                # otherwise, clobber the existing parent information
-                gdrive_file['parents'] = [{"kind": "drive#parentReference", "id": gdrive_folder_id}]
-            # update the file metadata
-            gdrive_file.Upload()
-            return True
-        return False
-
     def run(self):
         while True:
             log.debug("Listing files in {} ({})".format(self._gdrive_folder, self._gdrive_folder_id))
@@ -397,6 +349,54 @@ class GoogleDriveManager(Thread, CloudStorage):
                 gdrive_folder, str(file_list)))
         log.debug("Google Drive folder ID for folder '{}' is '{}'".format(gdrive_folder, folder_id))
         return folder_id
+
+    def archive(self, gdrive, gdrive_file, root_folder_id):
+        filename = gdrive_file['title']
+        now = datetime.utcnow().replace(tzinfo=pytz.utc)
+        created_date = dateutil.parser.parse(gdrive_file['createdDate'])
+        td = now - created_date
+        if td > timedelta(days=1):
+            log.info('Archiving {} created {} days ago.'.format(filename, td.days))
+            ymd_date = created_date.strftime('%Y-%m-%d')
+            if ymd_date in self._folder_id_cache:
+                gdrive_folder_id = self._folder_id_cache[ymd_date]
+            else:
+                # create the required folder structure
+                year_folder_name = created_date.strftime('%Y')
+                year_folder_id = self._get_gdrive_folder_id(gdrive, year_folder_name, root_folder_id)
+                month_folder_name = created_date.strftime('%m')
+                month_folder_id = self._get_gdrive_folder_id(gdrive, month_folder_name, year_folder_id)
+                day_folder_name = created_date.strftime('%d')
+                day_folder_id = self._get_gdrive_folder_id(gdrive, day_folder_name, month_folder_id)
+                self._folder_id_cache[ymd_date] = day_folder_id
+                gdrive_folder_id = day_folder_id
+            log.debug('{} => folder key {} => folder ID {}'.format(filename, ymd_date, gdrive_folder_id))
+            # reset the parent folders, include the existing parents if starred
+            if gdrive_file['labels']['starred']:
+                parents = []
+                for parent in gdrive_file['parents']:
+                    parent_id = parent['id']
+                    parents.append(parent_id)
+                    log.debug('Comparing parent {} with archive folder id {}'.format(parent_id, gdrive_folder_id))
+                    if gdrive_folder_id == parent_id:
+                        log.debug('{} already archived to {}'.format(filename, gdrive_folder_id))
+                        return False
+                log.info('Archiving starred file {}, but leaving existing parents intact.'.format(filename))
+                # new parent for archival
+                gdrive_parents = [{"kind": "drive#parentReference", "id": gdrive_folder_id}]
+                # existing parents
+                for parent in parents:
+                    # simply appending the parents array returned by the service is insufficient
+                    # possibly due to PyDrive's change detection, or Drive
+                    gdrive_parents.append({"kind": "drive#parentReference", "id": parent})
+                gdrive_file['parents'] = gdrive_parents
+            else:
+                # otherwise, clobber the existing parent information
+                gdrive_file['parents'] = [{"kind": "drive#parentReference", "id": gdrive_folder_id}]
+            # update the file metadata
+            gdrive_file.Upload()
+            return True
+        return False
 
     def upload(self, file_path, created_time=None):
         # upload the snapshot
