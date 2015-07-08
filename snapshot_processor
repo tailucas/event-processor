@@ -295,7 +295,7 @@ class GoogleDriveManager(Thread, CloudStorage):
                                         root_folder_id=self._gdrive_folder_id):
                             archived += 1
             except StopIteration:
-                log.info('Archived {} image snapshots.'.format(str(archived)))
+                log.info('Archived {} image snapshots.'.format(archived))
             # prevent memory leaks
             self._folder_id_cache.clear()
             # sleep until tomorrow
@@ -556,32 +556,34 @@ class SnapshotProcessor(Thread):
                 if snapshot.is_expired:
                     log.debug("Discarding expired snapshot {}".format(snapshot))
                     pass
-                new_devices = False
                 # only non-expired snapshots qualify as recent updates
                 self.last_snapshot = time.time()
+                # throw away expired devices
+                now = datetime.utcnow().replace(tzinfo=pytz.utc)
+                for device_name in self.active_devices.keys():
+                    if now - self.active_devices[device_name] > timedelta(seconds=snapshot.validity_seconds):
+                        del self.active_devices[device_name]
+                # anything to process?
                 if len(snapshot.devices) == 0:
-                    self.active_devices.clear()
-                else:
-                    new_device_names = snapshot.device_names
-                    # first purge dead keys
-                    for device_name in self.active_devices.keys():
-                        if device_name not in new_device_names:
-                            del self.active_devices[device_name]
-                    # now add new ones
-                    for device_name in new_device_names:
-                        if device_name not in self.active_devices:
-                            new_devices = True
-                            self.active_devices[device_name] = snapshot.timestamp
+                    pass
+                # make a copy of the remaining, active devices
+                old_device_names = self.active_devices.keys()
+                # refresh the active devices
+                for device_name in snapshot.device_names:
+                    self.active_devices[device_name] = snapshot.timestamp
+                # determine the new devices
+                new_device_names = list(set(self.active_devices.keys()) - set(old_device_names))
                 if len(self.active_devices) > 0:
                     log.debug("{} active device(s).".format(len(self.active_devices)))
                 last_notified = time.time() - self.last_notification
-                if (last_notified > notification_interval_seconds or new_devices) \
-                    and len(self.active_devices) > 0 \
+                # notify if the notification interval has elapsed or if there are new devices
+                # and if the snapshot is newer than the last one for which a notification was sent
+                if (last_notified > notification_interval_seconds or len(new_device_names) > 0) \
                         and self.latest_snapshot < snapshot.timestamp:
                     self.latest_snapshot = snapshot.timestamp
                     self.last_notification = time.time()
-                    log.info("Sending notification for {}".format(str(self.active_devices.keys())))
-                    for device_name in self.active_devices.keys():
+                    log.info("Sending notification for {}".format(str(new_device_names)))
+                    for device_name in new_device_names:
                         notification_queue.put(device_name)
             else:
                 inactivity = time.time() - self.last_snapshot
