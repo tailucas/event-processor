@@ -431,7 +431,6 @@ class GoogleDriveManager(Thread, CloudStorage):
                 link += '=s1024'
             log.info("Uploaded '{}' to Google Drive folder '{}' (ID: '{}'). Thumbnail at {}".format(
                 os.path.basename(file_path), self._gdrive_folder, f['id'], link))
-            pass
         except FileNotUploadedError:
             log.exception("Cannot upload {} to Google Drive".format(file_path))
 
@@ -504,7 +503,7 @@ class UploadEventHandler(FileSystemEventHandler):
                             else:
                                 log.debug(log_msg)
                             snapshot_queue.put(snapshot)
-                            pass
+                            return
                         except UnpackException:
                             log.exception("Cannot unpack snapshot data in {}".format(snapshot_path))
                     # image snapshot?
@@ -555,17 +554,16 @@ class SnapshotProcessor(Thread):
             if snapshot is not None:
                 if snapshot.is_expired:
                     log.debug("Discarding expired snapshot {}".format(snapshot))
-                    pass
+                    continue
                 # only non-expired snapshots qualify as recent updates
                 self.last_snapshot = time.time()
                 # throw away expired devices
-                now = datetime.utcnow().replace(tzinfo=pytz.utc)
                 for device_name in self.active_devices.keys():
-                    if now - self.active_devices[device_name] > timedelta(seconds=snapshot.validity_seconds):
+                    if datetime.utcnow().replace(tzinfo=pytz.utc) - self.active_devices[device_name] > timedelta(seconds=snapshot.validity_seconds):
                         del self.active_devices[device_name]
                 # anything to process?
                 if len(snapshot.devices) == 0:
-                    pass
+                    continue
                 # make a copy of the remaining, active devices
                 old_device_names = self.active_devices.keys()
                 # refresh the active devices
@@ -573,8 +571,8 @@ class SnapshotProcessor(Thread):
                     self.active_devices[device_name] = snapshot.timestamp
                 # determine the new devices
                 new_device_names = list(set(self.active_devices.keys()) - set(old_device_names))
-                if len(self.active_devices) > 0:
-                    log.debug("{} active device(s).".format(len(self.active_devices)))
+                if len(self.active_devices) > 0 or len(new_device_names) > 0:
+                    log.debug("{} active device(s), {} new.".format(len(self.active_devices), len(new_device_names)))
                 last_notified = time.time() - self.last_notification
                 # notify if the notification interval has elapsed or if there are new devices
                 # and if the snapshot is newer than the last one for which a notification was sent
