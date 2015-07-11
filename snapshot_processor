@@ -6,6 +6,7 @@ import logging.handlers
 
 import os
 import pytz
+import re
 import sys
 import time
 import umsgpack
@@ -14,6 +15,7 @@ import urllib2
 from ConfigParser import ConfigParser
 
 import abc
+import gammu.smsd
 from datetime import datetime, timedelta
 from dateutil import tz
 from mimetypes import MimeTypes
@@ -43,6 +45,11 @@ TTS_URL = 'http://translate.google.com/translate_tts'
 config = ConfigParser()
 config.optionxform = str
 config.read([os.path.expanduser('~/.{}'.format(APP))])
+
+gammu_cfg_file = config.get('sms', 'gammu-smsdrc')
+gammu_cfg = ConfigParser()
+gammu_cfg.optionxform = str
+gammu_cfg.read(gammu_cfg_file)
 
 snapshot_root = config.get('snapshots', 'root_dir')
 heartbeat_interval_seconds = int(config.get('snapshots', 'heartbeat_interval_seconds'))
@@ -529,6 +536,69 @@ class UploadEventHandler(FileSystemEventHandler):
                     log.exception("Cannot process {}".format(snapshot_path))
 
 
+class SMSEventHandler(Thread, FileSystemEventHandler):
+
+    def __init__(self, cloud_storage=None):
+        super(SMSEventHandler, self).__init__()
+        self.sms_recipient = config.get('sms', 'recipient')
+        pattern = config.get('sms', 'balance_pattern')
+        self.sms_balance_pattern = re.compile(pattern)
+        log.debug("Matching SMS balance checks on pattern '{}'".format(pattern))
+        self.sms_balance_check_number = config.get('sms', 'balance_check_number')
+        self.sms_balance_check_message = config.get('sms', 'balance_check_message')
+        self.sms_balance_value_alert = float(config.get('sms', 'balance_value_alert'))
+        # smsd
+        self.smsd = gammu.smsd.SMSD(gammu_cfg_file)
+        # start the internal cleaning function
+        self.daemon = True
+        self.start()
+
+    def run(self):
+        while True:
+            log.info("Dispatching SMS balance enquiry '{}' to {}".format(
+                self.sms_balance_check_message,
+                self.sms_balance_check_number))
+            self.send_sms(recipient=self.sms_balance_check_number, message=self.sms_balance_check_message)
+            # sleep until later
+            sleep(60*60*12)
+
+    def send_sms(self, recipient, message, flash=False):
+        sms_class = 1
+        if flash:
+            sms_class = 0
+        message = {
+            'Text': message,
+            'SMSC': {'Location': 1},
+            'Number': recipient,
+            'Class': sms_class
+        }
+        self.smsd.InjectSMS([message])
+
+    # we listen to on-modified events because the file is
+    # created and then written to subsequently.
+    def on_modified(self, event):
+        """
+        :type event: FileModifiedEvent
+        """
+        super(SMSEventHandler, self).on_modified(event)
+        # the file has been written to and has valid content
+        if not event.is_directory:
+            log.info("Incoming SMS at {}".format(event.src_path))
+            for line in open(event.src_path):
+                # log the line
+                log.info(line)
+                balance_response = self.sms_balance_pattern.search(line)
+                if balance_response:
+                    balance_value = float(balance_response.group(0))
+                    if balance_value <= self.sms_balance_value_alert:
+                        warning = "SMS balance has reached {}. Top-up soon.".format(balance_value)
+                        log.warn(warning)
+                        notification_queue.put(warning)
+                else:
+                    # something more generic
+                    pass
+
+
 class SnapshotProcessor(Thread):
 
     def __init__(self):
@@ -618,9 +688,12 @@ if __name__ == "__main__":
         upload_event_handler.add_image_dir(source_label=label, image_dir=image_snapshot_dirs[source])
     log.debug("Monitoring directories in {} for changes: {}".format(
         snapshot_root, str(upload_event_handler.watched_dirs)))
+    # SMS handler
+    sms_event_handler = SMSEventHandler()
     # start threads
     observer = Observer()
     observer.schedule(upload_event_handler, config.get('snapshots', 'root_dir'), recursive=True)
+    observer.schedule(sms_event_handler, gammu_cfg.get('smsd', 'inboxpath'))
     observer.start()
     processor = SnapshotProcessor()
     processor.daemon = True
