@@ -7,6 +7,7 @@ import logging.handlers
 import os
 import pytz
 import re
+import subprocess
 import sys
 import time
 import umsgpack
@@ -65,6 +66,7 @@ class TTSProcessor(Thread):
     def __init__(self):
         super(TTSProcessor, self).__init__()
         self.player = None
+        self.daemon = True
 
     def run(self):
         # black-holding STDOUT causes properties to not work
@@ -267,6 +269,8 @@ class GoogleDriveManager(Thread, CloudStorage):
 
     def __init__(self, gauth_creds_file, gdrive_folder):
         super(GoogleDriveManager, self).__init__()
+        self.daemon = True
+
         self._gdrive_folder = gdrive_folder
         if '~' in gauth_creds_file:
             self._gauth_creds_file = os.path.expanduser(gauth_creds_file)
@@ -278,11 +282,10 @@ class GoogleDriveManager(Thread, CloudStorage):
         self._archive_drive = GoogleDrive(self.gauth)
         self._folder_id_cache = {}
         self.mime = MimeTypes()
-        # start the internal cleaning function
-        self.daemon = True
-        self.start()
 
     def run(self):
+        #TODO: remove
+        sleep(60*60*24)
         while True:
             log.debug("Finding files in {} ({}) to archive.".format(self._gdrive_folder, self._gdrive_folder_id))
             file_list = self._archive_drive.ListFile({
@@ -538,9 +541,11 @@ class UploadEventHandler(FileSystemEventHandler):
 
 class SMSEventHandler(Thread, FileSystemEventHandler):
 
-    def __init__(self, cloud_storage=None):
+    def __init__(self):
         super(SMSEventHandler, self).__init__()
-        self.sms_recipient = config.get('sms', 'recipient')
+        self.daemon = True
+
+        self.sms_recipient = config.get('sms', 'recipients').split(',')
         pattern = config.get('sms', 'balance_pattern')
         self.sms_balance_pattern = re.compile(pattern)
         log.debug("Matching SMS balance checks on pattern '{}'".format(pattern))
@@ -549,11 +554,10 @@ class SMSEventHandler(Thread, FileSystemEventHandler):
         self.sms_balance_value_alert = float(config.get('sms', 'balance_value_alert'))
         # smsd
         self.smsd = gammu.smsd.SMSD(gammu_cfg_file)
-        # start the internal cleaning function
-        self.daemon = True
-        self.start()
 
     def run(self):
+        #TODO: remove
+        sleep(60*60*12)
         while True:
             log.info("Dispatching SMS balance enquiry '{}' to {}".format(
                 self.sms_balance_check_message,
@@ -599,10 +603,66 @@ class SMSEventHandler(Thread, FileSystemEventHandler):
                     pass
 
 
+class NetworkDeviceMonitor(Thread):
+
+    def __init__(self):
+        super(NetworkDeviceMonitor, self).__init__()
+        self.daemon = True
+
+        devices = config.get('network', 'device_macs').replace('-', ':').lower().split(',')
+        owners = config.get('network', 'owners').split(',')
+        self.owner_devices = dict(zip(owners, devices))
+        self.ip_matcher = re.compile('((\d{1,3}\.){3}\d{1,3})')
+        self.mac_matcher = re.compile('(([0-9a-f]{2}:){5}[0-9a-f]{2})')
+
+    @staticmethod
+    def exec_cmd(cmd):
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+        out, err = p.communicate()
+        return out, p.returncode
+
+    def run(self):
+        while True:
+            arp_cache = {}
+            arp, rc = self.exec_cmd(['/usr/sbin/arp', '-an'])
+            if rc != 0:
+                log.debug("Problem collecting arp data.")
+                sleep(60)
+                continue
+            for entry in arp.split('\n'):
+                log.debug('Matching arp line {}'.format(entry))
+                ip_m = self.ip_matcher.search(entry)
+                if ip_m is None:
+                    continue
+                ip = ip_m.group(0)
+                mac_m = self.mac_matcher.search(entry)
+                if mac_m is None:
+                    continue
+                mac = mac_m.group(0)
+                if mac not in arp_cache:
+                    arp_cache[mac] = []
+                arp_cache[mac].append(ip)
+                log.debug('{} associated with IP {}'.format(mac, ip))
+            log.debug("{} arp entries collected.".format(len(arp_cache)))
+            for owner, device in self.owner_devices.iteritems():
+                log.debug('Looking up {}'.format(device))
+                ips = arp_cache[device]
+                log.debug('{} owns device {} with IP candidate(s) {}'.format(owner, device, ips))
+                for ip in ips:
+                    ping, rc = self.exec_cmd(['/bin/ping', '-c1', ip])
+                    if rc == 0:
+                        log.debug('{} has present device {} with IP {}'.format(owner, device, ip))
+                        arp_cache[device] = [ip]
+                        break
+            sleep(60*5)
+
+
 class SnapshotProcessor(Thread):
 
     def __init__(self):
         super(SnapshotProcessor, self).__init__()
+        self.daemon = True
+
         self.last_snapshot = 0
         self.active_devices = {}
         self.latest_snapshot = datetime.utcnow().replace(tzinfo=pytz.utc)
@@ -676,6 +736,11 @@ if __name__ == "__main__":
     # remap the labels to the directories
     if len(sample_labels) != len(sample_snapshot_dirs) or len(image_labels) != len(image_snapshot_dirs):
         raise RuntimeError("Invalid configuration. Sources and associated labels must match.")
+    # application threads
+    network_device_monitor = NetworkDeviceMonitor()
+    sms_event_handler = SMSEventHandler()
+    processor = SnapshotProcessor()
+    notifier = TTSProcessor()
     # ensure that auth is properly set up first
     google_drive = GoogleDriveManager(
         gauth_creds_file=config.get('gdrive', 'creds_file'),
@@ -688,19 +753,18 @@ if __name__ == "__main__":
         upload_event_handler.add_image_dir(source_label=label, image_dir=image_snapshot_dirs[source])
     log.debug("Monitoring directories in {} for changes: {}".format(
         snapshot_root, str(upload_event_handler.watched_dirs)))
-    # SMS handler
-    sms_event_handler = SMSEventHandler()
-    # start threads
+    # file system listener
     observer = Observer()
     observer.schedule(upload_event_handler, config.get('snapshots', 'root_dir'), recursive=True)
     observer.schedule(sms_event_handler, gammu_cfg.get('smsd', 'inboxpath'))
     observer.start()
-    processor = SnapshotProcessor()
-    processor.daemon = True
+    # start threads
+    network_device_monitor.start()
+    sms_event_handler.start()
     processor.start()
-    notifier = TTSProcessor()
-    notifier.daemon = True
     notifier.start()
+    # start the Google Driver archiver last
+    google_drive.start()
     try:
         while True:
             time.sleep(1)
@@ -712,4 +776,3 @@ if __name__ == "__main__":
         log.info("Waiting for queue threads...")
         snapshot_queue.join()
         notification_queue.join()
-        notifier.stop()
