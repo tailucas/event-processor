@@ -6,7 +6,7 @@ import subprocess
 df = subprocess.Popen(["df", "-h"], stdout=subprocess.PIPE)
 print df.communicate()[0]
 
-r = subprocess.Popen(["cat", "/etc/*-release"], stdout=subprocess.PIPE)
+r = subprocess.Popen(["cat", "/etc/os-release"], stdout=subprocess.PIPE)
 print r.communicate()[0]
 
 import time
