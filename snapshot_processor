@@ -7,6 +7,7 @@ import logging.handlers
 import os
 import pytz
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -26,7 +27,7 @@ from pydrive.auth import GoogleAuth
 from pydrive.drive import GoogleDrive
 from pydrive.files import FileNotUploadedError
 from Queue import Queue, Empty
-from threading import Thread
+from threading import Thread, Timer
 from time import sleep
 from umsgpack import UnpackException
 from urllib import pathname2url, urlencode
@@ -48,6 +49,7 @@ config.optionxform = str
 config.read([os.path.expanduser('~/.{}'.format(APP))])
 
 gammu_cfg_file = config.get('sms', 'gammu-smsdrc')
+smsd = gammu.smsd.SMSD(gammu_cfg_file)
 gammu_cfg = ConfigParser()
 gammu_cfg.optionxform = str
 gammu_cfg.read(gammu_cfg_file)
@@ -58,15 +60,36 @@ notification_interval_seconds = int(config.get('snapshots', 'notification_interv
 snapshot_validity_seconds = int(config.get('snapshots', 'snapshot_validity_seconds'))
 
 snapshot_queue = Queue()
-notification_queue = Queue()
+cloud_storage = None
 
-
-class TTSProcessor(Thread):
+class Notifier(Thread):
 
     def __init__(self):
-        super(TTSProcessor, self).__init__()
+        super(Notifier, self).__init__()
         self.player = None
         self.daemon = True
+
+        self.notification_queue = Queue()
+        self.notification_timer = None
+        self.deferred_notifications = Queue()
+
+        sms_recipient_names = config.get('sms', 'recipient_names').split(',')
+        sms_recipient_numbers = config.get('sms', 'recipient_numbers').split(',')
+        self.sms_owners = dict(zip(sms_recipient_names, sms_recipient_numbers))
+
+        not_before = config.get('informational_notifications', 'not_before')
+        if not_before:
+            self.informational_not_before = dateutil.parser.parse(not_before)
+        not_after = config.get('informational_notifications', 'not_after')
+        if not_after:
+            self.informational_not_after = dateutil.parser.parse(not_after)
+        self.any_time = False
+        if not_before is None or not_after is None:
+            self.any_time = True
+        else:
+            log.info('Informational notifications after {} will be deferred until {}.'.format(
+                not_after,
+                not_before))
 
     def run(self):
         # black-holding STDOUT causes properties to not work
@@ -74,22 +97,29 @@ class TTSProcessor(Thread):
         while True:
             notification = None
             try:
-                notification = notification_queue.get()
+                notification = self.notification_queue.get()
             except Exception as e:
                 log.error(e)
             else:
-                notification_queue.task_done()
-            self.say(str(notification))
+                self.notification_queue.task_done()
+            try:
+                self.say(str(notification))
+            except StandardError:
+                #TODO: pre-canned alert sound
+                log.exception("Unable to say message: '{}'".format(notification))
 
     def stop(self):
         if self.player:
             self.player.quit()
 
     def say(self, message):
-        msg_checksum = TTSProcessor.checksum(message)
+        msg_checksum = Notifier.checksum(message)
         log.debug("Checksum for \"{}\" is [{}]".format(message, msg_checksum))
         tts_file = "{}.mp3".format(msg_checksum)
         tts_path = os.path.join(DIR, tts_file)
+        if os.path.isfile(tts_path) and os.path.getsize(tts_path) == 0:
+            log.debug("Removing empty file {}".format(tts_path))
+            os.remove(tts_path)
         log.debug("{} exists? {}".format(tts_path, os.path.isfile(tts_path)))
         if not os.path.isfile(tts_path):
             values = {'tl': 'en', 'q': message}
@@ -109,11 +139,79 @@ class TTSProcessor(Thread):
         log.debug("Saying \"{}\" for {}s".format(message, delay))
         sleep(delay)
 
+    def drain_deferred_notifications(self):
+        # cancel the timer in case we're signalled instead
+        self.notification_timer.cancel()
+        log.info('Draining {} notifications deferred until now.'.format(self.deferred_notifications.qsize()))
+        while not self.deferred_notifications.empty():
+            try:
+                self.notification_queue.put(self.deferred_notifications.get())
+            except Exception as e:
+                log.error(e)
+            else:
+                self.deferred_notifications.task_done()
+        # Delete the expired the timer
+        self.notification_timer = None
+
+    def notify_voice(self, message, informational=False):
+        #TODO: remove
+        informational=False
+        if not informational or self.any_time:
+            self.notification_queue.put(message)
+        else:
+            # make a future date that is relative (after) now time.
+            now = datetime.now().replace(tzinfo=tz.tzlocal())
+            not_before = now.replace(
+                hour=self.informational_not_before.hour,
+                minute=self.informational_not_before.minute,
+                second=0,
+                microsecond=0)
+            not_after = now.replace(
+                hour=self.informational_not_after.hour,
+                minute=self.informational_not_after.minute,
+                second=0,
+                microsecond=0)
+            log.debug("Comparing now {} with 'not_after' of {}".format(now, not_after))
+            if now < not_after:
+                # go ahead
+                log.debug('No notification deferral necessary.')
+                self.notification_queue.put(message)
+                return
+            elif now >= not_after:
+                # the not-before time may not be on the same day
+                if now > not_before:
+                    defer_until = not_before + timedelta(days=1)
+            else:
+                defer_until = not_before
+            # defer the notification
+            log.info("Deferring informational notification '{}' until {}".format(message, defer_until))
+            self.deferred_notifications.put(message)
+            if self.notification_timer is None:
+                # now calculate the sleep time based on the deferral
+                delay = defer_until - now
+                log.debug('Deferring notifications for {} hours.'.format(delay.seconds / 3600))
+                self.notification_timer = Timer(delay.seconds, self.drain_deferred_notifications)
+
+    @staticmethod
+    def send_sms(recipient, message, flash=False):
+        sms_class = 1
+        if flash:
+            sms_class = 0
+        message = {
+            'Text': message,
+            'SMSC': {'Location': 1},
+            'Number': recipient,
+            'Class': sms_class
+        }
+        smsd.InjectSMS([message])
+
     @staticmethod
     def checksum(message):
         m = hashlib.md5()
         m.update(message)
         return m.hexdigest()
+
+notifier = None
 
 
 class Snapshot(object):
@@ -142,6 +240,10 @@ class Snapshot(object):
 
     @abc.abstractproperty
     def devices(self):
+        return NotImplemented
+
+    @abc.abstractproperty
+    def source(self):
         return NotImplemented
 
 
@@ -190,8 +292,12 @@ class SampledSnapshot(Snapshot):
             return {}
         return self.devices_data
 
+    @property
+    def source(self):
+        return self.source_label
+
     def __str__(self):
-        string = "{} at {}".format(self.timestamp.strftime('%X %x %Z'), self.source_label)
+        string = "{} at {}".format(self.source_label, self.timestamp.strftime('%X %x %Z'))
         if self.devices:
             return string + ": {} devices: {}".format(
                 len(self.devices), ','.join(self.devices.keys()))
@@ -249,8 +355,12 @@ class ImageSnapshot(Snapshot):
             return {}
         return self.devices_data
 
+    @property
+    def source(self):
+        return self.source_label
+
     def __str__(self):
-        string = "{} at {}".format(self.timestamp.strftime('%X %x %Z'), self.source_label)
+        string = "{} at {}".format(self.source_label, self.timestamp.strftime('%X %x %Z'))
         if self.devices:
             return string + ": {} devices: {}".format(
                 len(self.devices), ','.join(self.devices.keys()))
@@ -259,6 +369,10 @@ class ImageSnapshot(Snapshot):
 
 class CloudStorage(object):
     __metaclass__ = abc.ABCMeta
+
+    @abc.abstractproperty
+    def cloud_storage_url(self):
+        return NotImplemented
 
     @abc.abstractmethod
     def upload(self, file_path, created_time):
@@ -277,15 +391,19 @@ class GoogleDriveManager(Thread, CloudStorage):
         else:
             self._gauth_creds_file = os.path.abspath(gauth_creds_file)
         self.drive = GoogleDrive(self.gauth)
-        self._gdrive_folder_id = self._get_gdrive_folder_id(self.drive, gdrive_folder)
+        self._gdrive_folder_id, self._gdrive_folder_url = self._get_gdrive_folder_id(self.drive, gdrive_folder)
         # separate connection for archiver thread to prevent PyDrive lock-up
         self._archive_drive = GoogleDrive(self.gauth)
         self._folder_id_cache = {}
         self.mime = MimeTypes()
 
+    @property
+    def cloud_storage_url(self):
+        return self._gdrive_folder_url
+
     def run(self):
         #TODO: remove
-        sleep(60*60*24)
+        sleep(5*60)
         while True:
             log.debug("Finding files in {} ({}) to archive.".format(self._gdrive_folder, self._gdrive_folder_id))
             file_list = self._archive_drive.ListFile({
@@ -352,13 +470,18 @@ class GoogleDriveManager(Thread, CloudStorage):
             })
             folder.Upload()
             folder_id = folder['id']
+            folder_link = folder['alternateLink']
         elif len(file_list) == 1:
             folder_id = file_list[0]['id']
+            folder_link = file_list[0]['alternateLink']
         else:
             raise RuntimeError("Unexpected result listing Google Drive for {}: {}".format(
                 gdrive_folder, str(file_list)))
-        log.debug("Google Drive folder ID for folder '{}' is '{}'".format(gdrive_folder, folder_id))
-        return folder_id
+        log.debug("Google Drive folder ID for folder '{}' is '{}'. Visit at {}".format(
+            gdrive_folder,
+            folder_id,
+            folder_link))
+        return folder_id, folder_link
 
     def archive(self, gdrive, gdrive_file, root_folder_id):
         filename = gdrive_file['title']
@@ -373,11 +496,11 @@ class GoogleDriveManager(Thread, CloudStorage):
             else:
                 # create the required folder structure
                 year_folder_name = created_date.strftime('%Y')
-                year_folder_id = self._get_gdrive_folder_id(gdrive, year_folder_name, root_folder_id)
+                year_folder_id, url = self._get_gdrive_folder_id(gdrive, year_folder_name, root_folder_id)
                 month_folder_name = created_date.strftime('%m')
-                month_folder_id = self._get_gdrive_folder_id(gdrive, month_folder_name, year_folder_id)
+                month_folder_id, url = self._get_gdrive_folder_id(gdrive, month_folder_name, year_folder_id)
                 day_folder_name = created_date.strftime('%d')
-                day_folder_id = self._get_gdrive_folder_id(gdrive, day_folder_name, month_folder_id)
+                day_folder_id, url = self._get_gdrive_folder_id(gdrive, day_folder_name, month_folder_id)
                 self._folder_id_cache[ymd_date] = day_folder_id
                 gdrive_folder_id = day_folder_id
             log.debug('{} => folder key {} => folder ID {}'.format(filename, ymd_date, gdrive_folder_id))
@@ -545,38 +668,26 @@ class SMSEventHandler(Thread, FileSystemEventHandler):
         super(SMSEventHandler, self).__init__()
         self.daemon = True
 
-        self.sms_recipient = config.get('sms', 'recipients').split(',')
-        pattern = config.get('sms', 'balance_pattern')
-        self.sms_balance_pattern = re.compile(pattern)
-        log.debug("Matching SMS balance checks on pattern '{}'".format(pattern))
+        balance_pattern = config.get('sms', 'balance_pattern')
+        self.balance_pattern = re.compile(balance_pattern)
+        sms_balance_pattern = config.get('sms', 'sms_balance_pattern')
+        self.sms_balance_pattern = re.compile(sms_balance_pattern)
+        log.debug("Matching SMS balance checks on patterns: '{}', '{}'".format(balance_pattern, sms_balance_pattern))
         self.sms_balance_check_number = config.get('sms', 'balance_check_number')
         self.sms_balance_check_message = config.get('sms', 'balance_check_message')
-        self.sms_balance_value_alert = float(config.get('sms', 'balance_value_alert'))
-        # smsd
-        self.smsd = gammu.smsd.SMSD(gammu_cfg_file)
+        self.balance_value_alert = float(config.get('sms', 'balance_value_alert'))
+        self.sms_balance_value_alert = int(config.get('sms', 'sms_balance_value_alert'))
 
     def run(self):
-        #TODO: remove
-        sleep(60*60*12)
         while True:
+            #TODO: remove
+            sleep(60*60*24)
             log.info("Dispatching SMS balance enquiry '{}' to {}".format(
                 self.sms_balance_check_message,
                 self.sms_balance_check_number))
-            self.send_sms(recipient=self.sms_balance_check_number, message=self.sms_balance_check_message)
+            notifier.send_sms(recipient=self.sms_balance_check_number, message=self.sms_balance_check_message)
             # sleep until later
-            sleep(60*60*12)
-
-    def send_sms(self, recipient, message, flash=False):
-        sms_class = 1
-        if flash:
-            sms_class = 0
-        message = {
-            'Text': message,
-            'SMSC': {'Location': 1},
-            'Number': recipient,
-            'Class': sms_class
-        }
-        self.smsd.InjectSMS([message])
+            sleep(60*60*24)
 
     # we listen to on-modified events because the file is
     # created and then written to subsequently.
@@ -591,13 +702,25 @@ class SMSEventHandler(Thread, FileSystemEventHandler):
             for line in open(event.src_path):
                 # log the line
                 log.info(line)
-                balance_response = self.sms_balance_pattern.search(line)
+                balance_response = self.balance_pattern.search(line)
+                topup_needed = False
                 if balance_response:
                     balance_value = float(balance_response.group(0))
-                    if balance_value <= self.sms_balance_value_alert:
-                        warning = "SMS balance has reached {}. Top-up soon.".format(balance_value)
+                    if balance_value <= self.balance_value_alert:
+                        warning = "Prepaid balance has reached {}.".format(balance_value)
                         log.warn(warning)
-                        notification_queue.put(warning)
+                        notifier.notify_voice(message=warning, informational=True)
+                        topup_needed = True
+                balance_response = self.sms_balance_pattern.search(line)
+                if balance_response:
+                    balance_value = int(balance_response.group(0))
+                    if balance_value <= self.sms_balance_value_alert:
+                        warning = "SMS balance has reached {}.".format(balance_value)
+                        log.warn(warning)
+                        notifier.notify_voice(message=warning, informational=True)
+                        topup_needed = True
+                if topup_needed:
+                    notifier.notify_voice(message='Top-up soon.', informational=True)
                 else:
                     # something more generic
                     pass
@@ -645,16 +768,21 @@ class NetworkDeviceMonitor(Thread):
                 log.debug('{} associated with IP {}'.format(mac, ip))
             log.debug("{} arp entries collected.".format(len(arp_cache)))
             for owner, device in self.owner_devices.iteritems():
-                log.debug('Looking up {}'.format(device))
-                ips = arp_cache[device]
-                log.debug('{} owns device {} with IP candidate(s) {}'.format(owner, device, ips))
-                for ip in ips:
-                    ping, rc = self.exec_cmd(['/bin/ping', '-c1', ip])
-                    if rc == 0:
-                        log.debug('{} has present device {} with IP {}'.format(owner, device, ip))
-                        arp_cache[device] = [ip]
-                        break
-            sleep(60*5)
+                log.debug("Looking up {}'s device {}".format(owner, device))
+                if device in arp_cache:
+                    ips = arp_cache[device]
+                    log.debug('{} owns device {} with IP candidate(s) {}'.format(owner, device, ips))
+                    for ip in ips:
+                        ping, rc = self.exec_cmd(['/bin/ping', '-c1', ip])
+                        if rc == 0:
+                            log.debug("{}'s device {} is present with IP {}".format(owner, device, ip))
+                            arp_cache[device] = [ip]
+                            break
+                        else:
+                            log.debug("{}'s device {} is not responding at IP {} right now.".format(owner, device, ip))
+                else:
+                    log.debug("{}'s device {} is not known to this network.".format(owner, device))
+            sleep(60*60*12)
 
 
 class SnapshotProcessor(Thread):
@@ -663,7 +791,7 @@ class SnapshotProcessor(Thread):
         super(SnapshotProcessor, self).__init__()
         self.daemon = True
 
-        self.last_snapshot = 0
+        self.last_snapshot = {}
         self.active_devices = {}
         self.latest_snapshot = datetime.utcnow().replace(tzinfo=pytz.utc)
         self.last_notification = 0
@@ -686,7 +814,10 @@ class SnapshotProcessor(Thread):
                     log.debug("Discarding expired snapshot {}".format(snapshot))
                     continue
                 # only non-expired snapshots qualify as recent updates
-                self.last_snapshot = time.time()
+                if snapshot.source is None:
+                    #TODO: remove
+                    log.debug('Processing snapshot without source? {}'.format(snapshot))
+                self.last_snapshot[snapshot.source] = time.time()
                 # throw away expired devices
                 for device_name in self.active_devices.keys():
                     if datetime.utcnow().replace(tzinfo=pytz.utc) - self.active_devices[device_name] > timedelta(seconds=snapshot.validity_seconds):
@@ -712,12 +843,28 @@ class SnapshotProcessor(Thread):
                     self.last_notification = time.time()
                     log.info("Sending notification for {}".format(str(new_device_names)))
                     for device_name in new_device_names:
-                        notification_queue.put(device_name)
+                        notifier.notify_voice(message=device_name)
+                        if isinstance(snapshot, ImageSnapshot):
+                            #TODO: remove
+                            recipient = notifier.sms_owners['Tai']
+                            message = '{}: {}'.format(snapshot, cloud_storage.cloud_storage_url)
+                            log.debug('SMS {} {} characters: {}'.format(recipient, len(message), message))
+                            #TODO: fix
+                            notifier.send_sms(recipient=recipient, message=message, flash=False)
             else:
-                inactivity = time.time() - self.last_snapshot
+                if snapshot.source not in self.last_snapshot:
+                    self.last_snapshot[snapshot.source] = 0
+                inactivity = time.time() - self.last_snapshot[snapshot.source]
                 if inactivity > heartbeat_interval_seconds:
-                    log.warn("A heartbeat or snapshot is overdue (after {} seconds)".format(heartbeat_interval_seconds))
+                    log.warn("A heartbeat or snapshot is overdue from {} (after {} seconds)".format(
+                        snapshot.source,
+                        heartbeat_interval_seconds))
 
+
+def signal_handler(signum, frame):
+    log.warn('Signal {} received, frame {}'.format(signum, str(frame)))
+    log.debug('Draining deferred notifications now.')
+    notifier.drain_deferred_notifications()
 
 if __name__ == "__main__":
     # set up logging
@@ -733,18 +880,21 @@ if __name__ == "__main__":
     image_labels = dict(config.items('images_sources'))
     sample_snapshot_dirs = dict(config.items('sample_snapshot_dirs'))
     image_snapshot_dirs = dict(config.items('image_snapshot_dirs'))
+    # set up signal handlers
+    signal.signal(signal.SIGHUP, signal_handler)
     # remap the labels to the directories
     if len(sample_labels) != len(sample_snapshot_dirs) or len(image_labels) != len(image_snapshot_dirs):
         raise RuntimeError("Invalid configuration. Sources and associated labels must match.")
     # application threads
+    notifier = Notifier()
     network_device_monitor = NetworkDeviceMonitor()
     sms_event_handler = SMSEventHandler()
     processor = SnapshotProcessor()
-    notifier = TTSProcessor()
     # ensure that auth is properly set up first
     google_drive = GoogleDriveManager(
         gauth_creds_file=config.get('gdrive', 'creds_file'),
         gdrive_folder=config.get('gdrive', 'folder'))
+    cloud_storage = google_drive
     upload_event_handler = UploadEventHandler(cloud_storage=google_drive)
     # monitor these directories
     for source, label in sample_labels.iteritems():
@@ -775,4 +925,5 @@ if __name__ == "__main__":
         observer.join()
         log.info("Waiting for queue threads...")
         snapshot_queue.join()
-        notification_queue.join()
+        notifier.notification_queue.join()
+        notifier.stop()
