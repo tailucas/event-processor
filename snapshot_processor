@@ -116,10 +116,14 @@ class Notifier(Thread):
 
     def play_file(self, sound_file):
         self.player.loadfile(sound_file)
-        delay = int(self.player.length)
-        # block for the duration of this audio sample
-        log.debug("Playing \"{}\" for {}s".format(sound_file, delay))
-        sleep(delay)
+        try:
+            delay = int(self.player.length)
+            # block for the duration of this audio sample
+            log.debug("Playing \"{}\" for {}s".format(sound_file, delay))
+            sleep(delay)
+        except TypeError:
+            log.warn("Playing \"{}\" without block because no player length was provided.".format(sound_file))
+            pass
 
     def say(self, message):
         msg_checksum = Notifier.checksum(message)
@@ -685,6 +689,8 @@ class SMSEventHandler(Thread, FileSystemEventHandler):
         self.sms_balance_value_alert = int(config.get('sms', 'sms_balance_value_alert'))
 
     def run(self):
+        #TODO: remove
+        sleep(60*60*24)
         while True:
             log.info("Dispatching SMS balance enquiry '{}' to {}".format(
                 self.sms_balance_check_message,
