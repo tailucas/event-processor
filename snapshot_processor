@@ -894,7 +894,7 @@ if __name__ == "__main__":
         raise RuntimeError("Invalid configuration. Sources and associated labels must match.")
     # application threads
     notifier = Notifier()
-    network_device_monitor = NetworkDeviceMonitor()
+    #network_device_monitor = NetworkDeviceMonitor()
     sms_event_handler = SMSEventHandler()
     processor = SnapshotProcessor()
     # ensure that auth is properly set up first
@@ -916,7 +916,7 @@ if __name__ == "__main__":
     observer.schedule(sms_event_handler, gammu_cfg.get('smsd', 'inboxpath'))
     observer.start()
     # start threads
-    network_device_monitor.start()
+    #network_device_monitor.start()
     sms_event_handler.start()
     processor.start()
     notifier.start()
