@@ -73,6 +73,8 @@ class Notifier(Thread):
         self.notification_timer = None
         self.deferred_notifications = Queue()
 
+        self.tts_default_sound_file = config.get('app', 'tts_default_sound')
+
         sms_recipient_names = config.get('sms', 'recipient_names').split(',')
         sms_recipient_numbers = config.get('sms', 'recipient_numbers').split(',')
         self.sms_owners = dict(zip(sms_recipient_names, sms_recipient_numbers))
@@ -105,12 +107,19 @@ class Notifier(Thread):
             try:
                 self.say(str(notification))
             except StandardError:
-                #TODO: pre-canned alert sound
                 log.exception("Unable to say message: '{}'".format(notification))
+                self.play_file(os.path.join(DIR, self.tts_default_sound_file))
 
     def stop(self):
         if self.player:
             self.player.quit()
+
+    def play_file(self, sound_file):
+        self.player.loadfile(sound_file)
+        delay = int(self.player.length)
+        # block for the duration of this audio sample
+        log.debug("Playing \"{}\" for {}s".format(sound_file, delay))
+        sleep(delay)
 
     def say(self, message):
         msg_checksum = Notifier.checksum(message)
@@ -133,11 +142,8 @@ class Notifier(Thread):
             f.close()
             log.debug("Written {} bytes to {}".format(os.path.getsize(tts_path), tts_path))
         # now play
-        self.player.loadfile(tts_path)
-        delay = int(self.player.length)
-        # block for the duration of this audio sample
-        log.debug("Saying \"{}\" for {}s".format(message, delay))
-        sleep(delay)
+        log.debug("Saying \"{}\"...".format(message))
+        self.play_file(tts_path)
 
     def drain_deferred_notifications(self):
         # cancel the timer in case we're signalled instead
@@ -680,8 +686,6 @@ class SMSEventHandler(Thread, FileSystemEventHandler):
 
     def run(self):
         while True:
-            #TODO: remove
-            sleep(60*60*24)
             log.info("Dispatching SMS balance enquiry '{}' to {}".format(
                 self.sms_balance_check_message,
                 self.sms_balance_check_number))
@@ -704,23 +708,26 @@ class SMSEventHandler(Thread, FileSystemEventHandler):
                 log.info(line)
                 balance_response = self.balance_pattern.search(line)
                 topup_needed = False
+                notification_message = ''
                 if balance_response:
                     balance_value = float(balance_response.group(0))
                     if balance_value <= self.balance_value_alert:
-                        warning = "Prepaid balance has reached {}.".format(balance_value)
+                        warning = "Prepaid balance has reached {}. ".format(balance_value)
                         log.warn(warning)
-                        notifier.notify_voice(message=warning, informational=True)
+                        notification_message += warning
                         topup_needed = True
                 balance_response = self.sms_balance_pattern.search(line)
                 if balance_response:
                     balance_value = int(balance_response.group(0))
                     if balance_value <= self.sms_balance_value_alert:
-                        warning = "SMS balance has reached {}.".format(balance_value)
+                        warning = "SMS balance has reached {}. ".format(balance_value)
                         log.warn(warning)
-                        notifier.notify_voice(message=warning, informational=True)
+                        notification_message += warning
                         topup_needed = True
                 if topup_needed:
-                    notifier.notify_voice(message='Top-up soon.', informational=True)
+                    notification_message += 'Top-up soon.'
+                if len(notification_message) > 0:
+                    notifier.notify_voice(message=notification_message, informational=True)
                 else:
                     # something more generic
                     pass
