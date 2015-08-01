@@ -718,17 +718,15 @@ class SMSEventHandler(Thread, FileSystemEventHandler):
                 if balance_response:
                     balance_value = float(balance_response.group(0))
                     if balance_value <= self.balance_value_alert:
-                        warning = "Prepaid balance has reached {}. ".format(balance_value)
-                        log.warn(warning)
-                        notification_message += warning
+                        log.warn("Prepaid balance has reached {}. ".format(balance_value))
+                        notification_message += "Prepaid balance is running low. "
                         topup_needed = True
                 balance_response = self.sms_balance_pattern.search(line)
                 if balance_response:
                     balance_value = int(balance_response.group(0))
                     if balance_value <= self.sms_balance_value_alert:
-                        warning = "SMS balance has reached {}. ".format(balance_value)
-                        log.warn(warning)
-                        notification_message += warning
+                        log.warn("SMS balance has reached {}. ".format(balance_value))
+                        notification_message += "SMS balance is running low. "
                         topup_needed = True
                 if topup_needed:
                     notification_message += 'Top-up soon.'
