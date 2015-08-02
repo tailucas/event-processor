@@ -7,12 +7,12 @@ import logging.handlers
 import os
 import pytz
 import re
+import requests
 import signal
 import subprocess
 import sys
 import time
 import umsgpack
-import urllib2
 
 from ConfigParser import ConfigParser
 
@@ -135,19 +135,28 @@ class Notifier(Thread):
             os.remove(tts_path)
         log.debug("{} exists? {}".format(tts_path, os.path.isfile(tts_path)))
         if not os.path.isfile(tts_path):
-            values = {'tl': 'en', 'q': message}
-            data = urlencode(values)
-            request = urllib2.Request(TTS_URL, data)
-            request.add_header('User-agent', 'Mozilla/5.0')
-            opener = urllib2.build_opener()
-            log.debug("Fetching \"{}\" from {}".format(message, TTS_URL))
-            f = open(tts_path, "wb")
-            f.write(opener.open(request).read())
-            f.close()
-            log.debug("Written {} bytes to {}".format(os.path.getsize(tts_path), tts_path))
-        # now play
-        log.debug("Saying \"{}\"...".format(message))
-        self.play_file(tts_path)
+            log.debug("Generating \"{}\" using {}".format(message, TTS_URL))
+            r = requests.get(TTS_URL, params={'tl': 'en', 'q': message}, allow_redirects=False)
+            log.debug('HTTP {} from {}'.format(r.status_code, r.url))
+            r.raise_for_status()
+            log.debug('HTTP response: {}'.format(r.headers))
+            # HTTP30x
+            if r.status_code >= 300 and r.status_code < 400:
+                # try to give some helpful information
+                if 'location' in r.headers:
+                    log.warning('You must visit {} to create {}'.format(r.headers['location'], tts_path))
+            if r.status_code == requests.codes.ok:
+                # only write a file upon success
+                with open(tts_path, 'wb') as fd:
+                    for chunk in r.iter_content(1024*64):
+                        fd.write(chunk)
+                log.debug("Written {} bytes to {}".format(os.path.getsize(tts_path), tts_path))
+        if os.path.isfile(tts_path):
+            # now play
+            log.debug("Saying \"{}\"...".format(message))
+            self.play_file(tts_path)
+        else:
+            raise StandardError('No file {} to play "{}"'.format(tts_path, message))
 
     def drain_deferred_notifications(self):
         # cancel the timer in case we're signalled instead
