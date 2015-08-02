@@ -30,7 +30,7 @@ from Queue import Queue, Empty
 from threading import Thread, Timer
 from time import sleep
 from umsgpack import UnpackException
-from urllib import pathname2url, urlencode
+from urllib import pathname2url
 from watchdog.events import FileSystemEventHandler, FileModifiedEvent
 from watchdog.observers import Observer
 
@@ -68,6 +68,8 @@ class Notifier(Thread):
         super(Notifier, self).__init__()
         self.player = None
         self.daemon = True
+
+        self.mime = MimeTypes()
 
         self.notification_queue = Queue()
         self.notification_timer = None
@@ -132,6 +134,16 @@ class Notifier(Thread):
         tts_path = os.path.join(DIR, tts_file)
         if os.path.isfile(tts_path) and os.path.getsize(tts_path) == 0:
             log.debug("Removing empty file {}".format(tts_path))
+            os.remove(tts_path)
+        valid_file_type = False
+        mime_type = self.mime.guess_type(pathname2url(tts_path))
+        if mime_type is not None:
+            mime_type = mime_type[0]
+            log.debug("{} is {}".format(tts_path, mime_type))
+            if mime_type.starswith('audio/'):
+                valid_file_type = True
+        if not valid_file_type:
+            log.debug("Removing audio file of unknown type {}".format(tts_path))
             os.remove(tts_path)
         log.debug("{} exists? {}".format(tts_path, os.path.isfile(tts_path)))
         if not os.path.isfile(tts_path):
