@@ -6,6 +6,7 @@ import os
 import pprint
 import pytz
 import serial
+import subprocess
 import sys
 import time
 import umsgpack
@@ -88,6 +89,29 @@ def uploader():
         last_upload = time.time()
 
 
+class BluetoothDeviceMonitor(Thread):
+
+    def __init__(self):
+        super(BluetoothDeviceMonitor, self).__init__()
+        self.daemon = True
+
+        devices = config.get('bluetooth', 'devices').replace('-', ':').upper().split(',')
+        owners = config.get('bluetooth', 'owners').split(',')
+        self.owner_devices = dict(zip(owners, devices))
+
+    @staticmethod
+    def exec_cmd(cmd):
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+        out, err = p.communicate()
+        return out, p.returncode
+
+    def run(self):
+        for owner, device in self.owner_devices:
+            output, rc = self.exec_cmd(['sudo', '/usr/bin/l2ping', '-t1', '-c1', device])
+            log.debug('l2ping for {}: {}'.format(owner, output))
+            if rc == 0:
+                upload_queue.put({'detects {}.'.format(owner): rc})
+
 def heartbeat():
     while True:
         sleep(HEARTBEAT_INTERVAL_SECONDS)
@@ -127,6 +151,7 @@ if __name__ == "__main__":
     for field in field_debounce_values:
         expanded_field_debounce_values[field] = list({int(v) for v in field_debounce_values[field].split(',')})
     field_debounce_values = expanded_field_debounce_values
+    bluetooth_monitor = None
     try:
         # we map samples to values
         sample_value_history = {}
@@ -196,6 +221,8 @@ if __name__ == "__main__":
                     len(output_samples),
                     upload_queue.qsize()))
                 upload_queue.put(output_samples)
+                bluetooth_monitor = BluetoothDeviceMonitor()
+                bluetooth_monitor.start()
                 # do not overwhelm the uploader, but keep sample rate as high as the input provides it
                 sleep(SAMPLE_INTERVAL_SECONDS)
                 # throw away the intermediate data if the external sample rate exceeds our ability to consume it
