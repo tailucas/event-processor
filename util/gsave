@@ -14,4 +14,4 @@ if [ -f "$filename" ]; then
   echo "$filename already exists for sentence $words"
   exit 3
 fi
-wget -q -U Mozilla -O $filename "http://translate.google.com/translate_tts?tl=en&q=$*"
+wget -U Mozilla -O $filename "http://translate.google.com/translate_tts?tl=en&q=$*"
