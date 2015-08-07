@@ -38,6 +38,7 @@ sys.displayhook = pprint
 
 APP = os.path.basename(__file__)
 DIR = os.path.abspath(os.path.dirname(__file__))
+TTS_DIR = os.path.join(DIR, 'tts_samples')
 # set the working directory for libraries that assume this (such as PyDrive)
 os.chdir(DIR)
 log = logging.getLogger(APP)
@@ -131,7 +132,7 @@ class Notifier(Thread):
         msg_checksum = Notifier.checksum(message)
         log.debug("Checksum for \"{}\" is [{}]".format(message, msg_checksum))
         tts_file = "{}.mp3".format(msg_checksum)
-        tts_path = os.path.join(DIR, tts_file)
+        tts_path = os.path.join(TTS_DIR, tts_file)
         if os.path.isfile(tts_path) and os.path.getsize(tts_path) == 0:
             log.debug("Removing empty file {}".format(tts_path))
             os.remove(tts_path)
