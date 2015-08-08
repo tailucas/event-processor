@@ -141,7 +141,7 @@ class Notifier(Thread):
         if mime_type is not None:
             mime_type = mime_type[0]
             log.debug("{} is {}".format(tts_path, mime_type))
-            if mime_type.starswith('audio/'):
+            if mime_type.startswith('audio/'):
                 valid_file_type = True
         if not valid_file_type:
             log.debug("Removing audio file of unknown type {}".format(tts_path))
