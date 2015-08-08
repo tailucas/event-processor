@@ -111,7 +111,7 @@ class Notifier(Thread):
                 self.say(str(notification))
             except StandardError:
                 log.exception("Unable to say message: '{}'".format(notification))
-                self.play_file(os.path.join(DIR, self.tts_default_sound_file))
+                self.play_file(os.path.join(TTS_DIR, self.tts_default_sound_file))
 
     def stop(self):
         if self.player:
