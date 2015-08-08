@@ -11,10 +11,9 @@ import sys
 import time
 import umsgpack
 
-import StringIO
-
 from ConfigParser import ConfigParser
 from Queue import LifoQueue
+from StringIO import StringIO
 
 from datetime import datetime
 from ftplib import FTP
@@ -108,12 +107,14 @@ class BluetoothDeviceMonitor(Thread):
     def run(self):
         log.debug("Bluetooth poller thread awakened.")
         while True:
+            trigger_condition.acquire()
             trigger_condition.wait()
-            for owner, device in self.owner_devices:
+            for owner, device in self.owner_devices.items():
                 output, rc = self.exec_cmd(['sudo', '/usr/bin/l2ping', '-t1', '-c1', device])
                 log.debug('l2ping for {}: {}'.format(owner, output))
                 if rc == 0:
                     upload_queue.put({'{} is here.'.format(owner): rc})
+            trigger_condition.release()
 
 
 def heartbeat():
@@ -222,7 +223,9 @@ if __name__ == "__main__":
                 # add the sample to the output
                 output_samples[sample_label] = sample_value
             if len(output_samples) > 0:
+                trigger_condition.acquire()
                 trigger_condition.notify()
+                trigger_condition.release()
                 log.debug("{} samples enqueued behind {} others for upload.".format(
                     len(output_samples),
                     upload_queue.qsize()))
