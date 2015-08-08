@@ -11,13 +11,14 @@ import sys
 import time
 import umsgpack
 
+import StringIO
+
 from ConfigParser import ConfigParser
 from Queue import LifoQueue
 
 from datetime import datetime
 from ftplib import FTP
-from tempfile import NamedTemporaryFile
-from threading import Thread
+from threading import Thread, Condition
 from time import sleep
 
 sys.displayhook = pprint.pprint
@@ -44,35 +45,34 @@ ftp_user = config.get('ftp', 'user')
 ftp_password = config.get('ftp', 'password')
 ftp_dir = config.get('ftp', 'dir')
 
+trigger_condition = Condition()
+
 
 def upload(payload=None):
     now = datetime.utcnow()
     now = now.replace(tzinfo=pytz.utc)
     ts = now.strftime(DATE_FORMAT)
-    output = {}
+    output = dict()
     output['timestamp'] = ts
     if payload is not None and len(payload) > 0:
         output['data'] = payload
-    tempfile = NamedTemporaryFile(delete=False, dir='/tmp/')
-    umsgpack.dump(output, tempfile)
-    tempfile.close()
-    filename = str(time.time())
     log.debug(json.dumps(output))
+    fh = StringIO(umsgpack.dumps(output))
+    filename = str(time.time())
     while True:
         try:
-            log.info('FTP {} bytes to ftp://{}@{}'.format(
-                os.stat(tempfile.name).st_size,
+            log.info('ftp://{}@{}'.format(
                 ftp_user,
                 os.path.sep.join([ftp_server, ftp_dir, filename])))
             ftp = FTP(host=ftp_server, timeout=UPLOAD_TIMEOUT_SECONDS)
             ftp.login(user=ftp_user, passwd=ftp_password)
             ftp.cwd(ftp_dir)
-            ftp.storbinary('STOR {}'.format(filename), open(tempfile.name))
+            ftp.storbinary('STOR {}'.format(filename), fh)
             ftp.close()
             break
         except Exception as e:
             log.error(e)
-    os.remove(tempfile.name)
+    fh.close()
 
 
 def uploader():
@@ -106,11 +106,15 @@ class BluetoothDeviceMonitor(Thread):
         return out, p.returncode
 
     def run(self):
-        for owner, device in self.owner_devices:
-            output, rc = self.exec_cmd(['sudo', '/usr/bin/l2ping', '-t1', '-c1', device])
-            log.debug('l2ping for {}: {}'.format(owner, output))
-            if rc == 0:
-                upload_queue.put({'detects {}.'.format(owner): rc})
+        log.debug("Bluetooth poller thread awakened.")
+        while True:
+            trigger_condition.wait()
+            for owner, device in self.owner_devices:
+                output, rc = self.exec_cmd(['sudo', '/usr/bin/l2ping', '-t1', '-c1', device])
+                log.debug('l2ping for {}: {}'.format(owner, output))
+                if rc == 0:
+                    upload_queue.put({'{} is here.'.format(owner): rc})
+
 
 def heartbeat():
     while True:
@@ -135,30 +139,31 @@ if __name__ == "__main__":
     heartbeat = Thread(target=heartbeat)
     heartbeat.daemon = True
     heartbeat.start()
+    bluetooth_monitor = BluetoothDeviceMonitor()
+    bluetooth_monitor.start()
     com1 = serial.Serial(port=config.get('serial', 'port'), baudrate=config.getint('serial', 'baudrate'))
     field_labels = dict(config.items('field_labels'))
     field_normal_values = dict(config.items('field_normal_values'))
     field_range_labels = dict(config.items('field_range_labels'))
     field_debounce_values = dict(config.items('field_debounce_values'))
     # split the range labels for easy processing
-    expanded_field_range_labels = {}
+    expanded_field_range_labels = dict()
     for field in field_range_labels:
         pairs = map(lambda s: s.split(':'), field_range_labels[field].split(','))
         expanded_field_range_labels[field] = dict({k: int(v) for k, v in pairs})
     field_range_labels = expanded_field_range_labels
     # split out the debounce values
-    expanded_field_debounce_values = {}
+    expanded_field_debounce_values = dict()
     for field in field_debounce_values:
         expanded_field_debounce_values[field] = list({int(v) for v in field_debounce_values[field].split(',')})
     field_debounce_values = expanded_field_debounce_values
-    bluetooth_monitor = None
     try:
         # we map samples to values
-        sample_value_history = {}
+        sample_value_history = dict()
         for label in field_labels:
             # we map sample values to the last time that value was seen
             sample_label = field_labels[label]
-            sample_value_history[sample_label] = {}
+            sample_value_history[sample_label] = dict()
         while True:
             data = com1.readline()
             sample_time = time.time()
@@ -174,7 +179,7 @@ if __name__ == "__main__":
                 samples = dict({k: int(v) for k, v in pairs})
             except (IndexError, ValueError):
                 continue
-            output_samples = {}
+            output_samples = dict()
             # if there are no label mappings, upload as is
             if field_labels is None or len(field_labels) == 0:
                 output_samples = samples
@@ -217,12 +222,11 @@ if __name__ == "__main__":
                 # add the sample to the output
                 output_samples[sample_label] = sample_value
             if len(output_samples) > 0:
+                trigger_condition.notify()
                 log.debug("{} samples enqueued behind {} others for upload.".format(
                     len(output_samples),
                     upload_queue.qsize()))
                 upload_queue.put(output_samples)
-                bluetooth_monitor = BluetoothDeviceMonitor()
-                bluetooth_monitor.start()
                 # do not overwhelm the uploader, but keep sample rate as high as the input provides it
                 sleep(SAMPLE_INTERVAL_SECONDS)
                 # throw away the intermediate data if the external sample rate exceeds our ability to consume it
