@@ -42,6 +42,8 @@ config.read([os.path.expanduser('~/.{}'.format(APP))])
 
 upload_queue = LifoQueue()
 
+location = config.get('app', 'location')
+
 ftp_server = config.get('ftp', 'server')
 ftp_user = config.get('ftp', 'user')
 ftp_password = config.get('ftp', 'password')
@@ -62,6 +64,7 @@ def upload(payload=None):
     ts = now.strftime(DATE_FORMAT)
     output = dict()
     output['timestamp'] = ts
+    output['location'] = location
     if payload is not None and len(payload) > 0:
         output['data'] = payload
     log.debug(json.dumps(output))
@@ -135,7 +138,7 @@ class BluetoothDeviceMonitor(Thread):
             trigger_condition.wait()
             for owner, device in self.owner_devices.items():
                 if self.l2ping(owner, device) is not None:
-                    upload_queue.put({'{} is here.'.format(owner): 1})
+                    upload_queue.put({'devices_nearby': {owner: device}})
             trigger_condition.release()
 
 
@@ -178,19 +181,19 @@ if __name__ == "__main__":
     com1 = serial.Serial(port=config.get('serial', 'port'), baudrate=config.getint('serial', 'baudrate'))
     field_labels = dict(config.items('field_labels'))
     field_normal_values = dict(config.items('field_normal_values'))
-    field_range_labels = dict(config.items('field_range_labels'))
-    field_debounce_values = dict(config.items('field_debounce_values'))
+    field_active_labels = dict(config.items('field_active_labels'))
+    field_active_values = dict(config.items('field_active_values'))
     # split the range labels for easy processing
-    expanded_field_range_labels = dict()
-    for field in field_range_labels:
-        pairs = map(lambda s: s.split(':'), field_range_labels[field].split(','))
-        expanded_field_range_labels[field] = dict({k: int(v) for k, v in pairs})
-    field_range_labels = expanded_field_range_labels
-    # split out the debounce values
-    expanded_field_debounce_values = dict()
-    for field in field_debounce_values:
-        expanded_field_debounce_values[field] = list({int(v) for v in field_debounce_values[field].split(',')})
-    field_debounce_values = expanded_field_debounce_values
+    expanded_field_active_labels = dict()
+    for field in field_active_labels:
+        pairs = map(lambda s: s.split(':'), field_active_labels[field].split(','))
+        expanded_field_active_labels[field] = dict({k: int(v) for k, v in pairs})
+    field_active_labels = expanded_field_active_labels
+    # split out the active values
+    expanded_field_active_values = dict()
+    for field in field_active_values:
+        expanded_field_active_values[field] = list({int(v) for v in field_active_values[field].split(',')})
+    field_active_values = expanded_field_active_values
     try:
         # we map samples to values
         sample_value_history = dict()
@@ -237,8 +240,8 @@ if __name__ == "__main__":
                     if abs(sample_value - normal_value) <= SAMPLE_DEVIATION_TOLERANCE:
                         continue
                 # clamp the value based on the debounce settings
-                if label in field_debounce_values:
-                    for debounce_value in field_debounce_values[label]:
+                if label in field_active_values:
+                    for debounce_value in field_active_values[label]:
                         if abs(sample_value - debounce_value) <= SAMPLE_DEVIATION_TOLERANCE:
                             sample_value = debounce_value
                 # when last did we see this value?
@@ -255,8 +258,8 @@ if __name__ == "__main__":
                     # update the last time seen for this value
                     sample_value_history[sample_label][sample_value] = sample_time
                 # now annotate the label with the range label
-                if label in field_range_labels:
-                    for range_label, range_value in field_range_labels[label].iteritems():
+                if label in field_active_labels:
+                    for range_label, range_value in field_active_labels[label].iteritems():
                         if abs(sample_value - range_value) <= SAMPLE_DEVIATION_TOLERANCE:
                             sample_label = ' '.join([sample_label, range_label])
                 # add the sample to the output
@@ -268,7 +271,7 @@ if __name__ == "__main__":
                 log.debug('{} samples enqueued behind {} others for upload.'.format(
                     len(output_samples),
                     upload_queue.qsize()))
-                upload_queue.put(output_samples)
+                upload_queue.put({'samples': output_samples})
                 # do not overwhelm the uploader, but keep sample rate as high as the input provides it
                 sleep(SAMPLE_INTERVAL_SECONDS)
                 # throw away the intermediate data if the external sample rate exceeds our ability to consume it
