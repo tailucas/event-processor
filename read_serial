@@ -18,7 +18,6 @@ from StringIO import StringIO
 
 from datetime import datetime
 from ftplib import FTP
-from multiprocessing import Pool
 from serial.serialutil import SerialException
 from threading import Thread, Condition
 from time import sleep
@@ -49,6 +48,12 @@ ftp_password = config.get('ftp', 'password')
 ftp_dir = config.get('ftp', 'dir')
 
 trigger_condition = Condition()
+
+
+def exec_cmd(cmd):
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+    out, err = p.communicate()
+    return out, err, p.returncode
 
 
 def upload(payload=None):
@@ -92,19 +97,6 @@ def uploader():
         last_upload = time.time()
 
 
-def exec_cmd(cmd):
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-    out, err = p.communicate()
-    return out, p.returncode
-
-
-def l2ping((owner, device)):
-    log.debug("Issuing l2ping for {}: {}".format(owner, device))
-    output, rc = exec_cmd(['sudo', '/usr/bin/l2ping', '-t1', '-c1', device])
-    if rc == 0:
-        upload_queue.put({'{} is here.'.format(owner): rc})
-
-
 class BluetoothDeviceMonitor(Thread):
 
     def __init__(self):
@@ -113,14 +105,37 @@ class BluetoothDeviceMonitor(Thread):
 
         devices = config.get('bluetooth', 'devices').replace('-', ':').upper().split(',')
         owners = config.get('bluetooth', 'owners').split(',')
-        self.owner_devices = tuple(zip(owners, devices))
-        self.process_pool = Pool(processes=DEVICE_MONITOR_CONCURRENCY)
+        self.owner_devices = dict(zip(owners, devices))
+
+    @staticmethod
+    def l2ping(owner, device):
+        log.debug('l2ping {} @ {}...'.format(owner, device))
+        out, err, rc = exec_cmd(['sudo', '/usr/bin/l2ping', '-t1', '-c1', device])
+        if rc == 0:
+            log.debug('l2ping output: {}'.format(out))
+            return out
+        else:
+            log.error('Non-zero exit {} for l2ping output: {} {}'.format(rc, out, err))
+        return None
 
     def run(self):
+        # first test for a Bluetooth adaptor and format this type of output
+        # Devices:
+        # hci0    00:09:DD:50:17:18
+        out, err, rc = exec_cmd(['hcitool', 'dev'])
+        if rc != 0:
+            raise RuntimeError('Cannot query hcitool to find Bluetooth adaptors: {} {}'.format(out, err))
+        hcitool = out.rstrip().split('\n')
+        if len(hcitool) < 2:
+            raise RuntimeError('No Bluetooth adaptors found using hcitool.')
+        for line in hcitool[1:]:
+            log.info('Bluetooth adaptor found: {}'.format(' '.join(line.split())))
         while True:
             trigger_condition.acquire()
             trigger_condition.wait()
-            self.process_pool.map(l2ping, self.owner_devices)
+            for owner, device in self.owner_devices.items():
+                if self.l2ping(owner, device) is not None:
+                    upload_queue.put({'{} is here.'.format(owner): 1})
             trigger_condition.release()
 
 
@@ -133,7 +148,7 @@ def heartbeat():
 
 
 def signal_handler(signum, frame):
-    log.warn('Signal {} received, frame {}'.format(signum, str(frame)))
+    log.warn('Signal {} received.'.format(signum))
     log.debug('Pooling nearby devices.')
     trigger_condition.acquire()
     trigger_condition.notify()
@@ -233,7 +248,7 @@ if __name__ == "__main__":
                 # output the value only if it was seen more than the debounce tolerance ago
                 time_delta = time.time() - value_last_seen
                 if time_delta < SAMPLE_DEBOUNCE_COOLDOWN_SECONDS:
-                    log.debug("Debouncing {} value of {} for another {} seconds.".format(
+                    log.debug('Debouncing {} value of {} for another {} seconds.'.format(
                         sample_label, sample_value, int(SAMPLE_DEBOUNCE_COOLDOWN_SECONDS-time_delta)))
                     continue
                 else:
@@ -250,7 +265,7 @@ if __name__ == "__main__":
                 trigger_condition.acquire()
                 trigger_condition.notify()
                 trigger_condition.release()
-                log.debug("{} samples enqueued behind {} others for upload.".format(
+                log.debug('{} samples enqueued behind {} others for upload.'.format(
                     len(output_samples),
                     upload_queue.qsize()))
                 upload_queue.put(output_samples)
@@ -259,7 +274,7 @@ if __name__ == "__main__":
                 # throw away the intermediate data if the external sample rate exceeds our ability to consume it
                 com1.flushInput()
     except(KeyboardInterrupt, SystemExit):
-        log.info("Closing serial connection...")
+        log.info('Closing serial connection...')
         com1.close()
-        log.info("Waiting for queue threads...")
+        log.info('Waiting for queue threads...')
         upload_queue.join()
