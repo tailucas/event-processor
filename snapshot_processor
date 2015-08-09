@@ -346,9 +346,12 @@ class SampledSnapshot(Snapshot):
 
     @property
     def devices(self):
-        if self.devices_data is None:
-            return {}
-        return self.devices_data
+        devices = dict()
+        if self.devices_data is not None:
+            devices.update(self.devices_data)
+        if self.devices_nearby is not None:
+            devices.update(self.devices_nearby)
+        return devices
 
     @property
     def source(self):
