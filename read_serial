@@ -187,6 +187,8 @@ if __name__ == "__main__":
             try:
                 data = com1.readline()
             except SerialException:
+                if com1.closed:
+                    break
                 # if the process is signalled
                 continue
             sample_time = time.time()
