@@ -6,6 +6,7 @@ import os
 import pprint
 import pytz
 import serial
+import signal
 import subprocess
 import sys
 import time
@@ -17,6 +18,8 @@ from StringIO import StringIO
 
 from datetime import datetime
 from ftplib import FTP
+from multiprocessing import Pool
+from serial.serialutil import SerialException
 from threading import Thread, Condition
 from time import sleep
 
@@ -31,6 +34,7 @@ UPLOAD_TIMEOUT_SECONDS = 1
 HEARTBEAT_INTERVAL_SECONDS = 5
 SAMPLE_INTERVAL_SECONDS = 1
 SAMPLE_DEBOUNCE_COOLDOWN_SECONDS = 60
+DEVICE_MONITOR_CONCURRENCY = 4
 DATE_FORMAT = '%Y-%m-%dT%H:%M:%S.%f%z'
 
 config = ConfigParser()
@@ -88,6 +92,19 @@ def uploader():
         last_upload = time.time()
 
 
+def exec_cmd(cmd):
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+    out, err = p.communicate()
+    return out, p.returncode
+
+
+def l2ping((owner, device)):
+    log.debug("Issuing l2ping for {}: {}".format(owner, device))
+    output, rc = exec_cmd(['sudo', '/usr/bin/l2ping', '-t1', '-c1', device])
+    if rc == 0:
+        upload_queue.put({'{} is here.'.format(owner): rc})
+
+
 class BluetoothDeviceMonitor(Thread):
 
     def __init__(self):
@@ -96,24 +113,14 @@ class BluetoothDeviceMonitor(Thread):
 
         devices = config.get('bluetooth', 'devices').replace('-', ':').upper().split(',')
         owners = config.get('bluetooth', 'owners').split(',')
-        self.owner_devices = dict(zip(owners, devices))
-
-    @staticmethod
-    def exec_cmd(cmd):
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-        out, err = p.communicate()
-        return out, p.returncode
+        self.owner_devices = tuple(zip(owners, devices))
+        self.process_pool = Pool(processes=DEVICE_MONITOR_CONCURRENCY)
 
     def run(self):
-        log.debug("Bluetooth poller thread awakened.")
         while True:
             trigger_condition.acquire()
             trigger_condition.wait()
-            for owner, device in self.owner_devices.items():
-                output, rc = self.exec_cmd(['sudo', '/usr/bin/l2ping', '-t1', '-c1', device])
-                log.debug('l2ping for {}: {}'.format(owner, output))
-                if rc == 0:
-                    upload_queue.put({'{} is here.'.format(owner): rc})
+            self.process_pool.map(l2ping, self.owner_devices)
             trigger_condition.release()
 
 
@@ -124,6 +131,15 @@ def heartbeat():
         if inactivity > HEARTBEAT_INTERVAL_SECONDS:
             upload()
 
+
+def signal_handler(signum, frame):
+    log.warn('Signal {} received, frame {}'.format(signum, str(frame)))
+    log.debug('Pooling nearby devices.')
+    trigger_condition.acquire()
+    trigger_condition.notify()
+    trigger_condition.release()
+
+
 if __name__ == "__main__":
     # set up logging
     log.setLevel(logging.DEBUG)
@@ -133,6 +149,8 @@ if __name__ == "__main__":
     log.addHandler(syslog_handler)
     stream_handler = logging.StreamHandler(stream=sys.stdout)
     log.addHandler(stream_handler)
+    # set up signal handlers
+    signal.signal(signal.SIGHUP, signal_handler)
     # start up threads
     uploader = Thread(target=uploader)
     uploader.daemon = True
@@ -166,7 +184,11 @@ if __name__ == "__main__":
             sample_label = field_labels[label]
             sample_value_history[sample_label] = dict()
         while True:
-            data = com1.readline()
+            try:
+                data = com1.readline()
+            except SerialException:
+                # if the process is signalled
+                continue
             sample_time = time.time()
             if data is None:
                 continue
