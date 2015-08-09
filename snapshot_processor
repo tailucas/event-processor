@@ -122,33 +122,33 @@ class Notifier(Thread):
         try:
             delay = int(self.player.length)
             # block for the duration of this audio sample
-            log.debug("Playing \"{}\" for {}s".format(sound_file, delay))
+            log.debug("Playing '{}' for {}s".format(sound_file, delay))
             sleep(delay)
         except TypeError:
-            log.warn("Playing \"{}\" without block because no player length was provided.".format(sound_file))
+            log.warn("Playing '{}' without block because no player length was provided.".format(sound_file))
             pass
 
     def say(self, message):
         msg_checksum = Notifier.checksum(message)
-        log.debug("Checksum for \"{}\" is [{}]".format(message, msg_checksum))
-        tts_file = "{}.mp3".format(msg_checksum)
+        log.debug("Checksum for '{}' is [{}]".format(message, msg_checksum))
+        tts_file = '{}.mp3'.format(msg_checksum)
         tts_path = os.path.join(TTS_DIR, tts_file)
         if os.path.isfile(tts_path) and os.path.getsize(tts_path) == 0:
-            log.debug("Removing empty file {}".format(tts_path))
+            log.debug('Removing empty file {}'.format(tts_path))
             os.remove(tts_path)
         valid_file_type = False
         mime_type = self.mime.guess_type(pathname2url(tts_path))
         if mime_type is not None:
             mime_type = mime_type[0]
-            log.debug("{} is {}".format(tts_path, mime_type))
+            log.debug('{} is {}'.format(tts_path, mime_type))
             if mime_type.startswith('audio/'):
                 valid_file_type = True
         if not valid_file_type:
-            log.debug("Removing audio file of unknown type {}".format(tts_path))
+            log.debug('Removing audio file of unknown type {}'.format(tts_path))
             os.remove(tts_path)
-        log.debug("{} exists? {}".format(tts_path, os.path.isfile(tts_path)))
+        log.debug('{} exists? {}'.format(tts_path, os.path.isfile(tts_path)))
         if not os.path.isfile(tts_path):
-            log.debug("Generating \"{}\" using {}".format(message, TTS_URL))
+            log.debug("Generating '{}' using {}".format(message, TTS_URL))
             r = requests.get(
                 url=TTS_URL,
                 params={'tl': 'en', 'q': message},
@@ -167,10 +167,10 @@ class Notifier(Thread):
                 with open(tts_path, 'wb') as fd:
                     for chunk in r.iter_content(1024*64):
                         fd.write(chunk)
-                log.debug("Written {} bytes to {}".format(os.path.getsize(tts_path), tts_path))
+                log.debug('Written {} bytes to {}'.format(os.path.getsize(tts_path), tts_path))
         if os.path.isfile(tts_path):
             # now play
-            log.debug("Saying \"{}\"...".format(message))
+            log.debug("Saying '{}'...".format(message))
             self.play_file(tts_path)
         else:
             raise StandardError('No file {} to play "{}"'.format(tts_path, message))
@@ -317,7 +317,7 @@ class SampledSnapshot(Snapshot):
     def device_names(self):
         if self.devices_data is None:
             return None
-        names = []
+        names = list()
         for device_name in self.devices_data.keys():
             names.append(' '.join([self.source_label, device_name]))
         return names
@@ -333,9 +333,9 @@ class SampledSnapshot(Snapshot):
         return self.source_label
 
     def __str__(self):
-        string = "{} at {}".format(self.source_label, self.timestamp.strftime('%X %x %Z'))
+        string = '{} at {}'.format(self.source_label, self.timestamp.strftime('%X %x %Z'))
         if self.devices:
-            return string + ": {} devices: {}".format(
+            return string + ': {} devices: {}'.format(
                 len(self.devices), ','.join(self.devices.keys()))
         return string
 
@@ -358,7 +358,7 @@ class ImageSnapshot(Snapshot):
             self.timestamp_data = dateutil.parser.parse(date_string)
             if self.timestamp_data.tzinfo is None:
                 self.timestamp_data = self.timestamp_data.replace(tzinfo=tz.tzlocal())
-            log.debug("Parsed timestamp data from {}: {}".format(file_base_name, str(self.timestamp_data)))
+            log.debug('Parsed timestamp data from {}: {}'.format(file_base_name, str(self.timestamp_data)))
         except ValueError:
             log.exception("Cannot parse date-like string {}. Defaulting to 'now'.".format(date_string))
         self.devices_data = {'camera': None}
@@ -380,7 +380,7 @@ class ImageSnapshot(Snapshot):
     def device_names(self):
         if self.devices_data is None:
             return None
-        names = []
+        names = list()
         for device_name in self.devices_data.keys():
             names.append(' '.join([self.source_label, device_name]))
         return names
@@ -396,9 +396,9 @@ class ImageSnapshot(Snapshot):
         return self.source_label
 
     def __str__(self):
-        string = "{} at {}".format(self.source_label, self.timestamp.strftime('%X %x %Z'))
+        string = '{} at {}'.format(self.source_label, self.timestamp.strftime('%X %x %Z'))
         if self.devices:
-            return string + ": {} devices: {}".format(
+            return string + ': {} devices: {}'.format(
                 len(self.devices), ','.join(self.devices.keys()))
         return string
 
@@ -430,7 +430,7 @@ class GoogleDriveManager(Thread, CloudStorage):
         self._gdrive_folder_id, self._gdrive_folder_url = self._get_gdrive_folder_id(self.drive, gdrive_folder)
         # separate connection for archiver thread to prevent PyDrive lock-up
         self._archive_drive = GoogleDrive(self.gauth)
-        self._folder_id_cache = {}
+        self._folder_id_cache = dict()
         self.mime = MimeTypes()
 
     @property
@@ -441,7 +441,7 @@ class GoogleDriveManager(Thread, CloudStorage):
         #TODO: remove
         sleep(5*60)
         while True:
-            log.debug("Finding files in {} ({}) to archive.".format(self._gdrive_folder, self._gdrive_folder_id))
+            log.debug('Finding files in {} ({}) to archive.'.format(self._gdrive_folder, self._gdrive_folder_id))
             file_list = self._archive_drive.ListFile({
                 'q': "'{}' in parents and trashed=false and mimeType != 'application/vnd.google-apps.folder'".format(
                     self._gdrive_folder_id
@@ -469,7 +469,7 @@ class GoogleDriveManager(Thread, CloudStorage):
     def gauth(self):
         auth = GoogleAuth()
         if not os.path.exists(self._gauth_creds_file):
-            log.debug("Google credentials not found in [{}]. Interactive setup may follow.".format(
+            log.debug('Google credentials not found in [{}]. Interactive setup may follow.'.format(
                 self._gauth_creds_file))
         # Try to load saved client credentials
         auth.LoadCredentialsFile(self._gauth_creds_file)
@@ -485,7 +485,7 @@ class GoogleDriveManager(Thread, CloudStorage):
         if not os.path.exists(self._gauth_creds_file):
             # Save the current credentials to a file
             auth.SaveCredentialsFile(self._gauth_creds_file)
-            log.debug("Saved Google credentials to {}".format(self._gauth_creds_file))
+            log.debug('Saved Google credentials to {}'.format(self._gauth_creds_file))
         return auth
 
     @staticmethod
@@ -511,7 +511,7 @@ class GoogleDriveManager(Thread, CloudStorage):
             folder_id = file_list[0]['id']
             folder_link = file_list[0]['alternateLink']
         else:
-            raise RuntimeError("Unexpected result listing Google Drive for {}: {}".format(
+            raise RuntimeError('Unexpected result listing Google Drive for {}: {}'.format(
                 gdrive_folder, str(file_list)))
         log.debug("Google Drive folder ID for folder '{}' is '{}'. Visit at {}".format(
             gdrive_folder,
@@ -542,7 +542,7 @@ class GoogleDriveManager(Thread, CloudStorage):
             log.debug('{} => folder key {} => folder ID {}'.format(filename, ymd_date, gdrive_folder_id))
             # reset the parent folders, include the existing parents if starred
             if gdrive_file['labels']['starred']:
-                parents = []
+                parents = list()
                 for parent in gdrive_file['parents']:
                     parent_id = parent['id']
                     parents.append(parent_id)
@@ -601,7 +601,7 @@ class GoogleDriveManager(Thread, CloudStorage):
             log.info("Uploaded '{}' to Google Drive folder '{}' (ID: '{}'). Thumbnail at {}".format(
                 os.path.basename(file_path), self._gdrive_folder, f['id'], link))
         except FileNotUploadedError:
-            log.exception("Cannot upload {} to Google Drive".format(file_path))
+            log.exception('Cannot upload {} to Google Drive'.format(file_path))
 
 
 class UploadEventHandler(FileSystemEventHandler):
@@ -610,12 +610,12 @@ class UploadEventHandler(FileSystemEventHandler):
         super(UploadEventHandler, self).__init__()
         self.last_modified = None
         self._cloud_storage = cloud_storage
-        self.sample_dirs = {}
-        self.image_dirs = {}
+        self.sample_dirs = dict()
+        self.image_dirs = dict()
 
     def add_sample_dir(self, source_label, sample_dir):
         if source_label in self.sample_dirs:
-            raise RuntimeError("Sample source label {} is already configured.".format(source_label))
+            raise RuntimeError('Sample source label {} is already configured.'.format(source_label))
         self.sample_dirs[source_label] = sample_dir
 
     def _sample_dir_label(self, event_directory):
@@ -626,7 +626,7 @@ class UploadEventHandler(FileSystemEventHandler):
 
     def add_image_dir(self, source_label, image_dir):
         if source_label in self.image_dirs:
-            raise RuntimeError("Image source label {} is already configured.".format(source_label))
+            raise RuntimeError('Image source label {} is already configured.'.format(source_label))
         self.image_dirs[source_label] = image_dir
 
     def _image_dir_label(self, event_directory):
@@ -666,7 +666,7 @@ class UploadEventHandler(FileSystemEventHandler):
                                 source_label=source_label,
                                 file_path=snapshot_path,
                                 validity_seconds=snapshot_validity_seconds)
-                            log_msg = "Snapshot: {} from {}".format(snapshot, snapshot_path)
+                            log_msg = 'Snapshot: {} from {}'.format(snapshot, snapshot_path)
                             if len(snapshot.devices) > 0:
                                 log.info(log_msg)
                             else:
@@ -674,7 +674,7 @@ class UploadEventHandler(FileSystemEventHandler):
                             snapshot_queue.put(snapshot)
                             return
                         except UnpackException:
-                            log.exception("Cannot unpack snapshot data in {}".format(snapshot_path))
+                            log.exception('Cannot unpack snapshot data in {}'.format(snapshot_path))
                     # image snapshot?
                     source_label = self._image_dir_label(snapshot_path)
                     if source_label:
@@ -683,7 +683,7 @@ class UploadEventHandler(FileSystemEventHandler):
                             source_label=source_label,
                             file_path=snapshot_path,
                             validity_seconds=snapshot_validity_seconds)
-                        log_msg = "Snapshot: {} from {}".format(snapshot, snapshot_path)
+                        log_msg = 'Snapshot: {} from {}'.format(snapshot, snapshot_path)
                         if len(snapshot.devices) > 0:
                             log.info(log_msg)
                         else:
@@ -695,7 +695,7 @@ class UploadEventHandler(FileSystemEventHandler):
                                 file_path=snapshot_path,
                                 created_time=snapshot.timestamp)
                 except Exception:
-                    log.exception("Cannot process {}".format(snapshot_path))
+                    log.exception('Cannot process {}'.format(snapshot_path))
 
 
 class SMSEventHandler(Thread, FileSystemEventHandler):
@@ -734,7 +734,7 @@ class SMSEventHandler(Thread, FileSystemEventHandler):
         super(SMSEventHandler, self).on_modified(event)
         # the file has been written to and has valid content
         if not event.is_directory:
-            log.info("Incoming SMS at {}".format(event.src_path))
+            log.info('Incoming SMS at {}'.format(event.src_path))
             for line in open(event.src_path):
                 # log the line
                 log.info(line)
@@ -744,14 +744,14 @@ class SMSEventHandler(Thread, FileSystemEventHandler):
                 if balance_response:
                     balance_value = float(balance_response.group(0))
                     if balance_value <= self.balance_value_alert:
-                        log.warn("Prepaid balance has reached {}. ".format(balance_value))
+                        log.warn('Prepaid balance has reached {}. '.format(balance_value))
                         notification_message += "Prepaid balance is running low. "
                         topup_needed = True
                 balance_response = self.sms_balance_pattern.search(line)
                 if balance_response:
                     balance_value = int(balance_response.group(0))
                     if balance_value <= self.sms_balance_value_alert:
-                        log.warn("SMS balance has reached {}. ".format(balance_value))
+                        log.warn('SMS balance has reached {}. '.format(balance_value))
                         notification_message += "SMS balance is running low. "
                         topup_needed = True
                 if topup_needed:
@@ -769,8 +769,8 @@ class SnapshotProcessor(Thread):
         super(SnapshotProcessor, self).__init__()
         self.daemon = True
 
-        self.last_snapshot = {}
-        self.active_devices = {}
+        self.last_snapshot = dict()
+        self.active_devices = dict()
         self.latest_snapshot = datetime.utcnow().replace(tzinfo=pytz.utc)
         self.last_notification = 0
 
@@ -789,7 +789,7 @@ class SnapshotProcessor(Thread):
 
             if snapshot is not None:
                 if snapshot.is_expired:
-                    log.debug("Discarding expired snapshot {}".format(snapshot))
+                    log.debug('Discarding expired snapshot {}'.format(snapshot))
                     continue
                 # only non-expired snapshots qualify as recent updates
                 if snapshot.source is None:
@@ -811,7 +811,7 @@ class SnapshotProcessor(Thread):
                 # determine the new devices
                 new_device_names = list(set(self.active_devices.keys()) - set(old_device_names))
                 if len(self.active_devices) > 0 or len(new_device_names) > 0:
-                    log.debug("{} active device(s), {} new.".format(len(self.active_devices), len(new_device_names)))
+                    log.debug('{} active device(s), {} new.'.format(len(self.active_devices), len(new_device_names)))
                 last_notified = time.time() - self.last_notification
                 # notify if the notification interval has elapsed or if there are new devices
                 # and if the snapshot is newer than the last one for which a notification was sent
@@ -819,7 +819,7 @@ class SnapshotProcessor(Thread):
                         and self.latest_snapshot < snapshot.timestamp:
                     self.latest_snapshot = snapshot.timestamp
                     self.last_notification = time.time()
-                    log.info("Sending notification for {}".format(str(new_device_names)))
+                    log.info('Sending notification for {}'.format(str(new_device_names)))
                     for device_name in new_device_names:
                         notifier.notify_voice(message=device_name)
                         if isinstance(snapshot, ImageSnapshot):
@@ -834,13 +834,13 @@ class SnapshotProcessor(Thread):
                     self.last_snapshot[snapshot.source] = 0
                 inactivity = time.time() - self.last_snapshot[snapshot.source]
                 if inactivity > heartbeat_interval_seconds:
-                    log.warn("A heartbeat or snapshot is overdue from {} (after {} seconds)".format(
+                    log.warn('A heartbeat or snapshot is overdue from {} (after {} seconds)'.format(
                         snapshot.source,
                         heartbeat_interval_seconds))
 
 
 def signal_handler(signum, frame):
-    log.warn('Signal {} received, frame {}'.format(signum, str(frame)))
+    log.warn('Signal {} received.'.format(signum))
     log.debug('Draining deferred notifications now.')
     notifier.drain_deferred_notifications()
 
@@ -862,7 +862,7 @@ if __name__ == "__main__":
     signal.signal(signal.SIGHUP, signal_handler)
     # remap the labels to the directories
     if len(sample_labels) != len(sample_snapshot_dirs) or len(image_labels) != len(image_snapshot_dirs):
-        raise RuntimeError("Invalid configuration. Sources and associated labels must match.")
+        raise RuntimeError('Invalid configuration. Sources and associated labels must match.')
     # application threads
     notifier = Notifier()
     sms_event_handler = SMSEventHandler()
@@ -878,7 +878,7 @@ if __name__ == "__main__":
         upload_event_handler.add_sample_dir(source_label=label, sample_dir=sample_snapshot_dirs[source])
     for source, label in image_labels.iteritems():
         upload_event_handler.add_image_dir(source_label=label, image_dir=image_snapshot_dirs[source])
-    log.debug("Monitoring directories in {} for changes: {}".format(
+    log.debug('Monitoring directories in {} for changes: {}'.format(
         snapshot_root, str(upload_event_handler.watched_dirs)))
     # file system listener
     observer = Observer()
@@ -895,11 +895,11 @@ if __name__ == "__main__":
         while True:
             time.sleep(1)
     except(KeyboardInterrupt, SystemExit):
-        log.info("Stopping threads...")
+        log.info('Stopping threads...')
         observer.stop()
-        log.info("Waiting for completion...")
+        log.info('Waiting for completion...')
         observer.join()
-        log.info("Waiting for queue threads...")
+        log.info('Waiting for queue threads...')
         snapshot_queue.join()
         notifier.notification_queue.join()
         notifier.stop()
