@@ -9,7 +9,6 @@ import pytz
 import re
 import requests
 import signal
-import subprocess
 import sys
 import time
 import umsgpack
@@ -63,14 +62,33 @@ snapshot_validity_seconds = int(config.get('snapshots', 'snapshot_validity_secon
 snapshot_queue = Queue()
 cloud_storage = None
 
+
+class FileType(object):
+
+    def __init__(self):
+        self.mime = MimeTypes()
+
+    def mime_type(self, file_path):
+        mime_type = self.mime.guess_type(pathname2url(file_path))
+        if mime_type is not None and len(mime_type) > 0:
+            return mime_type[0]
+        return None
+
+    def test_type(self, file_path, file_type):
+        mime_type = self.mime_type(file_path)
+        if mime_type is not None and mime_type.startswith('{}/'.format(file_type)):
+            # return the specific file type
+            return mime_type.split('/')[1]
+        return None
+
+filetype = None
+
 class Notifier(Thread):
 
     def __init__(self):
         super(Notifier, self).__init__()
         self.player = None
         self.daemon = True
-
-        self.mime = MimeTypes()
 
         self.notification_queue = Queue()
         self.notification_timer = None
@@ -136,14 +154,7 @@ class Notifier(Thread):
         if os.path.isfile(tts_path) and os.path.getsize(tts_path) == 0:
             log.debug('Removing empty file {}'.format(tts_path))
             os.remove(tts_path)
-        valid_file_type = False
-        mime_type = self.mime.guess_type(pathname2url(tts_path))
-        if mime_type is not None:
-            mime_type = mime_type[0]
-            log.debug('{} is {}'.format(tts_path, mime_type))
-            if mime_type.startswith('audio/'):
-                valid_file_type = True
-        if not valid_file_type:
+        if filetype.test_type(tts_path, 'audio') is None:
             log.debug('Removing audio file of unknown type {}'.format(tts_path))
             os.remove(tts_path)
         log.debug('{} exists? {}'.format(tts_path, os.path.isfile(tts_path)))
@@ -296,9 +307,16 @@ class SampledSnapshot(Snapshot):
         if self.timestamp_data.tzinfo is None:
             self.timestamp_data = self.timestamp_data.replace(tzinfo=tz.tzlocal())
         if 'data' in self.snapshot_data:
-            self.devices_data = self.snapshot_data['data']
+            if 'samples' in self.snapshot_data['data']:
+                self.devices_data = self.snapshot_data['data']['samples']
+            else:
+                self.devices_data = None
+            if 'devices_nearby' in self.snapshot_data['data']:
+                self.devices_nearby = self.snapshot_data['data']['devices_nearby']
+            else:
+                self.devices_nearby = None
         else:
-            self.devices_data = None
+            self.devices_data = self.devices_nearby = None
 
     @property
     def timestamp(self):
@@ -315,12 +333,16 @@ class SampledSnapshot(Snapshot):
 
     @property
     def device_names(self):
-        if self.devices_data is None:
-            return None
         names = list()
-        for device_name in self.devices_data.keys():
-            names.append(' '.join([self.source_label, device_name]))
-        return names
+        if self.devices_data is not None:
+            for device_name in self.devices_data.keys():
+                names.append(' '.join([self.source_label, device_name]))
+        if self.devices_nearby is not None:
+            for device_name in self.devices_nearby.keys():
+                names.append('{} is here'.format(device_name))
+        if len(names) > 0:
+            return names
+        return None
 
     @property
     def devices(self):
@@ -431,7 +453,6 @@ class GoogleDriveManager(Thread, CloudStorage):
         # separate connection for archiver thread to prevent PyDrive lock-up
         self._archive_drive = GoogleDrive(self.gauth)
         self._folder_id_cache = dict()
-        self.mime = MimeTypes()
 
     @property
     def cloud_storage_url(self):
@@ -569,9 +590,7 @@ class GoogleDriveManager(Thread, CloudStorage):
 
     def upload(self, file_path, created_time=None):
         # upload the snapshot
-        mime_type = self.mime.guess_type(pathname2url(file_path))
-        if mime_type is not None:
-            mime_type = mime_type[0]
+        mime_type = filetype.mime_type(file_path)
         log.info("'{}' file {}".format(mime_type, file_path))
         try:
             created_date = None
@@ -863,6 +882,8 @@ if __name__ == "__main__":
     # remap the labels to the directories
     if len(sample_labels) != len(sample_snapshot_dirs) or len(image_labels) != len(image_snapshot_dirs):
         raise RuntimeError('Invalid configuration. Sources and associated labels must match.')
+    # top-level types
+    filetype = FileType()
     # application threads
     notifier = Notifier()
     sms_event_handler = SMSEventHandler()
@@ -893,7 +914,8 @@ if __name__ == "__main__":
     google_drive.start()
     try:
         while True:
-            time.sleep(1)
+            # TODO: check for thread death?
+            time.sleep(10)
     except(KeyboardInterrupt, SystemExit):
         log.info('Stopping threads...')
         observer.stop()
