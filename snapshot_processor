@@ -722,7 +722,7 @@ class UploadEventHandler(FileSystemEventHandler):
 
 class SMSEventHandler(Thread, FileSystemEventHandler):
 
-    def __init__(self):
+    def __init__(self, inbox_path, error_path):
         super(SMSEventHandler, self).__init__()
         self.daemon = True
 
@@ -736,9 +736,10 @@ class SMSEventHandler(Thread, FileSystemEventHandler):
         self.balance_value_alert = float(config.get('sms', 'balance_value_alert'))
         self.sms_balance_value_alert = int(config.get('sms', 'sms_balance_value_alert'))
 
+        self.inbox_path = inbox_path
+        self.error_path = error_path
+
     def run(self):
-        #TODO: remove
-        sleep(60*60*24)
         while True:
             log.info("Dispatching SMS balance enquiry '{}' to {}".format(
                 self.sms_balance_check_message,
@@ -756,33 +757,41 @@ class SMSEventHandler(Thread, FileSystemEventHandler):
         super(SMSEventHandler, self).on_modified(event)
         # the file has been written to and has valid content
         if not event.is_directory:
-            log.info('Incoming SMS at {}'.format(event.src_path))
-            for line in open(event.src_path):
-                # log the line
-                log.info(line)
-                balance_response = self.balance_pattern.search(line)
-                topup_needed = False
-                notification_message = ''
-                if balance_response:
-                    balance_value = float(balance_response.group(0))
-                    if balance_value <= self.balance_value_alert:
-                        log.warn('Prepaid balance has reached {}. '.format(balance_value))
-                        notification_message += "Prepaid balance is running low. "
-                        topup_needed = True
-                balance_response = self.sms_balance_pattern.search(line)
-                if balance_response:
-                    balance_value = int(balance_response.group(0))
-                    if balance_value <= self.sms_balance_value_alert:
-                        log.warn('SMS balance has reached {}. '.format(balance_value))
-                        notification_message += "SMS balance is running low. "
-                        topup_needed = True
-                if topup_needed:
-                    notification_message += 'Top-up soon.'
-                if len(notification_message) > 0:
-                    notifier.notify_voice(message=notification_message, informational=True)
-                else:
-                    # something more generic
-                    pass
+            if self.inbox_path in event.src_path:
+                log.info('Incoming SMS at {}'.format(event.src_path))
+                for line in open(event.src_path):
+                    # log the line
+                    log.info(line)
+                    balance_response = self.balance_pattern.search(line)
+                    topup_needed = False
+                    notification_message = ''
+                    if balance_response:
+                        balance_value = float(balance_response.group(0))
+                        if balance_value <= self.balance_value_alert:
+                            log.warn('Prepaid balance has reached {}. '.format(balance_value))
+                            notification_message += "Prepaid balance is running low. "
+                            topup_needed = True
+                    balance_response = self.sms_balance_pattern.search(line)
+                    if balance_response:
+                        balance_value = int(balance_response.group(0))
+                        if balance_value <= self.sms_balance_value_alert:
+                            log.warn('SMS balance has reached {}. '.format(balance_value))
+                            notification_message += "SMS balance is running low. "
+                            topup_needed = True
+                    if topup_needed:
+                        notification_message += 'Top-up soon.'
+                    if len(notification_message) > 0:
+                        notifier.notify_voice(message=notification_message, informational=True)
+                    else:
+                        # something more generic
+                        pass
+            elif self.error_path in event.src_path:
+                log.warn('SMS error at {}'.format(event.src_path))
+                notifier.notify_voice(message="SMS fault!", informational=True)
+            else:
+                log.warn('Unsupported SMS event path: {}'.format(event.src_path))
+                # some other path that is unsupported
+                pass
 
 
 class SnapshotProcessor(Thread):
@@ -889,7 +898,9 @@ if __name__ == "__main__":
     filetype = FileType()
     # application threads
     notifier = Notifier()
-    sms_event_handler = SMSEventHandler()
+    sms_inbox_path = gammu_cfg.get('smsd', 'inboxpath')
+    sms_error_path = gammu_cfg.get('smsd', 'errorsmspath')
+    sms_event_handler = SMSEventHandler(inbox_path=sms_inbox_path, error_path=sms_error_path)
     processor = SnapshotProcessor()
     # ensure that auth is properly set up first
     google_drive = GoogleDriveManager(
@@ -907,7 +918,8 @@ if __name__ == "__main__":
     # file system listener
     observer = Observer()
     observer.schedule(upload_event_handler, config.get('snapshots', 'root_dir'), recursive=True)
-    observer.schedule(sms_event_handler, gammu_cfg.get('smsd', 'inboxpath'))
+    observer.schedule(sms_event_handler, sms_inbox_path)
+    observer.schedule(sms_event_handler, sms_error_path)
     observer.start()
     # start threads
     sms_event_handler.start()
@@ -918,6 +930,7 @@ if __name__ == "__main__":
     try:
         while True:
             # TODO: check for thread death?
+            # TODO: schedule threads that otherwise just sleep
             time.sleep(10)
     except(KeyboardInterrupt, SystemExit):
         log.info('Stopping threads...')
