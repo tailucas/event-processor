@@ -9,6 +9,7 @@ argparse==1.2.1
 distribute==0.6.24dev-r0
 google-api-python-client==1.4.0
 httplib2==0.9.1
+nose==1.3.7
 numpy==1.6.2
 oauth2client==1.4.11
 pathtools==0.1.2
@@ -20,9 +21,11 @@ pyasn1==0.1.7
 pyasn1-modules==0.0.5
 pygame==1.9.1release
 pyserial==2.5
+python-clickatell==0.1.3
 python-dateutil==2.4.2
 python-magic==0.4.6
 pytz==2015.2
+pyzmq==14.7.0
 reportlab==2.5
 requests==2.7.0
 rsa==3.1.4
