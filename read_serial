@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 import umsgpack
+import zmq
 
 from ConfigParser import ConfigParser
 from Queue import LifoQueue
@@ -51,6 +52,10 @@ ftp_dir = config.get('ftp', 'dir')
 
 trigger_condition = Condition()
 
+zmq_context = zmq.Context()
+socket = zmq_context.socket(zmq.PUB)
+socket.bind("tcp://*:5556")
+
 
 def exec_cmd(cmd):
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
@@ -68,6 +73,7 @@ def upload(payload=None):
     if payload is not None and len(payload) > 0:
         output['data'] = payload
     log.debug(json.dumps(output))
+    socket.send_pyobj(output)
     fh = StringIO(umsgpack.dumps(output))
     filename = str(time.time())
     while True:
