@@ -10,15 +10,11 @@ import signal
 import subprocess
 import sys
 import time
-import umsgpack
 import zmq
 
 from ConfigParser import ConfigParser
-from Queue import LifoQueue
-from StringIO import StringIO
 
 from datetime import datetime
-from ftplib import FTP
 from serial.serialutil import SerialException
 from threading import Thread, Condition
 from time import sleep
@@ -36,25 +32,17 @@ SAMPLE_INTERVAL_SECONDS = 1
 SAMPLE_DEBOUNCE_COOLDOWN_SECONDS = 60
 DEVICE_MONITOR_CONCURRENCY = 4
 DATE_FORMAT = '%Y-%m-%dT%H:%M:%S.%f%z'
+URL_WORKER = "inproc://workers"
+
 
 config = ConfigParser()
 config.optionxform = str
 config.read([os.path.expanduser('~/.{}'.format(APP))])
 
-upload_queue = LifoQueue()
-
 location = config.get('app', 'location')
 
-ftp_server = config.get('ftp', 'server')
-ftp_user = config.get('ftp', 'user')
-ftp_password = config.get('ftp', 'password')
-ftp_dir = config.get('ftp', 'dir')
-
+#TODO: remove this notify mechanism
 trigger_condition = Condition()
-
-zmq_context = zmq.Context()
-socket = zmq_context.socket(zmq.PUB)
-socket.bind("tcp://*:5556")
 
 
 def exec_cmd(cmd):
@@ -63,54 +51,33 @@ def exec_cmd(cmd):
     return out, err, p.returncode
 
 
-def upload(payload=None):
-    now = datetime.utcnow()
-    now = now.replace(tzinfo=pytz.utc)
-    ts = now.strftime(DATE_FORMAT)
+def uploader(worker_url, context, publisher):
+    # Socket to talk to dispatcher
+    worker = context.socket(zmq.REP)
+    worker.connect(worker_url)
+    while True:
+        publisher.send_pyobj(worker.recv())
+        worker.send('{} events for {} peers'.format(publisher.events, publisher.peers))
+
+
+def upload(workers, timestamp=None, payload=None):
     output = dict()
-    output['timestamp'] = ts
+    if timestamp is None:
+        timestamp = time.now()
+    output['timestamp'] = datetime.utcfromtimestamp(timestamp).replace(tzinfo=pytz.utc).strftime(DATE_FORMAT)
     output['location'] = location
     if payload is not None and len(payload) > 0:
         output['data'] = payload
+    log.debug(workers.send_pyobj(output))
     log.debug(json.dumps(output))
-    socket.send_pyobj(output)
-    fh = StringIO(umsgpack.dumps(output))
-    filename = str(time.time())
-    while True:
-        try:
-            log.info('ftp://{}@{}'.format(
-                ftp_user,
-                os.path.sep.join([ftp_server, ftp_dir, filename])))
-            ftp = FTP(host=ftp_server, timeout=UPLOAD_TIMEOUT_SECONDS)
-            ftp.login(user=ftp_user, passwd=ftp_password)
-            ftp.cwd(ftp_dir)
-            ftp.storbinary('STOR {}'.format(filename), fh)
-            ftp.close()
-            break
-        except Exception as e:
-            log.error(e)
-    fh.close()
-
-
-def uploader():
-    global last_upload
-    last_upload = 0
-    while True:
-        sample = upload_queue.get()
-        try:
-            upload(sample)
-        except Exception as e:
-            log.error(e)
-        else:
-            upload_queue.task_done()
-        last_upload = time.time()
 
 
 class BluetoothDeviceMonitor(Thread):
 
-    def __init__(self):
+    def __init__(self, workers):
         super(BluetoothDeviceMonitor, self).__init__()
         self.daemon = True
+        self.workers = workers
 
         devices = config.get('bluetooth', 'devices').replace('-', ':').upper().split(',')
         owners = config.get('bluetooth', 'owners').split(',')
@@ -144,21 +111,12 @@ class BluetoothDeviceMonitor(Thread):
             trigger_condition.wait()
             for owner, device in self.owner_devices.items():
                 if self.l2ping(owner, device) is not None:
-                    upload_queue.put({'devices_nearby': {owner: device}})
+                    upload(self.workers, timestamp=None, payload={'devices_nearby': {owner: device}})
             trigger_condition.release()
-
-
-def heartbeat():
-    while True:
-        sleep(HEARTBEAT_INTERVAL_SECONDS)
-        inactivity = time.time() - last_upload
-        if inactivity > HEARTBEAT_INTERVAL_SECONDS:
-            upload()
 
 
 def signal_handler(signum, frame):
     log.warn('Signal {} received.'.format(signum))
-    log.debug('Pooling nearby devices.')
     trigger_condition.acquire()
     trigger_condition.notify()
     trigger_condition.release()
@@ -175,14 +133,17 @@ if __name__ == "__main__":
     log.addHandler(stream_handler)
     # set up signal handlers
     signal.signal(signal.SIGHUP, signal_handler)
+    # Socket to talk to workers
+    zmq_context = zmq.Context()
+    workers = zmq_context.socket(zmq.DEALER)
+    workers.bind(URL_WORKER)
+    # Socket to talk to the outside world
+    publisher = zmq_context.socket(zmq.PUB)
+    publisher.bind('tcp://*:{port}'.format(port=config.get('zmq', 'port')))
     # start up threads
-    uploader = Thread(target=uploader)
-    uploader.daemon = True
+    uploader = Thread(target=uploader, args=(URL_WORKER, zmq_context, publisher))
     uploader.start()
-    heartbeat = Thread(target=heartbeat)
-    heartbeat.daemon = True
-    heartbeat.start()
-    bluetooth_monitor = BluetoothDeviceMonitor()
+    bluetooth_monitor = BluetoothDeviceMonitor(workers=workers)
     bluetooth_monitor.start()
     com1 = serial.Serial(port=config.get('serial', 'port'), baudrate=config.getint('serial', 'baudrate'))
     field_labels = dict(config.items('field_labels'))
@@ -207,6 +168,8 @@ if __name__ == "__main__":
             # we map sample values to the last time that value was seen
             sample_label = field_labels[label]
             sample_value_history[sample_label] = dict()
+        # when last did we upload
+        last_upload = 0
         while True:
             try:
                 data = com1.readline()
@@ -270,14 +233,18 @@ if __name__ == "__main__":
                             sample_label = ' '.join([sample_label, range_label])
                 # add the sample to the output
                 output_samples[sample_label] = sample_value
-            if len(output_samples) > 0:
+            # heartbeat?
+            if len(output_samples) == 0:
+                inactivity = time.time() - last_upload
+                if inactivity > HEARTBEAT_INTERVAL_SECONDS:
+                    upload(workers=workers)
+                    last_upload = time.time()
+            else:
+                # there's something going on here
                 trigger_condition.acquire()
                 trigger_condition.notify()
                 trigger_condition.release()
-                log.debug('{} samples enqueued behind {} others for upload.'.format(
-                    len(output_samples),
-                    upload_queue.qsize()))
-                upload_queue.put({'samples': output_samples})
+                upload(workers=workers, timestamp=sample_time, payload={'samples': output_samples})
                 # do not overwhelm the uploader, but keep sample rate as high as the input provides it
                 sleep(SAMPLE_INTERVAL_SECONDS)
                 # throw away the intermediate data if the external sample rate exceeds our ability to consume it
@@ -285,5 +252,9 @@ if __name__ == "__main__":
     except(KeyboardInterrupt, SystemExit):
         log.info('Closing serial connection...')
         com1.close()
-        log.info('Waiting for queue threads...')
-        upload_queue.join()
+        log.info('Stopping workers...')
+        workers.close()
+        log.info('Stopping publisher...')
+        publisher.close()
+        log.info('Terminating messaging context...')
+        zmq_context.term()
