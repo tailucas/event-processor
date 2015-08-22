@@ -16,7 +16,7 @@ from ConfigParser import ConfigParser
 
 from datetime import datetime
 from serial.serialutil import SerialException
-from threading import Thread, Condition
+from threading import Thread
 from time import sleep
 
 sys.displayhook = pprint.pprint
@@ -32,7 +32,9 @@ SAMPLE_INTERVAL_SECONDS = 1
 SAMPLE_DEBOUNCE_COOLDOWN_SECONDS = 60
 DEVICE_MONITOR_CONCURRENCY = 4
 DATE_FORMAT = '%Y-%m-%dT%H:%M:%S.%f%z'
-URL_WORKER = "inproc://workers"
+URL_WORKER_SAMPLES = 'inproc://samples'
+URL_WORKER_PROBE_RESULT = 'inproc://probe-result'
+URL_WORKER_PROBE_START = 'inproc://probe-start'
 
 
 config = ConfigParser()
@@ -40,10 +42,7 @@ config.optionxform = str
 config.read([os.path.expanduser('~/.{}'.format(APP))])
 
 location = config.get('app', 'location')
-
-#TODO: remove this notify mechanism
-trigger_condition = Condition()
-
+zmq_context = zmq.Context()
 
 def exec_cmd(cmd):
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
@@ -51,33 +50,44 @@ def exec_cmd(cmd):
     return out, err, p.returncode
 
 
-def uploader(worker_url, context, publisher):
+def uploader():
+    # Socket to talk to the outside world
+    publisher = zmq_context.socket(zmq.PUB)
+    publisher.bind('tcp://*:{port}'.format(port=config.get('zmq', 'port')))
     # Socket to talk to dispatcher
-    worker = context.socket(zmq.REP)
-    worker.connect(worker_url)
+    samples = zmq_context.socket(zmq.PULL)
+    samples.connect(URL_WORKER_SAMPLES)
+    probes = zmq_context.socket(zmq.PULL)
+    probes.connect(URL_WORKER_PROBE_RESULT)
+    # poller
+    poller = zmq.Poller()
+    poller.register(samples, zmq.POLLIN)
+    poller.register(probes, zmq.POLLIN)
     while True:
-        publisher.send_pyobj(worker.recv())
-        worker.send('{} events for {} peers'.format(publisher.events, publisher.peers))
+        socks = dict(poller.poll())
+        for socket in socks:
+            log.debug('{} events for {} peers'.format(publisher.events, publisher.peers))
+            publisher.send_pyobj(socket.recv())
 
 
-def upload(workers, timestamp=None, payload=None):
-    output = dict()
+def make_payload(timestamp=None, data=None):
+    payload = dict()
     if timestamp is None:
         timestamp = time.now()
-    output['timestamp'] = datetime.utcfromtimestamp(timestamp).replace(tzinfo=pytz.utc).strftime(DATE_FORMAT)
-    output['location'] = location
-    if payload is not None and len(payload) > 0:
-        output['data'] = payload
-    log.debug(workers.send_pyobj(output))
-    log.debug(json.dumps(output))
+    payload['timestamp'] = datetime.utcfromtimestamp(timestamp).replace(tzinfo=pytz.utc).strftime(DATE_FORMAT)
+    payload['location'] = location
+    if data is not None and len(data) > 0:
+        payload['data'] = data
+    log.debug(json.dumps(payload))
+    return payload
 
 
 class BluetoothDeviceMonitor(Thread):
 
-    def __init__(self, workers):
+    def __init__(self, zmq_context):
         super(BluetoothDeviceMonitor, self).__init__()
         self.daemon = True
-        self.workers = workers
+        self._zmq_context = zmq_context
 
         devices = config.get('bluetooth', 'devices').replace('-', ':').upper().split(',')
         owners = config.get('bluetooth', 'owners').split(',')
@@ -106,20 +116,24 @@ class BluetoothDeviceMonitor(Thread):
             raise RuntimeError('No Bluetooth adaptors found using hcitool.')
         for line in hcitool[1:]:
             log.info('Bluetooth adaptor found: {}'.format(' '.join(line.split())))
+        # Socket to initiate probe
+        probe_start = self._zmq_context.socket(zmq.PULL)
+        probe_start.connect(URL_WORKER_PROBE_START)
+        # Socket to talk to publisher
+        publisher = self._zmq_context.socket(zmq.PUSH)
+        publisher.bind(URL_WORKER_PROBE_RESULT)
         while True:
-            trigger_condition.acquire()
-            trigger_condition.wait()
+            probe_start.recv()
             for owner, device in self.owner_devices.items():
                 if self.l2ping(owner, device) is not None:
-                    upload(self.workers, timestamp=None, payload={'devices_nearby': {owner: device}})
-            trigger_condition.release()
+                    publisher.send_pyobj(make_payload(timestamp=None, data={'devices_nearby': {owner: device}}))
+
+probe_start = None
 
 
 def signal_handler(signum, frame):
     log.warn('Signal {} received.'.format(signum))
-    trigger_condition.acquire()
-    trigger_condition.notify()
-    trigger_condition.release()
+    probe_start.send_string('probe')
 
 
 if __name__ == "__main__":
@@ -131,20 +145,19 @@ if __name__ == "__main__":
     log.addHandler(syslog_handler)
     stream_handler = logging.StreamHandler(stream=sys.stdout)
     log.addHandler(stream_handler)
+    # Socket to talk to workers
+    sample_sink = zmq_context.socket(zmq.PUSH)
+    sample_sink.bind(URL_WORKER_SAMPLES)
+    probe_start = zmq_context.socket(zmq.PUSH)
+    probe_start.bind(URL_WORKER_PROBE_START)
+    # start up threads
+    uploader = Thread(target=uploader)
+    uploader.start()
+    bluetooth_monitor = BluetoothDeviceMonitor(context=zmq_context)
+    bluetooth_monitor.start()
     # set up signal handlers
     signal.signal(signal.SIGHUP, signal_handler)
-    # Socket to talk to workers
-    zmq_context = zmq.Context()
-    workers = zmq_context.socket(zmq.DEALER)
-    workers.bind(URL_WORKER)
-    # Socket to talk to the outside world
-    publisher = zmq_context.socket(zmq.PUB)
-    publisher.bind('tcp://*:{port}'.format(port=config.get('zmq', 'port')))
-    # start up threads
-    uploader = Thread(target=uploader, args=(URL_WORKER, zmq_context, publisher))
-    uploader.start()
-    bluetooth_monitor = BluetoothDeviceMonitor(workers=workers)
-    bluetooth_monitor.start()
+    # start sampler
     com1 = serial.Serial(port=config.get('serial', 'port'), baudrate=config.getint('serial', 'baudrate'))
     field_labels = dict(config.items('field_labels'))
     field_normal_values = dict(config.items('field_normal_values'))
@@ -237,14 +250,12 @@ if __name__ == "__main__":
             if len(output_samples) == 0:
                 inactivity = time.time() - last_upload
                 if inactivity > HEARTBEAT_INTERVAL_SECONDS:
-                    upload(workers=workers)
+                    sample_sink.send_pyobj(make_payload())
                     last_upload = time.time()
             else:
                 # there's something going on here
-                trigger_condition.acquire()
-                trigger_condition.notify()
-                trigger_condition.release()
-                upload(workers=workers, timestamp=sample_time, payload={'samples': output_samples})
+                probe_start.send_string('main')
+                sample_sink.send_pyobj(make_payload(timestamp=sample_time, data={'samples': output_samples}))
                 # do not overwhelm the uploader, but keep sample rate as high as the input provides it
                 sleep(SAMPLE_INTERVAL_SECONDS)
                 # throw away the intermediate data if the external sample rate exceeds our ability to consume it
@@ -253,8 +264,8 @@ if __name__ == "__main__":
         log.info('Closing serial connection...')
         com1.close()
         log.info('Stopping workers...')
-        workers.close()
-        log.info('Stopping publisher...')
-        publisher.close()
+        sample_sink.close()
+        probe_start.close()
+        uploader.close()
         log.info('Terminating messaging context...')
         zmq_context.term()
