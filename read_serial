@@ -18,6 +18,7 @@ from datetime import datetime
 from serial.serialutil import SerialException
 from threading import Thread
 from time import sleep
+from zmq import ContextTerminated
 
 sys.displayhook = pprint.pprint
 
@@ -64,7 +65,10 @@ def uploader():
     poller.register(samples, zmq.POLLIN)
     poller.register(probes, zmq.POLLIN)
     while True:
-        socks = dict(poller.poll())
+        try:
+            socks = dict(poller.poll())
+        except ContextTerminated:
+            break
         for socket in socks:
             #TODO: fixme
             # AttributeError: Socket has no such option: PEERS
@@ -124,7 +128,10 @@ class BluetoothDeviceMonitor(Thread):
         publisher = zmq_context.socket(zmq.PUSH)
         publisher.bind(URL_WORKER_PROBE_RESULT)
         while True:
-            probe_start.recv()
+            try:
+                probe_start.recv()
+            except ContextTerminated:
+                break
             for owner, device in self.owner_devices.items():
                 if self.l2ping(owner, device) is not None:
                     publisher.send_pyobj(make_payload(timestamp=None, data={'devices_nearby': {owner: device}}))
