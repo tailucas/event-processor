@@ -84,10 +84,9 @@ def make_payload(timestamp=None, data=None):
 
 class BluetoothDeviceMonitor(Thread):
 
-    def __init__(self, zmq_context):
+    def __init__(self):
         super(BluetoothDeviceMonitor, self).__init__()
         self.daemon = True
-        self._zmq_context = zmq_context
 
         devices = config.get('bluetooth', 'devices').replace('-', ':').upper().split(',')
         owners = config.get('bluetooth', 'owners').split(',')
@@ -117,10 +116,10 @@ class BluetoothDeviceMonitor(Thread):
         for line in hcitool[1:]:
             log.info('Bluetooth adaptor found: {}'.format(' '.join(line.split())))
         # Socket to initiate probe
-        probe_start = self._zmq_context.socket(zmq.PULL)
+        probe_start = zmq_context.socket(zmq.PULL)
         probe_start.connect(URL_WORKER_PROBE_START)
         # Socket to talk to publisher
-        publisher = self._zmq_context.socket(zmq.PUSH)
+        publisher = zmq_context.socket(zmq.PUSH)
         publisher.bind(URL_WORKER_PROBE_RESULT)
         while True:
             probe_start.recv()
@@ -153,7 +152,7 @@ if __name__ == "__main__":
     # start up threads
     uploader = Thread(target=uploader)
     uploader.start()
-    bluetooth_monitor = BluetoothDeviceMonitor(context=zmq_context)
+    bluetooth_monitor = BluetoothDeviceMonitor()
     bluetooth_monitor.start()
     # set up signal handlers
     signal.signal(signal.SIGHUP, signal_handler)
