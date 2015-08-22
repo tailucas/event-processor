@@ -17,6 +17,9 @@ from ConfigParser import ConfigParser
 
 import abc
 import gammu.smsd
+from clickatell.api import Clickatell
+from clickatell.errors import ClickatellError
+from clickatell import constants as cc
 from datetime import datetime, timedelta
 from dateutil import tz
 from mimetypes import MimeTypes
@@ -47,12 +50,6 @@ TTS_URL = 'http://translate.google.com/translate_tts'
 config = ConfigParser()
 config.optionxform = str
 config.read([os.path.expanduser('~/.{}'.format(APP))])
-
-gammu_cfg_file = config.get('sms', 'gammu-smsdrc')
-smsd = gammu.smsd.SMSD(gammu_cfg_file)
-gammu_cfg = ConfigParser()
-gammu_cfg.optionxform = str
-gammu_cfg.read(gammu_cfg_file)
 
 snapshot_root = config.get('snapshots', 'root_dir')
 heartbeat_interval_seconds = int(config.get('snapshots', 'heartbeat_interval_seconds'))
@@ -85,10 +82,12 @@ filetype = None
 
 class Notifier(Thread):
 
-    def __init__(self):
+    def __init__(self, sms_provider):
         super(Notifier, self).__init__()
         self.player = None
         self.daemon = True
+
+        self.sms_provider = sms_provider
 
         self.notification_queue = Queue()
         self.notification_timer = None
@@ -162,8 +161,15 @@ class Notifier(Thread):
             log.debug("Generating '{}' using {}".format(message, TTS_URL))
             r = requests.get(
                 url=TTS_URL,
-                params={'tl': 'en', 'q': message},
-                headers={'user-agent': 'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.125 Safari/537.36'},
+                # http://stackoverflow.com/questions/9893175/google-text-to-speech-api
+                # curl 'http://translate.google.com/translate_tts?ie=UTF-8&q=Hello&tl=en&client=t'
+                # -H 'Referer: http://translate.google.com/' -H 'User-Agent: stagefright/1.2 (Linux;Android 5.0)' > google_tts.mp3
+                params={'ie': 'UTF-8',
+                        'tl': 'en',
+                        'client': 't',
+                        'q': message},
+                headers={'User-Agent': 'stagefright/1.2 (Linux;Android 5.0)',
+                         'Referer': 'http://translate.google.com/'},
                 allow_redirects=False)
             log.debug('HTTP {} from {}'.format(r.status_code, r.url))
             r.raise_for_status()
@@ -239,18 +245,8 @@ class Notifier(Thread):
                 log.debug('Deferring notifications for {} hours.'.format(delay.seconds / 3600))
                 self.notification_timer = Timer(delay.seconds, self.drain_deferred_notifications)
 
-    @staticmethod
-    def send_sms(recipient, message, flash=False):
-        sms_class = 1
-        if flash:
-            sms_class = 0
-        message = {
-            'Text': message,
-            'SMSC': {'Location': 1},
-            'Number': recipient,
-            'Class': sms_class
-        }
-        smsd.InjectSMS([message])
+    def send_sms(self, recipient, message, flash=False):
+        self.sms_provider.send_sms(recipient=recipient, message=message, flash=flash)
 
     @staticmethod
     def checksum(message):
@@ -720,24 +716,54 @@ class UploadEventHandler(FileSystemEventHandler):
                     log.exception('Cannot process {}'.format(snapshot_path))
 
 
-class SMSEventHandler(Thread, FileSystemEventHandler):
+class SMSProvider(object):
+    __metaclass__ = abc.ABCMeta
 
-    def __init__(self, inbox_path, error_path):
-        super(SMSEventHandler, self).__init__()
+    @abc.abstractproperty
+    def send_sms(self, recipient, message, flash=False):
+        return NotImplemented
+
+
+class GammuSMSProvider(Thread, FileSystemEventHandler, SMSProvider):
+
+    def __init__(self):
+        super(GammuSMSProvider, self).__init__()
         self.daemon = True
 
-        balance_pattern = config.get('sms', 'balance_pattern')
+        gammu_cfg_file = config.get('sms', 'gammu-smsdrc')
+        self.smsd = gammu.smsd.SMSD(gammu_cfg_file)
+        gammu_cfg = ConfigParser()
+        gammu_cfg.optionxform = str
+        gammu_cfg.read(gammu_cfg_file)
+
+        balance_pattern = config.get('gammu', 'balance_pattern')
         self.balance_pattern = re.compile(balance_pattern)
-        sms_balance_pattern = config.get('sms', 'sms_balance_pattern')
+        sms_balance_pattern = config.get('gammu', 'sms_balance_pattern')
         self.sms_balance_pattern = re.compile(sms_balance_pattern)
         log.debug("Matching SMS balance checks on patterns: '{}', '{}'".format(balance_pattern, sms_balance_pattern))
-        self.sms_balance_check_number = config.get('sms', 'balance_check_number')
-        self.sms_balance_check_message = config.get('sms', 'balance_check_message')
-        self.balance_value_alert = float(config.get('sms', 'balance_value_alert'))
-        self.sms_balance_value_alert = int(config.get('sms', 'sms_balance_value_alert'))
+        self.sms_balance_check_number = config.get('gammu', 'balance_check_number')
+        self.sms_balance_check_message = config.get('gammu', 'balance_check_message')
+        self.balance_value_alert = float(config.get('gammu', 'balance_value_alert'))
+        self.sms_balance_value_alert = int(config.get('gammu', 'sms_balance_value_alert'))
 
-        self.inbox_path = inbox_path
-        self.error_path = error_path
+        self.inbox_path = gammu_cfg.get('smsd', 'inboxpath')
+        self.error_path = gammu_cfg.get('smsd', 'errorsmspath')
+
+    @property
+    def spool_directories(self):
+        return (self.inbox_path, self.error_path)
+
+    def send_sms(self, recipient, message, flash=False):
+        sms_class = 1
+        if flash:
+            sms_class = 0
+        message = {
+            'Text': message,
+            'SMSC': {'Location': 1},
+            'Number': recipient,
+            'Class': sms_class
+        }
+        self.smsd.InjectSMS([message])
 
     def run(self):
         while True:
@@ -754,7 +780,7 @@ class SMSEventHandler(Thread, FileSystemEventHandler):
         """
         :type event: FileModifiedEvent
         """
-        super(SMSEventHandler, self).on_modified(event)
+        super(GammuSMSProvider, self).on_modified(event)
         # the file has been written to and has valid content
         if not event.is_directory:
             if self.inbox_path in event.src_path:
@@ -793,6 +819,22 @@ class SMSEventHandler(Thread, FileSystemEventHandler):
                 # some other path that is unsupported
                 pass
 
+
+class ClickatellSMSProvider(SMSProvider):
+
+    def __init__(self):
+        super(ClickatellSMSProvider, self).__init__()
+        user = config.get('clickatell', 'user')
+        password = config.get('clickatell', 'password')
+        app_id = config.get('clickatell', 'app-id')
+        self.clickatell = Clickatell(user, password, app_id)
+
+    def send_sms(self, recipient, message, flash=False):
+        try:
+            [resp] = self.clickatell.sendmsg(recipients=[recipient], text=message)
+            log.debug('SMS sent: {}'.format(str(resp)))
+        except ClickatellError:
+            log.exception('Cannot SMS {}: {}'.format(recipient, message))
 
 class SnapshotProcessor(Thread):
 
@@ -854,12 +896,10 @@ class SnapshotProcessor(Thread):
                     for device_name in new_device_names:
                         notifier.notify_voice(message=device_name)
                         if isinstance(snapshot, ImageSnapshot):
-                            #TODO: remove
-                            recipient = notifier.sms_owners['Tai']
-                            message = '{}: {}'.format(snapshot, cloud_storage.cloud_storage_url)
-                            log.debug('SMS {} {} characters: {}'.format(recipient, len(message), message))
-                            #TODO: fix
-                            notifier.send_sms(recipient=recipient, message=message, flash=False)
+                            for name, recipient in notifier.sms_owners.items():
+                                message = '{}: {}'.format(snapshot, cloud_storage.cloud_storage_url)
+                                log.debug('SMS {} ({}) {} characters: {}'.format(name, recipient, len(message), message))
+                                notifier.send_sms(recipient=recipient, message=message, flash=False)
             else:
                 if snapshot.source not in self.last_snapshot:
                     self.last_snapshot[snapshot.source] = 0
@@ -896,11 +936,16 @@ if __name__ == "__main__":
         raise RuntimeError('Invalid configuration. Sources and associated labels must match.')
     # top-level types
     filetype = FileType()
+    # sms
+    sms_method = config.get('sms', 'method')
+    if sms_method == 'gammu':
+        sms_provider = GammuSMSProvider()
+    elif sms_method == 'clickatell':
+        sms_provider = ClickatellSMSProvider()
+    else:
+        raise RuntimeError('Unknown SMS method specified: {}'.format(sms_method))
     # application threads
-    notifier = Notifier()
-    sms_inbox_path = gammu_cfg.get('smsd', 'inboxpath')
-    sms_error_path = gammu_cfg.get('smsd', 'errorsmspath')
-    sms_event_handler = SMSEventHandler(inbox_path=sms_inbox_path, error_path=sms_error_path)
+    notifier = Notifier(sms_provider=sms_provider)
     processor = SnapshotProcessor()
     # ensure that auth is properly set up first
     google_drive = GoogleDriveManager(
@@ -918,13 +963,15 @@ if __name__ == "__main__":
     # file system listener
     observer = Observer()
     observer.schedule(upload_event_handler, config.get('snapshots', 'root_dir'), recursive=True)
-    observer.schedule(sms_event_handler, sms_inbox_path)
-    observer.schedule(sms_event_handler, sms_error_path)
+    if isinstance(sms_provider, GammuSMSProvider):
+        for dir in sms_provider.spool_directories:
+            observer.schedule(sms_provider, dir)
+        # Since GammuSMSProvider is a Thread
+        sms_provider.start()
     observer.start()
     # start threads
-    sms_event_handler.start()
-    processor.start()
     notifier.start()
+    processor.start()
     # start the Google Driver archiver last
     google_drive.start()
     try:
