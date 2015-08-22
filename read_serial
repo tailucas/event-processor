@@ -73,7 +73,7 @@ def uploader():
 def make_payload(timestamp=None, data=None):
     payload = dict()
     if timestamp is None:
-        timestamp = time.now()
+        timestamp = time.time()
     payload['timestamp'] = datetime.utcfromtimestamp(timestamp).replace(tzinfo=pytz.utc).strftime(DATE_FORMAT)
     payload['location'] = location
     if data is not None and len(data) > 0:
