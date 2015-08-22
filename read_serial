@@ -70,9 +70,6 @@ def uploader():
         except ContextTerminated:
             break
         for socket in socks:
-            #TODO: fixme
-            # AttributeError: Socket has no such option: PEERS
-            #log.debug('{} events for {} peers'.format(publisher.events, publisher.peers))
             publisher.send_pyobj(socket.recv())
 
 
