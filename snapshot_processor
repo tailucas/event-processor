@@ -12,6 +12,7 @@ import signal
 import sys
 import time
 import umsgpack
+import zmq
 
 from ConfigParser import ConfigParser
 
@@ -35,6 +36,7 @@ from umsgpack import UnpackException
 from urllib import pathname2url
 from watchdog.events import FileSystemEventHandler, FileModifiedEvent
 from watchdog.observers import Observer
+from zmq import ContextTerminated
 
 sys.displayhook = pprint
 
@@ -56,8 +58,9 @@ heartbeat_interval_seconds = int(config.get('snapshots', 'heartbeat_interval_sec
 notification_interval_seconds = int(config.get('snapshots', 'notification_interval_seconds'))
 snapshot_validity_seconds = int(config.get('snapshots', 'snapshot_validity_seconds'))
 
-snapshot_queue = Queue()
 cloud_storage = None
+
+zmq_context = zmq.Context()
 
 
 class FileType(object):
@@ -260,9 +263,7 @@ notifier = None
 class Snapshot(object):
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, source_label, file_path, validity_seconds):
-        self.source_label = source_label
-        self.file_path = file_path
+    def __init__(self, validity_seconds):
         self.validity_seconds = validity_seconds
 
     @abc.abstractproperty
@@ -292,13 +293,10 @@ class Snapshot(object):
 
 class SampledSnapshot(Snapshot):
 
-    def __init__(self, source_label, file_path, validity_seconds):
-        super(SampledSnapshot, self).__init__(
-            source_label=source_label,
-            file_path=file_path,
-            validity_seconds=validity_seconds)
-        f = open(file_path)
-        self.snapshot_data = umsgpack.unpack(f)
+    def __init__(self, snapshot_data, validity_seconds):
+        super(SampledSnapshot, self).__init__(validity_seconds=validity_seconds)
+        self.snapshot_data = snapshot_data
+        self.source_label = self.snapshot_data['location']
         self.timestamp_data = dateutil.parser.parse(self.snapshot_data['timestamp'])
         if self.timestamp_data.tzinfo is None:
             self.timestamp_data = self.timestamp_data.replace(tzinfo=tz.tzlocal())
@@ -364,11 +362,9 @@ class SampledSnapshot(Snapshot):
 class ImageSnapshot(Snapshot):
 
     def __init__(self, source_label, file_path, validity_seconds):
-        super(ImageSnapshot, self).__init__(
-            source_label=source_label,
-            file_path=file_path,
-            validity_seconds=validity_seconds)
+        super(ImageSnapshot, self).__init__(validity_seconds=validity_seconds)
         # default timestamp data to 'now'
+        self.source_label = source_label
         self.timestamp_data = datetime.utcnow().replace(tzinfo=pytz.utc)
         try:
             file_base_name = os.path.splitext(os.path.basename(file_path))[0]
@@ -628,19 +624,7 @@ class UploadEventHandler(FileSystemEventHandler):
         super(UploadEventHandler, self).__init__()
         self.last_modified = None
         self._cloud_storage = cloud_storage
-        self.sample_dirs = dict()
         self.image_dirs = dict()
-
-    def add_sample_dir(self, source_label, sample_dir):
-        if source_label in self.sample_dirs:
-            raise RuntimeError('Sample source label {} is already configured.'.format(source_label))
-        self.sample_dirs[source_label] = sample_dir
-
-    def _sample_dir_label(self, event_directory):
-        for dir_label, sample_dir in self.sample_dirs.iteritems():
-            if sample_dir in event_directory:
-                return dir_label
-        return None
 
     def add_image_dir(self, source_label, image_dir):
         if source_label in self.image_dirs:
@@ -676,23 +660,6 @@ class UploadEventHandler(FileSystemEventHandler):
             if snapshot_path.startswith(snapshot_root):
                 # noinspection PyBroadException
                 try:
-                    # sampled snapshot?
-                    source_label = self._sample_dir_label(snapshot_path)
-                    if source_label:
-                        try:
-                            snapshot = SampledSnapshot(
-                                source_label=source_label,
-                                file_path=snapshot_path,
-                                validity_seconds=snapshot_validity_seconds)
-                            log_msg = 'Snapshot: {} from {}'.format(snapshot, snapshot_path)
-                            if len(snapshot.devices) > 0:
-                                log.info(log_msg)
-                            else:
-                                log.debug(log_msg)
-                            snapshot_queue.put(snapshot)
-                            return
-                        except UnpackException:
-                            log.exception('Cannot unpack snapshot data in {}'.format(snapshot_path))
                     # image snapshot?
                     source_label = self._image_dir_label(snapshot_path)
                     if source_label:
@@ -702,11 +669,11 @@ class UploadEventHandler(FileSystemEventHandler):
                             file_path=snapshot_path,
                             validity_seconds=snapshot_validity_seconds)
                         log_msg = 'Snapshot: {} from {}'.format(snapshot, snapshot_path)
+                        #TODO notify of this
                         if len(snapshot.devices) > 0:
                             log.info(log_msg)
                         else:
                             log.debug(log_msg)
-                        snapshot_queue.put(snapshot)
                         # upload the image snapshot
                         if self._cloud_storage:
                             self._cloud_storage.upload(
@@ -842,72 +809,75 @@ class SnapshotProcessor(Thread):
         super(SnapshotProcessor, self).__init__()
         self.daemon = True
 
+        self.subscriber = zmq_context.socket(zmq.SUB)
+        #TODO
+        #self.subscriber.setsockopt(zmq.SUBSCRIBE, ?)
+
         self.last_snapshot = dict()
         self.active_devices = dict()
         self.latest_snapshot = datetime.utcnow().replace(tzinfo=pytz.utc)
         self.last_notification = 0
 
     def run(self):
+        publisher_endpoint = config.get('zmq', 'sample_publisher')
+        self.subscriber.connect(publisher_endpoint)
         while True:
-            snapshot = None
             try:
-                snapshot = snapshot_queue.get(timeout=heartbeat_interval_seconds)
-            except Empty:
-                # deal with the heartbeat deficit below
-                pass
-            except Exception as e:
-                log.error(e)
+                snapshot_data = self.subscriber.recv_pyobj()
+            except ContextTerminated:
+                break
+            snapshot = SampledSnapshot(
+                snapshot_data=snapshot_data,
+                validity_seconds=snapshot_validity_seconds)
+            log_msg = 'Snapshot: {} from {}'.format(snapshot, publisher_endpoint)
+            if len(snapshot.devices) > 0:
+                log.info(log_msg)
             else:
-                snapshot_queue.task_done()
-
-            if snapshot is not None:
-                if snapshot.is_expired:
-                    log.debug('Discarding expired snapshot {}'.format(snapshot))
-                    continue
-                # only non-expired snapshots qualify as recent updates
-                if snapshot.source is None:
-                    #TODO: remove
-                    log.debug('Processing snapshot without source? {}'.format(snapshot))
-                self.last_snapshot[snapshot.source] = time.time()
-                # throw away expired devices
-                for device_name in self.active_devices.keys():
-                    if datetime.utcnow().replace(tzinfo=pytz.utc) - self.active_devices[device_name] > timedelta(seconds=snapshot.validity_seconds):
-                        del self.active_devices[device_name]
-                # anything to process?
-                if len(snapshot.devices) == 0:
-                    continue
-                # make a copy of the remaining, active devices
-                old_device_names = self.active_devices.keys()
-                # refresh the active devices
-                for device_name in snapshot.device_names:
-                    self.active_devices[device_name] = snapshot.timestamp
-                # determine the new devices
-                new_device_names = list(set(self.active_devices.keys()) - set(old_device_names))
-                if len(self.active_devices) > 0 or len(new_device_names) > 0:
-                    log.debug('{} active device(s), {} new.'.format(len(self.active_devices), len(new_device_names)))
-                last_notified = time.time() - self.last_notification
-                # notify if the notification interval has elapsed or if there are new devices
-                # and if the snapshot is newer than the last one for which a notification was sent
-                if (last_notified > notification_interval_seconds or len(new_device_names) > 0) \
-                        and self.latest_snapshot < snapshot.timestamp:
-                    self.latest_snapshot = snapshot.timestamp
-                    self.last_notification = time.time()
-                    log.info('Sending notification for {}'.format(str(new_device_names)))
-                    for device_name in new_device_names:
-                        notifier.notify_voice(message=device_name)
-                        if isinstance(snapshot, ImageSnapshot):
-                            for name, recipient in notifier.sms_owners.items():
-                                message = '{}: {}'.format(snapshot, cloud_storage.cloud_storage_url)
-                                log.debug('SMS {} ({}) {} characters: {}'.format(name, recipient, len(message), message))
-                                notifier.send_sms(recipient=recipient, message=message, flash=False)
-            else:
-                if snapshot.source not in self.last_snapshot:
-                    self.last_snapshot[snapshot.source] = 0
-                inactivity = time.time() - self.last_snapshot[snapshot.source]
-                if inactivity > heartbeat_interval_seconds:
-                    log.warn('A heartbeat or snapshot is overdue from {} (after {} seconds)'.format(
-                        snapshot.source,
-                        heartbeat_interval_seconds))
+                log.debug(log_msg)
+            if snapshot.is_expired:
+                log.debug('Discarding expired snapshot {}'.format(snapshot))
+                continue
+            # only non-expired snapshots qualify as recent updates
+            self.last_snapshot[snapshot.source] = time.time()
+            # throw away expired devices
+            for device_name in self.active_devices.keys():
+                if datetime.utcnow().replace(tzinfo=pytz.utc) - self.active_devices[device_name] > timedelta(seconds=snapshot.validity_seconds):
+                    del self.active_devices[device_name]
+            # anything to process?
+            if len(snapshot.devices) == 0:
+                continue
+            # make a copy of the remaining, active devices
+            old_device_names = self.active_devices.keys()
+            # refresh the active devices
+            for device_name in snapshot.device_names:
+                self.active_devices[device_name] = snapshot.timestamp
+            # determine the new devices
+            new_device_names = list(set(self.active_devices.keys()) - set(old_device_names))
+            if len(self.active_devices) > 0 or len(new_device_names) > 0:
+                log.debug('{} active device(s), {} new.'.format(len(self.active_devices), len(new_device_names)))
+            last_notified = time.time() - self.last_notification
+            # notify if the notification interval has elapsed or if there are new devices
+            # and if the snapshot is newer than the last one for which a notification was sent
+            if (last_notified > notification_interval_seconds or len(new_device_names) > 0) \
+                    and self.latest_snapshot < snapshot.timestamp:
+                self.latest_snapshot = snapshot.timestamp
+                self.last_notification = time.time()
+                log.info('Sending notification for {}'.format(str(new_device_names)))
+                for device_name in new_device_names:
+                    notifier.notify_voice(message=device_name)
+                    if isinstance(snapshot, ImageSnapshot):
+                        for name, recipient in notifier.sms_owners.items():
+                            message = '{}: {}'.format(snapshot, cloud_storage.cloud_storage_url)
+                            log.debug('SMS {} ({}) {} characters: {}'.format(name, recipient, len(message), message))
+                            notifier.send_sms(recipient=recipient, message=message, flash=False)
+        else:
+            if snapshot.source not in self.last_snapshot:
+                self.last_snapshot[snapshot.source] = 0
+            inactivity = time.time() - self.last_snapshot[snapshot.source]
+            if inactivity > heartbeat_interval_seconds:
+                log.warn('A heartbeat or snapshot is overdue from {} (after {} seconds)'.format(
+                    snapshot.source,
+                    heartbeat_interval_seconds))
 
 
 def signal_handler(signum, frame):
@@ -954,8 +924,6 @@ if __name__ == "__main__":
     cloud_storage = google_drive
     upload_event_handler = UploadEventHandler(cloud_storage=google_drive)
     # monitor these directories
-    for source, label in sample_labels.iteritems():
-        upload_event_handler.add_sample_dir(source_label=label, sample_dir=sample_snapshot_dirs[source])
     for source, label in image_labels.iteritems():
         upload_event_handler.add_image_dir(source_label=label, image_dir=image_snapshot_dirs[source])
     log.debug('Monitoring directories in {} for changes: {}'.format(
@@ -985,6 +953,5 @@ if __name__ == "__main__":
         log.info('Waiting for completion...')
         observer.join()
         log.info('Waiting for queue threads...')
-        snapshot_queue.join()
         notifier.notification_queue.join()
         notifier.stop()
