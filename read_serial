@@ -10,6 +10,7 @@ import signal
 import subprocess
 import sys
 import time
+import umsgpack
 import zmq
 
 from ConfigParser import ConfigParser
@@ -70,7 +71,7 @@ def uploader():
         except ContextTerminated:
             break
         for socket in socks:
-            publisher.send_pyobj(socket.recv())
+            publisher.send(socket.recv())
 
 
 def make_payload(timestamp=None, data=None):
@@ -82,7 +83,7 @@ def make_payload(timestamp=None, data=None):
     if data is not None and len(data) > 0:
         payload['data'] = data
     log.debug(json.dumps(payload))
-    return payload
+    return umsgpack.packb(payload)
 
 
 class BluetoothDeviceMonitor(Thread):
@@ -131,7 +132,7 @@ class BluetoothDeviceMonitor(Thread):
                 break
             for owner, device in self.owner_devices.items():
                 if self.l2ping(owner, device) is not None:
-                    publisher.send_pyobj(make_payload(timestamp=None, data={'devices_nearby': {owner: device}}))
+                    publisher.send(make_payload(timestamp=None, data={'devices_nearby': {owner: device}}))
 
 probe_start = None
 
@@ -255,12 +256,12 @@ if __name__ == "__main__":
             if len(output_samples) == 0:
                 inactivity = time.time() - last_upload
                 if inactivity > HEARTBEAT_INTERVAL_SECONDS:
-                    sample_sink.send_pyobj(make_payload())
+                    sample_sink.send(make_payload())
                     last_upload = time.time()
             else:
                 # there's something going on here
                 probe_start.send_string('main')
-                sample_sink.send_pyobj(make_payload(timestamp=sample_time, data={'samples': output_samples}))
+                sample_sink.send(make_payload(timestamp=sample_time, data={'samples': output_samples}))
                 # do not overwhelm the uploader, but keep sample rate as high as the input provides it
                 sleep(SAMPLE_INTERVAL_SECONDS)
                 # throw away the intermediate data if the external sample rate exceeds our ability to consume it

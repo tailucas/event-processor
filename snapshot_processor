@@ -639,7 +639,7 @@ class UploadEventHandler(FileSystemEventHandler):
 
     @property
     def watched_dirs(self):
-        return self.sample_dirs.items() + self.image_dirs.items()
+        return self.image_dirs.items()
 
     # we listen to on-modified events because the file is
     # created and then written to subsequently.
@@ -803,6 +803,7 @@ class ClickatellSMSProvider(SMSProvider):
         except ClickatellError:
             log.exception('Cannot SMS {}: {}'.format(recipient, message))
 
+
 class SnapshotProcessor(Thread):
 
     def __init__(self):
@@ -810,8 +811,6 @@ class SnapshotProcessor(Thread):
         self.daemon = True
 
         self.subscriber = zmq_context.socket(zmq.SUB)
-        #TODO
-        #self.subscriber.setsockopt(zmq.SUBSCRIBE, ?)
 
         self.last_snapshot = dict()
         self.active_devices = dict()
@@ -820,10 +819,12 @@ class SnapshotProcessor(Thread):
 
     def run(self):
         publisher_endpoint = config.get('zmq', 'sample_publisher')
+        log.info('Connecting event subscriber to {}'.format(publisher_endpoint))
         self.subscriber.connect(publisher_endpoint)
+        self.subscriber.setsockopt(zmq.SUBSCRIBE, "")
         while True:
             try:
-                snapshot_data = self.subscriber.recv_pyobj()
+                snapshot_data = umsgpack.unpackb(self.subscriber.recv())
             except ContextTerminated:
                 break
             snapshot = SampledSnapshot(
@@ -950,6 +951,8 @@ if __name__ == "__main__":
     except(KeyboardInterrupt, SystemExit):
         log.info('Stopping threads...')
         observer.stop()
+        log.info('Closing subscribers...')
+        zmq_context.term()
         log.info('Waiting for completion...')
         observer.join()
         log.info('Waiting for queue threads...')
