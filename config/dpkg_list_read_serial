@@ -660,6 +660,7 @@ ii  libpthread-stubs0-dev:armhf           0.3-3                                 
 ii  libpulse-dev:armhf                    2.0-6.1                                armhf        PulseAudio client development headers and libraries
 ii  libpulse-mainloop-glib0:armhf         2.0-6.1                                armhf        PulseAudio client libraries (glib support)
 ii  libpulse0:armhf                       2.0-6.1                                armhf        PulseAudio client libraries
+ii  libpython2.6                          2.6.8-1.1                              armhf        Shared Python runtime library (version 2.6)
 ii  libpython2.7                          2.7.3-6+deb7u2                         armhf        Shared Python runtime library (version 2.7)
 ii  libqscintilla2-8                      2.6.2-2                                armhf        Qt4 port of the Scintilla source code editing widget
 ii  libqt4-dbus:armhf                     4:4.8.2+dfsg-11+rpi1                   armhf        Qt 4 D-Bus module
@@ -751,7 +752,9 @@ ii  libsqlite3-0:armhf                    3.7.13-1+deb7u1                       
 ii  libss2:armhf                          1.42.5-1.1                             armhf        command-line interface parsing library
 ii  libssh2-1:armhf                       1.4.2-1.1                              armhf        SSH2 client-side library
 ii  libssh2-1-dev                         1.4.2-1.1                              armhf        SSH2 client-side library (development headers)
-ii  libssl1.0.0:armhf                     1.0.1e-2+rpi1                          armhf        SSL shared libraries
+ii  libssl-dev                            1.0.1e-2+rvt+deb7u17                   armhf        SSL development libraries, header files and documentation
+ii  libssl-doc                            1.0.1e-2+rvt+deb7u17                   all          SSL development documentation documentation
+ii  libssl1.0.0:armhf                     1.0.1e-2+rvt+deb7u17                   armhf        SSL shared libraries
 ii  libstartup-notification0              0.12-1                                 armhf        library for program launch feedback (shared library)
 ii  libstdc++6:armhf                      4.7.2-5+rpi1                           armhf        GNU Standard C++ Library v3
 ii  libstdc++6-4.6-dev                    4.6.3-14+rpi1                          armhf        GNU Standard C++ Library v3 (development files)
@@ -1045,8 +1048,11 @@ ii  pypy-upstream                         2.2.1-5                               
 ii  pypy-upstream-dev                     2.2.1-5                                armhf        PyPy interpreter - Upstream development headers
 ii  pypy-upstream-doc                     2.2.1-5                                all          developer Documentation for PyPy (an alternative Python interpreter)
 ii  python                                2.7.3-4+deb7u1                         all          interactive high-level object-oriented language (default version)
+ii  python-all                            2.7.3-4+deb7u1                         all          package depending on all supported Python runtime versions
+ii  python-all-dev                        2.7.3-4+deb7u1                         all          package depending on all supported Python development packages
 ii  python-dbus                           1.1.1-1                                armhf        simple interprocess messaging system (Python interface)
 ii  python-dbus-dev                       1.1.1-1                                all          main loop integration development files for python-dbus
+ii  python-dev                            2.7.3-4+deb7u1                         all          header files and a static library for Python (default)
 ii  python-gi                             3.2.2-2                                armhf        Python 2.x bindings for gobject-introspection libraries
 ii  python-gobject-2                      2.28.6-10                              armhf        deprecated static Python bindings for the GObject library
 ii  python-imaging                        1.1.7-4                                armhf        Python Imaging Library
@@ -1066,8 +1072,10 @@ ii  python-setuptools                     0.6.24-1                              
 ii  python-support                        1.0.15                                 all          automated rebuilding support for Python modules
 ii  python-tk                             2.7.3-1                                armhf        Tkinter - Writing Tk applications with Python
 ii  python2.6                             2.6.8-1.1                              armhf        Interactive high-level object-oriented language (version 2.6)
+ii  python2.6-dev                         2.6.8-1.1                              armhf        Header files and a static library for Python (v2.6)
 ii  python2.6-minimal                     2.6.8-1.1                              armhf        Minimal subset of the Python language (version 2.6)
 ii  python2.7                             2.7.3-6+deb7u2                         armhf        Interactive high-level object-oriented language (version 2.7)
+ii  python2.7-dev                         2.7.3-6+deb7u2                         armhf        Header files and a static library for Python (v2.7)
 ii  python2.7-minimal                     2.7.3-6+deb7u2                         armhf        Minimal subset of the Python language (version 2.7)
 ii  python3                               3.2.3-6                                all          interactive high-level object-oriented language (default python3 version)
 ii  python3-minimal                       3.2.3-6                                all          minimal subset of the Python language (default python3 version)
