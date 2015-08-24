@@ -686,8 +686,8 @@ class UploadEventHandler(FileSystemEventHandler):
 class SMSProvider(object):
     __metaclass__ = abc.ABCMeta
 
-    @abc.abstractproperty
-    def send_sms(self, recipient, message, flash=False):
+    @abc.abstractmethod
+    def send_sms(self, recipient, message, flash):
         return NotImplemented
 
 
