@@ -83,6 +83,34 @@ class FileType(object):
 
 filetype = None
 
+
+class Notification(object):
+    __metaclass__ = abc.ABCMeta
+
+    def __init__(self, message):
+        self.message = message
+
+
+class TTSNotification(Notification):
+
+    def __init__(self, message, informational=False):
+        super(TTSNotification, self).__init__(message=message)
+        self.informational = informational
+
+    @property
+    def is_informational(self):
+        return self.informational
+
+
+class SMSNotification(Notification):
+
+    def __init__(self, message, recipient, sender=None, flash=False):
+        super(SMSNotification, self).__init__(message=message)
+        self.recipient = recipient
+        self.sender = sender
+        self.flash = flash
+
+
 class Notifier(Thread):
 
     def __init__(self, sms_provider):
@@ -683,6 +711,83 @@ class UploadEventHandler(FileSystemEventHandler):
                     log.exception('Cannot process {}'.format(snapshot_path))
 
 
+class SampledSnapshotEventHandler(Thread):
+
+    def __init__(self):
+        super(SampledSnapshotEventHandler, self).__init__()
+        self.daemon = True
+
+        self.subscriber = zmq_context.socket(zmq.SUB)
+
+        self.last_snapshot = dict()
+        self.active_devices = dict()
+        self.latest_snapshot = datetime.utcnow().replace(tzinfo=pytz.utc)
+        self.last_notification = 0
+
+    def run(self):
+        publisher_endpoint = config.get('zmq', 'sample_publisher')
+        log.info('Connecting event subscriber to {}'.format(publisher_endpoint))
+        self.subscriber.connect(publisher_endpoint)
+        self.subscriber.setsockopt(zmq.SUBSCRIBE, "")
+        while True:
+            try:
+                snapshot_data = umsgpack.unpackb(self.subscriber.recv())
+            except ContextTerminated:
+                break
+            snapshot = SampledSnapshot(
+                snapshot_data=snapshot_data,
+                validity_seconds=snapshot_validity_seconds)
+            log_msg = 'Snapshot: {} from {}'.format(snapshot, publisher_endpoint)
+            if len(snapshot.devices) > 0:
+                log.info(log_msg)
+            else:
+                log.debug(log_msg)
+            if snapshot.is_expired:
+                log.debug('Discarding expired snapshot {}'.format(snapshot))
+                continue
+            # only non-expired snapshots qualify as recent updates
+            self.last_snapshot[snapshot.source] = time.time()
+            # throw away expired devices
+            for device_name in self.active_devices.keys():
+                if datetime.utcnow().replace(tzinfo=pytz.utc) - self.active_devices[device_name] > timedelta(seconds=snapshot.validity_seconds):
+                    del self.active_devices[device_name]
+            # anything to process?
+            if len(snapshot.devices) == 0:
+                continue
+            # make a copy of the remaining, active devices
+            old_device_names = self.active_devices.keys()
+            # refresh the active devices
+            for device_name in snapshot.device_names:
+                self.active_devices[device_name] = snapshot.timestamp
+            # determine the new devices
+            new_device_names = list(set(self.active_devices.keys()) - set(old_device_names))
+            if len(self.active_devices) > 0 or len(new_device_names) > 0:
+                log.debug('{} active device(s), {} new.'.format(len(self.active_devices), len(new_device_names)))
+            last_notified = time.time() - self.last_notification
+            # notify if the notification interval has elapsed or if there are new devices
+            # and if the snapshot is newer than the last one for which a notification was sent
+            if (last_notified > notification_interval_seconds or len(new_device_names) > 0) \
+                    and self.latest_snapshot < snapshot.timestamp:
+                self.latest_snapshot = snapshot.timestamp
+                self.last_notification = time.time()
+                log.info('Sending notification for {}'.format(str(new_device_names)))
+                for device_name in new_device_names:
+                    notifier.notify_voice(message=device_name)
+                    if isinstance(snapshot, ImageSnapshot):
+                        for name, recipient in notifier.sms_owners.items():
+                            message = '{}: {}'.format(snapshot, cloud_storage.cloud_storage_url)
+                            log.debug('SMS {} ({}) {} characters: {}'.format(name, recipient, len(message), message))
+                            notifier.send_sms(recipient=recipient, message=message, flash=False)
+        else:
+            if snapshot.source not in self.last_snapshot:
+                self.last_snapshot[snapshot.source] = 0
+            inactivity = time.time() - self.last_snapshot[snapshot.source]
+            if inactivity > heartbeat_interval_seconds:
+                log.warn('A heartbeat or snapshot is overdue from {} (after {} seconds)'.format(
+                    snapshot.source,
+                    heartbeat_interval_seconds))
+
+
 class SMSProvider(object):
     __metaclass__ = abc.ABCMeta
 
@@ -720,7 +825,7 @@ class GammuSMSProvider(Thread, FileSystemEventHandler, SMSProvider):
     def spool_directories(self):
         return (self.inbox_path, self.error_path)
 
-    def send_sms(self, recipient, message, flash=False):
+    def send_sms(self, recipient, message, flash):
         sms_class = 1
         if flash:
             sms_class = 0
@@ -737,7 +842,7 @@ class GammuSMSProvider(Thread, FileSystemEventHandler, SMSProvider):
             log.info("Dispatching SMS balance enquiry '{}' to {}".format(
                 self.sms_balance_check_message,
                 self.sms_balance_check_number))
-            notifier.send_sms(recipient=self.sms_balance_check_number, message=self.sms_balance_check_message)
+            self.send_sms(recipient=self.sms_balance_check_number, message=self.sms_balance_check_message, flash=False)
             # sleep until later
             sleep(60*60*24)
 
@@ -796,7 +901,7 @@ class ClickatellSMSProvider(SMSProvider):
         app_id = config.get('clickatell', 'app-id')
         self.clickatell = Clickatell(user, password, app_id)
 
-    def send_sms(self, recipient, message, flash=False):
+    def send_sms(self, recipient, message, flash):
         try:
             [resp] = self.clickatell.sendmsg(recipients=[recipient], text=message)
             log.debug('SMS sent: {}'.format(str(resp)))
