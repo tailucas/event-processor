@@ -34,8 +34,7 @@ SAMPLE_INTERVAL_SECONDS = 1
 SAMPLE_DEBOUNCE_COOLDOWN_SECONDS = 60
 DEVICE_MONITOR_CONCURRENCY = 4
 DATE_FORMAT = '%Y-%m-%dT%H:%M:%S.%f%z'
-URL_WORKER_SAMPLES = 'inproc://samples'
-URL_WORKER_PROBE_RESULT = 'inproc://probe-result'
+URL_WORKER_UPLOADER = 'inproc://uploader'
 URL_WORKER_PROBE_START = 'inproc://probe-start'
 
 
@@ -52,26 +51,27 @@ def exec_cmd(cmd):
     return out, err, p.returncode
 
 
-def uploader():
-    # Socket to talk to the outside world
-    publisher = zmq_context.socket(zmq.PUB)
-    publisher.bind('tcp://*:{port}'.format(port=config.get('zmq', 'port')))
-    # Socket to talk to dispatcher
-    samples = zmq_context.socket(zmq.PULL)
-    samples.connect(URL_WORKER_SAMPLES)
-    probes = zmq_context.socket(zmq.PULL)
-    probes.connect(URL_WORKER_PROBE_RESULT)
-    # poller
-    poller = zmq.Poller()
-    poller.register(samples, zmq.POLLIN)
-    poller.register(probes, zmq.POLLIN)
-    while True:
-        try:
-            socks = dict(poller.poll())
-        except ContextTerminated:
-            break
-        for socket in socks:
-            publisher.send(socket.recv())
+class Uploader(Thread):
+
+    def __init__(self):
+        super(Uploader, self).__init__()
+        self.daemon = True
+        # Socket to talk to accept samples
+        self.samples = zmq_context.socket(zmq.PULL)
+        self.samples.bind(URL_WORKER_UPLOADER)
+
+    def run(self):
+        # Socket to talk to the outside world
+        publisher = zmq_context.socket(zmq.PUB)
+        publisher.bind('tcp://*:{port}'.format(port=config.get('zmq', 'port')))
+        while True:
+            try:
+                publisher.send(self.samples.recv())
+            except ContextTerminated:
+                break
+            except Exception:
+                log.exception(self.__class__.__name__)
+                continue
 
 
 def make_payload(timestamp=None, data=None):
@@ -123,8 +123,8 @@ class BluetoothDeviceMonitor(Thread):
         probe_start = zmq_context.socket(zmq.PULL)
         probe_start.connect(URL_WORKER_PROBE_START)
         # Socket to talk to publisher
-        publisher = zmq_context.socket(zmq.PUSH)
-        publisher.bind(URL_WORKER_PROBE_RESULT)
+        uploader = zmq_context.socket(zmq.PUSH)
+        uploader.connect(URL_WORKER_UPLOADER)
         while True:
             try:
                 probe_start.recv()
@@ -132,7 +132,7 @@ class BluetoothDeviceMonitor(Thread):
                 break
             for owner, device in self.owner_devices.items():
                 if self.l2ping(owner, device) is not None:
-                    publisher.send(make_payload(timestamp=None, data={'devices_nearby': {owner: device}}))
+                    uploader.send(make_payload(timestamp=None, data={'devices_nearby': {owner: device}}))
 
 probe_start = None
 
@@ -151,14 +151,13 @@ if __name__ == "__main__":
     log.addHandler(syslog_handler)
     stream_handler = logging.StreamHandler(stream=sys.stdout)
     log.addHandler(stream_handler)
-    # Socket to talk to workers
-    sample_sink = zmq_context.socket(zmq.PUSH)
-    sample_sink.bind(URL_WORKER_SAMPLES)
+    # start up threads
+    uploader = Uploader()
+    uploader.start()
+    uploader_socket = zmq_context.socket(zmq.PUSH)
+    uploader_socket.connect(URL_WORKER_UPLOADER)
     probe_start = zmq_context.socket(zmq.PUSH)
     probe_start.bind(URL_WORKER_PROBE_START)
-    # start up threads
-    uploader = Thread(target=uploader)
-    uploader.start()
     bluetooth_monitor = BluetoothDeviceMonitor()
     bluetooth_monitor.start()
     # set up signal handlers
@@ -256,12 +255,12 @@ if __name__ == "__main__":
             if len(output_samples) == 0:
                 inactivity = time.time() - last_upload
                 if inactivity > HEARTBEAT_INTERVAL_SECONDS:
-                    sample_sink.send(make_payload())
+                    uploader_socket.send(make_payload())
                     last_upload = time.time()
             else:
                 # there's something going on here
                 probe_start.send_string('main')
-                sample_sink.send(make_payload(timestamp=sample_time, data={'samples': output_samples}))
+                uploader_socket.send(make_payload(timestamp=sample_time, data={'samples': output_samples}))
                 # do not overwhelm the uploader, but keep sample rate as high as the input provides it
                 sleep(SAMPLE_INTERVAL_SECONDS)
                 # throw away the intermediate data if the external sample rate exceeds our ability to consume it
@@ -270,7 +269,7 @@ if __name__ == "__main__":
         log.info('Closing serial connection...')
         com1.close()
         log.info('Stopping workers...')
-        sample_sink.close()
         probe_start.close()
+        uploader_socket.close()
         log.info('Terminating messaging context...')
         zmq_context.term()
