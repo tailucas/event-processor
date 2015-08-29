@@ -11,7 +11,7 @@ r = subprocess.Popen(["cat", "/etc/os-release"], stdout=subprocess.PIPE)
 print r.communicate()[0]
 
 for key, value in os.environ.items():
-    print '{}={}'
+    print '{}={}'.format(key, value)
 
 import time
 time.sleep(3600)
