@@ -58,9 +58,15 @@ heartbeat_interval_seconds = int(config.get('snapshots', 'heartbeat_interval_sec
 notification_interval_seconds = int(config.get('snapshots', 'notification_interval_seconds'))
 snapshot_validity_seconds = int(config.get('snapshots', 'snapshot_validity_seconds'))
 
+sms_recipient_names = config.get('sms', 'recipient_names').split(',')
+sms_recipient_numbers = config.get('sms', 'recipient_numbers').split(',')
+sms_owners = dict(zip(sms_recipient_names, sms_recipient_numbers))
+
 cloud_storage = None
 
 zmq_context = zmq.Context()
+URL_WORKER_NOTIFIER = 'inproc://notifier'
+URL_WORKER_SNAPSHOT_PROCESSOR = 'inproc://snapshot-processor'
 
 
 class FileType(object):
@@ -89,6 +95,9 @@ class Notification(object):
 
     def __init__(self, message):
         self.message = message
+
+    def __str__(self):
+        return self.message
 
 
 class TTSNotification(Notification):
@@ -120,15 +129,13 @@ class Notifier(Thread):
 
         self.sms_provider = sms_provider
 
-        self.notification_queue = Queue()
+        self.socket = zmq_context.socket(zmq.PULL)
+        self.socket.bind(URL_WORKER_NOTIFIER)
+
         self.notification_timer = None
         self.deferred_notifications = Queue()
 
         self.tts_default_sound_file = config.get('app', 'tts_default_sound')
-
-        sms_recipient_names = config.get('sms', 'recipient_names').split(',')
-        sms_recipient_numbers = config.get('sms', 'recipient_numbers').split(',')
-        self.sms_owners = dict(zip(sms_recipient_names, sms_recipient_numbers))
 
         not_before = config.get('informational_notifications', 'not_before')
         if not_before:
@@ -150,16 +157,24 @@ class Notifier(Thread):
         while True:
             notification = None
             try:
-                notification = self.notification_queue.get()
-            except Exception as e:
-                log.error(e)
+                notification = self.socket.recv_pyobj()
+            except ContextTerminated:
+                break
+            except Exception:
+                log.exception(self.__class__.__name__)
+                continue
+            if isinstance(notification, TTSNotification):
+                try:
+                    self.say(str(notification))
+                except StandardError:
+                    log.exception("Unable to say message: '{}'".format(notification))
+                    self.play_file(os.path.join(TTS_DIR, self.tts_default_sound_file))
+            elif isinstance(notification, SMSNotification):
+                self.send_sms(recipient=notification.recipient,
+                              message=notification.message,
+                              flash=notification.flash)
             else:
-                self.notification_queue.task_done()
-            try:
-                self.say(str(notification))
-            except StandardError:
-                log.exception("Unable to say message: '{}'".format(notification))
-                self.play_file(os.path.join(TTS_DIR, self.tts_default_sound_file))
+                log.error('Unknown notification type {}'.format(notification.__class__))
 
     def stop(self):
         if self.player:
@@ -229,7 +244,9 @@ class Notifier(Thread):
         log.info('Draining {} notifications deferred until now.'.format(self.deferred_notifications.qsize()))
         while not self.deferred_notifications.empty():
             try:
-                self.notification_queue.put(self.deferred_notifications.get())
+                pass
+                #TODO: fix
+                #self.notification_queue.put(self.deferred_notifications.get())
             except Exception as e:
                 log.error(e)
             else:
@@ -284,8 +301,6 @@ class Notifier(Thread):
         m = hashlib.md5()
         m.update(message)
         return m.hexdigest()
-
-notifier = None
 
 
 class Snapshot(object):
@@ -654,6 +669,9 @@ class UploadEventHandler(FileSystemEventHandler):
         self._cloud_storage = cloud_storage
         self.image_dirs = dict()
 
+        self.processor = zmq_context.socket(zmq.PUSH)
+        self.processor.connect(URL_WORKER_SNAPSHOT_PROCESSOR)
+
     def add_image_dir(self, source_label, image_dir):
         if source_label in self.image_dirs:
             raise RuntimeError('Image source label {} is already configured.'.format(source_label))
@@ -697,11 +715,7 @@ class UploadEventHandler(FileSystemEventHandler):
                             file_path=snapshot_path,
                             validity_seconds=snapshot_validity_seconds)
                         log_msg = 'Snapshot: {} from {}'.format(snapshot, snapshot_path)
-                        #TODO notify of this
-                        if len(snapshot.devices) > 0:
-                            log.info(log_msg)
-                        else:
-                            log.debug(log_msg)
+                        self.processor.send_pyobj(snapshot)
                         # upload the image snapshot
                         if self._cloud_storage:
                             self._cloud_storage.upload(
@@ -719,6 +733,8 @@ class SampledSnapshotEventHandler(Thread):
 
         self.subscriber = zmq_context.socket(zmq.SUB)
 
+        self.processor = zmq_context.socket(zmq.PUSH)
+
         self.last_snapshot = dict()
         self.active_devices = dict()
         self.latest_snapshot = datetime.utcnow().replace(tzinfo=pytz.utc)
@@ -729,6 +745,7 @@ class SampledSnapshotEventHandler(Thread):
         log.info('Connecting event subscriber to {}'.format(publisher_endpoint))
         self.subscriber.connect(publisher_endpoint)
         self.subscriber.setsockopt(zmq.SUBSCRIBE, "")
+        self.processor.connect(URL_WORKER_SNAPSHOT_PROCESSOR)
         while True:
             try:
                 snapshot_data = umsgpack.unpackb(self.subscriber.recv())
@@ -738,54 +755,7 @@ class SampledSnapshotEventHandler(Thread):
                 snapshot_data=snapshot_data,
                 validity_seconds=snapshot_validity_seconds)
             log_msg = 'Snapshot: {} from {}'.format(snapshot, publisher_endpoint)
-            if len(snapshot.devices) > 0:
-                log.info(log_msg)
-            else:
-                log.debug(log_msg)
-            if snapshot.is_expired:
-                log.debug('Discarding expired snapshot {}'.format(snapshot))
-                continue
-            # only non-expired snapshots qualify as recent updates
-            self.last_snapshot[snapshot.source] = time.time()
-            # throw away expired devices
-            for device_name in self.active_devices.keys():
-                if datetime.utcnow().replace(tzinfo=pytz.utc) - self.active_devices[device_name] > timedelta(seconds=snapshot.validity_seconds):
-                    del self.active_devices[device_name]
-            # anything to process?
-            if len(snapshot.devices) == 0:
-                continue
-            # make a copy of the remaining, active devices
-            old_device_names = self.active_devices.keys()
-            # refresh the active devices
-            for device_name in snapshot.device_names:
-                self.active_devices[device_name] = snapshot.timestamp
-            # determine the new devices
-            new_device_names = list(set(self.active_devices.keys()) - set(old_device_names))
-            if len(self.active_devices) > 0 or len(new_device_names) > 0:
-                log.debug('{} active device(s), {} new.'.format(len(self.active_devices), len(new_device_names)))
-            last_notified = time.time() - self.last_notification
-            # notify if the notification interval has elapsed or if there are new devices
-            # and if the snapshot is newer than the last one for which a notification was sent
-            if (last_notified > notification_interval_seconds or len(new_device_names) > 0) \
-                    and self.latest_snapshot < snapshot.timestamp:
-                self.latest_snapshot = snapshot.timestamp
-                self.last_notification = time.time()
-                log.info('Sending notification for {}'.format(str(new_device_names)))
-                for device_name in new_device_names:
-                    notifier.notify_voice(message=device_name)
-                    if isinstance(snapshot, ImageSnapshot):
-                        for name, recipient in notifier.sms_owners.items():
-                            message = '{}: {}'.format(snapshot, cloud_storage.cloud_storage_url)
-                            log.debug('SMS {} ({}) {} characters: {}'.format(name, recipient, len(message), message))
-                            notifier.send_sms(recipient=recipient, message=message, flash=False)
-        else:
-            if snapshot.source not in self.last_snapshot:
-                self.last_snapshot[snapshot.source] = 0
-            inactivity = time.time() - self.last_snapshot[snapshot.source]
-            if inactivity > heartbeat_interval_seconds:
-                log.warn('A heartbeat or snapshot is overdue from {} (after {} seconds)'.format(
-                    snapshot.source,
-                    heartbeat_interval_seconds))
+            self.processor.send_pyobj(snapshot)
 
 
 class SMSProvider(object):
@@ -915,7 +885,10 @@ class SnapshotProcessor(Thread):
         super(SnapshotProcessor, self).__init__()
         self.daemon = True
 
-        self.subscriber = zmq_context.socket(zmq.SUB)
+        self.notifier = zmq_context.socket(zmq.PUSH)
+
+        self.socket = zmq_context.socket(zmq.PULL)
+        self.socket.bind(URL_WORKER_SNAPSHOT_PROCESSOR)
 
         self.last_snapshot = dict()
         self.active_devices = dict()
@@ -923,19 +896,16 @@ class SnapshotProcessor(Thread):
         self.last_notification = 0
 
     def run(self):
-        publisher_endpoint = config.get('zmq', 'sample_publisher')
-        log.info('Connecting event subscriber to {}'.format(publisher_endpoint))
-        self.subscriber.connect(publisher_endpoint)
-        self.subscriber.setsockopt(zmq.SUBSCRIBE, "")
+        self.notifier.connect(URL_WORKER_NOTIFIER)
         while True:
             try:
-                snapshot_data = umsgpack.unpackb(self.subscriber.recv())
+                snapshot = self.socket.recv_pyobj()
             except ContextTerminated:
                 break
-            snapshot = SampledSnapshot(
-                snapshot_data=snapshot_data,
-                validity_seconds=snapshot_validity_seconds)
-            log_msg = 'Snapshot: {} from {}'.format(snapshot, publisher_endpoint)
+            except Exception:
+                log.exception(self.__class__.__name__)
+                continue
+            log_msg = 'Processing: {}'.format(snapshot)
             if len(snapshot.devices) > 0:
                 log.info(log_msg)
             else:
@@ -970,12 +940,12 @@ class SnapshotProcessor(Thread):
                 self.last_notification = time.time()
                 log.info('Sending notification for {}'.format(str(new_device_names)))
                 for device_name in new_device_names:
-                    notifier.notify_voice(message=device_name)
+                    self.notifier.send_pyobj(TTSNotification(message=device_name))
                     if isinstance(snapshot, ImageSnapshot):
-                        for name, recipient in notifier.sms_owners.items():
+                        for name, recipient in sms_owners.items():
                             message = '{}: {}'.format(snapshot, cloud_storage.cloud_storage_url)
                             log.debug('SMS {} ({}) {} characters: {}'.format(name, recipient, len(message), message))
-                            notifier.send_sms(recipient=recipient, message=message, flash=False)
+                            self.notifier.send_pyobj(SMSNotification(message=message, recipient=recipient, flash=False))
         else:
             if snapshot.source not in self.last_snapshot:
                 self.last_snapshot[snapshot.source] = 0
@@ -1023,6 +993,8 @@ if __name__ == "__main__":
     # application threads
     notifier = Notifier(sms_provider=sms_provider)
     processor = SnapshotProcessor()
+    # sampled snapshot processing
+    sample_event_handler = SampledSnapshotEventHandler()
     # ensure that auth is properly set up first
     google_drive = GoogleDriveManager(
         gauth_creds_file=config.get('gdrive', 'creds_file'),
@@ -1042,10 +1014,12 @@ if __name__ == "__main__":
             observer.schedule(sms_provider, dir)
         # Since GammuSMSProvider is a Thread
         sms_provider.start()
-    observer.start()
     # start threads
     notifier.start()
     processor.start()
+    # start the collectors
+    sample_event_handler.start()
+    observer.start()
     # start the Google Driver archiver last
     google_drive.start()
     try:
@@ -1056,10 +1030,6 @@ if __name__ == "__main__":
     except(KeyboardInterrupt, SystemExit):
         log.info('Stopping threads...')
         observer.stop()
+        observer.join()
         log.info('Closing subscribers...')
         zmq_context.term()
-        log.info('Waiting for completion...')
-        observer.join()
-        log.info('Waiting for queue threads...')
-        notifier.notification_queue.join()
-        notifier.stop()
