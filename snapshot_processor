@@ -714,7 +714,7 @@ class UploadEventHandler(FileSystemEventHandler):
                             source_label=source_label,
                             file_path=snapshot_path,
                             validity_seconds=snapshot_validity_seconds)
-                        log_msg = 'Snapshot: {} from {}'.format(snapshot, snapshot_path)
+                        log.info('Snapshot: {} from {}'.format(snapshot, snapshot_path))
                         self.processor.send_pyobj(snapshot)
                         # upload the image snapshot
                         if self._cloud_storage:
@@ -754,7 +754,7 @@ class SampledSnapshotEventHandler(Thread):
             snapshot = SampledSnapshot(
                 snapshot_data=snapshot_data,
                 validity_seconds=snapshot_validity_seconds)
-            log_msg = 'Snapshot: {} from {}'.format(snapshot, publisher_endpoint)
+            log.info('Snapshot: {} from {}'.format(snapshot, publisher_endpoint))
             self.processor.send_pyobj(snapshot)
 
 
