@@ -104,7 +104,7 @@ class BluetoothDeviceMonitor(Thread):
             log.debug('l2ping output: {}'.format(out))
             return out
         else:
-            log.error('Non-zero exit {} for l2ping output: {} {}'.format(rc, out, err))
+            log.warn('Non-zero exit {} for l2ping output: {} {}'.format(rc, out, err))
         return None
 
     def run(self):
