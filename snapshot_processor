@@ -650,13 +650,16 @@ class GoogleDriveManager(Thread, CloudStorage):
             })
             f.SetContentFile(file_path)
             f.Upload()
-            link = f['thumbnailLink']
-            # specify our own thumbnail size
-            if '=' in link:
-                link = link.rsplit('=')[0]
-                link += '=s1024'
-            log.info("Uploaded '{}' to Google Drive folder '{}' (ID: '{}'). Thumbnail at {}".format(
-                os.path.basename(file_path), self._gdrive_folder, f['id'], link))
+            link_msg = ""
+            if 'thumbnailLink'in f:
+                link = f['thumbnailLink']
+                # specify our own thumbnail size
+                if '=' in link:
+                    link = link.rsplit('=')[0]
+                    link += '=s1024'
+                link_msg = " Thumbnail at {}".format(link)
+            log.info("Uploaded '{}' to Google Drive folder '{}' (ID: '{}').{}".format(
+                    os.path.basename(file_path), self._gdrive_folder, f['id'], link_msg))
         except FileNotUploadedError:
             log.exception('Cannot upload {} to Google Drive'.format(file_path))
 
