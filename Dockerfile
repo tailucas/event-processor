@@ -6,7 +6,6 @@ LABEL Description="snapshot_processor" Vendor="db2inst1" Version="1.0"
 RUN apt-get update && apt-get install -y \
     mplayer \
     python-pip \
-    python-rpi.gpio \
     python2.7 \
     python2.7-dev \
     vsftpd
