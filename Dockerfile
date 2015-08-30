@@ -16,7 +16,7 @@ RUN pip install -r /tmp/snapshot_processor_pip
 RUN pip freeze
 
 EXPOSE 21 5556
-RUN mkdir /storage/ftp
+RUN mkdir -p /storage/ftp
 
 COPY . /app
 
