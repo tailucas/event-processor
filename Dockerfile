@@ -28,7 +28,7 @@ RUN groupadd -r ftpuser && useradd -r -g ftpuser ftpuser
 RUN groupadd -r app && useradd -r -g app app
 USER app
 
-RUN bash -c 'cat /etc/vsftpd.conf | ./config_interpol'
+RUN bash -c 'cat /etc/vsftpd.conf | python /app/config_interpol'
 
 # run python script when container lands on device
 CMD ["python", "/app/hello.py"]
