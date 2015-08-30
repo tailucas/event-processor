@@ -3,13 +3,16 @@ import fileinput
 import os
 import sys
 
-from ConfigParser import SafeConfigParser
+from ConfigParser import SafeConfigParser, InterpolationMissingOptionError
+
+
+FAKE_SECTION = 'FAKESECTION'
 
 
 class FakeSecHead(object):
     def __init__(self, fp):
         self.fp = fp
-        self.sechead = '[FAKESECTION]\n'
+        self.sechead = '[{}]\n'.format(FAKE_SECTION)
 
     def readline(self):
         if self.sechead:
@@ -21,7 +24,16 @@ class FakeSecHead(object):
             return self.fp.readline()
 
 if __name__ == "__main__":
-    config = SafeConfigParser(os.environ)
+    config = SafeConfigParser()
+    config.optionxform = str
     config.readfp(FakeSecHead(fileinput.input()))
-    config._defaults = None
-    config.write(sys.stdout)
+    for section in config.sections():
+        if section != FAKE_SECTION:
+            print '[{section}]'.format(section=section)
+        for option in config.options(section=section):
+            try:
+                # we don't use config.items() here to avoid emitting the defaults too
+                print '{key}={value}'.format(key=option, value=config.get(section=section, option=option, vars=os.environ))
+            except InterpolationMissingOptionError as e:
+                sys.stderr.write(e.message)
+                exit(1)
