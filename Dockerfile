@@ -29,6 +29,7 @@ RUN groupadd -r app && useradd -r -g app app
 USER app
 
 RUN bash -c 'cat /etc/vsftpd.conf | python /app/config_interpol'
+RUN bash -c 'echo "*.*          ${RSYSLOG_SERVER}" >> /etc/rsyslog.conf'
 
 # run python script when container lands on device
 CMD ["python", "/app/hello.py"]
