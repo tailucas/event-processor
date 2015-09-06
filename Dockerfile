@@ -28,8 +28,13 @@ RUN groupadd -r ftpuser && useradd -r -g ftpuser ftpuser
 RUN groupadd -r app && useradd -r -g app app
 USER app
 
+RUN echo $USER
+
 RUN bash -c 'cat /etc/vsftpd.conf | python /app/config_interpol'
-RUN bash -c 'sudo echo "*.*          ${RSYSLOG_SERVER}" >> /etc/rsyslog.conf'
+
+
+RUN bash -c 'echo "*.*          ${RSYSLOG_SERVER}" >> /etc/rsyslog.conf'
+RUN bash -c 'service rsyslog restart'
 
 # run python script when container lands on device
 CMD ["python", "/app/hello.py"]
