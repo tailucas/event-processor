@@ -34,7 +34,7 @@ RUN whoami
 RUN bash -c 'cat /etc/vsftpd.conf | python /app/config_interpol'
 
 USER root
-RUN bash -c 'echo "*.*          ${RSYSLOG_SERVER}" >> /etc/rsyslog.conf'
+RUN bash -c 'if [ -n "$RSYSLOG_SERVER" ]; then echo "*.*          ${RSYSLOG_SERVER}" >> /etc/rsyslog.conf; fi'
 RUN bash -c 'service rsyslog restart'
 RUN tail /etc/rsyslog.conf
 USER app
