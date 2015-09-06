@@ -28,7 +28,7 @@ RUN groupadd -r ftpuser && useradd -r -g ftpuser ftpuser
 RUN groupadd -r app && useradd -r -g app app
 USER app
 
-RUN echo $USER
+RUN whoami
 
 RUN bash -c 'cat /etc/vsftpd.conf | python /app/config_interpol'
 
