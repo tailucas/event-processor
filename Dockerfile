@@ -5,11 +5,12 @@ LABEL Description="snapshot_processor" Vendor="db2inst1" Version="1.0"
 
 RUN apt-get update && apt-get install -y \
     mplayer \
+    rsyslog \
     python-pip \
     python2.7 \
     python2.7-dev \
     vsftpd
-RUN dpkg -l
+RUN echo $(dpkg -l)
 
 COPY ./config/snapshot_processor_pip /tmp/
 RUN pip install -r /tmp/snapshot_processor_pip
