@@ -38,6 +38,8 @@ RUN bash -c 'echo "*.*          ${RSYSLOG_SERVER}" >> /etc/rsyslog.conf'
 RUN bash -c 'service rsyslog restart'
 
 USER app
+RUN tail /etc/rsyslog.conf
 RUN logger Hello
+RUN tail /var/log/syslog
 # run python script when container lands on device
 CMD ["python", "/app/hello.py"]
