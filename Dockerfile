@@ -32,9 +32,10 @@ RUN whoami
 
 RUN bash -c 'cat /etc/vsftpd.conf | python /app/config_interpol'
 
-
+USER root
 RUN bash -c 'echo "*.*          ${RSYSLOG_SERVER}" >> /etc/rsyslog.conf'
 RUN bash -c 'service rsyslog restart'
 
+USER app
 # run python script when container lands on device
 CMD ["python", "/app/hello.py"]
