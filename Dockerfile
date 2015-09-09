@@ -26,10 +26,10 @@ RUN groupadd -r ftpuser && useradd -r -g ftpuser ftpuser
 RUN groupadd -r app && useradd -r -g app app
 
 # system configuration
-RUN bash -c 'cat /etc/vsftpd.conf | python /app/config_interpol'
-RUN bash -c 'if [ -n "$RSYSLOG_SERVER" ]; then echo "*.*          ${RSYSLOG_SERVER}" >> /etc/rsyslog.conf; fi'
-RUN bash -c 'service rsyslog restart'
-RUN chown app /var/log/syslog
+RUN cat /etc/vsftpd.conf | python /app/config_interpol
+RUN if [ -n "$RSYSLOG_SERVER" ]; then echo "*.*          ${RSYSLOG_SERVER}" >> /etc/rsyslog.conf; fi
+RUN service rsyslog restart
+RUN cat /etc/rsyslog.conf
 
 # switch to non-root user
 USER app
