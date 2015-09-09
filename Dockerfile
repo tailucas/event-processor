@@ -20,20 +20,15 @@ EXPOSE 21 5556
 RUN mkdir -p /storage/ftp
 
 COPY . /app
+COPY ./start_hello.sh /
 
 # non-root users
 RUN groupadd -r ftpuser && useradd -r -g ftpuser ftpuser
 RUN groupadd -r app && useradd -r -g app app
-
+RUN chown app /start_hello.sh
 # system configuration
 RUN cat /etc/vsftpd.conf | python /app/config_interpol
-RUN if [ -n "$RSYSLOG_SERVER" ]; then echo "*.*          ${RSYSLOG_SERVER}" >> /etc/rsyslog.conf; fi
-RUN service rsyslog restart
-RUN cat /etc/rsyslog.conf
 
 # switch to non-root user
 USER app
-RUN whoami
-RUN logger Hello
-# run python script when container lands on device
-CMD ["python", "/app/hello.py"]
+ENTRYPOINT ["/start_hello.sh"]
