@@ -20,6 +20,9 @@ log.addHandler(stream_handler)
 
 log.info("Hello App!")
 
+for key,value in os.environ.items():
+    print "{}: {}".format(key, value)
+
 import subprocess
 #df = subprocess.Popen(["df", "-h"], stdout=subprocess.PIPE)
 #print df.communicate()[0]
