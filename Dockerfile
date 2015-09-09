@@ -21,22 +21,19 @@ RUN mkdir -p /storage/ftp
 
 COPY . /app
 
-# ftp user
+# non-root users
 RUN groupadd -r ftpuser && useradd -r -g ftpuser ftpuser
-
-
-# switch to non-root user
 RUN groupadd -r app && useradd -r -g app app
-USER app
 
-RUN whoami
-
+# system configuration
 RUN bash -c 'cat /etc/vsftpd.conf | python /app/config_interpol'
-
-USER root
 RUN bash -c 'if [ -n "$RSYSLOG_SERVER" ]; then echo "*.*          ${RSYSLOG_SERVER}" >> /etc/rsyslog.conf; fi'
 RUN bash -c 'service rsyslog restart'
+RUN chown app /var/log/syslog
+
+# switch to non-root user
 USER app
+RUN whoami
 RUN logger Hello
 # run python script when container lands on device
 CMD ["python", "/app/hello.py"]

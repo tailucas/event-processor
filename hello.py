@@ -3,6 +3,9 @@ import os
 import sys
 import logging
 import logging.handlers
+from time import sleep
+
+sleep(5)
 
 APP = os.path.basename(__file__)
 log = logging.getLogger(APP)
@@ -18,8 +21,8 @@ log.addHandler(stream_handler)
 log.info("Hello App!")
 
 import subprocess
-df = subprocess.Popen(["df", "-h"], stdout=subprocess.PIPE)
-print df.communicate()[0]
+#df = subprocess.Popen(["df", "-h"], stdout=subprocess.PIPE)
+#print df.communicate()[0]
 
 r = subprocess.Popen(["cat", "/etc/os-release"], stdout=subprocess.PIPE)
 print r.communicate()[0]
@@ -33,5 +36,4 @@ print r.communicate()[0]
 r = subprocess.Popen(["tail", "/var/log/syslog"], stdout=subprocess.PIPE)
 print r.communicate()[0]
 
-import time
-time.sleep(3600)
+sleep(3600)
