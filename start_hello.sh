@@ -6,3 +6,4 @@ if [ -n "$RSYSLOG_SERVER" ]; then
   service rsyslog restart
 fi
 python /app/hello.py
+
