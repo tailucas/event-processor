@@ -23,9 +23,8 @@ RUN mkdir -p /storage/ftp
 COPY . /app
 COPY ./start_hello.sh /
 
-RUN curl -o gosu -sSL "https://github.com/tianon/gosu/releases/download/1.4/gosu-$(dpkg --print-architecture)"
-RUN chmod +x gosu
-COPY gosu /app
+RUN curl -o /usr/local/bin/gosu -sSL "https://github.com/tianon/gosu/releases/download/1.4/gosu-$(dpkg --print-architecture)"
+RUN chmod +x /usr/local/bin/gosu
 
 # non-root users
 RUN groupadd -r ftpuser && useradd -r -g ftpuser ftpuser
