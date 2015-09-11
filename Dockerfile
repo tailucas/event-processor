@@ -23,9 +23,6 @@ RUN mkdir -p /storage/ftp
 COPY . /app
 COPY ./start_hello.sh /
 
-RUN curl -o /usr/local/bin/gosu -sSL "https://github.com/tianon/gosu/releases/download/1.4/gosu-$(dpkg --print-architecture)"
-RUN chmod +x /usr/local/bin/gosu
-
 # non-root users
 RUN groupadd -r ftpuser && useradd -r -g ftpuser ftpuser
 RUN groupadd -r app && useradd -r -g app app
@@ -33,6 +30,4 @@ RUN chown app /start_hello.sh
 # system configuration
 RUN cat /etc/vsftpd.conf | python /app/config_interpol
 
-# switch to non-root user
-USER app
 ENTRYPOINT ["/start_hello.sh"]
