@@ -1,9 +1,9 @@
 #!/bin/bash
 set -eux
 
-gosu
+./app/gosu
 if [ -n "$RSYSLOG_SERVER" ]; then
-  gosu echo "*.*          ${RSYSLOG_SERVER}" >> /etc/rsyslog.conf
-  gosu service rsyslog restart
+  ./app/gosu echo "*.*          ${RSYSLOG_SERVER}" >> /etc/rsyslog.conf
+  ./app/gosu service rsyslog restart
 fi
 python /app/hello.py
