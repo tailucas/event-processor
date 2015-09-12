@@ -2,7 +2,7 @@
 set -eux
 
 # remove unnecessary kernel drivers
-rmmod w1_gpio
+rmmod w1_gpio||true
 lsmod
 
 if [ -n "${RSYSLOG_SERVER:-}" ]; then
