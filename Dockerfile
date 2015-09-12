@@ -5,8 +5,7 @@ ENV INITSYSTEM on
 MAINTAINER db2inst1 <db2inst1@webafrica.org.za>
 LABEL Description="snapshot_processor" Vendor="db2inst1" Version="1.0"
 
-# apt-get update run by parent
-RUN apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     mplayer \
     rsyslog \
