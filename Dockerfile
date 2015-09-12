@@ -30,11 +30,4 @@ RUN chown app /start_hello.sh
 # system configuration
 RUN cat /etc/vsftpd.conf | python /app/config_interpol
 
-RUN lsmod
-# unload this to prevent these kernel messages,
-# apparently when GPIO is not connected.
-# w1_master_driver w1_bus_master1: Family 0 for 00.ef9b00000000.48 is not registered.
-RUN rmmod w1_gpio
-RUN lsmod
-
 ENTRYPOINT ["/start_hello.sh"]
