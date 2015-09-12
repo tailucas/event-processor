@@ -6,4 +6,6 @@ if [ -n "$RSYSLOG_SERVER" ]; then
   tail /etc/rsyslog.conf
   service rsyslog restart
 fi
+
+su - app
 python /app/hello.py
