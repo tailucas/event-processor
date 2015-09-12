@@ -29,4 +29,4 @@ if __name__ == "__main__":
 
     while True:
         log.info('hello {}'.format(time()))
-        sleep(60*5)
+        sleep(60)
