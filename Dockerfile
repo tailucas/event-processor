@@ -1,4 +1,4 @@
-FROM resin/raspberrypi-python:latest
+FROM resin/rpi-raspbian:wheezy
 # Enable systemd
 ENV INITSYSTEM on
 
@@ -6,8 +6,12 @@ MAINTAINER db2inst1 <db2inst1@webafrica.org.za>
 LABEL Description="snapshot_processor" Vendor="db2inst1" Version="1.0"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
     mplayer \
     rsyslog \
+    python-pip \
+    python2.7 \
+    python2.7-dev \
     vsftpd
 
 COPY ./config/snapshot_processor_pip /tmp/
