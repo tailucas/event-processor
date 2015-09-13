@@ -37,7 +37,7 @@ if __name__ == "__main__":
     device = Device()
     device_name = device.get_name(device_id)
     device_ip = device.get_local_ip_address(device_id)
-    log.info('Hello, I am {} with IP address {}'.format(device_name, device_id))
+    log.info('Hello, I am {} with IP address {}'.format(device_name, device_ip))
 
     while True:
         log.info('hello {}'.format(time()))
