@@ -16,6 +16,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     vsftpd
 
 COPY ./config/snapshot_processor_pip /tmp/
+# update pip
+RUN curl https://bootstrap.pypa.io/get-pip.py | python --no-index --find-links=/local/copies
 RUN pip install -r /tmp/snapshot_processor_pip
 # show outdated packages since the freeze
 RUN pip list --outdated
