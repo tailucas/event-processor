@@ -10,4 +10,4 @@ if [ -n "${RSYSLOG_SERVER:-}" ]; then
   service rsyslog restart
 fi
 
-sudo -u app python /app/hello.py
+su -p app -c 'python /app/hello.py'
