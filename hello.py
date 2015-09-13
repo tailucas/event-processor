@@ -28,6 +28,8 @@ if __name__ == "__main__":
     stream_handler = logging.StreamHandler(stream=sys.stdout)
     log.addHandler(stream_handler)
 
+    log.info('HOME is {}'.format(os.environ.get('HOME')))
+
     resin_auth = Auth()
     resin_auth.login_with_token(os.environ.get('AUTH_KEY_RESIN'))
     device_id = os.environ.get('RESIN_DEVICE_UUID')
