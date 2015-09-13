@@ -31,6 +31,7 @@ COPY ./start_hello.sh /
 # non-root users
 RUN groupadd -r ftpuser && useradd -r -g ftpuser ftpuser
 RUN groupadd -r app && useradd -r -g app app
+RUN chown -R app /app/
 RUN chown app /start_hello.sh
 # system configuration
 RUN cat /etc/vsftpd.conf | python /app/config_interpol
