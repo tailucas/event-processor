@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python2.7 \
     python2.7-dev \
     rsyslog \
+    ssl-cert \
     vsftpd
 
 COPY ./config/snapshot_processor_pip /tmp/
