@@ -10,7 +10,7 @@ python-dateutil==2.4.2
 python-magic==0.4.6
 pytz==2015.2
 pyzmq==14.7.0
-requests==2.7.0
+requests[security]==2.7.0
 resin-sdk==1.0.2
 u-msgpack-python==2.0
 watchdog==0.8.3

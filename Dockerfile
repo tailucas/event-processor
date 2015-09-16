@@ -9,8 +9,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     g++ \
     gcc \
-    openssl \
+    libffi-dev \
+    libssl-dev \
     mplayer \
+    openssl \
     python-pip \
     python2.7 \
     python2.7-dev \
