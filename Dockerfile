@@ -36,8 +36,8 @@ RUN chown -R ftpuser /storage/ftp/
 # zmq
 EXPOSE 5556
 
-COPY ./config/vsftpd.conf /app
 COPY . /app
+COPY ./config/vsftpd.conf /app
 COPY ./start_hello.sh /
 
 # non-root users
