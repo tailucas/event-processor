@@ -27,18 +27,22 @@ RUN pip install -r /tmp/snapshot_processor_pip
 # show outdated packages since the freeze
 RUN pip list --outdated
 
-EXPOSE 21 5556
+# FTP
+EXPOSE 21
+RUN groupadd -r ftpuser && useradd -r -g ftpuser ftpuser
 RUN mkdir -p /storage/ftp
+RUN chown -R ftpuser /storage/ftp/
 
+# zmq
+EXPOSE 5556
+
+COPY ./config/vsftpd.conf /app
 COPY . /app
 COPY ./start_hello.sh /
 
 # non-root users
-RUN groupadd -r ftpuser && useradd -r -g ftpuser ftpuser
 RUN groupadd -r app && useradd -r -g app app
 RUN chown -R app /app/
 RUN chown app /start_hello.sh
-# system configuration
-RUN cat /etc/vsftpd.conf | python /app/config_interpol
 
 ENTRYPOINT ["/start_hello.sh"]
