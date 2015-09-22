@@ -37,7 +37,6 @@ RUN chown -R ftpuser /storage/ftp/
 EXPOSE 5556
 
 COPY . /app
-COPY ./config/vsftpd.conf /app
 COPY ./start_hello.sh /
 
 # non-root users
