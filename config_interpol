@@ -1,9 +1,8 @@
 #!/usr/bin/python
-import fileinput
 import os
 import sys
 
-from ConfigParser import SafeConfigParser, InterpolationMissingOptionError
+from ConfigParser import SafeConfigParser, InterpolationMissingOptionError, NoOptionError
 
 
 FAKE_SECTION = 'FAKESECTION'
@@ -23,17 +22,41 @@ class FakeSecHead(object):
         else:
             return self.fp.readline()
 
+
+def load_config(fp):
+    cfg = SafeConfigParser()
+    cfg.optionxform = str
+    cfg.readfp(FakeSecHead(fp))
+    return cfg
+
+
+def err(msg, code=1):
+    sys.stderr.write(msg + '\n')
+    exit(code)
+
+
 if __name__ == "__main__":
-    config = SafeConfigParser()
-    config.optionxform = str
-    config.readfp(FakeSecHead(fileinput.input()))
+    overlay_config = None
+    if len(sys.argv) == 2 and os.path.isfile(sys.argv[1]):
+        with open(sys.argv[1], 'r') as fp:
+            overlay_config = load_config(fp)
+    config = load_config(sys.stdin)
     for section in config.sections():
         if section != FAKE_SECTION:
             print '[{section}]'.format(section=section)
+        # we don't use config.items() here to avoid emitting the defaults too
         for option in config.options(section=section):
             try:
-                # we don't use config.items() here to avoid emitting the defaults too
-                print '{key}={value}'.format(key=option, value=config.get(section=section, option=option, vars=os.environ))
+                output = '{key}={value}'
+                if overlay_config:
+                    value = overlay_config.get(section=section, option=option, vars=os.environ)
+                else:
+                    value = config.get(section=section, option=option, vars=os.environ)
+                print '{key}={value}'.format(key=option, value=value)
             except InterpolationMissingOptionError as e:
-                sys.stderr.write(e.message)
-                exit(1)
+                err(e.message)
+            except NoOptionError as e:
+                section_name = "section: '{}'."
+                if section == FAKE_SECTION:
+                    section_name = "default section."
+                err("No option '{}' in {}".format(option, section_name), 2)
