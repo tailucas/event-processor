@@ -11,8 +11,9 @@ if [ -n "${RSYSLOG_SERVER:-}" ]; then
 fi
 
 export FTP_ROOT=/storage/ftp/
-cat /etc/vsftpd.conf | python /app/config_interpol /app/config/vsftpd.conf | tee /etc/vsftpd.conf
-tail /etc/vsftpd.conf
+#cat /etc/vsftpd.conf | python /app/config_interpol /app/config/vsftpd.conf | tee /etc/vsftpd.conf
+cat /etc/vsftpd.conf
+#tail /etc/vsftpd.conf
 service vsftpd restart
 
 su -p app -c 'python /app/hello.py'
