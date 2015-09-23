@@ -32,7 +32,6 @@ EXPOSE 21
 RUN groupadd -r ftpuser && useradd -r -g ftpuser ftpuser
 RUN mkdir -p /storage/ftp
 RUN chown -R ftpuser /storage/ftp/
-#ADD vsftpd.conf /etc/
 
 # zmq
 EXPOSE 5556
