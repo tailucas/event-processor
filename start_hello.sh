@@ -13,7 +13,7 @@ fi
 # groups
 groupadd -r "${APP_GROUP}"
 
-useradd -r -g "${FTP_USER}" "${APP_GROUP}"
+useradd -r -g "${APP_GROUP}" "${FTP_USER}"
 mkdir -p "/home/${FTP_USER}/"
 mkdir -p "${APP_SNAPSHOTS_ROOT_DIR}"
 ln -s "${APP_SNAPSHOTS_ROOT_DIR}" "/home/${FTP_USER}/ftp"
@@ -31,7 +31,7 @@ tail /etc/vsftpd.conf
 service vsftpd restart
 
 # non-root users
-useradd -r -g "${APP_USER}" "${APP_GROUP}"
+useradd -r -g "${APP_GROUP}" "${APP_USER}"
 chown -R "${APP_USER}:${APP_GROUP}" /app/
 chown "${APP_USER}:${APP_GROUP}" /start_hello.sh
 
