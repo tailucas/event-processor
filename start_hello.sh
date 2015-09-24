@@ -26,8 +26,8 @@ tail /etc/vsftpd.conf
 service vsftpd restart
 
 # non-root users
-RUN groupadd -r app && useradd -r -g app app
-RUN chown -R app /app/
-RUN chown app /start_hello.sh
+groupadd -r app && useradd -r -g app app
+chown -R app /app/
+chown app /start_hello.sh
 
 su -p app -c 'python /app/hello.py'
