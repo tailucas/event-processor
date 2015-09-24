@@ -16,7 +16,8 @@ mkdir -p "${APP_SNAPSHOTS_ROOT_DIR}"
 ln -s "${APP_SNAPSHOTS_ROOT_DIR}" "/home/${FTP_USER}/ftp"
 chown -R "${FTP_USER}" "/home/${FTP_USER}/"
 chown -R "${FTP_USER}" "${APP_SNAPSHOTS_ROOT_DIR}"
-#chmod a-w "/home/${FTP_USER}/ftp"
+chmod a-w "/home/${FTP_USER}/ftp"
+mkdir -p "/home/${FTP_USER}/ftp/files"
 echo "${FTP_USER}:${FTP_PASSWORD}" | chpasswd
 
 cat /etc/vsftpd.conf | python /app/config_interpol /app/config/vsftpd.conf | sort | tee /etc/vsftpd.conf.new
