@@ -4,12 +4,6 @@ set -eux
 # remove unnecessary kernel drivers
 rmmod w1_gpio||true
 
-if [ -n "${RSYSLOG_SERVER:-}" ]; then
-  echo "*.*          @${RSYSLOG_SERVER}" >> /etc/rsyslog.conf
-  tail /etc/rsyslog.conf
-  service rsyslog restart
-fi
-
 # groups
 groupadd -r "${APP_GROUP}"
 
@@ -34,5 +28,13 @@ service vsftpd restart
 useradd -r -g "${APP_GROUP}" "${APP_USER}"
 chown -R "${APP_USER}:${APP_GROUP}" /app/
 chown "${APP_USER}:${APP_GROUP}" /start_hello.sh
+
+
+# remote system logging
+if [ -n "${RSYSLOG_SERVER:-}" ]; then
+  echo "*.*          @${RSYSLOG_SERVER}" >> /etc/rsyslog.conf
+  tail /etc/rsyslog.conf
+  service rsyslog restart
+fi
 
 su -p "${APP_USER}" -c 'python /app/hello.py'
