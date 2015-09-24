@@ -13,9 +13,9 @@ fi
 groupadd -r "${FTP_USER}" && useradd -r -g "${FTP_USER}" "${FTP_USER}"
 mkdir -p "/home/${FTP_USER}/"
 mkdir -p "${APP_SNAPSHOTS_ROOT_DIR}"
-ln -s "${APP_SNAPSHOTS_ROOT_DIR}/" "/home/${FTP_USER}/ftp"
-chown -R "/home/${FTP_USER}/"
-chown -R "${APP_SNAPSHOTS_ROOT_DIR}/"
+ln -s "${APP_SNAPSHOTS_ROOT_DIR}" "/home/${FTP_USER}/ftp"
+chown -R "${FTP_USER}" "/home/${FTP_USER}/"
+chown -R "${APP_SNAPSHOTS_ROOT_DIR}"
 chmod a-w "/home/${FTP_USER}/ftp"
 echo "${FTP_USER}:${FTP_PASSWORD}" | chpasswd
 
