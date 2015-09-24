@@ -41,22 +41,45 @@ if __name__ == "__main__":
         with open(sys.argv[1], 'r') as fp:
             overlay_config = load_config(fp)
     config = load_config(sys.stdin)
-    for section in config.sections():
-        if section != FAKE_SECTION:
-            print '[{section}]'.format(section=section)
-        # we don't use config.items() here to avoid emitting the defaults too
-        for option in config.options(section=section):
-            try:
-                output = '{key}={value}'
+    sections = dict()
+    try:
+        for section in config.sections():
+            # we don't use config.items() here to avoid emitting the defaults too
+            for option in config.options(section=section):
+                value = None
                 if overlay_config:
                     value = overlay_config.get(section=section, option=option, vars=os.environ)
-                else:
+                if value is None:
                     value = config.get(section=section, option=option, vars=os.environ)
-                print '{key}={value}'.format(key=option, value=value)
-            except InterpolationMissingOptionError as e:
-                err(e.message)
-            except NoOptionError as e:
-                section_name = "section: '{}'."
-                if section == FAKE_SECTION:
-                    section_name = "default section."
-                err("No option '{}' in {}".format(option, section_name), 2)
+                # store this now
+                if section not in sections:
+                    sections[section] = dict()
+                if option not in sections[section]:
+                    sections[section][option] = dict()
+                sections[section][option] = value
+        if overlay_config:
+            # now supplement the overlay options
+            for section in overlay_config.sections():
+                for option in overlay_config.options(section=section):
+                    value = overlay_config.get(section=section, option=option, vars=os.environ)
+                    if section not in sections:
+                        sections[section] = dict()
+                    if option not in sections[section]:
+                        sections[section][option] = dict()
+                    sections[section][option] = value
+    except InterpolationMissingOptionError as e:
+        err(e.message)
+    except NoOptionError as e:
+        section_name = "section: '{}'."
+        if section == FAKE_SECTION:
+            section_name = "default section."
+        err("No option '{}' in {}".format(option, section_name), 2)
+    # now output, starting with the default section
+    if FAKE_SECTION in sections:
+        for option, value in sections[FAKE_SECTION].items():
+            print '{key}={value}'.format(key=option, value=value)
+        del sections[FAKE_SECTION]
+    # now do each section
+    for section in sections:
+        for option, value in sections[section].items():
+            print '{key}={value}'.format(key=option, value=value)
