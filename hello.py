@@ -28,5 +28,5 @@ if __name__ == "__main__":
     log.info('HOME is {}'.format(os.environ.get('HOME')))
 
     while True:
-        log.info('hello {}'.format(time()))
+        log.info('hello {} {}'.format(os.environ.get('RESIN_DEVICE_UUID'), time()))
         sleep(60*5)

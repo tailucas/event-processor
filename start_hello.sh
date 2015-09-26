@@ -1,6 +1,12 @@
 #!/bin/bash
 set -eux
 
+# remote system logging
+if [ -n "${RSYSLOG_SERVER:-}" ]; then
+  echo "*.*          @${RSYSLOG_SERVER}" >> /etc/rsyslog.conf
+  tail /etc/rsyslog.conf
+fi
+
 # remove unnecessary kernel drivers
 rmmod w1_gpio||true
 
@@ -22,19 +28,13 @@ cat /etc/vsftpd.conf | python /app/config_interpol /app/config/vsftpd.conf | sor
 mv /etc/vsftpd.conf /etc/vsftpd.conf.backup
 mv /etc/vsftpd.conf.new /etc/vsftpd.conf
 tail /etc/vsftpd.conf
-service vsftpd restart
 
 # non-root users
 useradd -r -g "${APP_GROUP}" "${APP_USER}"
 chown -R "${APP_USER}:${APP_GROUP}" /app/
 chown "${APP_USER}:${APP_GROUP}" /start_hello.sh
 
-
-# remote system logging
-if [ -n "${RSYSLOG_SERVER:-}" ]; then
-  echo "*.*          @${RSYSLOG_SERVER}" >> /etc/rsyslog.conf
-  tail /etc/rsyslog.conf
-  service rsyslog restart
-fi
-
-su -p "${APP_USER}" -c 'python /app/hello.py'
+# I'm the supervisor
+cat /app/config/supervisord.conf | python /app/config_interpol | tee /etc/supervisor/conf.d/supervisord.conf
+tail /etc/supervisor/conf.d/supervisord.conf
+/usr/bin/supervisord
