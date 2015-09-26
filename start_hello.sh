@@ -3,8 +3,7 @@ set -eux
 
 # remote system logging
 if [ -n "${RSYSLOG_SERVER:-}" ]; then
-  echo "*.*          @${RSYSLOG_SERVER}" | tee /etc/rsyslog.conf
-  service rsyslog restart
+  echo "*.*          @${RSYSLOG_SERVER}" | tee -a /etc/rsyslog.conf
 fi
 
 # remove unnecessary kernel drivers
