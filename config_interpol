@@ -81,5 +81,6 @@ if __name__ == "__main__":
         del sections[FAKE_SECTION]
     # now do each section
     for section in sections:
+        print '[{section}]'.format(section=section)
         for option, value in sections[section].items():
             print '{key}={value}'.format(key=option, value=value)
