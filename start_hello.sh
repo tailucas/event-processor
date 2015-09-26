@@ -3,9 +3,7 @@ set -eux
 
 # remote system logging
 if [ -n "${RSYSLOG_SERVER:-}" ]; then
-  echo "*.*          @${RSYSLOG_SERVER}" >> /etc/rsyslog.conf
-  tail /etc/rsyslog.conf
-  service rsyslog restart
+  echo "*.*          @${RSYSLOG_SERVER}" | tee /etc/rsyslog.conf
 fi
 
 # remove unnecessary kernel drivers
@@ -28,7 +26,6 @@ echo "${FTP_USER}:${FTP_PASSWORD}" | chpasswd
 cat /etc/vsftpd.conf | python /app/config_interpol /app/config/vsftpd.conf | sort | tee /etc/vsftpd.conf.new
 mv /etc/vsftpd.conf /etc/vsftpd.conf.backup
 mv /etc/vsftpd.conf.new /etc/vsftpd.conf
-tail /etc/vsftpd.conf
 
 # non-root users
 useradd -r -g "${APP_GROUP}" "${APP_USER}"
@@ -37,5 +34,4 @@ chown "${APP_USER}:${APP_GROUP}" /start_hello.sh
 
 # I'm the supervisor
 cat /app/config/supervisord.conf | python /app/config_interpol | tee /etc/supervisor/conf.d/supervisord.conf
-tail /etc/supervisor/conf.d/supervisord.conf
 /usr/bin/supervisord
