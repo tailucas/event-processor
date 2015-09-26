@@ -21,6 +21,8 @@ chown -R "${FTP_USER}:${APP_GROUP}" "/home/${FTP_USER}/"
 chown -R "${FTP_USER}:${APP_GROUP}" "${APP_SNAPSHOTS_ROOT_DIR}"
 chmod a-w "/home/${FTP_USER}/ftp"
 
+cat /app/config/cleanup_snapshots | sed 's/__STORAGE__/'"${APP_SNAPSHOTS_ROOT_DIR//\//\/}files\/"'/g' > /etc/cron.d/cleanup_snapshots
+
 echo "${FTP_USER}:${FTP_PASSWORD}" | chpasswd
 
 cat /etc/vsftpd.conf | python /app/config_interpol /app/config/vsftpd.conf | sort | tee /etc/vsftpd.conf.new
