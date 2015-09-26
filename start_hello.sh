@@ -13,15 +13,18 @@ rmmod w1_gpio||true
 groupadd -r "${APP_GROUP}"
 
 useradd -r -g "${APP_GROUP}" "${FTP_USER}"
-mkdir -p "/home/${FTP_USER}/"
-mkdir -p "${APP_SNAPSHOTS_ROOT_DIR}"
-ln -s "${APP_SNAPSHOTS_ROOT_DIR}" "/home/${FTP_USER}/ftp"
-mkdir -p "/home/${FTP_USER}/ftp/files"
-chown -R "${FTP_USER}:${APP_GROUP}" "/home/${FTP_USER}/"
-chown -R "${FTP_USER}:${APP_GROUP}" "${APP_SNAPSHOTS_ROOT_DIR}"
-chmod a-w "/home/${FTP_USER}/ftp"
+FTP_HOME="/home/${FTP_USER}"
+FTP_ROOT="${FTP_HOME}/ftp"
+export STORAGE_ROOT="/storage/uploads"
+INCOMING_DIR="${FTP_ROOT}/files"
+mkdir -p "$INCOMING_DIR/"
+mkdir -p "$STORAGE_ROOT/"
+ln -s "$STORAGE_ROOT" "${FTP_ROOT}/"
+chown -R "${FTP_USER}:${APP_GROUP}" "${FTP_HOME}/"
+chown -R "${FTP_USER}:${APP_GROUP}" "${STORAGE_ROOT}/"
+chmod a-w "${FTP_ROOT}"
 
-cat /app/config/cleanup_snapshots | sed 's/__STORAGE__/'"${APP_SNAPSHOTS_ROOT_DIR//\//\/}files\/"'/g' > /etc/cron.d/cleanup_snapshots
+cat /app/config/cleanup_snapshots | sed 's/__STORAGE__/'"${STORAGE_ROOT//\//\/}\/"'/g' > /etc/cron.d/cleanup_snapshots
 
 echo "${FTP_USER}:${FTP_PASSWORD}" | chpasswd
 
