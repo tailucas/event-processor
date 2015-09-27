@@ -37,6 +37,8 @@ mkdir -p /var/run/vsftpd/empty
 # application configuration (no tee for secrets)
 cat /app/config/snapshot_processor.conf | python /app/config_interpol > /app/snapshot_processor.conf
 
+echo "$GOOGLE_CLIENT_SECRETS" > /app/client_secrets.json
+
 # non-root users
 useradd -r -g "${APP_GROUP}" "${APP_USER}"
 chown -R "${APP_USER}:${APP_GROUP}" /app/
