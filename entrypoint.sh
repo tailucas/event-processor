@@ -37,7 +37,6 @@ mkdir -p /var/run/vsftpd/empty
 # non-root users
 useradd -r -g "${APP_GROUP}" "${APP_USER}"
 chown -R "${APP_USER}:${APP_GROUP}" /app/
-chown "${APP_USER}:${APP_GROUP}" /start_hello.sh
 
 # I'm the supervisor
 cat /app/config/supervisord.conf | python /app/config_interpol | tee /etc/supervisor/conf.d/supervisord.conf
