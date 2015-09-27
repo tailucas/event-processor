@@ -17,13 +17,14 @@ FTP_HOME="/home/${FTP_USER}"
 mkdir -p "${FTP_HOME}/"
 export FTP_ROOT="${FTP_HOME}/ftp"
 STORAGE_ROOT="/storage/ftp"
-mkdir -p "${STORAGE_ROOT}/uploads"
+STORAGE_UPLOADS="${STORAGE_ROOT}/uploads"
+mkdir -p "${STORAGE_UPLOADS}"
 ln -s "$STORAGE_ROOT" "$FTP_ROOT"
 chown -R "${FTP_USER}:${APP_GROUP}" "${FTP_HOME}/"
 chown -R "${FTP_USER}:${APP_GROUP}" "${STORAGE_ROOT}/"
 chmod a-w "${FTP_ROOT}"
 
-cat /app/config/cleanup_snapshots | sed 's/__STORAGE__/'"${STORAGE_ROOT//\//\/}\/"'/g' > /etc/cron.d/cleanup_snapshots
+cat /app/config/cleanup_snapshots | sed 's/__STORAGE__/'"${STORAGE_UPLOADS//\//\/}\/"'/g' > /etc/cron.d/cleanup_snapshots
 
 echo "${FTP_USER}:${FTP_PASSWORD}" | chpasswd
 
