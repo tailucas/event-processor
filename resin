@@ -21,6 +21,9 @@ if __name__ == "__main__":
     print 'Device {} ({}) is running app {}'.format(device_name, device_ip, device_app_name)
     application = Application()
     print 'I am running application {}'.format(str(application.get(device_app_name)))
+    #{u'app_name': u'SnapshotProcessor', u'__metadata':
+    # {u'type': u'', u'uri': u'/ewa/application(5231)'}, u'git_repository': u'tglucas@git.resin.io:tglucas/snapshotprocessor.git',
+    # u'user': {u'__deferred': {u'uri': u'/ewa/user(4554)'}, u'__id': 4554}, u'device_type': u'raspberry-pi', u'commit': u'418e2d97a03300274a9c42ffc340cf0a18497020', u'id': 5231}
     environment_variables = ApplicationEnvVariable()
     test_data = '{}'.format(time())
     environment_variables.update('DYNAMIC_TEST', test_data)
