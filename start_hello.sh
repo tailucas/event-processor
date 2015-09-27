@@ -30,7 +30,7 @@ echo "${FTP_USER}:${FTP_PASSWORD}" | chpasswd
 cat /etc/vsftpd.conf | python /app/config_interpol /app/config/vsftpd.conf | sort | tee /etc/vsftpd.conf.new
 mv /etc/vsftpd.conf /etc/vsftpd.conf.backup
 mv /etc/vsftpd.conf.new /etc/vsftpd.conf
-secure_chroot_dir
+# secure_chroot_dir
 mkdir -p /var/run/vsftpd/empty
 
 # non-root users
