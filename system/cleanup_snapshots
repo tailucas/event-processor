@@ -1,1 +1,0 @@
-0 * * * * root find /storage/ftp/files/ -ctime +7 | xargs -n100 rm -f
