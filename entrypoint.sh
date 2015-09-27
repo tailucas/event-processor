@@ -16,7 +16,7 @@ useradd -r -g "${APP_GROUP}" "${FTP_USER}"
 FTP_HOME="/home/${FTP_USER}"
 mkdir -p "${FTP_HOME}/"
 export FTP_ROOT="${FTP_HOME}/ftp"
-STORAGE_ROOT="/storage/ftp"
+export STORAGE_ROOT="/storage/ftp"
 STORAGE_UPLOADS="${STORAGE_ROOT}/uploads"
 mkdir -p "${STORAGE_UPLOADS}"
 ln -s "$STORAGE_ROOT" "$FTP_ROOT"
@@ -33,6 +33,9 @@ mv /etc/vsftpd.conf /etc/vsftpd.conf.backup
 mv /etc/vsftpd.conf.new /etc/vsftpd.conf
 # secure_chroot_dir
 mkdir -p /var/run/vsftpd/empty
+
+# application configuration (no tee for secrets)
+cat /app/config/snapshot_processor.conf | python /app/config_interpol > /app/snapshot_processor.conf
 
 # non-root users
 useradd -r -g "${APP_GROUP}" "${APP_USER}"

@@ -51,7 +51,7 @@ TTS_URL = 'http://translate.google.com/translate_tts'
 
 config = ConfigParser()
 config.optionxform = str
-config.read([os.path.expanduser('~/.{}'.format(APP))])
+config.read([os.path.join(DIR, '{}.conf'.format(APP))])
 
 snapshot_root = config.get('snapshots', 'root_dir')
 heartbeat_interval_seconds = int(config.get('snapshots', 'heartbeat_interval_seconds'))
@@ -974,14 +974,12 @@ if __name__ == "__main__":
     stream_handler = logging.StreamHandler(stream=sys.stdout)
     log.addHandler(stream_handler)
     # set up config
-    sample_labels = dict(config.items('sample_sources'))
     image_labels = dict(config.items('images_sources'))
-    sample_snapshot_dirs = dict(config.items('sample_snapshot_dirs'))
     image_snapshot_dirs = dict(config.items('image_snapshot_dirs'))
     # set up signal handlers
     signal.signal(signal.SIGHUP, signal_handler)
     # remap the labels to the directories
-    if len(sample_labels) != len(sample_snapshot_dirs) or len(image_labels) != len(image_snapshot_dirs):
+    if len(image_labels) != len(image_snapshot_dirs):
         raise RuntimeError('Invalid configuration. Sources and associated labels must match.')
     # top-level types
     filetype = FileType()
