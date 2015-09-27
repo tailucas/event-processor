@@ -14,11 +14,10 @@ groupadd -r "${APP_GROUP}"
 
 useradd -r -g "${APP_GROUP}" "${FTP_USER}"
 FTP_HOME="/home/${FTP_USER}"
-FTP_ROOT="${FTP_HOME}/ftp"
-export STORAGE_ROOT="/storage/uploads"
-INCOMING_DIR="${FTP_ROOT}/files"
-mkdir -p "$INCOMING_DIR/"
-mkdir -p "$STORAGE_ROOT/"
+export FTP_ROOT="${FTP_HOME}/ftp"
+mkdir -p "${FTP_ROOT}/"
+STORAGE_ROOT="/storage/uploads"
+mkdir -p "${STORAGE_ROOT}/"
 ln -s "$STORAGE_ROOT" "${FTP_ROOT}/"
 chown -R "${FTP_USER}:${APP_GROUP}" "${FTP_HOME}/"
 chown -R "${FTP_USER}:${APP_GROUP}" "${STORAGE_ROOT}/"
@@ -31,6 +30,8 @@ echo "${FTP_USER}:${FTP_PASSWORD}" | chpasswd
 cat /etc/vsftpd.conf | python /app/config_interpol /app/config/vsftpd.conf | sort | tee /etc/vsftpd.conf.new
 mv /etc/vsftpd.conf /etc/vsftpd.conf.backup
 mv /etc/vsftpd.conf.new /etc/vsftpd.conf
+secure_chroot_dir
+mkdir -p /var/run/vsftpd/empty
 
 # non-root users
 useradd -r -g "${APP_GROUP}" "${APP_USER}"
