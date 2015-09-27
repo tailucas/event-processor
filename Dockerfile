@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     mplayer \
     openssl \
+    python-gammu \
     python-pip \
     python2.7 \
     python2.7-dev \
