@@ -1,1 +1,1 @@
-* * * * * root find __STORAGE__ -ctime +1 | xargs -n100 rm -f
+30 * * * * root find __STORAGE__ -ctime +1 | xargs -n100 rm -f
