@@ -36,6 +36,6 @@ EXPOSE 21
 EXPOSE 5556
 
 COPY . /app
-COPY ./start_hello.sh /
+COPY ./entrypoint.sh /
 
-ENTRYPOINT ["/start_hello.sh"]
+ENTRYPOINT ["/entrypoint.sh"]
