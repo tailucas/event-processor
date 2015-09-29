@@ -8,9 +8,6 @@ from resin.models.device import Device
 from resin.models.environment_variables import ApplicationEnvVariable
 
 if __name__ == "__main__":
-    #for k,v in os.environ.items():
-    #    print '{}: {}'.format(k,v)
-
     resin_auth = Auth()
     resin_auth.login_with_token(os.environ.get('AUTH_KEY_RESIN'))
     device_id = os.environ.get('RESIN_DEVICE_UUID')

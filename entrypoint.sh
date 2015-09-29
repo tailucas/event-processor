@@ -41,12 +41,14 @@ cat /app/config/snapshot_processor.conf | python /app/config_interpol > /app/sna
 echo "$GOOGLE_CLIENT_SECRETS" > /app/client_secrets.json
 # we may already have a valid auth token
 if [ -n "${GOOGLE_OAUTH_TOKEN:-}" ]; then
-  echo "$GOOGLE_OAUTH_TOKEN" > /app/snapshot_processor_creds
+  echo "$GOOGLE_OAUTH_TOKEN" > /data/snapshot_processor_creds
 fi
 
 # non-root users
 useradd -r -g "${APP_GROUP}" "${APP_USER}"
 chown -R "${APP_USER}:${APP_GROUP}" /app/
+# non-volatile storage
+chown -R "${APP_USER}:${APP_GROUP}" /data/
 
 # I'm the supervisor
 cat /app/config/supervisord.conf | python /app/config_interpol | tee /etc/supervisor/conf.d/supervisord.conf
