@@ -42,7 +42,7 @@ sys.displayhook = pprint
 
 APP = os.path.basename(__file__)
 DIR = os.path.abspath(os.path.dirname(__file__))
-TTS_DIR = os.path.join(DIR, 'tts_samples')
+TTS_DIR = '/data/tts_samples'
 # set the working directory for libraries that assume this (such as PyDrive)
 os.chdir(DIR)
 log = logging.getLogger(APP)
