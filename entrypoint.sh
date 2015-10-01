@@ -51,7 +51,8 @@ fi
 useradd -r -g "${APP_GROUP}" "${APP_USER}"
 chown -R "${APP_USER}:${APP_GROUP}" /app/
 # non-volatile storage
-chown -R "${APP_USER}:${APP_GROUP}" /data/
+chown "${APP_USER}:${APP_GROUP}" /data/
+chown "${APP_USER}:${APP_GROUP}" /data/*
 
 # I'm the supervisor
 cat /app/config/supervisord.conf | python /app/config_interpol | tee /etc/supervisor/conf.d/supervisord.conf
