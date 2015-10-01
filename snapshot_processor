@@ -971,8 +971,10 @@ if __name__ == "__main__":
     formatter = logging.Formatter('%(name)s [%(levelname)s] %(message)s')
     syslog_handler.setFormatter(formatter)
     log.addHandler(syslog_handler)
-    stream_handler = logging.StreamHandler(stream=sys.stdout)
-    log.addHandler(stream_handler)
+    if sys.stdout.isatty():
+        # log to stdout if there is a tty
+        stream_handler = logging.StreamHandler(stream=sys.stdout)
+        log.addHandler(stream_handler)
     # set up config
     image_labels = dict(config.items('images_sources'))
     image_snapshot_dirs = dict(config.items('image_snapshot_dirs'))
