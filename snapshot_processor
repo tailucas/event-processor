@@ -1026,6 +1026,8 @@ if __name__ == "__main__":
     # start the Google Driver archiver last
     google_drive.start()
     try:
+        time.sleep(1)
+        notifier.play_file(os.path.join(TTS_DIR, config.get('app', 'tts_startup_sound')))
         while True:
             # TODO: check for thread death?
             # TODO: schedule threads that otherwise just sleep
