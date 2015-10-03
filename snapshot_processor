@@ -933,7 +933,10 @@ class SnapshotProcessor(Thread):
             # determine the new devices
             new_device_names = list(set(self.active_devices.keys()) - set(old_device_names))
             if len(self.active_devices) > 0 or len(new_device_names) > 0:
-                log.debug('{} active device(s), {} new.'.format(len(self.active_devices), len(new_device_names)))
+                log.debug('{} active device(s) ({}), {} new.'.format(
+                    len(self.active_devices),
+                    ','.join(self.active_devices.keys()),
+                    len(new_device_names)))
             last_notified = time.time() - self.last_notification
             # notify if the notification interval has elapsed or if there are new devices
             # and if the snapshot is newer than the last one for which a notification was sent
