@@ -53,6 +53,8 @@ chown -R "${APP_USER}:${APP_GROUP}" /app/
 # non-volatile storage
 chown "${APP_USER}:${APP_GROUP}" /data/
 chown "${APP_USER}:${APP_GROUP}" /data/*
+# so app user can make the noise
+adduser "${APP_USER}" audio
 
 # I'm the supervisor
 cat /app/config/supervisord.conf | python /app/config_interpol | tee /etc/supervisor/conf.d/supervisord.conf
