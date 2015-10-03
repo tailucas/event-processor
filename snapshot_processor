@@ -893,7 +893,6 @@ class SnapshotProcessor(Thread):
         self.socket = zmq_context.socket(zmq.PULL)
         self.socket.bind(URL_WORKER_SNAPSHOT_PROCESSOR)
 
-        self.last_snapshot = dict()
         self.active_devices = dict()
         self.latest_snapshot = datetime.utcnow().replace(tzinfo=pytz.utc)
         self.last_notification = 0
@@ -917,7 +916,6 @@ class SnapshotProcessor(Thread):
                 log.debug('Discarding expired snapshot {}'.format(snapshot))
                 continue
             # only non-expired snapshots qualify as recent updates
-            self.last_snapshot[snapshot.source] = time.time()
             # throw away expired devices
             for device_name in self.active_devices.keys():
                 if datetime.utcnow().replace(tzinfo=pytz.utc) - self.active_devices[device_name] > timedelta(seconds=snapshot.validity_seconds):
@@ -953,14 +951,11 @@ class SnapshotProcessor(Thread):
                             message = '{}: {}'.format(snapshot, cloud_storage.cloud_storage_url)
                             log.debug('SMS {} ({}) {} characters: {}'.format(name, recipient, len(message), message))
                             self.notifier.send_pyobj(SMSNotification(message=message, recipient=recipient, flash=False))
-        else:
-            if snapshot.source not in self.last_snapshot:
-                self.last_snapshot[snapshot.source] = 0
-            inactivity = time.time() - self.last_snapshot[snapshot.source]
-            if inactivity > heartbeat_interval_seconds:
-                log.warn('A heartbeat or snapshot is overdue from {} (after {} seconds)'.format(
-                    snapshot.source,
-                    heartbeat_interval_seconds))
+            else:
+                log.debug("Not notifying yet, last notified: [{}], latest snapshot: [{}], current snapshot: [{}]".format(
+                    last_notified,
+                    self.latest_snapshot,
+                    snapshot.timestamp))
 
 
 def signal_handler(signum, frame):
@@ -1034,7 +1029,7 @@ if __name__ == "__main__":
         notifier.play_file(os.path.join(TTS_DIR, config.get('app', 'tts_startup_sound')))
         while True:
             # TODO: check for thread death?
-            # TODO: schedule threads that otherwise just sleep
+            # TODO: check on overdue heartbeats?
             time.sleep(10)
     except(KeyboardInterrupt, SystemExit):
         log.info('Stopping threads...')
