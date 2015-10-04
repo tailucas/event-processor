@@ -6,6 +6,8 @@ if [ -n "${RSYSLOG_HOSTNAME:-}" ]; then
   echo "${RSYSLOG_HOSTNAME}" > /etc/hostname
   # apply the new hostname
   /etc/init.d/hostname.sh start
+  # update hosts
+  echo "127.0.1.1 ${RSYSLOG_HOSTNAME}" >> /etc/hosts
 fi
 if [ -n "${RSYSLOG_SERVER:-}" ]; then
   echo "*.*          @${RSYSLOG_SERVER}" | tee -a /etc/rsyslog.conf
