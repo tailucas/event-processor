@@ -2,6 +2,10 @@
 set -eux
 
 # remote system logging
+if [ -n "${RSYSLOG_HOSTNAME:-}" ]; then
+  echo "\$LocalHostName ${RSYSLOG_HOSTNAME}" | cat - /etc/rsyslog.conf > /etc/rsyslog.conf.updated
+  mv /etc/rsyslog.conf.updated /etc/rsyslog.conf
+fi
 if [ -n "${RSYSLOG_SERVER:-}" ]; then
   echo "*.*          @${RSYSLOG_SERVER}" | tee -a /etc/rsyslog.conf
 fi
