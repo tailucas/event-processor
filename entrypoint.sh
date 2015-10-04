@@ -10,7 +10,7 @@ fi
 rmmod w1_gpio||true
 
 # groups
-groupadd -r "${APP_GROUP}"
+groupadd -r "${APP_GROUP}"||true
 
 useradd -r -g "${APP_GROUP}" "${FTP_USER}"
 FTP_HOME="/home/${FTP_USER}"
