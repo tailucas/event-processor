@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libffi-dev \
     libssl-dev \
     mplayer \
+    openssh-server \
     openssl \
     python-gammu \
     python-pip \
@@ -34,8 +35,18 @@ RUN pip list --outdated
 # FTP
 EXPOSE 21
 
+# SSH
+EXPOSE 22
+
 # zmq
 EXPOSE 5556
+
+# sshd configuration
+RUN mkdir /var/run/sshd
+RUN echo 'root:resin' | chpasswd
+RUN sed -i 's/PermitRootLogin without-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+# SSH login fix. Otherwise user is kicked off after login
+RUN sed 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' -i /etc/pam.d/sshd
 
 COPY . /app
 COPY ./entrypoint.sh /
