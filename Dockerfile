@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     g++ \
     gcc \
+    less \
     libffi-dev \
     libssl-dev \
     mplayer \
