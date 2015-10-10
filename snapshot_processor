@@ -941,6 +941,11 @@ class SnapshotProcessor(Thread):
             # and if the snapshot is newer than the last one for which a notification was sent
             if (last_notified > notification_interval_seconds or len(new_device_names) > 0) \
                     and self.latest_snapshot < snapshot.timestamp:
+                log.debug('Setting latest snapshot [{}] to [{}] from {} ({})'.format(
+                    self.latest_snapshot,
+                    snapshot.timestamp,
+                    snapshot.device_names,
+                    snapshot))
                 self.latest_snapshot = snapshot.timestamp
                 self.last_notification = time.time()
                 log.info('Sending notification for {}'.format(str(new_device_names)))
