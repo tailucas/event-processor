@@ -44,10 +44,7 @@ EXPOSE 5556
 
 # sshd configuration
 RUN mkdir /var/run/sshd
-RUN echo 'root:resin' | chpasswd
-RUN sed -i 's/PermitRootLogin without-password/PermitRootLogin yes/' /etc/ssh/sshd_config
-# SSH login fix. Otherwise user is kicked off after login
-RUN sed 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' -i /etc/pam.d/sshd
+RUN mkdir /root/.ssh/
 
 COPY . /app
 COPY ./entrypoint.sh /

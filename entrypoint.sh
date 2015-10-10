@@ -13,6 +13,17 @@ if [ -n "${RSYSLOG_SERVER:-}" ]; then
   echo "*.*          @${RSYSLOG_SERVER}" | tee -a /etc/rsyslog.conf
 fi
 
+# root user access, try a cert
+if [ -n "$SSH_AUTHORIZED_KEY" ]; then
+  echo "$SSH_AUTHORIZED_KEY" > /root/.ssh/authorized_keys
+  chmod 600 /root/.ssh/authorized_keys
+else
+  echo 'root:resin' | chpasswd
+  sed -i 's/PermitRootLogin without-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+  # SSH login fix. Otherwise user is kicked off after login
+  sed 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' -i /etc/pam.d/sshd
+fi
+
 # remove unnecessary kernel drivers
 rmmod w1_gpio||true
 
