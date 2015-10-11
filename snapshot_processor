@@ -309,7 +309,10 @@ class Snapshot(object):
 
     def __init__(self, validity_seconds):
         self.validity_seconds = validity_seconds
-        self.default_tz = config.get('snapshots', 'default_tz')
+        if 'default_tz' in config.get('snapshots'):
+            self.default_tz = timezone(config.get('snapshots', 'default_tz'))
+        else:
+            self.default_tz = tz.tzlocal()
 
     @abc.abstractproperty
     def timestamp(self):
@@ -345,7 +348,7 @@ class SampledSnapshot(Snapshot):
         self.timestamp_data = dateutil.parser.parse(self.snapshot_data['timestamp'])
         if self.timestamp_data.tzinfo is None:
             # we use the phyiscal locality of this device for timezone
-            self.timestamp_data = self.timestamp_data.replace(tzinfo=timezone(self.default_tz))
+            self.timestamp_data = self.timestamp_data.replace(tzinfo=self.default_tz)
         if 'data' in self.snapshot_data:
             if 'samples' in self.snapshot_data['data']:
                 self.devices_data = self.snapshot_data['data']['samples']
@@ -421,7 +424,7 @@ class ImageSnapshot(Snapshot):
             self.timestamp_data = dateutil.parser.parse(date_string)
             if self.timestamp_data.tzinfo is None:
                 # we use the default specific to the physical locality of the devices
-                self.timestamp_data = self.timestamp_data.replace(tzinfo=timezone(self.default_tz))
+                self.timestamp_data = self.timestamp_data.replace(tzinfo=self.default_tz)
             log.debug('Parsed timestamp data from {}: {}'.format(file_base_name, str(self.timestamp_data)))
         except ValueError:
             log.exception("Cannot parse date-like string {}. Defaulting to 'now'.".format(date_string))
