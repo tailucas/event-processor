@@ -29,6 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY ./config/snapshot_processor_pip /tmp/
 # update pip
 RUN pip install -U pip
+RUN pip install --upgrade setuptools
 RUN pip install -r /tmp/snapshot_processor_pip
 # show outdated packages since the freeze
 RUN pip list --outdated
