@@ -1,6 +1,10 @@
 #!/bin/bash
 set -eux
 
+# set the timezone
+tzupdate
+
+
 # remote system logging
 if [ -n "${RSYSLOG_HOSTNAME:-}" ]; then
   echo "${RSYSLOG_HOSTNAME}" > /etc/hostname
