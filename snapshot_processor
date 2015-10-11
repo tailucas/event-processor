@@ -310,7 +310,6 @@ class Snapshot(object):
     def __init__(self, validity_seconds):
         self.validity_seconds = validity_seconds
         self.default_tz = config.get('snapshots', 'default_tz')
-        log.info("Physical locality is set to '{}'".format(self.default_tz))
 
     @abc.abstractproperty
     def timestamp(self):
