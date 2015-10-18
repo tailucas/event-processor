@@ -26,6 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rsyslog \
     ssl-cert \
     supervisor \
+    vim \
     vsftpd
 
 COPY ./config/snapshot_processor_pip /tmp/
