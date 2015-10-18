@@ -34,7 +34,7 @@ rmmod w1_gpio||true
 # groups
 groupadd -f -r "${APP_GROUP}"
 
-useradd -r -g "${APP_GROUP}" "${FTP_USER}"
+id -u "${FTP_USER}" || useradd -r -g "${APP_GROUP}" "${FTP_USER}"
 FTP_HOME="/home/${FTP_USER}"
 mkdir -p "${FTP_HOME}/"
 export FTP_ROOT="${FTP_HOME}/ftp"
@@ -70,7 +70,7 @@ if [ -n "${GOOGLE_OAUTH_TOKEN:-}" ]; then
 fi
 
 # non-root users
-useradd -r -g "${APP_GROUP}" "${APP_USER}"
+id -u "${APP_USER}" || useradd -r -g "${APP_GROUP}" "${APP_USER}"
 chown -R "${APP_USER}:${APP_GROUP}" /app/
 # non-volatile storage
 chown "${APP_USER}:${APP_GROUP}" /data/
