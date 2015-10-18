@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     cron \
     cpp \
     curl \
+    dbus \
     g++ \
     gcc \
     less \
@@ -17,6 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     mplayer \
     openssh-server \
     openssl \
+    python-dbus \
     python-gammu \
     python-pip \
     python2.7 \
