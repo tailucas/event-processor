@@ -10,6 +10,7 @@ import re
 import requests
 import signal
 import sys
+import threading
 import time
 import umsgpack
 import zmq
@@ -29,6 +30,7 @@ from pprint import pprint
 from pydrive.auth import GoogleAuth
 from pydrive.drive import GoogleDrive
 from pydrive.files import FileNotUploadedError
+from sets import Set
 from Queue import Queue, Empty
 from threading import Thread, Timer
 from time import sleep
@@ -1015,6 +1017,7 @@ if __name__ == "__main__":
         upload_event_handler.add_image_dir(source_label=label, image_dir=image_snapshot_dirs[source])
     log.debug('Monitoring directories in {} for changes: {}'.format(
         snapshot_root, str(upload_event_handler.watched_dirs)))
+    threads_tracked = Set()
     # file system listener
     observer = Observer()
     observer.schedule(upload_event_handler, config.get('snapshots', 'root_dir'), recursive=True)
@@ -1023,21 +1026,35 @@ if __name__ == "__main__":
             observer.schedule(sms_provider, dir)
         # Since GammuSMSProvider is a Thread
         sms_provider.start()
+        threads_tracked.add(sms_provider.getName())
     # start threads
     notifier.start()
+    threads_tracked.add(notifier.getName())
     processor.start()
+    threads_tracked.add(processor.getName())
     # start the collectors
     sample_event_handler.start()
+    threads_tracked.add(sample_event_handler.getName())
     observer.start()
+    threads_tracked.add(observer.getName())
     # start the Google Driver archiver last
     google_drive.start()
+    threads_tracked.add(google_drive.getName())
     try:
         time.sleep(1)
         notifier.play_file(os.path.join(TTS_DIR, config.get('app', 'tts_startup_sound')))
         while True:
-            # TODO: check for thread death?
+            threads_alive = Set()
+            for thread_info in threading.enumerate():
+                if thread_info.isAlive():
+                    threads_alive.add(thread_info.getName())
+            if len(threads_tracked - threads_alive) > 0:
+                message = 'A thread has died. Expected threads are [{}], missing is [{}].'.format(threads_tracked, threads_tracked - threads_alive)
+                log.error(message)
+                # bail out
+                raise RuntimeError(message)
             # TODO: check on overdue heartbeats?
-            time.sleep(10)
+            time.sleep(60)
     except(KeyboardInterrupt, SystemExit):
         log.info('Stopping threads...')
         observer.stop()
