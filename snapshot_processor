@@ -126,8 +126,10 @@ class Notifier(Thread):
 
     def __init__(self, sms_provider):
         super(Notifier, self).__init__()
-        self.player = None
+        self.name = self.__class__.__name__
         self.daemon = True
+
+        self.player = None
 
         self.sms_provider = sms_provider
 
@@ -483,6 +485,7 @@ class GoogleDriveManager(Thread, CloudStorage):
 
     def __init__(self, gauth_creds_file, gdrive_folder):
         super(GoogleDriveManager, self).__init__()
+        self.name = self.__class__.__name__
         self.daemon = True
 
         self._gdrive_folder = gdrive_folder
@@ -736,6 +739,7 @@ class SampledSnapshotEventHandler(Thread):
 
     def __init__(self):
         super(SampledSnapshotEventHandler, self).__init__()
+        self.name = self.__class__.__name__
         self.daemon = True
 
         self.subscriber = zmq_context.socket(zmq.SUB)
@@ -777,6 +781,7 @@ class GammuSMSProvider(Thread, FileSystemEventHandler, SMSProvider):
 
     def __init__(self):
         super(GammuSMSProvider, self).__init__()
+        self.name = self.__class__.__name__
         self.daemon = True
 
         gammu_cfg_file = config.get('sms', 'gammu-smsdrc')
@@ -890,6 +895,7 @@ class SnapshotProcessor(Thread):
 
     def __init__(self):
         super(SnapshotProcessor, self).__init__()
+        self.name = self.__class__.__name__
         self.daemon = True
 
         self.notifier = zmq_context.socket(zmq.PUSH)
@@ -1034,6 +1040,7 @@ if __name__ == "__main__":
     threads_tracked = Set()
     # file system listener
     observer = Observer()
+    observer.name = observer.__class__.__name__
     observer.schedule(upload_event_handler, config.get('snapshots', 'root_dir'), recursive=True)
     if isinstance(sms_provider, GammuSMSProvider):
         for dir in sms_provider.spool_directories:
