@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libffi-dev \
     libssl-dev \
     mplayer \
+    net-tools \
     openssh-server \
     openssl \
     python-dbus \
