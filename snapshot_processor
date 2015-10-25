@@ -761,7 +761,7 @@ class SampledSnapshotEventHandler(Thread):
             snapshot = SampledSnapshot(
                 snapshot_data=snapshot_data,
                 validity_seconds=snapshot_validity_seconds)
-            log.info('Snapshot: {} from {}'.format(snapshot, publisher_endpoint))
+            log.debug('Snapshot: {} from {}'.format(snapshot, publisher_endpoint))
             self.processor.send_pyobj(snapshot)
 
 
