@@ -894,6 +894,8 @@ class SnapshotProcessor(Thread):
 
         self.notifier = zmq_context.socket(zmq.PUSH)
 
+        self.relay_control = zmq_context.socket(zmq.PUSH)
+
         self.socket = zmq_context.socket(zmq.PULL)
         self.socket.bind(URL_WORKER_SNAPSHOT_PROCESSOR)
 
@@ -903,6 +905,9 @@ class SnapshotProcessor(Thread):
 
     def run(self):
         self.notifier.connect(URL_WORKER_NOTIFIER)
+        relay_control_endpoint = config.get('zmq', 'relay_control')
+        log.info('Relay control is at {}'.format(relay_control_endpoint))
+        self.relay_control.connect(relay_control_endpoint)
         while True:
             try:
                 snapshot = self.socket.recv_pyobj()
@@ -960,6 +965,15 @@ class SnapshotProcessor(Thread):
                             message = '{}: {}'.format(snapshot, cloud_storage.cloud_storage_url)
                             log.debug('SMS {} ({}) {} characters: {}'.format(name, recipient, len(message), message))
                             self.notifier.send_pyobj(SMSNotification(message=message, recipient=recipient, flash=False))
+                    #FIXME
+                    relays = len(new_device_names)
+                    if relays > 4:
+                        relays = 4
+                    relays_to_enable = list()
+                    for i in range(1, relays+1):
+                        relays_to_enable.append('relay{}'.format(i))
+                    relays_to_enable['relays'] = relays_to_enable
+                    self.relay_control.send(umsgpack.packb(relays_to_enable))
             else:
                 log.debug("Not notifying yet, last notified: [{}], latest snapshot: [{}], current snapshot: [{}]".format(
                     last_notified,
