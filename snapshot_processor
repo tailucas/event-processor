@@ -980,6 +980,7 @@ class SnapshotProcessor(Thread):
                         relays_to_enable.append('relay{}'.format(i))
                     payload = dict()
                     payload['relays'] = relays_to_enable
+                    log.info("Sending relay control: '{}'".format(payload))
                     self.relay_control.send(umsgpack.packb(payload))
             else:
                 log.debug("Not notifying yet, last notified: [{}], latest snapshot: [{}], current snapshot: [{}]".format(
