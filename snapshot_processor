@@ -978,8 +978,9 @@ class SnapshotProcessor(Thread):
                     relays_to_enable = list()
                     for i in range(1, relays+1):
                         relays_to_enable.append('relay{}'.format(i))
-                    relays_to_enable['relays'] = relays_to_enable
-                    self.relay_control.send(umsgpack.packb(relays_to_enable))
+                    payload = dict()
+                    payload['relays'] = relays_to_enable
+                    self.relay_control.send(umsgpack.packb(payload))
             else:
                 log.debug("Not notifying yet, last notified: [{}], latest snapshot: [{}], current snapshot: [{}]".format(
                     last_notified,
