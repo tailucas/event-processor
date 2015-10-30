@@ -343,7 +343,8 @@ class SampledSnapshot(Snapshot):
     def __init__(self, snapshot_data, validity_seconds):
         super(SampledSnapshot, self).__init__(validity_seconds=validity_seconds)
         self.snapshot_data = snapshot_data
-        self.source_label = self.snapshot_data['location']
+        if 'location' in self.snapshot_data:
+            self.source_label = self.snapshot_data['location']
         self.timestamp_data = dateutil.parser.parse(self.snapshot_data['timestamp'])
         if self.timestamp_data.tzinfo is None:
             # we use the phyiscal locality of this device for timezone
@@ -378,7 +379,10 @@ class SampledSnapshot(Snapshot):
         names = list()
         if self.devices_data is not None:
             for device_name in self.devices_data.keys():
-                names.append(' '.join([self.source_label, device_name]))
+                if self.source_label:
+                    names.append(' '.join([self.source_label, device_name]))
+                else:
+                    names.append(device_name)
         if self.devices_nearby is not None:
             for device_name in self.devices_nearby.keys():
                 names.append('{} is here'.format(device_name))
@@ -400,7 +404,9 @@ class SampledSnapshot(Snapshot):
         return self.source_label
 
     def __str__(self):
-        string = '{} at {}'.format(self.source_label, self.timestamp.strftime('%X %x %Z'))
+        string = 'At {}'.format(self.timestamp.strftime('%X %x %Z'))
+        if self.source_label:
+            string = '{} at {}'.format(self.source_label, self.timestamp.strftime('%X %x %Z'))
         if self.devices:
             return string + ': {} devices: {}'.format(
                 len(self.devices), ','.join(self.devices.keys()))
@@ -975,11 +981,11 @@ class SnapshotProcessor(Thread):
                     relays = len(new_device_names)
                     if relays > 4:
                         relays = 4
-                    relays_to_enable = list()
+                    relay_activations = dict()
                     for i in range(1, relays+1):
-                        relays_to_enable.append('relay{}'.format(i))
+                        relay_activations['relay{}'.format(i)] = {'state': True, 'delay': 5}
                     payload = dict()
-                    payload['relays'] = relays_to_enable
+                    payload['relays'] = relay_activations
                     log.info("Sending relay control: '{}'".format(payload))
                     self.relay_control.send(umsgpack.packb(payload))
             else:
