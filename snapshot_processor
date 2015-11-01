@@ -978,12 +978,10 @@ class SnapshotProcessor(Thread):
                             log.debug('SMS {} ({}) {} characters: {}'.format(name, recipient, len(message), message))
                             self.notifier.send_pyobj(SMSNotification(message=message, recipient=recipient, flash=False))
                     #FIXME
-                    relays = len(new_device_names)
-                    if relays > 4:
-                        relays = 4
+                    relays = 4
                     relay_activations = dict()
                     for i in range(1, relays+1):
-                        relay_activations['relay{}'.format(i)] = {'state': True, 'delay': 5}
+                        relay_activations['relay{}'.format(i)] = {'state': True, 'delay': 5+relays}
                     payload = dict()
                     payload['relays'] = relay_activations
                     log.info("Sending relay control: '{}'".format(payload))
