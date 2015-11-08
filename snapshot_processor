@@ -743,10 +743,12 @@ class UploadEventHandler(FileSystemEventHandler):
 
 class SampledSnapshotEventHandler(Thread):
 
-    def __init__(self):
+    def __init__(self, publisher_endpoint):
         super(SampledSnapshotEventHandler, self).__init__()
-        self.name = self.__class__.__name__
+        self.name = '{}::{}'.format(self.__class__.__name__, publisher_endpoint)
         self.daemon = True
+
+        self._publisher_endpoint = publisher_endpoint
 
         self.subscriber = zmq_context.socket(zmq.SUB)
 
@@ -758,9 +760,8 @@ class SampledSnapshotEventHandler(Thread):
         self.last_notification = 0
 
     def run(self):
-        publisher_endpoint = config.get('zmq', 'sample_publisher')
-        log.info('Connecting event subscriber to {}'.format(publisher_endpoint))
-        self.subscriber.connect(publisher_endpoint)
+        log.info('Connecting event subscriber to {}'.format(self._publisher_endpoint))
+        self.subscriber.connect(self._publisher_endpoint)
         self.subscriber.setsockopt(zmq.SUBSCRIBE, "")
         self.processor.connect(URL_WORKER_SNAPSHOT_PROCESSOR)
         while True:
@@ -771,7 +772,7 @@ class SampledSnapshotEventHandler(Thread):
             snapshot = SampledSnapshot(
                 snapshot_data=snapshot_data,
                 validity_seconds=snapshot_validity_seconds)
-            log.debug('Snapshot: {} from {}'.format(snapshot, publisher_endpoint))
+            log.debug('Snapshot: {} from {}'.format(snapshot, self._publisher_endpoint))
             self.processor.send_pyobj(snapshot)
 
 
@@ -1031,7 +1032,8 @@ if __name__ == "__main__":
     notifier = Notifier(sms_provider=sms_provider)
     processor = SnapshotProcessor()
     # sampled snapshot processing
-    sample_event_handler = SampledSnapshotEventHandler()
+    sample_event_handler = SampledSnapshotEventHandler(publisher_endpoint=config.get('zmq', 'sample_publisher'))
+    detector_event_handler = SampledSnapshotEventHandler(publisher_endpoint=config.get('zmq', 'detector_publisher'))
     # ensure that auth is properly set up first
     google_drive = GoogleDriveManager(
         gauth_creds_file=config.get('gdrive', 'creds_file'),
@@ -1062,6 +1064,8 @@ if __name__ == "__main__":
     # start the collectors
     sample_event_handler.start()
     threads_tracked.add(sample_event_handler.getName())
+    detector_event_handler.start()
+    threads_tracked.add(detector_event_handler.getName())
     observer.start()
     threads_tracked.add(observer.getName())
     # start the Google Driver archiver last
