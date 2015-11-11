@@ -343,6 +343,7 @@ class SampledSnapshot(Snapshot):
     def __init__(self, snapshot_data, validity_seconds):
         super(SampledSnapshot, self).__init__(validity_seconds=validity_seconds)
         self.snapshot_data = snapshot_data
+        self.source_label = None
         if 'location' in self.snapshot_data:
             self.source_label = self.snapshot_data['location']
         self.timestamp_data = dateutil.parser.parse(self.snapshot_data['timestamp'])
