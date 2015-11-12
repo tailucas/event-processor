@@ -997,12 +997,13 @@ class SnapshotProcessor(Thread):
 
 def signal_handler(signum, frame):
     log.warn('Signal {} received.'.format(signum))
+    log.setLevel(logging.DEBUG)
     log.debug('Draining deferred notifications now.')
     notifier.drain_deferred_notifications()
 
 if __name__ == "__main__":
     # set up logging
-    log.setLevel(logging.DEBUG)
+    log.setLevel(logging.INFO)
     syslog_handler = logging.handlers.SysLogHandler(address='/dev/log')
     formatter = logging.Formatter('%(name)s [%(levelname)s] %(message)s')
     syslog_handler.setFormatter(formatter)
