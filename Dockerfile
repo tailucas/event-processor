@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     net-tools \
     openssh-server \
     openssl \
+    psmisc \
     python-dbus \
     python-gammu \
     python-pip \
