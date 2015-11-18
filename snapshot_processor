@@ -185,15 +185,18 @@ class Notifier(Thread):
             self.player.quit()
 
     def play_file(self, sound_file):
-        self.player.loadfile(sound_file)
-        try:
-            delay = int(self.player.length)
-            # block for the duration of this audio sample
-            log.debug("Playing '{}' for {}s".format(sound_file, delay))
-            sleep(delay)
-        except TypeError:
-            log.warn("Playing '{}' without block because no player length was provided.".format(sound_file))
-            pass
+        if self.player:
+            self.player.loadfile(sound_file)
+            try:
+                delay = int(self.player.length)
+                # block for the duration of this audio sample
+                log.debug("Playing '{}' for {}s".format(sound_file, delay))
+                sleep(delay)
+            except TypeError:
+                log.warn("Playing '{}' without block because no player length was provided.".format(sound_file))
+                pass
+        else:
+            log.error("No player loaded to play '{}'".format(sound_file))
 
     def say(self, message):
         msg_checksum = Notifier.checksum(message)
