@@ -1012,7 +1012,6 @@ if __name__ == "__main__":
     syslog_handler.setFormatter(formatter)
     log.addHandler(syslog_handler)
     if sys.stdout.isatty():
-        # log to stdout if there is a tty
         stream_handler = logging.StreamHandler(stream=sys.stdout)
         log.addHandler(stream_handler)
     # set up config
