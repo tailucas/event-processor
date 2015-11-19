@@ -980,7 +980,7 @@ class SnapshotProcessor(Thread):
                     if isinstance(snapshot, ImageSnapshot):
                         for name, recipient in sms_owners.items():
                             message = '{}: {}'.format(snapshot, cloud_storage.cloud_storage_url)
-                            log.debug('SMS {} ({}) {} characters: {}'.format(name, recipient, len(message), message))
+                            log.info('Send SMS {} ({}) {} characters: {}'.format(name, recipient, len(message), message))
                             self.notifier.send_pyobj(SMSNotification(message=message, recipient=recipient, flash=False))
                     #FIXME
                     relays = 4
