@@ -771,6 +771,9 @@ class SampledSnapshotEventHandler(Thread):
         while True:
             try:
                 snapshot_data = umsgpack.unpackb(self.subscriber.recv())
+            except UnpackException:
+                log.exception('Cannot unpack sampled snapshot data.')
+                continue
             except ContextTerminated:
                 break
             snapshot = SampledSnapshot(
