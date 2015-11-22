@@ -39,6 +39,7 @@ from urllib import pathname2url
 from watchdog.events import FileSystemEventHandler, FileModifiedEvent
 from watchdog.observers import Observer
 from zmq import ContextTerminated
+from flask import Flask
 
 sys.displayhook = pprint
 
@@ -66,6 +67,7 @@ sms_owners = dict(zip(sms_recipient_names, sms_recipient_numbers))
 
 cloud_storage = None
 
+rest_api = Flask(APP)
 zmq_context = zmq.Context()
 URL_WORKER_NOTIFIER = 'inproc://notifier'
 URL_WORKER_SNAPSHOT_PROCESSOR = 'inproc://snapshot-processor'
@@ -1007,6 +1009,12 @@ def signal_handler(signum, frame):
     log.debug('Draining deferred notifications now.')
     notifier.drain_deferred_notifications()
 
+
+@rest_api.route('/')
+def rest_index():
+    notifier.play_file(os.path.join(TTS_DIR, config.get('app', 'tts_startup_sound')))
+
+
 if __name__ == "__main__":
     # set up logging
     log.setLevel(logging.INFO)
@@ -1078,6 +1086,9 @@ if __name__ == "__main__":
     # start the Google Driver archiver last
     google_drive.start()
     threads_tracked.add(google_drive.getName())
+    # start the REST interface
+    #TODO: listen on eth0
+    rest_api.run(host='0.0.0.0')
     try:
         time.sleep(1)
         notifier.play_file(os.path.join(TTS_DIR, config.get('app', 'tts_startup_sound')))
