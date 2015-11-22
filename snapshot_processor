@@ -1089,7 +1089,7 @@ if __name__ == "__main__":
     threads_tracked.add(google_drive.getName())
     # start the REST interface
     #TODO: listen on eth0
-    rest_api.run(host='0.0.0.0', port=80)
+    rest_api.run(host='0.0.0.0', port=5000)
     try:
         time.sleep(1)
         notifier.play_file(os.path.join(TTS_DIR, config.get('app', 'tts_startup_sound')))
