@@ -39,7 +39,7 @@ from urllib import pathname2url
 from watchdog.events import FileSystemEventHandler, FileModifiedEvent
 from watchdog.observers import Observer
 from zmq import ContextTerminated
-from flask import Flask
+from flask import Flask, request
 
 sys.displayhook = pprint
 
@@ -1010,10 +1010,10 @@ def signal_handler(signum, frame):
     notifier.drain_deferred_notifications()
 
 
-@rest_api.route('/')
-def rest_index():
-    notifier.play_file(os.path.join(TTS_DIR, config.get('app', 'tts_startup_sound')))
-    return 'hello'
+@rest_api.route('/logging')
+def debug():
+    log.setLevel(request.args.get('level'))
+    return 'OK'
 
 
 if __name__ == "__main__":
@@ -1023,7 +1023,7 @@ if __name__ == "__main__":
     formatter = logging.Formatter('%(name)s [%(levelname)s] %(message)s')
     syslog_handler.setFormatter(formatter)
     log.addHandler(syslog_handler)
-    if sys.stdout.isatty():
+    if sys.stdout.isatty() and not ('RESIN' in os.environ and os.environ['RESIN'] == '1'):
         stream_handler = logging.StreamHandler(stream=sys.stdout)
         log.addHandler(stream_handler)
     # set up config
