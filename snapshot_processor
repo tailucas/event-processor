@@ -49,6 +49,8 @@ TTS_DIR = '/data/tts_samples'
 # set the working directory for libraries that assume this (such as PyDrive)
 os.chdir(DIR)
 log = logging.getLogger(APP)
+# do not propagate to console logging
+log.propagate = False
 
 TTS_URL = 'http://translate.google.com/translate_tts'
 
@@ -1023,8 +1025,10 @@ if __name__ == "__main__":
     formatter = logging.Formatter('%(name)s [%(levelname)s] %(message)s')
     syslog_handler.setFormatter(formatter)
     log.addHandler(syslog_handler)
-    if sys.stdout.isatty() and not ('RESIN' in os.environ and os.environ['RESIN'] == '1'):
+    if sys.stdout.isatty():
+        log.warn("Using console logging because there is a tty.")
         stream_handler = logging.StreamHandler(stream=sys.stdout)
+        stream_handler.setFormatter(formatter)
         log.addHandler(stream_handler)
     # set up config
     image_labels = dict(config.items('images_sources'))
