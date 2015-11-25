@@ -990,7 +990,7 @@ class SnapshotProcessor(Thread):
                             log.info('Send SMS {} ({}) {} characters: {}'.format(name, recipient, len(message), message))
                             self.notifier.send_pyobj(SMSNotification(message=message, recipient=recipient, flash=False))
                     #FIXME
-                    relays = 4
+                    relays = 8
                     relay_activations = dict()
                     for i in range(1, relays+1):
                         relay_activations['relay{}'.format(i)] = {'state': True, 'delay': 5+i}
