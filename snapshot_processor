@@ -68,7 +68,6 @@ sms_recipient_numbers = config.get('sms', 'recipient_numbers').split(',')
 sms_owners = dict(zip(sms_recipient_names, sms_recipient_numbers))
 
 cloud_storage = None
-_relay_ctrl = False
 
 rest_api = Flask(APP)
 zmq_context = zmq.Context()
@@ -912,6 +911,8 @@ class ClickatellSMSProvider(SMSProvider):
 
 class SnapshotProcessor(Thread):
 
+    _relay_ctrl = False
+
     def __init__(self):
         super(SnapshotProcessor, self).__init__()
         self.name = self.__class__.__name__
@@ -991,7 +992,7 @@ class SnapshotProcessor(Thread):
                             log.info('Send SMS {} ({}) {} characters: {}'.format(name, recipient, len(message), message))
                             self.notifier.send_pyobj(SMSNotification(message=message, recipient=recipient, flash=False))
                     #FIXME
-                    if _relay_ctrl:
+                    if SnapshotProcessor._relay_ctrl:
                         relays = 8
                         relay_activations = dict()
                         for i in range(1, relays+1):
@@ -1022,17 +1023,17 @@ def debug():
 
 @rest_api.route('/relay_ctrl')
 def relay_ctrl():
-    _relay_ctrl = request.args.get('on') == '1'
+    SnapshotProcessor._relay_ctrl = request.args.get('on') == '1'
     return 'OK'
 
 
 @rest_api.route('/relay_ctrl_toggle')
 def relay_ctrl_toggle():
-    if _relay_ctrl:
-        _relay_ctrl = False
+    if SnapshotProcessor._relay_ctrl:
+        SnapshotProcessor._relay_ctrl = False
     else:
-        _relay_ctrl = True
-    return str(_relay_ctrl)
+        SnapshotProcessor._relay_ctrl = True
+    return str(SnapshotProcessor._relay_ctrl)
 
 
 if __name__ == "__main__":
