@@ -68,6 +68,7 @@ sms_recipient_numbers = config.get('sms', 'recipient_numbers').split(',')
 sms_owners = dict(zip(sms_recipient_names, sms_recipient_numbers))
 
 cloud_storage = None
+_relay_ctrl = False
 
 rest_api = Flask(APP)
 zmq_context = zmq.Context()
@@ -990,14 +991,15 @@ class SnapshotProcessor(Thread):
                             log.info('Send SMS {} ({}) {} characters: {}'.format(name, recipient, len(message), message))
                             self.notifier.send_pyobj(SMSNotification(message=message, recipient=recipient, flash=False))
                     #FIXME
-                    relays = 8
-                    relay_activations = dict()
-                    for i in range(1, relays+1):
-                        relay_activations['relay{}'.format(i)] = {'state': True, 'delay': 5+i}
-                    payload = dict()
-                    payload['relays'] = relay_activations
-                    log.info("Sending relay control: '{}'".format(payload))
-                    self.relay_control.send(umsgpack.packb(payload))
+                    if _relay_ctrl:
+                        relays = 8
+                        relay_activations = dict()
+                        for i in range(1, relays+1):
+                            relay_activations['relay{}'.format(i)] = {'state': True, 'delay': i}
+                        payload = dict()
+                        payload['relays'] = relay_activations
+                        log.info("Sending relay control: '{}'".format(payload))
+                        self.relay_control.send(umsgpack.packb(payload))
             else:
                 log.debug("Not notifying yet, last notified: [{}], latest snapshot: [{}], current snapshot: [{}]".format(
                     last_notified,
@@ -1016,6 +1018,21 @@ def signal_handler(signum, frame):
 def debug():
     log.setLevel(request.args.get('level'))
     return 'OK'
+
+
+@rest_api.route('/relay_ctrl')
+def relay_ctrl():
+    _relay_ctrl = request.args.get('on') == '1'
+    return 'OK'
+
+
+@rest_api.route('/relay_ctrl_toggle')
+def relay_ctrl_toggle():
+    if _relay_ctrl:
+        _relay_ctrl = False
+    else:
+        _relay_ctrl = True
+    return str(_relay_ctrl)
 
 
 if __name__ == "__main__":
