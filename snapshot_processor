@@ -39,7 +39,7 @@ from urllib import pathname2url
 from watchdog.events import FileSystemEventHandler, FileModifiedEvent
 from watchdog.observers import Observer
 from zmq import ContextTerminated
-from flask import Flask, request
+from flask import Flask, request, render_template
 
 sys.displayhook = pprint
 
@@ -986,6 +986,7 @@ class SnapshotProcessor(Thread):
                 self.last_notification = time.time()
                 log.info('Sending notification for {}'.format(str(new_device_names)))
                 for device_name in new_device_names:
+                    #FIXME
                     if device_name in ['Patio Motion Detector', 'Back Yard Motion Detector', 'Pool Motion Detector', 'Kitchen Door Motion Detector']:
                         if SnapshotProcessor._notification_ctrl:
                             self.notifier.send_pyobj(TTSNotification(message=device_name))
@@ -1045,6 +1046,12 @@ def notification_toggle():
     else:
         SnapshotProcessor._notification_ctrl = True
         return '<h1>ON</h1>'
+
+
+@rest_api.route('/')
+@rest_api.route('/<operation>')
+def index(operation=None):
+    return render_template('index.html', operation=operation)
 
 
 if __name__ == "__main__":
