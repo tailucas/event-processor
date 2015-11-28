@@ -992,6 +992,7 @@ class SnapshotProcessor(Thread):
                             log.info('Send SMS {} ({}) {} characters: {}'.format(name, recipient, len(message), message))
                             self.notifier.send_pyobj(SMSNotification(message=message, recipient=recipient, flash=False))
                     #FIXME
+                    log.info('Relay control for {} is {}'.format(device_name, str(SnapshotProcessor._relay_ctrl)))
                     if SnapshotProcessor._relay_ctrl:
                         if device_name in ['Patio Motion Detector', 'Back Yard Motion Detector', 'Pool Motion Detector', 'Kitchen Door Motion Detector']:
                             relays = 1
