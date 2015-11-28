@@ -912,6 +912,7 @@ class ClickatellSMSProvider(SMSProvider):
 class SnapshotProcessor(Thread):
 
     _relay_ctrl = False
+    _notification_ctrl = True
 
     def __init__(self):
         super(SnapshotProcessor, self).__init__()
@@ -985,14 +986,17 @@ class SnapshotProcessor(Thread):
                 self.last_notification = time.time()
                 log.info('Sending notification for {}'.format(str(new_device_names)))
                 for device_name in new_device_names:
-                    self.notifier.send_pyobj(TTSNotification(message=device_name))
+                    if device_name in ['Patio Motion Detector', 'Back Yard Motion Detector', 'Pool Motion Detector', 'Kitchen Door Motion Detector']:
+                        if SnapshotProcessor._notification_ctrl:
+                            self.notifier.send_pyobj(TTSNotification(message=device_name))
+                    else:
+                        self.notifier.send_pyobj(TTSNotification(message=device_name))
                     if isinstance(snapshot, ImageSnapshot):
                         for name, recipient in sms_owners.items():
                             message = '{}: {}'.format(snapshot, cloud_storage.cloud_storage_url)
                             log.info('Send SMS {} ({}) {} characters: {}'.format(name, recipient, len(message), message))
                             self.notifier.send_pyobj(SMSNotification(message=message, recipient=recipient, flash=False))
                     #FIXME
-                    log.info('Relay control for {} is {}'.format(device_name, str(SnapshotProcessor._relay_ctrl)))
                     if SnapshotProcessor._relay_ctrl:
                         if device_name in ['Patio Motion Detector', 'Back Yard Motion Detector', 'Pool Motion Detector', 'Kitchen Door Motion Detector']:
                             relays = 1
@@ -1030,6 +1034,16 @@ def relay_ctrl_toggle():
         return 'OFF'
     else:
         SnapshotProcessor._relay_ctrl = True
+        return 'ON'
+
+
+@rest_api.route('/notification_toggle')
+def notification_toggle():
+    if SnapshotProcessor._notification_ctrl:
+        SnapshotProcessor._notification_ctrl = False
+        return 'OFF'
+    else:
+        SnapshotProcessor._notification_ctrl = True
         return 'ON'
 
 
