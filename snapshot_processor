@@ -1031,20 +1031,20 @@ def debug():
 def relay_ctrl_toggle():
     if SnapshotProcessor._relay_ctrl:
         SnapshotProcessor._relay_ctrl = False
-        return 'OFF'
+        return '<h1>OFF</h1>'
     else:
         SnapshotProcessor._relay_ctrl = True
-        return 'ON'
+        return '<h1>ON</h1>'
 
 
 @rest_api.route('/notification_toggle')
 def notification_toggle():
     if SnapshotProcessor._notification_ctrl:
         SnapshotProcessor._notification_ctrl = False
-        return 'OFF'
+        return '<h1>OFF</h1>'
     else:
         SnapshotProcessor._notification_ctrl = True
-        return 'ON'
+        return '<h1>ON</h1>'
 
 
 if __name__ == "__main__":
