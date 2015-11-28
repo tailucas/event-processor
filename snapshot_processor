@@ -993,14 +993,15 @@ class SnapshotProcessor(Thread):
                             self.notifier.send_pyobj(SMSNotification(message=message, recipient=recipient, flash=False))
                     #FIXME
                     if SnapshotProcessor._relay_ctrl:
-                        relays = 8
-                        relay_activations = dict()
-                        for i in range(1, relays+1):
-                            relay_activations['relay{}'.format(i)] = {'state': True, 'delay': i}
-                        payload = dict()
-                        payload['relays'] = relay_activations
-                        log.info("Sending relay control: '{}'".format(payload))
-                        self.relay_control.send(umsgpack.packb(payload))
+                        if device_name in ['Patio Motion Detector', 'Back Yard Motion Detector', 'Pool Motion Detector', 'Kitchen Door Motion Detector']:
+                            relays = 1
+                            relay_activations = dict()
+                            for i in range(1, relays+1):
+                                relay_activations['relay{}'.format(i)] = {'state': True, 'delay': 2}
+                            payload = dict()
+                            payload['relays'] = relay_activations
+                            log.info("Sending relay control: '{}'".format(payload))
+                            self.relay_control.send(umsgpack.packb(payload))
             else:
                 log.debug("Not notifying yet, last notified: [{}], latest snapshot: [{}], current snapshot: [{}]".format(
                     last_notified,
@@ -1021,19 +1022,14 @@ def debug():
     return 'OK'
 
 
-@rest_api.route('/relay_ctrl')
-def relay_ctrl():
-    SnapshotProcessor._relay_ctrl = request.args.get('on') == '1'
-    return 'OK'
-
-
 @rest_api.route('/relay_ctrl_toggle')
 def relay_ctrl_toggle():
     if SnapshotProcessor._relay_ctrl:
         SnapshotProcessor._relay_ctrl = False
+        return 'OFF'
     else:
         SnapshotProcessor._relay_ctrl = True
-    return str(SnapshotProcessor._relay_ctrl)
+        return 'ON'
 
 
 if __name__ == "__main__":
