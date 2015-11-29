@@ -39,7 +39,7 @@ from urllib import pathname2url
 from watchdog.events import FileSystemEventHandler, FileModifiedEvent
 from watchdog.observers import Observer
 from zmq import ContextTerminated
-from flask import Flask, request, render_template
+from flask import Flask, request, render_template, url_for, redirect
 
 sys.displayhook = pprint
 
@@ -1048,7 +1048,7 @@ def notification_toggle():
         return '<h1>ON</h1>'
 
 
-@rest_api.route('/')
+@rest_api.route('/', methods=['GET','POST'])
 @rest_api.route('/<operation>')
 def index(operation=None):
     return render_template('index.html', operation=operation)
