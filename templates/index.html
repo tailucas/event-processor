@@ -60,8 +60,13 @@
                 </div>
 
                 <div class="row">
-                    <form action={{url_for('index')}} method='POST'>
-                        <button type="submit" class="btn btn-lg btn-success">Refresh</button>
+                    <form action={{url_for('notification_toggle')}} method='POST'>
+                        <button type="submit" class="btn btn-lg btn-success">{{ notifications }}</button>
+                    </form>
+                </div>
+                <div class="row">
+                    <form action={{url_for('relay_ctrl_toggle')}} method='POST'>
+                        <button type="submit" class="btn btn-lg btn-success">{{ relays }}</button>
                     </form>
                 </div>
             </div>

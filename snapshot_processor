@@ -1032,26 +1032,31 @@ def debug():
 def relay_ctrl_toggle():
     if SnapshotProcessor._relay_ctrl:
         SnapshotProcessor._relay_ctrl = False
-        return '<h1>OFF</h1>'
     else:
         SnapshotProcessor._relay_ctrl = True
-        return '<h1>ON</h1>'
-
+    return index()
 
 @rest_api.route('/notification_toggle')
 def notification_toggle():
     if SnapshotProcessor._notification_ctrl:
         SnapshotProcessor._notification_ctrl = False
-        return '<h1>OFF</h1>'
     else:
         SnapshotProcessor._notification_ctrl = True
-        return '<h1>ON</h1>'
-
+    return index()
 
 @rest_api.route('/', methods=['GET','POST'])
-@rest_api.route('/<operation>')
-def index(operation=None):
-    return render_template('index.html', operation=operation)
+def index():
+    relays = 'Beep Beeps {}'
+    if SnapshotProcessor._relay_ctrl:
+        relays = relays.format('ON')
+    else:
+        relays = relays.format('OFF')
+    notifications = 'Crazy Lady {}'
+    if SnapshotProcessor._notification_ctrl:
+        notifications = notifications.format('ON')
+    else:
+        notifications = notifications.format('OFF')
+    return render_template('index.html', relays=relays, notifications=notifications)
 
 
 if __name__ == "__main__":
