@@ -1034,7 +1034,7 @@ def relay_ctrl_toggle():
         SnapshotProcessor._relay_ctrl = False
     else:
         SnapshotProcessor._relay_ctrl = True
-    return redirect(url_for('/'))
+    return redirect(url_for('index'))
 
 @rest_api.route('/notification_toggle', methods=['GET','POST'])
 def notification_toggle():
@@ -1042,7 +1042,7 @@ def notification_toggle():
         SnapshotProcessor._notification_ctrl = False
     else:
         SnapshotProcessor._notification_ctrl = True
-    return redirect(url_for('/'))
+    return redirect(url_for('index'))
 
 @rest_api.route('/', methods=['GET','POST'])
 def index():
