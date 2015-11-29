@@ -1028,7 +1028,7 @@ def debug():
     return 'OK'
 
 
-@rest_api.route('/relay_ctrl_toggle')
+@rest_api.route('/relay_ctrl_toggle', methods=['GET','POST'])
 def relay_ctrl_toggle():
     if SnapshotProcessor._relay_ctrl:
         SnapshotProcessor._relay_ctrl = False
@@ -1036,7 +1036,7 @@ def relay_ctrl_toggle():
         SnapshotProcessor._relay_ctrl = True
     return index()
 
-@rest_api.route('/notification_toggle')
+@rest_api.route('/notification_toggle', methods=['GET','POST'])
 def notification_toggle():
     if SnapshotProcessor._notification_ctrl:
         SnapshotProcessor._notification_ctrl = False
