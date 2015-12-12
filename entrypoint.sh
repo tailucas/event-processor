@@ -57,7 +57,7 @@ mv /etc/vsftpd.conf.new /etc/vsftpd.conf
 mkdir -p /var/run/vsftpd/empty
 
 # application configuration (no tee for secrets)
-cat /app/config/snapshot_processor.conf | python /app/config_interpol > /app/snapshot_processor.conf
+cat /app/config/event_processor.conf | python /app/config_interpol > /app/event_processor.conf
 
 # tts samples
 cp -rv /app/tts_samples/ /data/
@@ -66,7 +66,7 @@ cp -rv /app/tts_samples/ /data/
 echo "$GOOGLE_CLIENT_SECRETS" > /app/client_secrets.json
 # we may already have a valid auth token
 if [ -n "${GOOGLE_OAUTH_TOKEN:-}" ]; then
-  echo "$GOOGLE_OAUTH_TOKEN" > /data/snapshot_processor_creds
+  echo "$GOOGLE_OAUTH_TOKEN" > /data/event_processor_creds
 fi
 
 # non-root users

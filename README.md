@@ -1,1 +1,1 @@
-snapshot-processor
+event-processor

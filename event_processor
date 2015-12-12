@@ -72,7 +72,7 @@ cloud_storage = None
 rest_api = Flask(APP)
 zmq_context = zmq.Context()
 URL_WORKER_NOTIFIER = 'inproc://notifier'
-URL_WORKER_SNAPSHOT_PROCESSOR = 'inproc://snapshot-processor'
+URL_WORKER_SNAPSHOT_PROCESSOR = 'inproc://event-processor'
 
 
 class FileType(object):
