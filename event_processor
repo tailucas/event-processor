@@ -41,6 +41,8 @@ from watchdog.observers import Observer
 from zmq import ContextTerminated
 from flask import Flask, request, render_template, url_for, redirect
 
+# unbuffered STDOUT for print
+sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
 sys.displayhook = pprint
 
 APP = os.path.basename(__file__)
