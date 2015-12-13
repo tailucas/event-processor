@@ -1,26 +1,68 @@
 #!/usr/bin/python
+import argparse
 import os
+
+from getpass import getpass
 from time import time
+from sys import stderr
 
 from resin.auth import Auth
 from resin.models.application import Application
 from resin.models.device import Device
 from resin.models.environment_variables import ApplicationEnvVariable
 
+AUTH_TOKEN_VAR = 'AUTH_TOKEN_RESIN'
+API_KEY_VAR = 'RESIN_API_KEY'
+DEVICE_UUID_VAR = 'RESIN_DEVICE_UUID'
+
+
+def log(message):
+    stderr.writelines('{}\n'.format(message))
+
+
 if __name__ == "__main__":
-    resin_auth = Auth()
-    resin_auth.login_with_token(os.environ.get('AUTH_KEY_RESIN'))
-    device_id = os.environ.get('RESIN_DEVICE_UUID')
+    # arguments
+    parser = argparse.ArgumentParser(description='Resin API helper. '
+                                                 'Set environment variable {} with auth token'.format(AUTH_TOKEN_VAR))
+    parser.add_argument('name',
+                        help='Resin named resource.')
+    parser.add_argument('--device-id',
+                        help='Resin device ID.')
+    parser.add_argument('--get-api-key', action='store_true',
+                        help='Fetch the API key for the named application.')
+    parser.add_argument('--get-devices', action='store_true',
+                        help='List devices as name:IP pairs for the named application.')
+    args = parser.parse_args()
+
+    # environment variables
+    device_uuid = None
+    if DEVICE_UUID_VAR in os.environ:
+        device_uuid = os.environ.get(DEVICE_UUID_VAR)
+    if AUTH_TOKEN_VAR in os.environ:
+        auth_token = os.environ.get(AUTH_TOKEN_VAR)
+    else:
+        auth_token = getpass(prompt='Resin Auth Token:')
+
+    # login
+    auth = Auth()
+    auth.login_with_token(auth_token)
+    log('Authenticated to APIs using {} ({})'.format(auth.who_am_i(), auth.get_email()))
+
+    # log some info about the device context
     device = Device()
-    device_app_name = device.get_application_name(device_id)
-    device_name = device.get_name(device_id)
-    device_ip = device.get_local_ip_address(device_id)
-    print 'Device {} ({}) is running app {}'.format(device_name, device_ip, device_app_name)
+    if device_uuid:
+        device_name = device.get_name(device_uuid)
+        device_app_name = device.get_application_name(device_uuid)
+        log("Device '{}' is running application '{}'".format(device_name, device_app_name))
+
+    # application as the named resource
     application = Application()
-    print 'I am running application {}'.format(str(application.get(device_app_name)))
-    #{u'app_name': u'SnapshotProcessor', u'__metadata':
-    # {u'type': u'', u'uri': u'/ewa/application(5231)'}, u'git_repository': u'tglucas@git.resin.io:tglucas/snapshotprocessor.git',
-    # u'user': {u'__deferred': {u'uri': u'/ewa/user(4554)'}, u'__id': 4554}, u'device_type': u'raspberry-pi', u'commit': u'418e2d97a03300274a9c42ffc340cf0a18497020', u'id': 5231}
-    environment_variables = ApplicationEnvVariable()
-    test_data = '{}'.format(time())
-    environment_variables.update('DYNAMIC_TEST', test_data)
+    if args.get_api_key:
+        log("Retrieving API key for application '{}'".format(args.name))
+        print application.get_api_key(args.name)
+    elif args.get_devices:
+        log("Retrieving devices for application '{}'".format(args.name))
+        for d in device.get_all_by_application(args.name):
+            uuid = d['uuid']
+            print '{}:{}'.format(d['name'], device.get_local_ip_address(uuid)[0])
+
