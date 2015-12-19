@@ -78,6 +78,9 @@ chown "${APP_USER}:${APP_GROUP}" /data/*
 # so app user can make the noise
 adduser "${APP_USER}" audio
 
+# Resin API key
+export RESIN_API_KEY="${RESIN_API_KEY:-$API_KEY_RESIN}"
+
 # I'm the supervisor
 cat /app/config/supervisord.conf | python /app/config_interpol | tee /etc/supervisor/conf.d/supervisord.conf
 /usr/bin/supervisord
