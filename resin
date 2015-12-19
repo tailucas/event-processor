@@ -23,13 +23,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Resin API helper. '
                                                  'Set environment variable {} with auth token'.format(AUTH_TOKEN_VAR))
     parser.add_argument('name',
-                        help='Resin named resource.')
-    parser.add_argument('--device-id',
-                        help='Resin device ID.')
-    parser.add_argument('--get-api-key', action='store_true',
+                        help='Resin named resource.', nargs='?')
+    # named resource is application name
+    app_group = parser.add_mutually_exclusive_group()
+    app_group.add_argument('--get-api-key', action='store_true',
                         help='Fetch the API key for the named application.')
-    parser.add_argument('--get-devices', action='store_true',
+    app_group.add_argument('--get-devices', action='store_true',
                         help='List devices as name:IP pairs for the named application.')
+    app_group.add_argument('--get-app-id', action='store_true',
+                        help='Get the Resin application ID for the named application.')
     args = parser.parse_args()
 
     # login
@@ -52,6 +54,7 @@ if __name__ == "__main__":
 
     # log some info about the device context
     device = Device()
+    device_app_name = None
     if device_uuid:
         device_name = device.get_name(device_uuid)
         device_app_name = device.get_application_name(device_uuid)
@@ -62,10 +65,18 @@ if __name__ == "__main__":
     if args.get_api_key:
         log("Retrieving API key for application '{}'".format(args.name))
         print application.get_api_key(args.name)
-    elif args.get_devices:
+
+    if args.get_devices:
         log("Retrieving devices for application '{}'".format(args.name))
         for d in device.get_all_by_application(args.name):
             # work around Device.get_local_ip_address(uuid) eventual
             # consistency issues with the VPN addresses.
             print '{}:{}'.format(d['name'], d['ip_address'].split()[0])
 
+    if args.get_app_id:
+        if args.name:
+            log("Retrieving ID for application '{}'".format(args.name))
+            print application.get(args.name)['id']
+        elif device_app_name:
+            log("Retrieving ID for application '{}'".format(device_app_name))
+            print application.get(device_app_name)['id']
