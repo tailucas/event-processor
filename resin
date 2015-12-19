@@ -32,6 +32,8 @@ if __name__ == "__main__":
                         help='List devices as name:IP pairs for the named application.')
     app_group.add_argument('--get-app-id', action='store_true',
                         help='Get the Resin application ID for the named application.')
+    app_group.add_argument('--get-device-ip', action='store_true',
+                        help='Get the IP address for the named device.')
     args = parser.parse_args()
 
     # login
@@ -54,6 +56,7 @@ if __name__ == "__main__":
 
     # log some info about the device context
     device = Device()
+    device_name = None
     device_app_name = None
     if device_uuid:
         device_name = device.get_name(device_uuid)
@@ -80,3 +83,14 @@ if __name__ == "__main__":
         elif device_app_name:
             log("Retrieving ID for application '{}'".format(device_app_name))
             print application.get(device_app_name)['id']
+
+    if args.get_device_ip:
+        if args.name:
+            log("Retrieving IP for device '{}'".format(args.name))
+            devices = device.get_by_name(args.name)
+            if len(devices) > 1:
+                raise "'{}' ambiguous across applications.".format(args.name)
+            print devices[0]['ip_address'].split()[0]
+        elif device_uuid:
+            log("Retrieving IP for device '{}'".format(device_name))
+            print device.get(device_uuid)['ip_address'].split()[0]
