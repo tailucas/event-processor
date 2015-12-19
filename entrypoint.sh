@@ -1,9 +1,22 @@
 #!/bin/bash
 set -eux
 
-# set the timezone
-tzupdate
+# Resin API key
+export RESIN_API_KEY="${RESIN_API_KEY:-$API_KEY_RESIN}"
 
+# Run user
+export APP_USER="${APP_USER:-app}"
+export APP_GROUP="${APP_GROUP:-app}"
+
+TZ_CACHE=/data/localtime
+# a valid symlink
+if [ -h "$TZ_CACHE" ] && [ -e "$TZ_CACHE" ]; then
+  cp -a "$TZ_CACHE" /etc/localtime
+else
+  # set the timezone
+  tzupdate
+  cp -a /etc/localtime "$TZ_CACHE"
+fi
 
 # remote system logging
 if [ -n "${RSYSLOG_HOSTNAME:-}" ]; then
@@ -77,9 +90,6 @@ chown "${APP_USER}:${APP_GROUP}" /data/
 chown "${APP_USER}:${APP_GROUP}" /data/*
 # so app user can make the noise
 adduser "${APP_USER}" audio
-
-# Resin API key
-export RESIN_API_KEY="${RESIN_API_KEY:-$API_KEY_RESIN}"
 
 # I'm the supervisor
 cat /app/config/supervisord.conf | python /app/config_interpol | tee /etc/supervisor/conf.d/supervisord.conf
