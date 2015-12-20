@@ -19,14 +19,14 @@ else
 fi
 
 # remote system logging
-if [ -n "${RSYSLOG_HOSTNAME:-}" ]; then
+if [ -n "${RSYSLOG_HOSTNAME:-}" ] && ! grep -q "$RSYSLOG_HOSTNAME" /etc/hostname; then
   echo "${RSYSLOG_HOSTNAME}" > /etc/hostname
   # apply the new hostname
   /etc/init.d/hostname.sh start
   # update hosts
   echo "127.0.1.1 ${RSYSLOG_HOSTNAME}" >> /etc/hosts
 fi
-if [ -n "${RSYSLOG_SERVER:-}" ]; then
+if [ -n "${RSYSLOG_SERVER:-}" ] && ! grep -q "$RSYSLOG_SERVER" /etc/rsyslog.conf; then
   echo "*.*          @${RSYSLOG_SERVER}" | tee -a /etc/rsyslog.conf
 fi
 
@@ -47,39 +47,14 @@ rmmod w1_gpio||true
 # groups
 groupadd -f -r "${APP_GROUP}"
 
-id -u "${FTP_USER}" || useradd -r -g "${APP_GROUP}" "${FTP_USER}"
-FTP_HOME="/home/${FTP_USER}"
-mkdir -p "${FTP_HOME}/"
-export FTP_ROOT="${FTP_HOME}/ftp"
-export STORAGE_ROOT="/data/ftp"
-STORAGE_UPLOADS="${STORAGE_ROOT}/uploads"
-mkdir -p "${STORAGE_UPLOADS}"
-ln -s "$STORAGE_ROOT" "$FTP_ROOT"
-chown -R "${FTP_USER}:${APP_GROUP}" "${FTP_HOME}/"
-chown -R "${FTP_USER}:${APP_GROUP}" "${STORAGE_ROOT}/"
-chmod a-w "${FTP_ROOT}"
-
-cat /app/config/cleanup_snapshots | sed 's/__STORAGE__/'"${STORAGE_UPLOADS//\//\/}\/"'/g' > /etc/cron.d/cleanup_snapshots
-
-echo "${FTP_USER}:${FTP_PASSWORD}" | chpasswd
-
-cat /etc/vsftpd.conf | python /app/config_interpol /app/config/vsftpd.conf | sort | tee /etc/vsftpd.conf.new
-mv /etc/vsftpd.conf /etc/vsftpd.conf.backup
-mv /etc/vsftpd.conf.new /etc/vsftpd.conf
-# secure_chroot_dir
-mkdir -p /var/run/vsftpd/empty
-
-# application configuration (no tee for secrets)
-cat /app/config/event_processor.conf | python /app/config_interpol > /app/event_processor.conf
-
-# tts samples
-cp -rv /app/tts_samples/ /data/
-
-# client details
-echo "$GOOGLE_CLIENT_SECRETS" > /app/client_secrets.json
-# we may already have a valid auth token
-if [ -n "${GOOGLE_OAUTH_TOKEN:-}" ]; then
-  echo "$GOOGLE_OAUTH_TOKEN" > /data/event_processor_creds
+# configuration update
+if grep '%\(.*\)s$' event_processor.conf; then
+  export ETH0_IP="$(/sbin/ifconfig eth0 | grep 'inet addr' | awk '{ print $2 }' | cut -f2 -d ':')"
+  export SUB_SRC="$(grep -v "$ETH0_IP" <<< python /app/resin --get-devices | paste -d, -s)"
+  # application configuration (no tee for secrets)
+  cat /app/config/event_processor.conf | python /app/config_interpol > /app/event_processor.conf
+  unset ETH0_IP
+  unset SUB_SRC
 fi
 
 # non-root users
