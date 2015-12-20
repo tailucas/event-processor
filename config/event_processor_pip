@@ -1,11 +1,6 @@
-PyDrive==1.0.1
-PyMPlayer==0.6.0
 RPi.GPIO==0.5.5
 argparse==1.2.1
-google-api-python-client==1.4.0
-oauth2client==1.4.11
 pathtools==0.1.2
-python-clickatell==0.1.3
 python-dateutil==2.4.2
 python-magic==0.4.6
 pytz==2015.2
@@ -14,5 +9,4 @@ requests==2.7.0
 resin-sdk==1.3.1
 tzupdate==0.4.0
 u-msgpack-python==2.0
-watchdog==0.8.3
 Flask==0.10.1
