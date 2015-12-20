@@ -70,8 +70,14 @@ if __name__ == "__main__":
         print application.get_api_key(args.name)
 
     if args.get_devices:
-        log("Retrieving devices for application '{}'".format(args.name))
-        for d in device.get_all_by_application(args.name):
+        devices = None
+        if args.name:
+            log("Retrieving devices for application '{}'".format(args.name))
+            devices = device.get_all_by_application(args.name)
+        else:
+            log("Retrieving all devices")
+            devices = device.get_all()
+        for d in devices:
             # work around Device.get_local_ip_address(uuid) eventual
             # consistency issues with the VPN addresses.
             print '{}:{}'.format(d['name'], d['ip_address'].split()[0])
