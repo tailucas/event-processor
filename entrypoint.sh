@@ -48,7 +48,7 @@ rmmod w1_gpio||true
 groupadd -f -r "${APP_GROUP}"
 
 # configuration update
-if grep '%\(.*\)s$' event_processor.conf; then
+if [ ! -e /app/event_processor.conf ] || grep '%\(.*\)s$' /app/event_processor.conf; then
   export ETH0_IP="$(/sbin/ifconfig eth0 | grep 'inet addr' | awk '{ print $2 }' | cut -f2 -d ':')"
   export SUB_SRC="$(grep -v "$ETH0_IP" <<< python /app/resin --get-devices | paste -d, -s)"
   # application configuration (no tee for secrets)
