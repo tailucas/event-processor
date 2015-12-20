@@ -1,8 +1,8 @@
 #!/bin/bash
-set -eux
-
+set -eu
 # Resin API key
 export RESIN_API_KEY="${RESIN_API_KEY:-$API_KEY_RESIN}"
+set -x
 
 # Run user
 export APP_USER="${APP_USER:-app}"
