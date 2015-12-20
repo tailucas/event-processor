@@ -16,21 +16,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libffi-dev \
     libssl-dev \
     manpages \
-    mplayer \
     net-tools \
     openssh-server \
     openssl \
     psmisc \
     python-dbus \
-    python-gammu \
     python-pip \
     python2.7 \
     python2.7-dev \
     rsyslog \
     ssl-cert \
     supervisor \
-    vim \
-    vsftpd
+    vim
 
 COPY ./config/event_processor_pip /tmp/
 # update pip
@@ -39,9 +36,6 @@ RUN pip install --upgrade setuptools
 RUN pip install -r /tmp/event_processor_pip
 # show outdated packages since the freeze
 RUN pip list --outdated
-
-# FTP
-EXPOSE 21
 
 # SSH
 EXPOSE 22
