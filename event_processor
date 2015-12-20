@@ -89,6 +89,10 @@ def index():
     return render_template('index.html', relays=relays, notifications=notifications)
 
 
+def run_flask():
+    rest_api.run(host=config.get('app', 'eth0_ip'), port=5000)
+
+
 if __name__ == "__main__":
     # set up logging
     log.setLevel(logging.INFO)
@@ -102,17 +106,18 @@ if __name__ == "__main__":
         stream_handler.setFormatter(formatter)
         log.addHandler(stream_handler)
     # set up config
-    eth0_ip = config.get('app', 'eth0_ip')
     subscription_sources = config.get('app', 'subscription_sources').split(',')
     # set up signal handlers
     signal.signal(signal.SIGHUP, signal_handler)
     threads_tracked = Set()
     # start threads
-
-    # start the REST interface
-    rest_api.run(host=eth0_ip, port=5000)
+    f = threading.Thread(name='flask', target=run_flask)
+    f.setDaemon(True)
+    f.start()
+    threads_tracked.add(f.getName())
     try:
         time.sleep(1)
+        log.info('Subscribing to these sources: {}'.format(subscription_sources))
         while True:
             threads_alive = Set()
             for thread_info in threading.enumerate():
@@ -124,8 +129,7 @@ if __name__ == "__main__":
                 # bail out
                 raise RuntimeError(message)
             # TODO: check on overdue heartbeats?
-            log.info('Subscribing to these sources: {}'.format(subscription_sources))
-            time.sleep(600)
+            time.sleep(10)
     except(KeyboardInterrupt, SystemExit):
         log.info('Stopping threads...')
         log.info('Closing subscribers...')
