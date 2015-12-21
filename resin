@@ -22,9 +22,8 @@ if __name__ == "__main__":
     # arguments
     parser = argparse.ArgumentParser(description='Resin API helper. '
                                                  'Set environment variable {} with auth token'.format(AUTH_TOKEN_VAR))
-    parser.add_argument('name',
-                        help='Resin named resource.', nargs='?')
-    # named resource is application name
+    parser.add_argument('resource_id',
+                        help='Resin resource.', nargs='?')
     app_group = parser.add_mutually_exclusive_group()
     app_group.add_argument('--get-api-key', action='store_true',
                         help='Fetch the API key for the named application.')
@@ -34,6 +33,8 @@ if __name__ == "__main__":
                         help='Get the Resin application ID for the named application.')
     app_group.add_argument('--get-device-ip', action='store_true',
                         help='Get the IP address for the named device.')
+    app_group.add_argument('--get-device-name', action='store_true',
+                        help='Get the name for this device or UUID')
     args = parser.parse_args()
 
     # login
@@ -66,14 +67,14 @@ if __name__ == "__main__":
     # application as the named resource
     application = Application()
     if args.get_api_key:
-        log("Retrieving API key for application '{}'".format(args.name))
-        print application.get_api_key(args.name)
+        log("Retrieving API key for application '{}'".format(args.resource_id))
+        print application.get_api_key(args.resource_id)
 
     if args.get_devices:
         devices = None
-        if args.name:
-            log("Retrieving devices for application '{}'".format(args.name))
-            devices = device.get_all_by_application(args.name)
+        if args.resource_id:
+            log("Retrieving devices for application '{}'".format(args.resource_id))
+            devices = device.get_all_by_application(args.resource_id)
         else:
             log("Retrieving all devices")
             devices = device.get_all()
@@ -83,20 +84,26 @@ if __name__ == "__main__":
             print '{}:{}'.format(d['name'], d['ip_address'].split()[0])
 
     if args.get_app_id:
-        if args.name:
-            log("Retrieving ID for application '{}'".format(args.name))
-            print application.get(args.name)['id']
+        if args.resource_id:
+            log("Retrieving ID for application '{}'".format(args.resource_id))
+            print application.get(args.resource_id)['id']
         elif device_app_name:
             log("Retrieving ID for application '{}'".format(device_app_name))
             print application.get(device_app_name)['id']
 
     if args.get_device_ip:
-        if args.name:
-            log("Retrieving IP for device '{}'".format(args.name))
-            devices = device.get_by_name(args.name)
+        if args.resource_id:
+            log("Retrieving IP for device '{}'".format(args.resource_id))
+            devices = device.get_by_name(args.resource_id)
             if len(devices) > 1:
-                raise "'{}' ambiguous across applications.".format(args.name)
+                raise "'{}' ambiguous across applications.".format(args.resource_id)
             print devices[0]['ip_address'].split()[0]
         elif device_uuid:
             log("Retrieving IP for device '{}'".format(device_name))
             print device.get(device_uuid)['ip_address'].split()[0]
+
+    if args.get_device_name:
+        if args.resource_id:
+            log("Retrieving device name for UUID {}".format(args.resource_id))
+            print device.get_name(args.resource_id)
+        print device_name
