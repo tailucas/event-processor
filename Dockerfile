@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     dbus \
     g++ \
     gcc \
+    iptables \
     less \
     libffi-dev \
     libssl-dev \
