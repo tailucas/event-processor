@@ -45,6 +45,7 @@ EXPOSE 5000
 
 # zmq
 EXPOSE 5556
+EXPOSE 5558
 
 # sshd configuration
 RUN mkdir /var/run/sshd
