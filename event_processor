@@ -94,8 +94,8 @@ def run_flask():
 
 
 if __name__ == "__main__":
-    # set up logging
-    log.setLevel(logging.INFO)
+    # DEBUG logging until startup complete
+    log.setLevel(logging.DEBUG)
     syslog_handler = logging.handlers.SysLogHandler(address='/dev/log')
     formatter = logging.Formatter('%(name)s [%(levelname)s] %(message)s')
     syslog_handler.setFormatter(formatter)
@@ -116,6 +116,9 @@ if __name__ == "__main__":
     f.start()
     threads_tracked.add(f.getName())
     try:
+        # startup completed
+        # back to INFO logging
+        log.setLevel(logging.INFO)
         log.info('Subscribing to these sources: {}'.format(subscription_sources))
         # connect to publishers
         while True:
