@@ -43,6 +43,8 @@ config.optionxform = str
 config.read([os.path.join(DIR, '{}.conf'.format(APP))])
 
 rest_api = Flask(APP)
+
+URL_WORKER_EVENT_PROCESSOR = 'inproc://event-processor'
 zmq_context = zmq.Context()
 
 
@@ -93,6 +95,28 @@ def run_flask():
     rest_api.run(host=config.get('app', 'eth0_ip'), port=5000)
 
 
+class EventProcessor(Thread):
+
+    def __init__(self):
+        super(EventProcessor, self).__init__()
+        self.name = self.__class__.__name__
+        self.daemon = True
+
+        self.socket = zmq_context.socket(zmq.PULL)
+        self.socket.bind(URL_WORKER_EVENT_PROCESSOR)
+
+    def run(self):
+        while True:
+            try:
+                event = self.socket.recv_pyobj()
+                log.debug(event)
+            except ContextTerminated:
+                break
+            except Exception:
+                log.exception(self.__class__.__name__)
+                continue
+
+
 class SourceSubscriber(Thread):
 
     def __init__(self, label, publisher_endpoint):
@@ -111,17 +135,17 @@ class SourceSubscriber(Thread):
         log.info('Connecting event processor to {} @ {}'.format(self._label, self._publisher_endpoint))
         self.subscriber.connect(self._publisher_endpoint)
         self.subscriber.setsockopt(zmq.SUBSCRIBE, "")
-        #self.processor.connect(URL_WORKER_SNAPSHOT_PROCESSOR)
+        self.processor.connect(URL_WORKER_EVENT_PROCESSOR)
         while True:
             try:
-                snapshot_data = umsgpack.unpackb(self.subscriber.recv())
+                publisher_event = umsgpack.unpackb(self.subscriber.recv())
             except UnpackException:
-                log.exception('Cannot unpack sampled snapshot data.')
+                log.exception('Cannot unpack message from {}.'.format(self._label))
                 continue
             except ContextTerminated:
                 break
-            log.debug('Snapshot: {} from {}'.format(snapshot_data, self._label))
-            #self.processor.send_pyobj(snapshot)
+            log.debug('Event from {}: {}'.format(self._label, publisher_event))
+            self.processor.send_pyobj(publisher_event)
 
 
 if __name__ == "__main__":
@@ -136,10 +160,15 @@ if __name__ == "__main__":
         stream_handler = logging.StreamHandler(stream=sys.stdout)
         stream_handler.setFormatter(formatter)
         log.addHandler(stream_handler)
-    # set up subscribers
     threads_tracked = Set()
+    # bind main processor first
+    event_processor = EventProcessor()
+    event_processor.start()
+    threads_tracked.add(event_processor.getName())
+    # set up subscribers
     pubsub_port = config.get('zmq', 'pubsub_port')
     subscription_sources = config.get('app', 'subscription_sources').split(',')
+    log.debug('Subscribing to these sources: {}'.format(subscription_sources))
     for source in subscription_sources:
         label_ip = source.split(':')
         source_label = label_ip[0]
@@ -160,7 +189,6 @@ if __name__ == "__main__":
         # startup completed
         # back to INFO logging
         log.setLevel(logging.INFO)
-        log.info('Subscribing to these sources: {}'.format(subscription_sources))
         # connect to publishers
         while True:
             threads_alive = Set()
