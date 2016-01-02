@@ -93,6 +93,37 @@ def run_flask():
     rest_api.run(host=config.get('app', 'eth0_ip'), port=5000)
 
 
+class SourceSubscriber(Thread):
+
+    def __init__(self, label, publisher_endpoint):
+        super(SourceSubscriber, self).__init__()
+        self.name = '{}::{}'.format(self.__class__.__name__, label)
+        self.daemon = True
+
+        self._label = label
+        self._publisher_endpoint = publisher_endpoint
+
+        self.subscriber = zmq_context.socket(zmq.SUB)
+
+        self.processor = zmq_context.socket(zmq.PUSH)
+
+    def run(self):
+        log.info('Connecting event processor to {} @ {}'.format(self._label, self._publisher_endpoint))
+        self.subscriber.connect(self._publisher_endpoint)
+        self.subscriber.setsockopt(zmq.SUBSCRIBE, "")
+        #self.processor.connect(URL_WORKER_SNAPSHOT_PROCESSOR)
+        while True:
+            try:
+                snapshot_data = umsgpack.unpackb(self.subscriber.recv())
+            except UnpackException:
+                log.exception('Cannot unpack sampled snapshot data.')
+                continue
+            except ContextTerminated:
+                break
+            log.debug('Snapshot: {} from {}'.format(snapshot_data, self._label))
+            #self.processor.send_pyobj(snapshot)
+
+
 if __name__ == "__main__":
     # DEBUG logging until startup complete
     log.setLevel(logging.DEBUG)
@@ -105,11 +136,21 @@ if __name__ == "__main__":
         stream_handler = logging.StreamHandler(stream=sys.stdout)
         stream_handler.setFormatter(formatter)
         log.addHandler(stream_handler)
-    # set up config
+    # set up subscribers
+    threads_tracked = Set()
+    pubsub_port = config.get('zmq', 'pubsub_port')
     subscription_sources = config.get('app', 'subscription_sources').split(',')
+    for source in subscription_sources:
+        label_ip = source.split(':')
+        source_label = label_ip[0]
+        source_ip = label_ip[1]
+        connection_string = 'tcp://{}:{}'.format(source_ip, pubsub_port)
+        log.info('Creating event subscriber for {} @ {}'.format(source_label, connection_string))
+        subscriber = SourceSubscriber(label=source_label, publisher_endpoint=connection_string)
+        threads_tracked.add(subscriber.getName())
+        subscriber.start()
     # set up signal handlers
     signal.signal(signal.SIGHUP, signal_handler)
-    threads_tracked = Set()
     # start threads
     f = threading.Thread(name='flask', target=run_flask)
     f.setDaemon(True)
