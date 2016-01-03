@@ -4,6 +4,7 @@ import hashlib
 import logging
 import logging.handlers
 
+import abc
 import os
 import pytz
 import signal
@@ -95,15 +96,26 @@ def run_flask():
     rest_api.run(host=config.get('app', 'eth0_ip'), port=5000)
 
 
-class EventProcessor(Thread):
+class ZMQEndpoint(object):
+    __metaclass__ = abc.ABCMeta
+
+    def __init__(self, zmq_endpoints):
+        self._zmq_endpoints = zmq_endpoints
+
+    def close(self):
+        for endpoint in self._zmq_endpoints:
+            endpoint.close()
+
+
+class EventProcessor(Thread, ZMQEndpoint):
 
     def __init__(self):
-        super(EventProcessor, self).__init__()
         self.name = self.__class__.__name__
         self.daemon = True
 
         self.socket = zmq_context.socket(zmq.PULL)
         self.socket.bind(URL_WORKER_EVENT_PROCESSOR)
+        super(EventProcessor, self).__init__(zmq_endpoints=[self.socket])
 
     def run(self):
         while True:
@@ -117,10 +129,9 @@ class EventProcessor(Thread):
                 continue
 
 
-class SourceSubscriber(Thread):
+class SourceSubscriber(Thread, ZMQEndpoint):
 
     def __init__(self, label, publisher_endpoint):
-        super(SourceSubscriber, self).__init__()
         self.name = '{}::{}'.format(self.__class__.__name__, label)
         self.daemon = True
 
@@ -130,6 +141,9 @@ class SourceSubscriber(Thread):
         self.subscriber = zmq_context.socket(zmq.SUB)
 
         self.processor = zmq_context.socket(zmq.PUSH)
+
+        super(SourceSubscriber, self).__init__(zmq_endpoints=[self.subscriber,
+                                                              self.processor])
 
     def run(self):
         log.info('Connecting event processor to {} @ {}'.format(self._label, self._publisher_endpoint))
@@ -200,9 +214,11 @@ if __name__ == "__main__":
                 log.error(message)
                 # bail out
                 raise RuntimeError(message)
-            # TODO: check on overdue heartbeats?
-            time.sleep(60)
+            time.sleep(10)
     except(KeyboardInterrupt, SystemExit):
-        log.info('Stopping threads...')
+        for thread_info in threading.enumerate():
+            if thread_info.isAlive() and isinstance(thread_info, ZMQEndpoint):
+                log.info("Closing sockets for '{}'".format(thread_info.getName()))
+                thread_info.close()
         log.info('Closing subscribers...')
         zmq_context.term()
