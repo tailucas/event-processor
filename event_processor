@@ -110,12 +110,13 @@ class ZMQEndpoint(object):
 class EventProcessor(Thread, ZMQEndpoint):
 
     def __init__(self):
+        super(EventProcessor, self).__init__()
         self.name = self.__class__.__name__
         self.daemon = True
 
         self.socket = zmq_context.socket(zmq.PULL)
         self.socket.bind(URL_WORKER_EVENT_PROCESSOR)
-        super(EventProcessor, self).__init__(zmq_sockets=[self.socket])
+        ZMQEndpoint.__init__(zmq_sockets=[self.socket])
 
     def run(self):
         while True:
@@ -132,6 +133,7 @@ class EventProcessor(Thread, ZMQEndpoint):
 class SourceSubscriber(Thread, ZMQEndpoint):
 
     def __init__(self, label, publisher_endpoint):
+        super(SourceSubscriber, self).__init__()
         self.name = '{}::{}'.format(self.__class__.__name__, label)
         self.daemon = True
 
@@ -139,11 +141,8 @@ class SourceSubscriber(Thread, ZMQEndpoint):
         self._publisher_endpoint = publisher_endpoint
 
         self.subscriber = zmq_context.socket(zmq.SUB)
-
         self.processor = zmq_context.socket(zmq.PUSH)
-
-        super(SourceSubscriber, self).__init__(zmq_sockets=[self.subscriber,
-                                                            self.processor])
+        ZMQEndpoint.__init__(zmq_sockets=[self.subscriber, self.processor])
 
     def run(self):
         log.info('Connecting event processor to {} @ {}'.format(self._label, self._publisher_endpoint))
