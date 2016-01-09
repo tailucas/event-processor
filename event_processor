@@ -60,7 +60,7 @@ def debug():
     return 'OK'
 
 
-@rest_api.route('/relay_ctrl_toggle', methods=['GET','POST'])
+@rest_api.route('/relay_ctrl_toggle', methods=['GET', 'POST'])
 def relay_ctrl_toggle():
     #if SnapshotProcessor._relay_ctrl:
     #    SnapshotProcessor._relay_ctrl = False
@@ -68,7 +68,7 @@ def relay_ctrl_toggle():
     #    SnapshotProcessor._relay_ctrl = True
     return redirect(url_for('index'))
 
-@rest_api.route('/notification_toggle', methods=['GET','POST'])
+@rest_api.route('/notification_toggle', methods=['GET', 'POST'])
 def notification_toggle():
     #if SnapshotProcessor._notification_ctrl:
     #    SnapshotProcessor._notification_ctrl = False
@@ -77,7 +77,7 @@ def notification_toggle():
     return redirect(url_for('index'))
 
 
-@rest_api.route('/', methods=['GET','POST'])
+@rest_api.route('/', methods=['GET', 'POST'])
 def index():
     relays = 'Beep Beeps {}'
     #if SnapshotProcessor._relay_ctrl:
@@ -187,7 +187,6 @@ if __name__ == "__main__":
         source_label = label_ip[0]
         source_ip = label_ip[1]
         connection_string = 'tcp://{}:{}'.format(source_ip, pubsub_port)
-        log.info('Creating event subscriber for {} @ {}'.format(source_label, connection_string))
         subscriber = SourceSubscriber(label=source_label, publisher_endpoint=connection_string)
         threads_tracked.add(subscriber.getName())
         subscriber.start()
@@ -204,6 +203,7 @@ if __name__ == "__main__":
         log.setLevel(logging.INFO)
         # connect to publishers
         while True:
+            # TODO: check on overdue heartbeats?
             threads_alive = Set()
             for thread_info in threading.enumerate():
                 if thread_info.isAlive():
@@ -219,5 +219,5 @@ if __name__ == "__main__":
             if thread_info.isAlive() and isinstance(thread_info, ZMQEndpoint):
                 log.info("Closing sockets for '{}'".format(thread_info.getName()))
                 thread_info.close()
-        log.info('Closing subscribers...')
+        log.info('Closing messaging...')
         zmq_context.term()
