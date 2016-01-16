@@ -44,8 +44,8 @@ EXPOSE 22 5000 5556 5558
 RUN mkdir /var/run/sshd
 RUN mkdir /root/.ssh/
 
-RUN wget https://s3.amazonaws.com/aws-cloudwatch/downloads/latest/awslogs-agent-setup.py
 COPY . /app
 COPY ./entrypoint.sh /
+RUN wget https://s3.amazonaws.com/aws-cloudwatch/downloads/latest/awslogs-agent-setup.py -O /app/awslogs-agent-setup.py
 
 ENTRYPOINT ["/entrypoint.sh"]
