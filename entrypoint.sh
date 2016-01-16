@@ -62,13 +62,6 @@ if [ -n "${RSYSLOG_SERVER:-}" ] && ! grep -q "$RSYSLOG_SERVER" /etc/rsyslog.conf
 fi
 
 # log archival
-#pushd /app
-#python awslogs-agent-setup.py -n -r "$AWS_REGION" -c /app/config/awslogs-config
-#popd
-# disable for supervisor
-#service awslogs stop
-#/usr/sbin/update-rc.d -f awslogs remove
-
 if [ -n "${AWS_REGION:-}" ]; then
   if [ ! grep "$AWS_REGION" /var/awslogs/etc/aws.conf ]; then
     sed -e '/region/ s/^#*/#/' -i /var/awslogs/etc/aws.conf
