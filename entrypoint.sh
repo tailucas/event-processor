@@ -62,17 +62,9 @@ if [ -n "${RSYSLOG_SERVER:-}" ] && ! grep -q "$RSYSLOG_SERVER" /etc/rsyslog.conf
 fi
 
 # log archival
-if [ -n "${AWS_REGION:-}" ]; then
-  if [ ! grep "$AWS_REGION" /var/awslogs/etc/aws.conf ]; then
-    sed -e '/region/ s/^#*/#/' -i /var/awslogs/etc/aws.conf
-    echo "region = ${AWS_REGION}" | tee -a /var/awslogs/etc/aws.conf
-  fi
-fi
-#TODO fix section
-set +x
-echo "aws_access_key_id = ${AWS_ACCESS_KEY_ID}" >> /var/awslogs/etc/aws.conf
-echo "aws_secret_access_key = ${AWS_SECRET_ACCESS_KEY}" >> /var/awslogs/etc/aws.conf
-set -x
+cat /var/awslogs/etc/aws.conf | python /app/config_interpol /app/config/aws.conf | tee /var/awslogs/etc/aws.conf.new
+mv /var/awslogs/etc/aws.conf /var/awslogs/etc/aws.conf.backup
+mv /var/awslogs/etc/aws.conf.new /var/awslogs/etc/aws.conf
 
 # configuration update
 export ETH0_IP="$(/sbin/ifconfig eth0 | grep 'inet addr' | awk '{ print $2 }' | cut -f2 -d ':')"
