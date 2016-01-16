@@ -56,12 +56,11 @@ echo "$DEVICE_NAME" > /etc/hostname
 /etc/init.d/hostname.sh start
 # update hosts
 echo "127.0.1.1 ${DEVICE_NAME}" >> /etc/hosts
-unset DEVICE_NAME
 
-if [ -n "${RSYSLOG_SERVER:-}" ] && ! grep -q "$RSYSLOG_SERVER" /etc/rsyslog.conf; then
-  echo "*.*          @${RSYSLOG_SERVER}" | tee -a /etc/rsyslog.conf
-fi
-
+# log archival
+pushd /app
+python awslogs-agent-setup.py -n -r "$AWS_REGION" -c /app/config/awslogs-config
+popd
 
 # configuration update
 export ETH0_IP="$(/sbin/ifconfig eth0 | grep 'inet addr' | awk '{ print $2 }' | cut -f2 -d ':')"

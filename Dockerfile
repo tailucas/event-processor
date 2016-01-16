@@ -24,10 +24,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python-pip \
     python2.7 \
     python2.7-dev \
-    rsyslog \
     ssl-cert \
     supervisor \
-    vim
+    vim \
+    wget
 
 COPY ./config/pip_freeze /tmp/
 # update pip
@@ -44,6 +44,7 @@ EXPOSE 22 5000 5556 5558
 RUN mkdir /var/run/sshd
 RUN mkdir /root/.ssh/
 
+RUN wget -O /app/awslogs-agent-setup.py https://s3.amazonaws.com/aws-cloudwatch/downloads/latest/awslogs-agent-setup.py
 COPY . /app
 COPY ./entrypoint.sh /
 
