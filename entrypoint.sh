@@ -57,6 +57,10 @@ echo "$DEVICE_NAME" > /etc/hostname
 # update hosts
 echo "127.0.1.1 ${DEVICE_NAME}" >> /etc/hosts
 
+if [ -n "${RSYSLOG_SERVER:-}" ] && ! grep -q "$RSYSLOG_SERVER" /etc/rsyslog.conf; then
+  echo "*.*          @${RSYSLOG_SERVER}" | tee -a /etc/rsyslog.conf
+fi
+
 # log archival
 pushd /app
 python awslogs-agent-setup.py -n -r "$AWS_REGION" -c /app/config/awslogs-config
