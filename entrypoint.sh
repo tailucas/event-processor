@@ -69,6 +69,18 @@ fi
 #service awslogs stop
 #/usr/sbin/update-rc.d -f awslogs remove
 
+if [ -n "${AWS_REGION:-}" ]; then
+  if [ ! grep "$AWS_REGION" /var/awslogs/etc/aws.conf ]; then
+    sed -e '/region/ s/^#*/#/' -i /var/awslogs/etc/aws.conf
+    echo "region = ${AWS_REGION}" | tee -a /var/awslogs/etc/aws.conf
+  fi
+fi
+#TODO fix section
+set +x
+echo "aws_access_key_id = ${AWS_ACCESS_KEY_ID}" >> /var/awslogs/etc/aws.conf
+echo "aws_secret_access_key = ${AWS_SECRET_ACCESS_KEY}" >> /var/awslogs/etc/aws.conf
+set -x
+
 # configuration update
 export ETH0_IP="$(/sbin/ifconfig eth0 | grep 'inet addr' | awk '{ print $2 }' | cut -f2 -d ':')"
 SUB_CACHE=/data/sub_src
