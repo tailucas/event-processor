@@ -65,6 +65,9 @@ fi
 pushd /app
 python awslogs-agent-setup.py -n -r "$AWS_REGION" -c /app/config/awslogs-config
 popd
+# disable for supervisor
+service awslogs stop
+update-rc.d -f awslogs remove
 
 # configuration update
 export ETH0_IP="$(/sbin/ifconfig eth0 | grep 'inet addr' | awk '{ print $2 }' | cut -f2 -d ':')"
