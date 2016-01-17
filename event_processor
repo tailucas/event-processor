@@ -125,29 +125,35 @@ class EventProcessor(Thread, ZMQEndpoint):
         self.socket.bind(URL_WORKER_EVENT_PROCESSOR)
         ZMQEndpoint.__init__(self, zmq_sockets=[self.socket])
 
+    def post_metric(self, name, value, timestamp=None, unit='Count'):
+        scalar = None
+        if isinstance(value, list):
+            scalar = len(value)
+        elif isinstance(value, int):
+            scalar = value
+        else:
+            raise RuntimeError('Unable to determine scalar value from {}'.format(value))
+        if timestamp is None:
+            timestamp = datetime.utcfromtimestamp(time.time()).replace(tzinfo=pytz.utc)
+        self.metrics.put_metric_data(namespace=self.metric_namespace,
+                                     name=name,
+                                     value=scalar,
+                                     timestamp=timestamp,
+                                     unit=unit)
+
     def run(self):
         while True:
             try:
                 event = self.socket.recv_pyobj()
                 log.debug(event)
-                now_utc = datetime.utcfromtimestamp(time.time()).replace(tzinfo=pytz.utc)
                 if 'data' in event and 'device_info' in event['data']:
-                    if 'inputs' in event['data']['device_info']:
-                        inputs = event['data']['device_info']
-                        if isinstance(inputs, list):
-                            self.metrics.put_metric_data(namespace=self.metric_namespace,
-                                                         name="inputs",
-                                                         value=len(inputs),
-                                                         timestamp=now_utc,
-                                                         unit="Count")
-                    if 'outputs' in event['data']['device_info']:
-                        outputs = event['data']['device_info']
-                        if isinstance(outputs, list):
-                            self.metrics.put_metric_data(namespace=self.metric_namespace,
-                                                         name="outputs",
-                                                         value=len(outputs),
-                                                         timestamp=now_utc,
-                                                         unit="Count")
+                    device_info = event['data']['device_info']
+                    for io in ['inputs', 'outputs']:
+                        try:
+                            input_output = device_info[io]
+                            self.post_metric(name=io, value=input_output)
+                        except KeyError:
+                            pass
             except ContextTerminated:
                 break
             except Exception:
