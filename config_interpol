@@ -47,7 +47,7 @@ if __name__ == "__main__":
             # we don't use config.items() here to avoid emitting the defaults too
             for option in config.options(section=section):
                 value = None
-                if overlay_config:
+                if overlay_config and overlay_config.has_section(section):
                     value = overlay_config.get(section=section, option=option, vars=os.environ)
                 if value is None:
                     value = config.get(section=section, option=option, vars=os.environ)
@@ -60,6 +60,7 @@ if __name__ == "__main__":
         if overlay_config:
             # now supplement the overlay options
             for section in overlay_config.sections():
+                # we don't use config.items() here to avoid emitting the defaults too
                 for option in overlay_config.options(section=section):
                     value = overlay_config.get(section=section, option=option, vars=os.environ)
                     if section not in sections:
