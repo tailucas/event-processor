@@ -135,6 +135,10 @@ class EventProcessor(Thread, ZMQEndpoint):
             raise RuntimeError('Unable to determine scalar value from {}'.format(value))
         if timestamp is None:
             timestamp = datetime.utcfromtimestamp(time.time()).replace(tzinfo=pytz.utc)
+        log.debug("Posting '{}' of '{}' for '{}' at {}".format(unit,
+                                                               scalar,
+                                                               self.metric_namespace,
+                                                               timestamp.isoformat()))
         self.metrics.put_metric_data(namespace=self.metric_namespace,
                                      name=name,
                                      value=scalar,
