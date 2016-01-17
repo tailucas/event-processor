@@ -14,8 +14,8 @@ import time
 import umsgpack
 import zmq
 
+from boto.ec2 import cloudwatch
 from ConfigParser import ConfigParser
-
 from datetime import datetime, timedelta
 from dateutil import tz
 from pprint import pprint
@@ -114,6 +114,13 @@ class EventProcessor(Thread, ZMQEndpoint):
         self.name = self.__class__.__name__
         self.daemon = True
 
+        # set up metrics
+        self.metrics = cloudwatch.connect_to_region(
+            region_name=config.get('aws', 'region'),
+            aws_access_key_id=config.get('aws', 'aws_access_key_id'),
+            aws_secret_access_key=config.get('aws', 'aws_secret_access_key'))
+        self.metric_namespace = '{}:{}'.format(config.get('metric', 'namespace'), APP)
+
         self.socket = zmq_context.socket(zmq.PULL)
         self.socket.bind(URL_WORKER_EVENT_PROCESSOR)
         ZMQEndpoint.__init__(self, zmq_sockets=[self.socket])
@@ -123,6 +130,24 @@ class EventProcessor(Thread, ZMQEndpoint):
             try:
                 event = self.socket.recv_pyobj()
                 log.debug(event)
+                now_utc = datetime.utcfromtimestamp(time.time()).replace(tzinfo=pytz.utc)
+                if 'device_info' in event:
+                    if 'inputs' in event['device_info']:
+                        inputs = event['device_info']
+                        if isinstance(inputs, list):
+                            self.metrics.put_metric_data(namespace=self.metric_namespace,
+                                                         name="inputs",
+                                                         value=len(inputs),
+                                                         timestamp=now_utc,
+                                                         unit="Count")
+                    if 'outputs' in event['device_info']:
+                        outputs = event['device_info']
+                        if isinstance(outputs, list):
+                            self.metrics.put_metric_data(namespace=self.metric_namespace,
+                                                         name="outputs",
+                                                         value=len(outputs),
+                                                         timestamp=now_utc,
+                                                         unit="Count")
             except ContextTerminated:
                 break
             except Exception:
