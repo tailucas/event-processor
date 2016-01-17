@@ -47,7 +47,12 @@ RUN mkdir /root/.ssh/
 
 COPY . /app
 COPY ./entrypoint.sh /
+
+# awslogs
 RUN wget https://s3.amazonaws.com/aws-cloudwatch/downloads/latest/awslogs-agent-setup.py -O /app/awslogs-agent-setup.py
 RUN python /app/awslogs-agent-setup.py -n -r "eu-west-1" -c /app/config/awslogs-config
+# remove the service and nanny (supervisor does this)
+RUN update-rc.d awslogs remove
+RUN rm -f /etc/cron.d/awslogs
 
 ENTRYPOINT ["/entrypoint.sh"]
