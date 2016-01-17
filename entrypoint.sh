@@ -61,8 +61,8 @@ if [ -n "${RSYSLOG_SERVER:-}" ] && ! grep -q "$RSYSLOG_SERVER" /etc/rsyslog.conf
   echo "*.*          @${RSYSLOG_SERVER}" | tee -a /etc/rsyslog.conf
 fi
 
-# log archival
-cat /var/awslogs/etc/aws.conf | python /app/config_interpol /app/config/aws.conf | tee /var/awslogs/etc/aws.conf.new
+# log archival (no tee for secrets)
+cat /var/awslogs/etc/aws.conf | python /app/config_interpol /app/config/aws.conf > /var/awslogs/etc/aws.conf.new
 mv /var/awslogs/etc/aws.conf /var/awslogs/etc/aws.conf.backup
 mv /var/awslogs/etc/aws.conf.new /var/awslogs/etc/aws.conf
 
