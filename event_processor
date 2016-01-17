@@ -131,17 +131,17 @@ class EventProcessor(Thread, ZMQEndpoint):
                 event = self.socket.recv_pyobj()
                 log.debug(event)
                 now_utc = datetime.utcfromtimestamp(time.time()).replace(tzinfo=pytz.utc)
-                if 'device_info' in event:
-                    if 'inputs' in event['device_info']:
-                        inputs = event['device_info']
+                if 'data' in event and 'device_info' in event['data']:
+                    if 'inputs' in event['data']['device_info']:
+                        inputs = event['data']['device_info']
                         if isinstance(inputs, list):
                             self.metrics.put_metric_data(namespace=self.metric_namespace,
                                                          name="inputs",
                                                          value=len(inputs),
                                                          timestamp=now_utc,
                                                          unit="Count")
-                    if 'outputs' in event['device_info']:
-                        outputs = event['device_info']
+                    if 'outputs' in event['data']['device_info']:
+                        outputs = event['data']['device_info']
                         if isinstance(outputs, list):
                             self.metrics.put_metric_data(namespace=self.metric_namespace,
                                                          name="outputs",
