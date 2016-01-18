@@ -96,7 +96,7 @@ def index():
     return render_template('index.html', relays=relays, notifications=notifications)
 
 @rest_api.route('/config')
-def config():
+def show_config():
     return render_template('config.html', inputs=input_count, outputs=output_count)
 
 
