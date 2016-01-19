@@ -54,10 +54,6 @@ def signal_handler(signum, frame):
     log.setLevel(logging.DEBUG)
 
 
-input_count = 0
-output_count = 0
-
-
 @rest_api.route('/logging')
 def debug():
     log.setLevel(request.args.get('level'))
@@ -97,7 +93,7 @@ def index():
 
 @rest_api.route('/config')
 def show_config():
-    return render_template('config.html', inputs=input_count, outputs=output_count)
+    return render_template('config.html', inputs=EventProcessor.input_count, outputs=EventProcessor.output_count)
 
 
 def run_flask():
@@ -116,6 +112,10 @@ class ZMQEndpoint(object):
 
 
 class EventProcessor(Thread, ZMQEndpoint):
+
+    #TODO remove
+    input_count = 0
+    output_count = 0
 
     def __init__(self):
         super(EventProcessor, self).__init__()
@@ -168,9 +168,9 @@ class EventProcessor(Thread, ZMQEndpoint):
                             pass
                     #TODO remove
                     if 'inputs' in device_info:
-                        input_count = len(device_info['inputs'])
+                        EventProcessor.input_count = len(device_info['inputs'])
                     if 'outputs' in device_info:
-                        output_count = len(device_info['outputs'])
+                        EventProcessor.output_count = len(device_info['outputs'])
             except ContextTerminated:
                 break
             except Exception:

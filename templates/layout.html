@@ -43,7 +43,7 @@
 
                             {% for id, caption in navigation_bar %}
                                 <li{% if id == active_page %} class="active"{% endif
-                                %}><a href="{{ url_for('id') }}">{{ caption|e }}</a>
+                                %}><a href="{{ url_for(id) }}">{{ caption|e }}</a>
                                 </li>
                             {% endfor %}
 
