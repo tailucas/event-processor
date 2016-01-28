@@ -9,54 +9,31 @@
             <fieldset>
 
             <div class="panel-group" id="accordion1">
+
+
+                {% for input_device in inputs %}
+
+
               <div class="panel panel-default">
                 <div class="panel-heading">
                   <h4 class="panel-title">
-                    <a data-toggle="collapse" data-parent="#accordion1" href="#collapse1">
-                    Collapsible Group 1</a>
+                    <a data-toggle="collapse" data-parent="#accordion1" href="#collapse{{loop.index}}">
+                    {{ input_device }}</a>
                   </h4>
                 </div>
-                <div id="collapse1" class="panel-collapse collapse in">
-                  <div class="panel-body">Lorem ipsum dolor sit amet, consectetur adipisicing elit,
-                  sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad
-                  minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea
-                  commodo consequat.</div>
-                </div>
-              </div>
-              <div class="panel panel-default">
-                <div class="panel-heading">
-                  <h4 class="panel-title">
-                    <a data-toggle="collapse" data-parent="#accordion1" href="#collapse2">
-                    Collapsible Group 2</a>
-                  </h4>
-                </div>
-                <div id="collapse2" class="panel-collapse collapse">
-                  <div class="panel-body">Lorem ipsum dolor sit amet, consectetur adipisicing elit,
-                  sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad
-                  minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea
-                  commodo consequat.</div>
-                </div>
-              </div>
-              <div class="panel panel-default">
-                <div class="panel-heading">
-                  <h4 class="panel-title">
-                    <a data-toggle="collapse" data-parent="#accordion1" href="#collapse3">
-                    Collapsible Group 3</a>
-                  </h4>
-                </div>
-                <div id="collapse3" class="panel-collapse collapse">
+                <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if loop.first %} in{% endif %}">
                   <div class="panel-body">
                       {% for output_device in outputs %}
 
                         <!-- Prepended checkbox -->
                         <div class="form-group">
-                          <label class="col-md-4 control-label" for="prependedcheckbox">{{ output_device }}</label>
+                          <label class="col-md-4 control-label" for="prependedcheckbox{{loop.index}}">{{ output_device }}</label>
                           <div class="col-md-4">
                             <div class="input-group">
                               <span class="input-group-addon">
                                   <input type="checkbox">
                               </span>
-                              <input id="prependedcheckbox" name="prependedcheckbox" class="form-control" type="text" placeholder="placeholder">
+                              <input id="prependedcheckbox{{loop.index}}" name="prependedcheckbox" class="form-control" type="text" placeholder="placeholder">
                             </div>
                             <p class="help-block">help</p>
                           </div>
@@ -66,6 +43,9 @@
                   </div>
                 </div>
               </div>
+
+ {% endfor %}
+
             </div>
 
 
