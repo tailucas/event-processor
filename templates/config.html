@@ -18,7 +18,7 @@
                 <div class="panel-heading">
                   <h4 class="panel-title">
                     <a data-toggle="collapse" data-parent="#accordion1" href="#collapse{{loop.index}}">
-                    {{ input_device }}</a>
+                    {{ input_device }} <span class="badge">{{ output_count }}</span></a>
                   </h4>
                 </div>
                 <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if loop.first %} in{% endif %}">
@@ -45,45 +45,6 @@
               </div>
 
  {% endfor %}
-
-            </div>
-
-
-            <div class="panel-group" id="accordion">
-
-              {% for input_device in inputs %}
-
-              <div class="panel panel-default">
-                <div class="panel-heading">
-                  <h4 class="panel-title">
-                    <a data-toggle="collapse" data-parent="#accordion" href="#{{input_device}}">
-                    {{ input_device }} <span class="badge">{{ output_count }}</span></a>
-                  </h4>
-                </div>
-                <div id="{{input_device}}" class="panel-collapse collapse{% if loop.first %} in{% endif %}">
-                    <div class="panel-body">
-                        {% for output_device in outputs %}
-
-                        <!-- Prepended checkbox -->
-                        <div class="form-group">
-                          <label class="col-md-4 control-label" for="prependedcheckbox">{{ output_device }}</label>
-                          <div class="col-md-4">
-                            <div class="input-group">
-                              <span class="input-group-addon">
-                                  <input type="checkbox">
-                              </span>
-                              <input id="{{output_device}}" name="prependedcheckbox" class="form-control" type="text" placeholder="placeholder">
-                            </div>
-                            <p class="help-block">help</p>
-                          </div>
-                        </div>
-
-                        {% endfor %}
-                    </div>
-                </div>
-              </div>
-
-              {% endfor %}
 
             </div>
 
