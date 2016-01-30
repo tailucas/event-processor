@@ -27,6 +27,7 @@
                                   <input type="checkbox">
                               </span>
                               <input id="prependedcheckbox{{loop.index}}" name="prependedcheckbox" class="form-control" type="text" placeholder="placeholder">
+                              <button id="singlebutton{{loop.index}}" name="singlebutton" class="btn btn-default"><span class="glyphicon glyphicon-floppy-disk"></span> Save</button>
                             </div>
                           </div>
                         </div>
@@ -37,17 +38,6 @@
               {% endfor %}
             </div>
 
-            <!-- Button -->
-            <div class="form-group">
-              <label class="col-md-4 control-label" for="singlebutton">Single Button</label>
-              <div class="col-md-4">
-                <button id="singlebutton" name="singlebutton" class="btn btn-primary">Button</button>
-              </div>
-            </div>
-
             </fieldset>
             </form>
-
-
-
 {% endblock %}
