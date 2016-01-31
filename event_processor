@@ -97,9 +97,7 @@ def index():
 def show_config():
     return render_template('config.html',
                            inputs=event_processor.inputs,
-                           input_count=len(event_processor.inputs),
-                           outputs=event_processor.outputs,
-                           output_count=len(event_processor.outputs))
+                           outputs=event_processor.outputs)
 
 
 def run_flask():
