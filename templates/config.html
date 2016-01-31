@@ -10,7 +10,7 @@
                             <a data-toggle="collapse" data-parent="#accordion" href="#collapse{{loop.index}}">
                                 {{ input_device['name'] + ' ' if 'name' in input_device }}
                                 {{ input_device['type'] }}
-                                {{ ' ({})'.format(input_device['location']) if 'location' in input_device) <span class="badge">{{ outputs|count }}</span></a>
+                                {{ ' ({})'.format(input_device['location']) if 'location' in input_device) }}<span class="badge">{{ outputs|count }}</span></a>
                         </h4>
                     </div>
                     <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if loop.first %} in{% endif %}">
