@@ -7,10 +7,7 @@
                 <div class="panel panel-default">
                     <div class="panel-heading">
                         <h4 class="panel-title">
-                            <a data-toggle="collapse" data-parent="#accordion" href="#collapse{{loop.index}}">
-                                {{ input_device['name'] + ' ' if 'name' in input_device }}
-                                {{ input_device['type'] }}
-                                {{ ' ({})'.format(input_device['location']) if 'location' in input_device) }}<span class="badge">{{ outputs|count }}</span></a>
+                            <a data-toggle="collapse" data-parent="#accordion" href="#collapse{{loop.index}}">{{ input_device['type']|e }} <span class="badge">{{ outputs|count }}</span></a>
                         </h4>
                     </div>
                     <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if loop.first %} in{% endif %}">
@@ -19,7 +16,7 @@
                             <form class="form-inline" role="form">
                                 <div class="form-group">
                                     <div class="checkbox">
-                                        <label><input type="checkbox" value="">{{ output_device_key }}</label>
+                                        <label><input type="checkbox" value="">{{ output_device_key|e }}</label>
                                     </div>
                                 </div>
                                 <div class="form-group">
