@@ -25,7 +25,7 @@ from threading import Thread, Timer
 from time import sleep
 from umsgpack import UnpackException
 from zmq import ContextTerminated
-from flask import Flask, request, render_template, url_for, redirect
+from flask import Flask, flash, request, render_template, url_for, redirect
 
 # unbuffered STDOUT for print
 sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
@@ -93,8 +93,11 @@ def index():
     #    notifications = notifications.format('OFF')
     return render_template('index.html', relays=relays, notifications=notifications)
 
-@rest_api.route('/config')
+@rest_api.route('/config', methods=['GET', 'POST'])
 def show_config():
+    if request.method == 'POST':
+        flash('saved')
+        log.info('Saved {}'.format(str(request.form)))
     return render_template('config.html',
                            inputs=event_processor.inputs,
                            outputs=event_processor.outputs)
