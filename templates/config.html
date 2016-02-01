@@ -3,16 +3,16 @@
 {% block body %}
             <p>Configure output actions for your inputs.</p>
             <div class="panel-group" id="accordion">
-                {% for input_device_key, input_device in inputs.items() %}
+                {% for input_device_key, input_device in inputs|dictsort %}
                 <div class="panel panel-default">
                     <div class="panel-heading">
                         <h4 class="panel-title">
-                            <a data-toggle="collapse" data-parent="#accordion" href="#collapse{{loop.index}}">{{ input_device['type']|e }} <span class="badge">{{ outputs|count }}</span></a>
+                            <a data-toggle="collapse" data-parent="#accordion" href="#collapse{{loop.index}}">{{ input_device_key|e }} <span class="badge">{{ outputs|count }}</span></a>
                         </h4>
                     </div>
                     <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if loop.first %} in{% endif %}">
                         <div class="panel-body">
-                            {% for output_device_key, output_device in outputs.items() %}
+                            {% for output_device_key, output_device in outputs|dictsort %}
                             <form class="form-inline" role="form">
                                 <div class="form-group">
                                     <div class="checkbox">

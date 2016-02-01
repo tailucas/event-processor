@@ -143,19 +143,35 @@ class EventProcessor(Thread, ZMQEndpoint):
         for input_outputs, origin, io in [(self.inputs, self._input_origin, 'inputs'),
                                           (self.outputs, self._output_origin, 'outputs')]:
             for device in device_info[io]:
+                identifier = None
                 try:
                     device_name = device['name']
+                    identifier = device_name
                 except KeyError:
                     device_name = None
                 try:
                     device_type = device['type']
+                    identifier = device_type
                 except KeyError:
                     device_type = None
                 try:
                     device_location = device['location']
+                    identifier = device_location
                 except KeyError:
                     device_location = None
-                device_key = '{}.{}.{}'.format(device_name, device_type, device_location)
+                if identifier is None:
+                    log.error("No distinct device identifier for '{}' and is ignored.".format(device))
+                    continue
+                # construct the friendly name for this device
+                device_key = device_type
+                if device_name is not None:
+                    if device_location is not None:
+                        device_key = '{} {} ({})'.format(device_name, device_type, device_location)
+                    else:
+                        device_key = '{} {}'.format(device_name, device_type)
+                elif device_location is not None:
+                    device_key = '{} {}'.format(device_location, device_type)
+                # has this device been seen?
                 if device_key not in origin:
                     origin[device_key] = device_origin
                 elif origin[device_key] != device_origin:
