@@ -95,6 +95,7 @@ def index():
 
 @rest_api.route('/config', methods=['GET', 'POST'])
 def show_config():
+    log.info('DEBUG: show_config')
     if request.method == 'POST':
         flash('saved')
         log.info('Saved {}'.format(str(request.form)))
@@ -103,8 +104,17 @@ def show_config():
                            outputs=event_processor.outputs)
 
 
-def run_flask():
-    rest_api.run(host=config.get('app', 'eth0_ip'), port=5000)
+def thread_nanny(threads_tracked):
+    while True:
+        # TODO: check on overdue heartbeats?
+        threads_alive = Set()
+        for thread_info in threading.enumerate():
+            if thread_info.isAlive():
+                threads_alive.add(thread_info.getName())
+        if len(threads_tracked - threads_alive) > 0:
+            message = 'A thread has died. Expected threads are [{}], missing is [{}].'.format(threads_tracked, threads_tracked - threads_alive)
+            log.error(message)
+        time.sleep(10)
 
 
 class ZMQEndpoint(object):
@@ -284,27 +294,15 @@ if __name__ == "__main__":
     # set up signal handlers
     signal.signal(signal.SIGHUP, signal_handler)
     # start threads
-    f = threading.Thread(name='flask', target=run_flask)
+    f = threading.Thread(name='nanny', target=thread_nanny, args=(threads_tracked,))
     f.setDaemon(True)
     f.start()
-    threads_tracked.add(f.getName())
     try:
         # startup completed
         # back to INFO logging
         log.setLevel(logging.INFO)
-        # connect to publishers
-        while True:
-            # TODO: check on overdue heartbeats?
-            threads_alive = Set()
-            for thread_info in threading.enumerate():
-                if thread_info.isAlive():
-                    threads_alive.add(thread_info.getName())
-            if len(threads_tracked - threads_alive) > 0:
-                message = 'A thread has died. Expected threads are [{}], missing is [{}].'.format(threads_tracked, threads_tracked - threads_alive)
-                log.error(message)
-                # bail out
-                raise RuntimeError(message)
-            time.sleep(10)
+        rest_api.secret_key = config.get('flask', 'session_secret_key')
+        rest_api.run(host=config.get('app', 'eth0_ip'), port=int(config.get('flask', 'http_port')))
     except(KeyboardInterrupt, SystemExit):
         for thread_info in threading.enumerate():
             if thread_info.isAlive() and isinstance(thread_info, ZMQEndpoint):

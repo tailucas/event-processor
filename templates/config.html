@@ -13,7 +13,7 @@
                     <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if loop.first %} in{% endif %}">
                         <div class="panel-body">
                             {% for output_device_key, output_device in outputs|dictsort %}
-                            <form class="form-inline" role="form" action="{{ url_for(active_page) }}" method='POST'>
+                            <form class="form-inline" role="form" method='POST'>
                                 <div class="form-group">
                                     <div class="checkbox">
                                         <label><input type="checkbox" name="output_enabled" value="">{{ output_device_key|e }}</label>
