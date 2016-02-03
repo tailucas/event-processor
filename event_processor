@@ -25,7 +25,7 @@ from threading import Thread, Timer
 from time import sleep
 from umsgpack import UnpackException
 from zmq import ContextTerminated
-from flask import Flask, flash, request, render_template, url_for, redirect, session
+from flask import Flask, flash, request, render_template, url_for, redirect, session, escape
 
 # unbuffered STDOUT for print
 sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
