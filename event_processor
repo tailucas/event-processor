@@ -96,6 +96,20 @@ def index():
     return render_template('index.html', relays=relays, notifications=notifications)
 
 
+@rest_api.route('/input_link', methods=['GET', 'POST'])
+def show_config():
+    return render_template('input_link.html',
+                           inputs=event_processor.inputs,
+                           outputs=event_processor.outputs)
+
+
+@rest_api.route('/input_output', methods=['GET', 'POST'])
+def show_config():
+    return render_template('input_output.html',
+                           inputs=event_processor.inputs,
+                           outputs=event_processor.outputs)
+
+
 @rest_api.route('/config', methods=['GET', 'POST'])
 def show_config():
     if request.method == 'POST':

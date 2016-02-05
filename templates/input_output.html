@@ -1,0 +1,35 @@
+{% extends "layout.html" %}
+{% set active_page = "input_output" %}
+{% block body %}
+            <p>Configure output actions for your inputs.</p>
+            <div class="panel-group" id="accordion">
+                {% for input_device_key, input_device in inputs|dictsort %}
+                <div class="panel panel-default">
+                    <div class="panel-heading">
+                        <h4 class="panel-title">
+                            <a data-toggle="collapse" data-parent="#accordion" href="#collapse{{loop.index}}">{{ input_device_key }} <span class="badge">{{ outputs|count }}</span></a>
+                        </h4>
+                    </div>
+                    <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if loop.first %} in{% endif %}">
+                        <div class="panel-body">
+                            {% for output_device_key, output_device in outputs|dictsort %}
+                            <form class="form-inline" role="form" method='POST'>
+                                <div class="form-group">
+                                    <div class="checkbox">
+                                        <label><input type="checkbox" name="output_enabled" value="">{{ output_device_key }}</label>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <input class="form-control" type="text" name="output_params" placeholder="Parameters">
+                                </div>
+                                <div class="form-group">
+                                    <button type="submit" class="btn btn-default" name="{{ input_device_key }}" value="{{ output_device_key }}"><span class="glyphicon glyphicon-floppy-disk"></span> Save</button>
+                                </div>
+                            </form>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+{% endblock %}
