@@ -20,14 +20,14 @@
 
         <div class="container">
 
-            {% set navigation_bar = [
-                {'Home': 'index'},
-                {'Configuration': 'show_config'},
-                {'Configure':
-                    {'Inputs to Outputs': 'input_output',
-                     'Link Inputs': 'input_link'},
+            {% set navigation_bar = {
+                'Home': 'index',
+                'Configuration': 'show_config',
+                'Configure': {
+                    'Inputs to Outputs': 'input_output',
+                    'Link Inputs': 'input_link'
                 },
-            ] -%}
+            } -%}
             {% set active_page = active_page|default('index') -%}
 
             <!-- Static navbar -->
