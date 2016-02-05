@@ -46,7 +46,7 @@
                         <ul class="nav navbar-nav">
                         {% for caption, page in navigation_bar.items() %}
                             {% if page is mapping %}
-                            <li class="dropdown{% if active_page in page.keys() %} active{% endif %}">
+                            <li class="dropdown{% if active_page in page.values() %} active{% endif %}">
                                 <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">{{ caption }}<span class="caret"></span></a>
                                 <ul class="dropdown-menu">
                                 {% for menu_caption, menu_page in page.items() %}
@@ -57,7 +57,7 @@
                                 </ul>
                              </li>
                             {% else %}
-                            <li{% if id == active_page %} class="active"{% endif %}>
+                            <li{% if page == active_page %} class="active"{% endif %}>
                                 <a href="{{ url_for(page) }}">{{ caption|e }}</a>
                             </li>
                             {% endif %}
