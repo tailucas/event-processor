@@ -331,7 +331,10 @@ if __name__ == "__main__":
         # back to INFO logging
         log.setLevel(logging.INFO)
         rest_api.secret_key = config.get('flask', 'session_secret_key')
-        rest_api.run(host=config.get('app', 'eth0_ip'), port=int(config.get('flask', 'http_port')))
+        rest_api.run(
+            host=config.get('app', 'eth0_ip'),
+            port=int(config.get('flask', 'http_port')),
+            debug=config.get('flask', 'debug').lower() == 'true')
     except(KeyboardInterrupt, SystemExit):
         for thread_info in threading.enumerate():
             if thread_info.isAlive() and isinstance(thread_info, ZMQEndpoint):
