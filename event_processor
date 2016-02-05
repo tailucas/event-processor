@@ -97,14 +97,14 @@ def index():
 
 
 @rest_api.route('/input_link', methods=['GET', 'POST'])
-def show_config():
+def input_link():
     return render_template('input_link.html',
                            inputs=event_processor.inputs,
                            outputs=event_processor.outputs)
 
 
 @rest_api.route('/input_output', methods=['GET', 'POST'])
-def show_config():
+def input_output():
     return render_template('input_output.html',
                            inputs=event_processor.inputs,
                            outputs=event_processor.outputs)
