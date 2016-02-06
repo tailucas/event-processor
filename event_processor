@@ -347,6 +347,7 @@ if __name__ == "__main__":
         # back to INFO logging
         log.setLevel(logging.INFO)
         rest_api.secret_key = config.get('flask', 'session_secret_key')
+        rest_api.jinja_env.add_extension('jinja2.ext.loopcontrols')
         rest_api.run(
             host=config.get('app', 'eth0_ip'),
             port=int(config.get('flask', 'http_port')),
