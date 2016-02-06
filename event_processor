@@ -96,6 +96,17 @@ def index():
     return render_template('index.html', relays=relays, notifications=notifications)
 
 
+@rest_api.route('/input_config', methods=['GET', 'POST'])
+def input_config():
+    if request.method == 'POST':
+        flash(request.form)
+    return render_template('input_config.html',
+                           inputs=event_processor.inputs,
+                           default_trigger_count=1,
+                           default_triggers_per_internal=5,
+                           default_debounce_seconds=60)
+
+
 @rest_api.route('/input_link', methods=['GET', 'POST'])
 def input_link():
     if request.method == 'POST':
