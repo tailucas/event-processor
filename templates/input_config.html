@@ -18,14 +18,20 @@
                                     <input id="friendly_name" class="form-control" type="text" name="friendly_name" placeholder="{{ input_device_key }}">
                                 </div>
                                 <div class="form-group">
-                                    <label for="activations">Activations per trigger:</label>
-                                    <input id="activations" class="form-control" type="text" name="activations" placeholder="{{ default_trigger_count }}">
-                                    <label for="interval">Within this interval:</label>
-                                    <input id="interval" class="form-control" type="text" name="interval" placeholder="{{ default_triggers_per_internal }} seconds">
+                                    <div class="row">
+                                        <label class="control-label col-sm-2" for="activations">Activations for trigger:</label>
+                                        <div class="col-sm-4">
+                                            <input id="activations" class="form-control" type="text" name="activations_per_trigger" placeholder="{{ default_activations_per_trigger }}">
+                                        </div>
+                                        <label class="control-label col-sm-2" for="interval">Within this interval:</label>
+                                        <div class="col-sm-4">
+                                            <input id="interval" class="form-control" type="text" name="trigger_window" placeholder="{{ default_trigger_window }} seconds">
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="form-group">
-                                    <label for="debounce">Suppress for:</label>
-                                    <input id="debounce" class="form-control" type="text" name="debounce" placeholder="{{ default_debounce_seconds }} seconds">
+                                    <label for="debounce">Activation interval:</label>
+                                    <input id="debounce" class="form-control" type="text" name="activation_interval" placeholder="{{ default_activation_interval }} seconds">
                                 </div>
                                 <div class="form-group">
                                     <button type="submit" class="btn btn-default" name="{{ input_device_key }}" value=""><span class="glyphicon glyphicon-floppy-disk"></span> Save</button>

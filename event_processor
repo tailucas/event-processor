@@ -102,9 +102,9 @@ def input_config():
         flash(request.form)
     return render_template('input_config.html',
                            inputs=event_processor.inputs,
-                           default_trigger_count=1,
-                           default_triggers_per_internal=5,
-                           default_debounce_seconds=60)
+                           default_activations_per_trigger=1,
+                           default_trigger_window=5,
+                           default_activation_interval=60)
 
 
 @rest_api.route('/input_link', methods=['GET', 'POST'])
