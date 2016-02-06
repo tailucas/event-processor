@@ -105,13 +105,6 @@ def input_link():
 
 @rest_api.route('/input_output', methods=['GET', 'POST'])
 def input_output():
-    return render_template('input_output.html',
-                           inputs=event_processor.inputs,
-                           outputs=event_processor.outputs)
-
-
-@rest_api.route('/config', methods=['GET', 'POST'])
-def show_config():
     if request.method == 'POST':
         input_device = None
         for input_device_key in event_processor.inputs:
@@ -129,6 +122,13 @@ def show_config():
                 },
                 overwrite=True)
         flash('Saved? {}'.format(saved))
+    return render_template('input_output.html',
+                           inputs=event_processor.inputs,
+                           outputs=event_processor.outputs)
+
+
+@rest_api.route('/config', methods=['GET', 'POST'])
+def show_config():
     return render_template('config.html',
                            inputs=event_processor.inputs,
                            outputs=event_processor.outputs)
