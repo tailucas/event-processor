@@ -98,6 +98,8 @@ def index():
 
 @rest_api.route('/input_link', methods=['GET', 'POST'])
 def input_link():
+    if request.method == 'POST':
+        flash(request.form)
     return render_template('input_link.html',
                            inputs=event_processor.inputs,
                            outputs=event_processor.outputs)
