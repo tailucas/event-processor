@@ -67,9 +67,17 @@
                 </div>
             </nav>
 
-          {% for message in get_flashed_messages() %}
-            <div class="alert alert-info">{{ message }}</div>
-          {% endfor %}
+{% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        {% for category, message in messages %}
+            {% with %}
+            {% set bs_category = category %}
+            {% if category == "message" %}{% set bs_category = "info" %}{% endif %}
+            <div class="alert alert-{{bs_category}}">{{ message }}</div>
+            {% endwith %}
+        {% endfor %}
+    {% endif %}
+{% endwith %}
 
             {% block body %}{% endblock %}
 
