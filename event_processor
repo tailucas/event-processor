@@ -119,22 +119,23 @@ def input_link():
 @rest_api.route('/input_output', methods=['GET', 'POST'])
 def input_output():
     if request.method == 'POST':
-        input_device = None
-        for input_device_key in event_processor.inputs:
-            if input_device_key in request.form:
-                input_device = input_device_key
-                break
-        saved = False
-        if input_device is not None:
-            saved = event_processor.device_config.put_item(
-                data={
-                    'input_device': input_device,
-                    'output_device': request.form[input_device],
-                    'output_params': request.form['output_params'].strip(),
-                    'output_enabled': 'output_enabled' in request.form
-                },
-                overwrite=True)
-        flash('Saved? {}'.format(saved))
+        flash(request.form)
+        #input_device = None
+        #for input_device_key in event_processor.inputs:
+        #    if input_device_key in request.form:
+        #        input_device = input_device_key
+        #        break
+        #saved = False
+        #if input_device is not None:
+        #    saved = event_processor.device_config.put_item(
+        #        data={
+        #            'input_device': input_device,
+        #            'output_device': request.form[input_device],
+        #            'output_params': request.form['output_params'].strip(),
+        #            'output_enabled': 'output_enabled' in request.form
+        #        },
+        #        overwrite=True)
+        #flash('Saved? {}'.format(saved))
     return render_template('input_output.html',
                            inputs=event_processor.inputs,
                            outputs=event_processor.outputs)
