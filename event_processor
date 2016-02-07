@@ -215,15 +215,22 @@ class EventProcessor(Thread, ZMQEndpoint):
                 if identifier is None:
                     log.error("No distinct device identifier for '{}' and is ignored.".format(device))
                     continue
-                # construct the friendly name for this device
+                # construct the device key and associated friendly name
                 device_key = device_type
+                friendly_name = device_key
                 if device_name is not None:
+                    friendly_name = '{} {}'.format(device_name, device_type)
                     if device_location is not None:
+                        # friendly name includes location only if the name is missing
                         device_key = '{} {} ({})'.format(device_name, device_type, device_location)
                     else:
                         device_key = '{} {}'.format(device_name, device_type)
+                        friendly_name = device_key
                 elif device_location is not None:
                     device_key = '{} {}'.format(device_location, device_type)
+                    friendly_name = device_key
+                # add the friendly name
+                device['friendly_name'] = friendly_name
                 # has this device been seen?
                 if device_key not in origin:
                     origin[device_key] = device_origin
