@@ -99,12 +99,37 @@ def index():
 @rest_api.route('/input_config', methods=['GET', 'POST'])
 def input_config():
     if request.method == 'POST':
-        flash(request.form)
+        device_key = request.form['input_device']
+        input_device = event_processor.inputs[device_key]
+        input_device_friendly_name = input_device['friendly_name']
+        saved = False
+        to_save = dict()
+        to_save['input_device'] = device_key
+        try:
+            friendly_name = request.form['friendly_name'].strip()
+            if len(friendly_name) > 0:
+                to_save['friendly_name'] = friendly_name
+            if len(request.form['activations_per_trigger']) > 0:
+                to_save['activations_per_trigger'] = int(request.form['activations_per_trigger'])
+            if len(request.form['activation_interval']) > 0:
+                to_save['activation_interval'] = int(request.form['activation_interval'])
+            if len(request.form('trigger_window')) > 0:
+                to_save['trigger_window'] = int(request.form('trigger_window'))
+            if len(to_save.keys()) > 1:
+                saved = event_processor.input_config.put_item(data=to_save, overwrite=True)
+        except Exception as e:
+            log.exception("Cannot save settings for '{}'".format(input_device_friendly_name))
+            flash(message=e.message, category='danger')
+        if saved:
+            flash("Updated '{}'".format(input_device_friendly_name))
+        else:
+            flash("'{}' not updated.".format(input_device_friendly_name), category='warning')
     return render_template('input_config.html',
                            inputs=event_processor.inputs,
-                           default_activations_per_trigger=1,
-                           default_trigger_window=5,
-                           default_activation_interval=60)
+                           saved_config=event_processor.input_config.scan(),
+                           default_activations_per_trigger=int(config.get('config', 'default_activations_per_trigger')),
+                           default_trigger_window=int(config.get('config', 'default_trigger_window')),
+                           default_activation_interval=int(config.get('config', 'default_activation_interval')))
 
 
 @rest_api.route('/input_link', methods=['GET', 'POST'])
@@ -187,6 +212,8 @@ class EventProcessor(Thread, ZMQEndpoint):
 
         self._db_storage = None
         self.device_config = None
+        self.input_config = None
+        self.input_links = None
         self._metrics = None
 
         self.socket = zmq_context.socket(zmq.PULL)
@@ -277,8 +304,14 @@ class EventProcessor(Thread, ZMQEndpoint):
             aws_secret_access_key=config.get('aws', 'aws_secret_access_key'))
         self.metric_namespace = '{}:{}'.format(config.get('metric', 'namespace'), APP)
         # set up configuration table
+        self.input_config = Table(
+            table_name=config.get('config', 'input_config_table'),
+            connection=self._db_storage)
+        self.input_links = Table(
+            table_name=config.get('config', 'input_link_table'),
+            connection=self._db_storage)
         self.device_config = Table(
-            table_name=config.get('config', 'table_name'),
+            table_name=config.get('config', 'input_output_config_table'),
             connection=self._db_storage)
 
         while True:
