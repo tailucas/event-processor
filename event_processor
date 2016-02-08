@@ -113,7 +113,7 @@ def input_config():
                 to_save['activations_per_trigger'] = int(request.form['activations_per_trigger'])
             if len(request.form['activation_interval']) > 0:
                 to_save['activation_interval'] = int(request.form['activation_interval'])
-            if len(request.form('trigger_window')) > 0:
+            if len(request.form['trigger_window']) > 0:
                 to_save['trigger_window'] = int(request.form['trigger_window'])
             if len(to_save.keys()) > 1:
                 saved = event_processor.input_config.put_item(data=to_save, overwrite=True)
