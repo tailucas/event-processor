@@ -7,7 +7,7 @@
                 <div class="panel panel-default">
                     <div class="panel-heading">
                         <h4 class="panel-title">
-                            <a data-toggle="collapse" data-parent="#accordion" href="#collapse{{loop.index}}">{{ input_device['friendly_name'] }} <span class="badge">{{ inputs|count }}</span></a>
+                            <a data-toggle="collapse" data-parent="#accordion" href="#collapse{{loop.index}}">{{ input_device['device_label'] }} <span class="badge">{{ inputs|count }}</span></a>
                         </h4>
                     </div>
                     <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if loop.first %} in{% endif %}">
@@ -15,23 +15,23 @@
                             <form class="form-horizontal" role="form" method='POST'>
                                 <div class="form-group">
                                     <label for="friendly_name">Friendly name:</label>
-                                    <input id="friendly_name" class="form-control" type="text" name="friendly_name" placeholder="{{ input_device['friendly_name'] }}" value="{% if input_device_key in saved_config and 'friendly_name' in saved_config[input_device_key] %}{{ saved_config[input_device_key]['friendly_name'] }}{% endif %}">
+                                    <input id="friendly_name" class="form-control" type="text" name="friendly_name" placeholder="{{ input_device['device_label'] }}" value="{{ input_device['friendly_name'] }}">
                                 </div>
                                 <div class="form-group">
                                     <div class="row">
                                         <label class="control-label col-sm-2" for="activations">Activations for trigger:</label>
                                         <div class="col-sm-4">
-                                            <input id="activations" class="form-control" type="text" name="activations_per_trigger" placeholder="{{ default_activations_per_trigger }}">
+                                            <input id="activations" class="form-control" type="text" name="activations_per_trigger" placeholder="{{ default_activations_per_trigger }}" value="{{ input_device['activations_per_trigger'] }}">
                                         </div>
                                         <label class="control-label col-sm-2" for="interval">Within this interval:</label>
                                         <div class="col-sm-4">
-                                            <input id="interval" class="form-control" type="text" name="trigger_window" placeholder="{{ default_trigger_window }} seconds">
+                                            <input id="interval" class="form-control" type="text" name="trigger_window" placeholder="{{ default_trigger_window }} seconds" value="{{ input_device['trigger_window'] }}">
                                         </div>
                                     </div>
                                 </div>
                                 <div class="form-group">
                                     <label for="debounce">Activation interval:</label>
-                                    <input id="debounce" class="form-control" type="text" name="activation_interval" placeholder="{{ default_activation_interval }} seconds">
+                                    <input id="debounce" class="form-control" type="text" name="activation_interval" placeholder="{{ default_activation_interval }} seconds" value="{{ input_device['activation_interval'] }}">
                                 </div>
                                 <div class="form-group">
                                     <button type="submit" class="btn btn-default" name="input_device" value="{{ input_device_key }}"><span class="glyphicon glyphicon-floppy-disk"></span> Save</button>

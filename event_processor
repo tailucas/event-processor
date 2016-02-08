@@ -5,6 +5,7 @@ import logging
 import logging.handlers
 
 import abc
+import copy
 import os
 import pytz
 import signal
@@ -101,7 +102,7 @@ def input_config():
     if request.method == 'POST':
         device_key = request.form['input_device']
         input_device = event_processor.inputs[device_key]
-        input_device_friendly_name = input_device['friendly_name']
+        device_label = input_device['device_label']
         saved = False
         to_save = dict()
         to_save['input_device'] = device_key
@@ -118,15 +119,21 @@ def input_config():
             if len(to_save.keys()) > 1:
                 saved = event_processor.input_config.put_item(data=to_save, overwrite=True)
         except Exception as e:
-            log.exception("Cannot save settings for '{}'".format(input_device_friendly_name))
+            log.exception("Cannot save settings for '{}'".format(device_label))
             flash(message=e.message, category='danger')
         if saved:
-            flash("Updated '{}'".format(input_device_friendly_name))
+            flash("Updated '{}'".format(device_label))
         else:
-            flash("'{}' not updated.".format(input_device_friendly_name), category='warning')
+            flash("'{}' not updated.".format(device_label), category='warning')
+    # decorate the inputs with the saved configuration
+    inputs_to_render = copy.deepcopy(event_processor.inputs)
+    for saved_input in event_processor.input_config.scan():
+        device_key = saved_input['input_device']
+        inputs_to_render[device_key].update(saved_input)
+    #TODO: remove
+    flash("Rendering {}".format(inputs_to_render))
     return render_template('input_config.html',
-                           inputs=event_processor.inputs,
-                           saved_config=event_processor.input_config.scan(),
+                           inputs=inputs_to_render,
                            default_activations_per_trigger=int(config.get('config', 'default_activations_per_trigger')),
                            default_trigger_window=int(config.get('config', 'default_trigger_window')),
                            default_activation_interval=int(config.get('config', 'default_activation_interval')))
@@ -245,20 +252,20 @@ class EventProcessor(Thread, ZMQEndpoint):
                     continue
                 # construct the device key and associated friendly name
                 device_key = device_type
-                friendly_name = device_key
+                device_label = device_key
                 if device_name is not None:
-                    friendly_name = '{} {}'.format(device_name, device_type)
+                    device_label = '{} {}'.format(device_name, device_type)
                     if device_location is not None:
                         # friendly name includes location only if the name is missing
                         device_key = '{} {} ({})'.format(device_name, device_type, device_location)
                     else:
                         device_key = '{} {}'.format(device_name, device_type)
-                        friendly_name = device_key
+                        device_label = device_key
                 elif device_location is not None:
                     device_key = '{} {}'.format(device_location, device_type)
-                    friendly_name = device_key
+                    device_label = device_key
                 # add the friendly name
-                device['friendly_name'] = friendly_name
+                device['device_label'] = device_label
                 # has this device been seen?
                 if device_key not in origin:
                     origin[device_key] = device_origin
