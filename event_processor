@@ -114,7 +114,7 @@ def input_config():
             if len(request.form['activation_interval']) > 0:
                 to_save['activation_interval'] = int(request.form['activation_interval'])
             if len(request.form('trigger_window')) > 0:
-                to_save['trigger_window'] = int(request.form('trigger_window'))
+                to_save['trigger_window'] = int(request.form['trigger_window'])
             if len(to_save.keys()) > 1:
                 saved = event_processor.input_config.put_item(data=to_save, overwrite=True)
         except Exception as e:
