@@ -118,18 +118,22 @@ def input_config():
                 to_save['trigger_window'] = int(request.form['trigger_window'])
             if len(to_save.keys()) > 1:
                 saved = event_processor.input_config.put_item(data=to_save, overwrite=True)
+            else:
+                saved = event_processor.input_config.delete_item(input_device=device_key)
+            if saved:
+                flash("Updated '{}'".format(device_label))
+            else:
+                flash("'{}' not updated.".format(device_label), category='warning')
         except Exception as e:
-            log.exception("Cannot save settings for '{}'".format(device_label))
-            flash(message=e.message, category='danger')
-        if saved:
-            flash("Updated '{}'".format(device_label))
-        else:
-            flash("'{}' not updated.".format(device_label), category='warning')
+            message = "Cannot update '{}'".format(device_label)
+            log.exception(message)
+            flash(message='{}: {}'.format(message, e.message), category='danger')
     # decorate the inputs with the saved configuration
     inputs_to_render = copy.deepcopy(event_processor.inputs)
     for saved_input in event_processor.input_config.scan():
         device_key = saved_input['input_device']
         inputs_to_render[device_key].update(saved_input)
+        inputs_to_render[device_key]['customized'] = True
     #TODO: remove
     flash("Rendering {}".format(inputs_to_render))
     return render_template('input_config.html',
