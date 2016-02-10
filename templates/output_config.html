@@ -1,0 +1,28 @@
+{% extends "layout.html" %}
+{% set active_page = "output_config" %}
+{% block body %}
+            <p>Customize outputs.</p>
+            <div class="panel-group" id="accordion">
+                {% for output_device_key, output_device in outputs|dictsort %}
+                <div class="panel panel-default">
+                    <div class="panel-heading">
+                        <h4 class="panel-title">
+                            <a data-toggle="collapse" data-parent="#accordion" href="#collapse{{loop.index}}">{{ output_device['device_label'] }}{% if output_device['customized'] %} <span class="badge">Customized</span>{% endif %}</a>
+                        </h4>
+                    </div>
+                    <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if loop.first %} in{% endif %}">
+                        <div class="panel-body">
+                            <form role="form" method='POST'>
+                                <div class="form-group">
+                                    <input class="form-control" type="text" name="{{ output_device_key }}" placeholder="Parameters">
+                                </div>
+                                <div class="form-group">
+                                    <button type="submit" class="btn btn-default" name="input_device" value="{{ input_device_key }}"><span class="glyphicon glyphicon-floppy-disk"></span> Save</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+{% endblock %}

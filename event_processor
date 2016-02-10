@@ -139,6 +139,45 @@ def input_config():
                            default_activation_interval=int(config.get('config', 'default_activation_interval')))
 
 
+@rest_api.route('/output_config', methods=['GET', 'POST'])
+def output_config():
+    if request.method == 'POST':
+        device_key = request.form['output_device']
+        device_label = event_processor.inputs[device_key]['device_label']
+        to_save = dict()
+        to_save['output_device'] = device_key
+        try:
+            friendly_name = request.form['friendly_name'].strip()
+            if len(friendly_name) > 0:
+                to_save['friendly_name'] = friendly_name
+            if len(request.form['activations_per_trigger']) > 0:
+                to_save['activations_per_trigger'] = int(request.form['activations_per_trigger'])
+            if len(request.form['activation_interval']) > 0:
+                to_save['activation_interval'] = int(request.form['activation_interval'])
+            if len(request.form['trigger_window']) > 0:
+                to_save['trigger_window'] = int(request.form['trigger_window'])
+            if len(to_save.keys()) > 1:
+                saved = event_processor.input_config.put_item(data=to_save, overwrite=True)
+            else:
+                saved = event_processor.input_config.delete_item(input_device=device_key)
+            if saved:
+                flash("Updated '{}'".format(device_label))
+            else:
+                flash("'{}' not updated.".format(device_label), category='warning')
+        except Exception as e:
+            message = "Cannot update '{}'".format(device_label)
+            log.exception(message)
+            flash(message='{}: {}'.format(message, e.message), category='danger')
+    # decorate with the saved configuration
+    outputs_to_render = copy.deepcopy(event_processor.inputs)
+    for saved_output in event_processor.input_config.scan():
+        device_key = saved_output['output_device']
+        outputs_to_render[device_key].update(saved_output)
+        outputs_to_render[device_key]['customized'] = True
+    return render_template('output_config.html',
+                           outputs=outputs_to_render)
+
+
 @rest_api.route('/input_link', methods=['GET', 'POST'])
 def input_link():
     if request.method == 'POST':
@@ -173,25 +212,32 @@ def input_link():
 @rest_api.route('/input_output', methods=['GET', 'POST'])
 def input_output():
     if request.method == 'POST':
-        flash(request.form)
-        #input_device = None
-        #for input_device_key in event_processor.inputs:
-        #    if input_device_key in request.form:
-        #        input_device = input_device_key
-        #        break
-        #saved = False
-        #if input_device is not None:
-        #    saved = event_processor.device_config.put_item(
-        #        data={
-        #            'input_device': input_device,
-        #            'output_device': request.form[input_device],
-        #            'output_params': request.form['output_params'].strip(),
-        #            'output_enabled': 'output_enabled' in request.form
-        #        },
-        #        overwrite=True)
-        #flash('Saved? {}'.format(saved))
+        device_key = request.form['input_device']
+        device_label = event_processor.inputs[device_key]['device_label']
+        try:
+            linked_devices = request.form.getlist('linked_output')
+            if len(linked_devices) > 0:
+                saved = event_processor.output_links.put_item(data={
+                    'input_device': device_key,
+                    'linked_devices': linked_devices
+                }, overwrite=True)
+            else:
+                saved = event_processor.output_links.delete_item(input_device=device_key)
+            if saved:
+                flash("Updated '{}'".format(device_label))
+            else:
+                flash("'{}' not updated.".format(device_label), category='warning')
+        except Exception as e:
+            message = "Cannot update '{}'".format(device_label)
+            log.exception(message)
+            flash(message='{}: {}'.format(message, e.message), category='danger')
+    # decorate the inputs with the saved configuration
+    inputs_to_render = copy.deepcopy(event_processor.inputs)
+    for saved_links in event_processor.output_links.scan():
+        device_key = saved_links['input_device']
+        inputs_to_render[device_key]['linked_devices'] = saved_links['linked_devices']
     return render_template('input_output.html',
-                           inputs=event_processor.inputs,
+                           inputs=inputs_to_render,
                            outputs=event_processor.outputs)
 
 
