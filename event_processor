@@ -142,10 +142,24 @@ def input_config():
 @rest_api.route('/input_link', methods=['GET', 'POST'])
 def input_link():
     if request.method == 'POST':
-        flash(request.form)
+        device_key = request.form['input_device']
+        device_label = event_processor.inputs[device_key]['device_label']
+        try:
+            linked_devices = request.form.getlist('linked_input')
+            if len(linked_devices) > 0:
+                saved = event_processor.input_links.put_item(data={'input_device': linked_devices}, overwrite=True)
+            else:
+                saved = event_processor.input_links.delete_item(input_device=device_key)
+            if saved:
+                flash("Updated '{}'".format(device_label))
+            else:
+                flash("'{}' not updated.".format(device_label), category='warning')
+        except Exception as e:
+            message = "Cannot update '{}'".format(device_label)
+            log.exception(message)
+            flash(message='{}: {}'.format(message, e.message), category='danger')
     return render_template('input_link.html',
-                           inputs=event_processor.inputs,
-                           outputs=event_processor.outputs)
+                           inputs=event_processor.inputs)
 
 
 @rest_api.route('/input_output', methods=['GET', 'POST'])
