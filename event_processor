@@ -161,8 +161,13 @@ def input_link():
             message = "Cannot update '{}'".format(device_label)
             log.exception(message)
             flash(message='{}: {}'.format(message, e.message), category='danger')
+    # decorate the inputs with the saved configuration
+    inputs_to_render = copy.deepcopy(event_processor.inputs)
+    for saved_links in event_processor.input_links.scan():
+        device_key = saved_links['input_device']
+        inputs_to_render[device_key]['linked_devices'] = saved_links['linked_devices']
     return render_template('input_link.html',
-                           inputs=event_processor.inputs)
+                           inputs=inputs_to_render)
 
 
 @rest_api.route('/input_output', methods=['GET', 'POST'])

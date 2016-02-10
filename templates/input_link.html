@@ -7,7 +7,7 @@
                 <div class="panel panel-default">
                     <div class="panel-heading">
                         <h4 class="panel-title">
-                            <a data-toggle="collapse" data-parent="#accordion" href="#collapse{{loop.index}}">{{ input_device['device_label'] }} <span class="badge">{{ inputs|count }}</span></a>
+                            <a data-toggle="collapse" data-parent="#accordion" href="#collapse{{loop.index}}">{{ input_device['device_label'] }}{% if 'linked_devices' in input_device %} <span class="badge">{{ input_device['linked_devices']|count }}</span>{% endif %}</a>
                         </h4>
                     </div>
                     <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if loop.first %} in{% endif %}">
@@ -17,7 +17,7 @@
                                 {% if linkable_input_key == input_device_key %}{% continue %}{% endif %}
                                 <div class="form-group">
                                     <div class="checkbox">
-                                        <label><input type="checkbox" name="linked_input" value="{{ linkable_input_key }}">{{ linkable_input['device_label'] }}</label>
+                                        <label><input type="checkbox" name="linked_input" value="{{ linkable_input_key }}"{% if linkable_input_key in input_device['linked_devices'] %} checked{% endif %}>{{ linkable_input['device_label'] }}</label>
                                     </div>
                                 </div>
                                 {% endfor %}
