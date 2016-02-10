@@ -101,9 +101,7 @@ def index():
 def input_config():
     if request.method == 'POST':
         device_key = request.form['input_device']
-        input_device = event_processor.inputs[device_key]
-        device_label = input_device['device_label']
-        saved = False
+        device_label = event_processor.inputs[device_key]['device_label']
         to_save = dict()
         to_save['input_device'] = device_key
         try:
@@ -134,8 +132,6 @@ def input_config():
         device_key = saved_input['input_device']
         inputs_to_render[device_key].update(saved_input)
         inputs_to_render[device_key]['customized'] = True
-    #TODO: remove
-    flash("Rendering {}".format(inputs_to_render))
     return render_template('input_config.html',
                            inputs=inputs_to_render,
                            default_activations_per_trigger=int(config.get('config', 'default_activations_per_trigger')),
