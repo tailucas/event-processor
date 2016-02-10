@@ -147,7 +147,10 @@ def input_link():
         try:
             linked_devices = request.form.getlist('linked_input')
             if len(linked_devices) > 0:
-                saved = event_processor.input_links.put_item(data={'input_device': linked_devices}, overwrite=True)
+                saved = event_processor.input_links.put_item(data={
+                    'input_device': device_key,
+                    'linked_devices': linked_devices
+                }, overwrite=True)
             else:
                 saved = event_processor.input_links.delete_item(input_device=device_key)
             if saved:
