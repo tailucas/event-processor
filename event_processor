@@ -236,9 +236,7 @@ def output_link():
 
 @rest_api.route('/config', methods=['GET', 'POST'])
 def show_config():
-    return render_template('config.html',
-                           inputs=event_processor.inputs,
-                           outputs=event_processor.outputs)
+    return render_template('config.html')
 
 
 def thread_nanny(threads_tracked):
@@ -279,7 +277,7 @@ class EventProcessor(Thread, ZMQEndpoint):
         self._output_origin = dict()
 
         self._db_storage = None
-        self.device_config = None
+        self.general_config = None
         self.input_config = None
         self.input_links = None
         self.output_config = None
@@ -386,8 +384,8 @@ class EventProcessor(Thread, ZMQEndpoint):
         self.output_config = Table(
             table_name=config.get('config', 'output_config_table'),
             connection=self._db_storage)
-        self.device_config = Table(
-            table_name=config.get('config', 'input_output_config_table'),
+        self.general_config = Table(
+            table_name=config.get('config', 'general_config_table'),
             connection=self._db_storage)
 
         while True:
