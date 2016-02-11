@@ -229,7 +229,7 @@ def output_link():
     for saved_links in event_processor.output_links.scan():
         device_key = saved_links['input_device']
         inputs_to_render[device_key]['linked_devices'] = saved_links['linked_devices']
-    return render_template('input_output.html',
+    return render_template('output_link.html',
                            inputs=inputs_to_render,
                            outputs=event_processor.outputs)
 
