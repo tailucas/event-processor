@@ -147,19 +147,13 @@ def output_config():
         to_save = dict()
         to_save['output_device'] = device_key
         try:
-            friendly_name = request.form['friendly_name'].strip()
-            if len(friendly_name) > 0:
-                to_save['friendly_name'] = friendly_name
-            if len(request.form['activations_per_trigger']) > 0:
-                to_save['activations_per_trigger'] = int(request.form['activations_per_trigger'])
-            if len(request.form['activation_interval']) > 0:
-                to_save['activation_interval'] = int(request.form['activation_interval'])
-            if len(request.form['trigger_window']) > 0:
-                to_save['trigger_window'] = int(request.form['trigger_window'])
+            device_params = request.form['device_params'].strip()
+            if len(device_params) > 0:
+                to_save['device_params'] = device_params
             if len(to_save.keys()) > 1:
-                saved = event_processor.input_config.put_item(data=to_save, overwrite=True)
+                saved = event_processor.output_config.put_item(data=to_save, overwrite=True)
             else:
-                saved = event_processor.input_config.delete_item(input_device=device_key)
+                saved = event_processor.output_config.delete_item(output_device=device_key)
             if saved:
                 flash("Updated '{}'".format(device_label))
             else:
@@ -170,10 +164,10 @@ def output_config():
             flash(message='{}: {}'.format(message, e.message), category='danger')
     # decorate with the saved configuration
     outputs_to_render = copy.deepcopy(event_processor.inputs)
-    for saved_output in event_processor.input_config.scan():
+    for saved_output in event_processor.output_config.scan():
         device_key = saved_output['output_device']
         outputs_to_render[device_key].update(saved_output)
-        outputs_to_render[device_key]['customized'] = True
+    flash(outputs_to_render)
     return render_template('output_config.html',
                            outputs=outputs_to_render)
 
@@ -289,6 +283,7 @@ class EventProcessor(Thread, ZMQEndpoint):
         self.device_config = None
         self.input_config = None
         self.input_links = None
+        self.output_config = None
         self._metrics = None
 
         self.socket = zmq_context.socket(zmq.PULL)
@@ -384,6 +379,9 @@ class EventProcessor(Thread, ZMQEndpoint):
             connection=self._db_storage)
         self.input_links = Table(
             table_name=config.get('config', 'input_link_table'),
+            connection=self._db_storage)
+        self.output_config = Table(
+            table_name=config.get('config', 'output_config_table'),
             connection=self._db_storage)
         self.device_config = Table(
             table_name=config.get('config', 'input_output_config_table'),
