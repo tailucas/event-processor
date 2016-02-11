@@ -167,7 +167,6 @@ def output_config():
     for saved_output in event_processor.output_config.scan():
         device_key = saved_output['output_device']
         outputs_to_render[device_key].update(saved_output)
-    flash(outputs_to_render)
     return render_template('output_config.html',
                            outputs=outputs_to_render)
 
@@ -203,8 +202,8 @@ def input_link():
                            inputs=inputs_to_render)
 
 
-@rest_api.route('/input_output', methods=['GET', 'POST'])
-def input_output():
+@rest_api.route('/output_link', methods=['GET', 'POST'])
+def output_link():
     if request.method == 'POST':
         device_key = request.form['input_device']
         device_label = event_processor.inputs[device_key]['device_label']

@@ -1,5 +1,5 @@
 {% extends "layout.html" %}
-{% set active_page = "input_output" %}
+{% set active_page = "output_link" %}
 {% block body %}
             <p>Configure output actions for your inputs.</p>
             <div class="panel-group" id="accordion">
@@ -18,9 +18,6 @@
                                     <div class="checkbox">
                                         <label><input type="checkbox" name="linked_output" value="{{ output_device_key }}"{% if output_device_key in input_device['linked_devices'] %} checked{% endif %}>{{ output_device['device_label'] }}</label>
                                     </div>
-                                </div>
-                                <div class="form-group">
-                                    <input class="form-control" type="text" name="{{ output_device_key }}" placeholder="Parameters">
                                 </div>
                                 {% endfor %}
                                 <div class="form-group">
