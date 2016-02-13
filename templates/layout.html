@@ -20,16 +20,16 @@
 
         <div class="container">
 
-            {% set navigation_bar = {
-                'Home': 'index',
-                'Configuration': 'show_config',
-                'Configure': {
-                    'Inputs': 'input_config',
-                    'Input Links': 'input_link',
-                    'Outputs': 'output_config',
-                    'Output Links': 'output_link',
-                },
-            } -%}
+            {% set navigation_bar = [
+                ('Home', 'index')
+                ('Configuration', 'show_config'),
+                ('Configure', [
+                    ('Inputs', 'input_config'),
+                    ('Input Links', 'input_link'),
+                    ('Outputs', 'output_config'),
+                    ('Output Links', 'output_link'),
+                ],
+            ] -%}
             {% set active_page = active_page|default('index') -%}
 
             <!-- Static navbar -->
@@ -46,12 +46,12 @@
                     </div>
                     <div id="navbar" class="navbar-collapse collapse">
                         <ul class="nav navbar-nav">
-                        {% for caption, page in navigation_bar.items() %}
+                        {% for caption, page in navigation_bar %}
                             {% if page is mapping %}
                             <li class="dropdown{% if active_page in page.values() %} active{% endif %}">
                                 <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">{{ caption }}<span class="caret"></span></a>
                                 <ul class="dropdown-menu">
-                                {% for menu_caption, menu_page in page|dictsort %}
+                                {% for menu_caption, menu_page in page %}
                                     <li{% if menu_page == active_page %} class="active"{% endif %}>
                                         <a href="{{ url_for(menu_page) }}">{{ menu_caption|e }}</a>
                                     </li>
