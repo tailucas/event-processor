@@ -59,6 +59,10 @@ def signal_handler(signum, frame):
     log.setLevel(logging.DEBUG)
 
 
+def is_list(value):
+    return isinstance(value, list)
+
+
 @rest_api.route('/logging')
 def debug():
     log.setLevel(request.args.get('level'))
@@ -474,6 +478,9 @@ if __name__ == "__main__":
         log.setLevel(logging.INFO)
         rest_api.secret_key = config.get('flask', 'session_secret_key')
         rest_api.jinja_env.add_extension('jinja2.ext.loopcontrols')
+        rest_api.jinja_env.filters.update({
+            'is_list': is_list,
+        })
         rest_api.run(
             host=config.get('app', 'eth0_ip'),
             port=int(config.get('flask', 'http_port')),

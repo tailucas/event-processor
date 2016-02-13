@@ -21,7 +21,7 @@
         <div class="container">
 
             {% set navigation_bar = [
-                ('Home', 'index')
+                ('Home', 'index'),
                 ('Configuration', 'show_config'),
                 ('Configure', [
                     ('Inputs', 'input_config'),
@@ -48,8 +48,8 @@
                     <div id="navbar" class="navbar-collapse collapse">
                         <ul class="nav navbar-nav">
                         {% for caption, page in navigation_bar %}
-                            {% if page is mapping %}
-                            <li class="dropdown{% if active_page in page.values() %} active{% endif %}">
+                            {% if page is_list %}
+                            <li class="dropdown{% if active_page in dict(page).values() %} active{% endif %}">
                                 <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">{{ caption }}<span class="caret"></span></a>
                                 <ul class="dropdown-menu">
                                 {% for menu_caption, menu_page in page %}
