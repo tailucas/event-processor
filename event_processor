@@ -443,11 +443,11 @@ class EventProcessor(Thread, ZMQEndpoint):
         self.metric_namespace = '{}:{}'.format(config.get('metric', 'namespace'), APP)
         # load configuration data
         ddb_tables = [
-            (self.general_config, self.general_config_table, config.get('config', 'general_config_table')),
-            (self.input_config, self.input_config_table, config.get('config', 'input_config_table')),
-            (self.input_links, self.input_links_table, config.get('config', 'input_link_table')),
-            (self.output_config, self.output_config_table, config.get('config', 'output_config_table')),
-            (self.output_links, self.output_links_table, config.get('config', 'output_link_table')),
+            (self._general_config, self._general_config_table, config.get('config', 'general_config_table')),
+            (self._input_config, self._input_config_table, config.get('config', 'input_config_table')),
+            (self._input_links, self._input_links_table, config.get('config', 'input_link_table')),
+            (self._output_config, self._output_config_table, config.get('config', 'output_config_table')),
+            (self._output_links, self._output_links_table, config.get('config', 'output_link_table')),
             ]
         for member, member_table, ddb_table in ddb_tables:
             log.info("Loading Dynamo table '{}'...".format(ddb_table))
