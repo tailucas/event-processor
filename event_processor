@@ -257,79 +257,75 @@ class EventProcessor(Thread, ZMQEndpoint):
 
     @property
     def input_config(self):
-        return self._input_config
+        devices = copy.deepcopy(self.inputs)
+        if self._input_config:
+            devices.update(self._input_config)
+        return devices
 
     @input_config.setter
     def input_config(self, device_key, config_data):
         device_label = self.inputs[device_key]['device_label']
         primary_key = {'input_device': device_key}
-        configured_devices = EventProcessor._update_config(
+        self._input_config = EventProcessor._update_config(
             device_label=device_label,
             config_data=config_data,
             table_member=self._input_config,
             put_args={'data': primary_key},
             delete_args=primary_key)
-        devices = copy.deepcopy(self.inputs)
-        if configured_devices:
-            devices.update(configured_devices)
-        self._input_config = devices
 
     @property
     def input_links(self):
-        return self._input_links
+        devices = copy.deepcopy(self.inputs)
+        if self._input_links:
+            devices.update(self._input_links)
+        return devices
 
     @input_links.setter
     def input_links(self, device_key, config_data):
         device_label = self.inputs[device_key]['device_label']
         primary_key = {'input_device': device_key}
-        configured_devices = EventProcessor._update_config(
+        self._input_links = EventProcessor._update_config(
             device_label=device_label,
             config_data=config_data,
             table_member=self._input_links_table,
             put_args={'data': primary_key},
             delete_args=primary_key)
-        devices = copy.deepcopy(self.inputs)
-        if configured_devices:
-            devices.update(configured_devices)
-        self._input_links = devices
 
     @property
     def output_config(self):
-        return self._output_config
+        devices = copy.deepcopy(self.outputs)
+        if self._output_config:
+            devices.update(self._output_config)
+        return devices
 
     @output_config.setter
     def output_config(self, device_key, config_data):
         device_label = self.outputs[device_key]['device_label']
         primary_key = {'output_device': device_key}
-        configured_devices = EventProcessor._update_config(
+        self._output_config = EventProcessor._update_config(
             device_label=device_label,
             config_data=config_data,
             table_member=self._output_config_table,
             put_args={'data': primary_key},
             delete_args=primary_key)
-        devices = copy.deepcopy(self.outputs)
-        if configured_devices:
-            devices.update(configured_devices)
-        self._output_config = devices
 
     @property
     def output_links(self):
-        return self._output_links
+        devices = copy.deepcopy(self.inputs)
+        if self._output_links:
+            devices.update(self._output_links)
+        return devices
 
     @output_links.setter
     def output_links(self, device_key, config_data):
         device_label = self.inputs[device_key]['device_label']
         primary_key = {'input_device': device_key}
-        configured_devices = EventProcessor._update_config(
+        self._output_links = EventProcessor._update_config(
             device_label=device_label,
             config_data=config_data,
             table_member=self._output_links_table,
             put_args={'data': primary_key},
             delete_args=primary_key)
-        devices = copy.deepcopy(self.inputs)
-        if configured_devices:
-            devices.update(configured_devices)
-        self._output_links = devices
 
     @staticmethod
     def _update_config(device_label, config_data, table_member, put_args, delete_args):
