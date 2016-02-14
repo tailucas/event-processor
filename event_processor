@@ -245,7 +245,8 @@ class EventProcessor(Thread, ZMQEndpoint):
         return self._general_config
 
     @general_config.setter
-    def general_config(self, config_key, config_data):
+    def general_config(self, config_tuple):
+        config_key, config_data = config_tuple
         primary_key = {'config_key': config_key}
         configured_devices = EventProcessor._update_config(
             device_label='Configuration',
@@ -263,7 +264,8 @@ class EventProcessor(Thread, ZMQEndpoint):
         return devices
 
     @input_config.setter
-    def input_config(self, device_key, config_data):
+    def input_config(self, config_tuple):
+        device_key, config_data = config_tuple
         device_label = self.inputs[device_key]['device_label']
         primary_key = {'input_device': device_key}
         self._input_config = EventProcessor._update_config(
@@ -281,7 +283,8 @@ class EventProcessor(Thread, ZMQEndpoint):
         return devices
 
     @input_links.setter
-    def input_links(self, device_key, config_data):
+    def input_links(self, config_tuple):
+        device_key, config_data = config_tuple
         device_label = self.inputs[device_key]['device_label']
         primary_key = {'input_device': device_key}
         self._input_links = EventProcessor._update_config(
@@ -299,7 +302,8 @@ class EventProcessor(Thread, ZMQEndpoint):
         return devices
 
     @output_config.setter
-    def output_config(self, device_key, config_data):
+    def output_config(self, config_tuple):
+        device_key, config_data = config_tuple
         device_label = self.outputs[device_key]['device_label']
         primary_key = {'output_device': device_key}
         self._output_config = EventProcessor._update_config(
@@ -317,7 +321,8 @@ class EventProcessor(Thread, ZMQEndpoint):
         return devices
 
     @output_links.setter
-    def output_links(self, device_key, config_data):
+    def output_links(self, config_tuple):
+        device_key, config_data = config_tuple
         device_label = self.inputs[device_key]['device_label']
         primary_key = {'input_device': device_key}
         self._output_links = EventProcessor._update_config(
