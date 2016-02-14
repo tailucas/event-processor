@@ -430,6 +430,17 @@ class EventProcessor(Thread, ZMQEndpoint):
                                      timestamp=timestamp,
                                      unit=unit)
 
+    def __setup_config_table(self, table_name):
+        log.info("Loading Dynamo table '{}'...".format(table_name))
+        member_table = Table(
+            table_name=table_name,
+            connection=self._db_storage)
+        log.info("Reading table '{}'...".format(table_name))
+        member = dict()
+        for result in member_table.scan():
+            member.update(result)
+        return member, member_table
+
     def run(self):
         # connect to AWS services
         self._db_storage = dynamodb2.connect_to_region(
@@ -443,22 +454,16 @@ class EventProcessor(Thread, ZMQEndpoint):
             aws_secret_access_key=config.get('aws', 'aws_secret_access_key'))
         self.metric_namespace = '{}:{}'.format(config.get('metric', 'namespace'), APP)
         # load configuration data
-        ddb_tables = [
-            (self._general_config, self._general_config_table, config.get('config', 'general_config_table')),
-            (self._input_config, self._input_config_table, config.get('config', 'input_config_table')),
-            (self._input_links, self._input_links_table, config.get('config', 'input_link_table')),
-            (self._output_config, self._output_config_table, config.get('config', 'output_config_table')),
-            (self._output_links, self._output_links_table, config.get('config', 'output_link_table')),
-            ]
-        for member, member_table, ddb_table in ddb_tables:
-            log.info("Loading Dynamo table '{}'...".format(ddb_table))
-            member_table = Table(
-                table_name=ddb_table,
-                connection=self._db_storage)
-            log.info("Reading table '{}'...".format(ddb_table))
-            member = dict()
-            for result in member_table.scan():
-                member.update(result)
+        self._general_config, self._general_config_table = self.__setup_config_table(
+            config.get('config', 'general_config_table'))
+        self._input_config, self._input_config_table = self.__setup_config_table(
+            config.get('config', 'input_config_table'))
+        self._input_links, self._input_links_table = self.__setup_config_table(
+            config.get('config', 'input_link_table'))
+        self._output_config, self._output_config_table = self.__setup_config_table(
+            config.get('config', 'output_config_table'))
+        self._output_links, self._output_links_table = self.__setup_config_table(
+            config.get('config', 'output_link_table'))
 
         while True:
             try:
