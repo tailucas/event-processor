@@ -227,7 +227,7 @@ class EventProcessor(Thread, ZMQEndpoint):
     def general_config(self):
         return self._general_config
 
-    @property.setter
+    @general_config.setter
     def general_config(self, config_key, config_data):
         primary_key = {'config_key': config_key}
         configured_devices = EventProcessor._update_config(
@@ -242,7 +242,7 @@ class EventProcessor(Thread, ZMQEndpoint):
     def input_config(self):
         return self._input_config
 
-    @property.setter
+    @input_config.setter
     def input_config(self, device_key, config_data):
         device_label = self.inputs[device_key]['device_label']
         primary_key = {'input_device': device_key}
@@ -261,7 +261,7 @@ class EventProcessor(Thread, ZMQEndpoint):
     def input_links(self):
         return self._input_links
 
-    @property.setter
+    @input_links.setter
     def input_links(self, device_key, config_data):
         device_label = self.inputs[device_key]['device_label']
         primary_key = {'input_device': device_key}
@@ -280,7 +280,7 @@ class EventProcessor(Thread, ZMQEndpoint):
     def output_config(self):
         return self._output_config
 
-    @property.setter
+    @output_config.setter
     def output_config(self, device_key, config_data):
         device_label = self.outputs[device_key]['device_label']
         primary_key = {'output_device': device_key}
@@ -299,7 +299,7 @@ class EventProcessor(Thread, ZMQEndpoint):
     def output_links(self):
         return self._output_links
 
-    @property.setter
+    @output_links.setter
     def output_links(self, device_key, config_data):
         device_label = self.inputs[device_key]['device_label']
         primary_key = {'input_device': device_key}
