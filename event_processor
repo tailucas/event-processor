@@ -557,7 +557,8 @@ if __name__ == "__main__":
         rest_api.run(
             host=config.get('app', 'eth0_ip'),
             port=int(config.get('flask', 'http_port')),
-            debug=config.get('flask', 'debug').lower() == 'true')
+            debug=config.get('flask', 'debug').lower() == 'true',
+            use_reloader=False)
     except(KeyboardInterrupt, SystemExit):
         for thread_info in threading.enumerate():
             if thread_info.isAlive() and isinstance(thread_info, ZMQEndpoint):
@@ -565,5 +566,3 @@ if __name__ == "__main__":
                 thread_info.close()
         log.info('Closing messaging...')
         zmq_context.term()
-        #TODO: test to kill flask server
-        sys.exit(0)
