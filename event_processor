@@ -69,23 +69,6 @@ def debug():
     return 'OK'
 
 
-@rest_api.route('/relay_ctrl_toggle', methods=['GET', 'POST'])
-def relay_ctrl_toggle():
-    #if SnapshotProcessor._relay_ctrl:
-    #    SnapshotProcessor._relay_ctrl = False
-    #else:
-    #    SnapshotProcessor._relay_ctrl = True
-    return redirect(url_for('index'))
-
-@rest_api.route('/notification_toggle', methods=['GET', 'POST'])
-def notification_toggle():
-    #if SnapshotProcessor._notification_ctrl:
-    #    SnapshotProcessor._notification_ctrl = False
-    #else:
-    #    SnapshotProcessor._notification_ctrl = True
-    return redirect(url_for('index'))
-
-
 @rest_api.route('/', methods=['GET', 'POST'])
 def index():
     relays = 'Beep Beeps {}'
@@ -104,40 +87,26 @@ def index():
 @rest_api.route('/input_config', methods=['GET', 'POST'])
 def input_config():
     if request.method == 'POST':
-        device_key = request.form['input_device']
-        device_label = event_processor.inputs[device_key]['device_label']
         to_save = dict()
-        to_save['input_device'] = device_key
-        try:
-            friendly_name = request.form['friendly_name'].strip()
-            if len(friendly_name) > 0:
-                to_save['friendly_name'] = friendly_name
-            if len(request.form['activations_per_trigger']) > 0:
-                to_save['activations_per_trigger'] = int(request.form['activations_per_trigger'])
-            if len(request.form['activation_interval']) > 0:
-                to_save['activation_interval'] = int(request.form['activation_interval'])
-            if len(request.form['trigger_window']) > 0:
-                to_save['trigger_window'] = int(request.form['trigger_window'])
-            if len(to_save.keys()) > 1:
-                saved = event_processor.input_config.put_item(data=to_save, overwrite=True)
-            else:
-                saved = event_processor.input_config.delete_item(input_device=device_key)
-            if saved:
-                flash("Updated '{}'".format(device_label))
-            else:
-                flash("'{}' not updated.".format(device_label), category='warning')
-        except Exception as e:
-            message = "Cannot update '{}'".format(device_label)
-            log.exception(message)
-            flash(message='{}: {}'.format(message, e.message), category='danger')
-    # decorate the inputs with the saved configuration
-    inputs_to_render = copy.deepcopy(event_processor.inputs)
-    for saved_input in event_processor.input_config.scan():
-        device_key = saved_input['input_device']
-        inputs_to_render[device_key].update(saved_input)
-        inputs_to_render[device_key]['customized'] = True
+        friendly_name = request.form['friendly_name'].strip()
+        if len(friendly_name) > 0:
+            to_save['friendly_name'] = friendly_name
+            to_save['customized'] = True
+        if len(request.form['activations_per_trigger']) > 0:
+            to_save['activations_per_trigger'] = int(request.form['activations_per_trigger'])
+            to_save['customized'] = True
+        if len(request.form['activation_interval']) > 0:
+            to_save['activation_interval'] = int(request.form['activation_interval'])
+            to_save['customized'] = True
+        if len(request.form['trigger_window']) > 0:
+            to_save['trigger_window'] = int(request.form['trigger_window'])
+            to_save['customized'] = True
+        event_processor.input_config = (
+            request.form['input_device'],
+            to_save
+        )
     return render_template('input_config.html',
-                           inputs=inputs_to_render,
+                           inputs=event_processor.input_config,
                            default_activations_per_trigger=int(config.get('config', 'default_activations_per_trigger')),
                            default_trigger_window=int(config.get('config', 'default_trigger_window')),
                            default_activation_interval=int(config.get('config', 'default_activation_interval')))
@@ -146,95 +115,46 @@ def input_config():
 @rest_api.route('/output_config', methods=['GET', 'POST'])
 def output_config():
     if request.method == 'POST':
-        device_key = request.form['output_device']
-        device_label = event_processor.inputs[device_key]['device_label']
         to_save = dict()
-        to_save['output_device'] = device_key
-        try:
-            device_params = request.form['device_params'].strip()
-            if len(device_params) > 0:
-                to_save['device_params'] = device_params
-            if len(to_save.keys()) > 1:
-                saved = event_processor.output_config.put_item(data=to_save, overwrite=True)
-            else:
-                saved = event_processor.output_config.delete_item(output_device=device_key)
-            if saved:
-                flash("Updated '{}'".format(device_label))
-            else:
-                flash("'{}' not updated.".format(device_label), category='warning')
-        except Exception as e:
-            message = "Cannot update '{}'".format(device_label)
-            log.exception(message)
-            flash(message='{}: {}'.format(message, e.message), category='danger')
-    # decorate with the saved configuration
-    outputs_to_render = copy.deepcopy(event_processor.inputs)
-    for saved_output in event_processor.output_config.scan():
-        device_key = saved_output['output_device']
-        outputs_to_render[device_key].update(saved_output)
+        device_params = request.form['device_params'].strip()
+        if len(device_params) > 0:
+            to_save['device_params'] = device_params
+        event_processor.output_config = (
+            request.form['output_device'],
+            to_save
+        )
     return render_template('output_config.html',
-                           outputs=outputs_to_render)
+                           outputs=event_processor.output_config)
 
 
 @rest_api.route('/input_link', methods=['GET', 'POST'])
 def input_link():
     if request.method == 'POST':
-        device_key = request.form['input_device']
-        device_label = event_processor.inputs[device_key]['device_label']
-        try:
-            linked_devices = request.form.getlist('linked_input')
-            if len(linked_devices) > 0:
-                saved = event_processor.input_links.put_item(data={
-                    'input_device': device_key,
-                    'linked_devices': linked_devices
-                }, overwrite=True)
-            else:
-                saved = event_processor.input_links.delete_item(input_device=device_key)
-            if saved:
-                flash("Updated '{}'".format(device_label))
-            else:
-                flash("'{}' not updated.".format(device_label), category='warning')
-        except Exception as e:
-            message = "Cannot update '{}'".format(device_label)
-            log.exception(message)
-            flash(message='{}: {}'.format(message, e.message), category='danger')
-    # decorate the inputs with the saved configuration
-    inputs_to_render = copy.deepcopy(event_processor.inputs)
-    for saved_links in event_processor.input_links.scan():
-        device_key = saved_links['input_device']
-        inputs_to_render[device_key]['linked_devices'] = saved_links['linked_devices']
+        linked_devices = dict()
+        linked = request.form.getlist('linked_input')
+        if len(linked) > 0:
+            linked_devices['linked_devices'] = linked
+        event_processor.input_links = (
+            request.form['input_device'],
+            linked_devices
+        )
     return render_template('input_link.html',
-                           inputs=inputs_to_render)
+                           inputs=event_processor.input_links)
 
 
 @rest_api.route('/output_link', methods=['GET', 'POST'])
 def output_link():
     if request.method == 'POST':
-        device_key = request.form['input_device']
-        device_label = event_processor.inputs[device_key]['device_label']
-        try:
-            linked_devices = request.form.getlist('linked_output')
-            if len(linked_devices) > 0:
-                saved = event_processor.output_links.put_item(data={
-                    'input_device': device_key,
-                    'linked_devices': linked_devices
-                }, overwrite=True)
-            else:
-                saved = event_processor.output_links.delete_item(input_device=device_key)
-            if saved:
-                flash("Updated '{}'".format(device_label))
-            else:
-                flash("'{}' not updated.".format(device_label), category='warning')
-        except Exception as e:
-            message = "Cannot update '{}'".format(device_label)
-            log.exception(message)
-            flash(message='{}: {}'.format(message, e.message), category='danger')
-    # decorate the inputs with the saved configuration
-    inputs_to_render = copy.deepcopy(event_processor.inputs)
-    for saved_links in event_processor.output_links.scan():
-        device_key = saved_links['input_device']
-        inputs_to_render[device_key]['linked_devices'] = saved_links['linked_devices']
+        linked_devices = dict()
+        linked = request.form.getlist('linked_output')
+        if len(linked) > 0:
+            linked_devices['linked_devices'] = linked
+        event_processor.output_links = (
+            request.form['input_device'],
+            linked_devices
+        )
     return render_template('output_link.html',
-                           inputs=inputs_to_render,
+                           inputs=event_processor.output_links,
                            outputs=event_processor.outputs)
 
 
@@ -281,16 +201,145 @@ class EventProcessor(Thread, ZMQEndpoint):
         self._output_origin = dict()
 
         self._db_storage = None
-        self.general_config = None
-        self.input_config = None
-        self.input_links = None
-        self.output_config = None
-        self.output_links = None
+
+        self._general_config = None
+        self._general_config_table = None
+
+        self._input_config = None
+        self._input_config_table = None
+
+        self._input_links = None
+        self._input_links_table = None
+
+        self._output_config = None
+        self._output_config_table = None
+
+        self._output_links = None
+        self._output_links_table = None
+
         self._metrics = None
 
         self.socket = zmq_context.socket(zmq.PULL)
         self.socket.bind(URL_WORKER_EVENT_PROCESSOR)
         ZMQEndpoint.__init__(self, zmq_sockets=[self.socket])
+
+    @property
+    def general_config(self):
+        return self._general_config
+
+    @property.setter
+    def general_config(self, config_key, config_data):
+        primary_key = {'config_key': config_key}
+        configured_devices = EventProcessor._update_config(
+            device_label='Configuration',
+            config_data=config_data,
+            table_member=self._general_config_table,
+            put_args={'data': primary_key},
+            delete_args=primary_key)
+        self._general_config = configured_devices
+
+    @property
+    def input_config(self):
+        return self._input_config
+
+    @property.setter
+    def input_config(self, device_key, config_data):
+        device_label = self.inputs[device_key]['device_label']
+        primary_key = {'input_device': device_key}
+        configured_devices = EventProcessor._update_config(
+            device_label=device_label,
+            config_data=config_data,
+            table_member=self._input_config,
+            put_args={'data': primary_key},
+            delete_args=primary_key)
+        devices = copy.deepcopy(self.inputs)
+        if configured_devices:
+            devices.update(configured_devices)
+        self._input_config = devices
+
+    @property
+    def input_links(self):
+        return self._input_links
+
+    @property.setter
+    def input_links(self, device_key, config_data):
+        device_label = self.inputs[device_key]['device_label']
+        primary_key = {'input_device': device_key}
+        configured_devices = EventProcessor._update_config(
+            device_label=device_label,
+            config_data=config_data,
+            table_member=self._input_links_table,
+            put_args={'data': primary_key},
+            delete_args=primary_key)
+        devices = copy.deepcopy(self.inputs)
+        if configured_devices:
+            devices.update(configured_devices)
+        self._input_links = devices
+
+    @property
+    def output_config(self):
+        return self._output_config
+
+    @property.setter
+    def output_config(self, device_key, config_data):
+        device_label = self.outputs[device_key]['device_label']
+        primary_key = {'output_device': device_key}
+        configured_devices = EventProcessor._update_config(
+            device_label=device_label,
+            config_data=config_data,
+            table_member=self._output_config_table,
+            put_args={'data': primary_key},
+            delete_args=primary_key)
+        devices = copy.deepcopy(self.outputs)
+        if configured_devices:
+            devices.update(configured_devices)
+        self._output_config = devices
+
+    @property
+    def output_links(self):
+        return self._output_links
+
+    @property.setter
+    def output_links(self, device_key, config_data):
+        device_label = self.inputs[device_key]['device_label']
+        primary_key = {'input_device': device_key}
+        configured_devices = EventProcessor._update_config(
+            device_label=device_label,
+            config_data=config_data,
+            table_member=self._output_links_table,
+            put_args={'data': primary_key},
+            delete_args=primary_key)
+        devices = copy.deepcopy(self.inputs)
+        if configured_devices:
+            devices.update(configured_devices)
+        self._output_links = devices
+
+    @staticmethod
+    def _update_config(device_label, config_data, table_member, put_args, delete_args):
+        configured_devices = None
+        try:
+            if len(config_data) > 0:
+                table_name = table_member.table_name
+                log.info("Updating table '{}'...".format(table_name))
+                # patch in the config data
+                put_args['data'].update(config_data)
+                saved = table_member.put_item(overwrite=True, **put_args)
+                # load all the saved data for cached use
+                log.debug("Loading table '{}'...".format(table_name))
+                configured_devices = dict()
+                for result in table_member.scan():
+                    configured_devices.update(result)
+            else:
+                saved = table_member.delete_item(**delete_args)
+            if saved:
+                flash("Updated '{}'".format(device_label))
+            else:
+                flash("'{}' not updated.".format(device_label), category='warning')
+        except Exception as e:
+            message = "Cannot update '{}'".format(device_label)
+            log.exception(message)
+            flash(message='{}: {}'.format(message, e.message), category='danger')
+        return configured_devices
 
     def _update_devices(self, device_origin, device_info):
         for input_outputs, origin, io in [(self.inputs, self._input_origin, 'inputs'),
@@ -375,22 +424,23 @@ class EventProcessor(Thread, ZMQEndpoint):
             aws_access_key_id=config.get('aws', 'aws_access_key_id'),
             aws_secret_access_key=config.get('aws', 'aws_secret_access_key'))
         self.metric_namespace = '{}:{}'.format(config.get('metric', 'namespace'), APP)
-        # set up configuration table
-        self.input_config = Table(
-            table_name=config.get('config', 'input_config_table'),
-            connection=self._db_storage)
-        self.input_links = Table(
-            table_name=config.get('config', 'input_link_table'),
-            connection=self._db_storage)
-        self.output_links = Table(
-            table_name=config.get('config', 'output_link_table'),
-            connection=self._db_storage)
-        self.output_config = Table(
-            table_name=config.get('config', 'output_config_table'),
-            connection=self._db_storage)
-        self.general_config = Table(
-            table_name=config.get('config', 'general_config_table'),
-            connection=self._db_storage)
+        # load configuration data
+        ddb_tables = [
+            (self.general_config, self.general_config_table, config.get('config', 'general_config_table')),
+            (self.input_config, self.input_config_table, config.get('config', 'input_config_table')),
+            (self.input_links, self.input_links_table, config.get('config', 'input_link_table')),
+            (self.output_config, self.output_config_table, config.get('config', 'output_config_table')),
+            (self.output_links, self.output_links_table, config.get('config', 'output_link_table')),
+            ]
+        for member, member_table, ddb_table in ddb_tables:
+            log.info("Loading Dynamo table '{}'...".format(ddb_table))
+            member_table = Table(
+                table_name=ddb_table,
+                connection=self._db_storage)
+            log.info("Reading table '{}'...".format(ddb_table))
+            member = dict()
+            for result in member_table.scan():
+                member.update(result)
 
         while True:
             try:
@@ -492,3 +542,5 @@ if __name__ == "__main__":
                 thread_info.close()
         log.info('Closing messaging...')
         zmq_context.term()
+        #TODO: test to kill flask server
+        sys.exit(0)
