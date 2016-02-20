@@ -393,10 +393,15 @@ class EventProcessor(Thread, ZMQEndpoint):
             connection=self._db_storage)
         log.info("Reading table '{}'...".format(table_name))
         member = dict()
+        device_key = None
+        member_config = dict()
         for result in member_table.scan():
-            device_key = result.pop('device_key')
-            member[device_key] = dict()
-            member[device_key].update(result)
+            for key, value in result.items():
+                if key == 'device_key':
+                    device_key = value
+                else:
+                    member_config.update((key, value))
+        member[device_key] = member_config
         return member, member_table
 
     def run(self):
