@@ -17,6 +17,7 @@ import zmq
 
 from boto import dynamodb2
 from boto.dynamodb2.table import Table
+from boto.dynamodb2.exceptions import ItemNotFound, JSONResponseError, DynamoDBError
 from boto.ec2 import cloudwatch
 from ConfigParser import ConfigParser
 from datetime import datetime, timedelta
@@ -101,6 +102,11 @@ def index():
     return render_template('index.html', relays=relays, notifications=notifications)
 
 
+@rest_api.route('/config', methods=['GET', 'POST'])
+def show_config():
+    return render_template('config.html')
+
+
 @rest_api.route('/input_config', methods=['GET', 'POST'])
 def input_config():
     if request.method == 'POST':
@@ -119,7 +125,7 @@ def input_config():
             to_save['trigger_window'] = int(request.form['trigger_window'])
             to_save['customized'] = True
         event_processor.input_config = (
-            request.form['input_device'],
+            request.form['device_key'],
             to_save
         )
     return render_template('input_config.html',
@@ -127,6 +133,29 @@ def input_config():
                            default_activations_per_trigger=int(config.get('config', 'default_activations_per_trigger')),
                            default_trigger_window=int(config.get('config', 'default_trigger_window')),
                            default_activation_interval=int(config.get('config', 'default_activation_interval')))
+
+
+@rest_api.route('/input_link', methods=['GET', 'POST'])
+def input_link():
+    if request.method == 'POST':
+        event_processor.input_config = (
+            request.form['device_key'],
+            {'linked_inputs': request.form.getlist('linked_input')}
+        )
+    return render_template('input_link.html',
+                           inputs=event_processor.input_config)
+
+
+@rest_api.route('/output_link', methods=['GET', 'POST'])
+def output_link():
+    if request.method == 'POST':
+        event_processor.input_config = (
+            request.form['device_key'],
+            {'linked_outputs': request.form.getlist('linked_output')}
+        )
+    return render_template('output_link.html',
+                           inputs=event_processor.input_config,
+                           outputs=event_processor.outputs)
 
 
 @rest_api.route('/output_config', methods=['GET', 'POST'])
@@ -142,42 +171,6 @@ def output_config():
         )
     return render_template('output_config.html',
                            outputs=event_processor.output_config)
-
-
-@rest_api.route('/input_link', methods=['GET', 'POST'])
-def input_link():
-    if request.method == 'POST':
-        linked_devices = dict()
-        linked = request.form.getlist('linked_input')
-        if len(linked) > 0:
-            linked_devices['linked_devices'] = linked
-        event_processor.input_links = (
-            request.form['input_device'],
-            linked_devices
-        )
-    return render_template('input_link.html',
-                           inputs=event_processor.input_links)
-
-
-@rest_api.route('/output_link', methods=['GET', 'POST'])
-def output_link():
-    if request.method == 'POST':
-        linked_devices = dict()
-        linked = request.form.getlist('linked_output')
-        if len(linked) > 0:
-            linked_devices['linked_devices'] = linked
-        event_processor.output_links = (
-            request.form['input_device'],
-            linked_devices
-        )
-    return render_template('output_link.html',
-                           inputs=event_processor.output_links,
-                           outputs=event_processor.outputs)
-
-
-@rest_api.route('/config', methods=['GET', 'POST'])
-def show_config():
-    return render_template('config.html')
 
 
 def thread_nanny(threads_tracked):
@@ -225,14 +218,8 @@ class EventProcessor(Thread, ZMQEndpoint):
         self._input_config = None
         self._input_config_table = None
 
-        self._input_links = None
-        self._input_links_table = None
-
         self._output_config = None
         self._output_config_table = None
-
-        self._output_links = None
-        self._output_links_table = None
 
         self._metrics = None
 
@@ -247,14 +234,7 @@ class EventProcessor(Thread, ZMQEndpoint):
     @general_config.setter
     def general_config(self, config_tuple):
         config_key, config_data = config_tuple
-        primary_key = {'config_key': config_key}
-        configured_devices = EventProcessor._update_config(
-            device_label='Configuration',
-            config_data=config_data,
-            table_member=self._general_config_table,
-            put_args={'data': primary_key},
-            delete_args=primary_key)
-        self._general_config = configured_devices
+        self._general_config = dict()
 
     @property
     def input_config(self):
@@ -266,33 +246,13 @@ class EventProcessor(Thread, ZMQEndpoint):
     @input_config.setter
     def input_config(self, config_tuple):
         device_key, config_data = config_tuple
-        device_label = self.inputs[device_key]['device_label']
-        primary_key = {'input_device': device_key}
         self._input_config = EventProcessor._update_config(
-            device_label=device_label,
+            device_key=device_key,
+            devices=self.inputs,
+            device_config=self._input_config,
             config_data=config_data,
             table_member=self._input_config_table,
-            put_args={'data': primary_key},
-            delete_args=primary_key)
-
-    @property
-    def input_links(self):
-        devices = copy.deepcopy(self.inputs)
-        if self._input_links:
-            devices.update(self._input_links)
-        return devices
-
-    @input_links.setter
-    def input_links(self, config_tuple):
-        device_key, config_data = config_tuple
-        device_label = self.inputs[device_key]['device_label']
-        primary_key = {'input_device': device_key}
-        self._input_links = EventProcessor._update_config(
-            device_label=device_label,
-            config_data=config_data,
-            table_member=self._input_links_table,
-            put_args={'data': primary_key},
-            delete_args=primary_key)
+            primary_key={'device_key': device_key})
 
     @property
     def output_config(self):
@@ -304,60 +264,56 @@ class EventProcessor(Thread, ZMQEndpoint):
     @output_config.setter
     def output_config(self, config_tuple):
         device_key, config_data = config_tuple
-        device_label = self.outputs[device_key]['device_label']
-        primary_key = {'output_device': device_key}
         self._output_config = EventProcessor._update_config(
-            device_label=device_label,
+            device_key=device_key,
+            devices=self.outputs,
+            device_config=self._output_config,
             config_data=config_data,
             table_member=self._output_config_table,
-            put_args={'data': primary_key},
-            delete_args=primary_key)
-
-    @property
-    def output_links(self):
-        devices = copy.deepcopy(self.inputs)
-        if self._output_links:
-            devices.update(self._output_links)
-        return devices
-
-    @output_links.setter
-    def output_links(self, config_tuple):
-        device_key, config_data = config_tuple
-        device_label = self.inputs[device_key]['device_label']
-        primary_key = {'input_device': device_key}
-        self._output_links = EventProcessor._update_config(
-            device_label=device_label,
-            config_data=config_data,
-            table_member=self._output_links_table,
-            put_args={'data': primary_key},
-            delete_args=primary_key)
+            primary_key={'device_key': device_key})
 
     @staticmethod
-    def _update_config(device_label, config_data, table_member, put_args, delete_args):
-        configured_devices = None
+    def _update_config(device_key, devices, device_config, config_data, table_member, primary_key):
+        label = device_key
+        if 'device_label' in devices[device_key]:
+            label = devices[device_key]['device_label']
+        updated_config = dict()
         try:
             if len(config_data) > 0:
                 table_name = table_member.table_name
                 log.info("Updating table '{}'...".format(table_name))
-                # patch in the config data
-                put_args['data'].update(config_data)
-                saved = table_member.put_item(overwrite=True, **put_args)
-                # load all the saved data for cached use
-                log.debug("Loading table '{}'...".format(table_name))
-                configured_devices = dict()
-                for result in table_member.scan():
-                    configured_devices.update(result)
+                try:
+                    table_item = table_member.get_item(**primary_key)
+                    table_item.update(config_data)
+                    saved = table_item.partial_save()
+                    updated_config.update(table_item)
+                except ItemNotFound:
+                    log.debug("Item '{}' not found in '{}'. Creating new.".format(primary_key, table_name))
+                    put_args = dict()
+                    put_args['data'] = dict()
+                    put_args['data'].update(primary_key)
+                    put_args['data'].update(config_data)
+                    saved = table_member.put_item(**put_args)
+                    updated_config.update(put_args['data'])
             else:
-                saved = table_member.delete_item(**delete_args)
+                saved = table_member.delete_item(**primary_key)
             if saved:
-                flash("Updated '{}'".format(device_label))
+                flash("Updated '{}'".format(label))
             else:
-                flash("'{}' not updated.".format(device_label), category='warning')
+                flash("'{}' not updated.".format(label), category='warning')
+                return None
         except Exception as e:
-            message = "Cannot update '{}'".format(device_label)
+            message = "Cannot update '{}'".format(label)
             log.exception(message)
             flash(message='{}: {}'.format(message, e.message), category='danger')
-        return configured_devices
+        if updated_config:
+            if len(updated_config) == 0:
+                del device_config[device_key]
+            else:
+                if device_key not in devices:
+                    device_config[device_key] = dict()
+                device_config[device_key].update(updated_config)
+        return device_config
 
     def _update_devices(self, device_origin, device_info):
         for input_outputs, origin, io in [(self.inputs, self._input_origin, 'inputs'),
@@ -438,7 +394,9 @@ class EventProcessor(Thread, ZMQEndpoint):
         log.info("Reading table '{}'...".format(table_name))
         member = dict()
         for result in member_table.scan():
-            member.update(result)
+            device_key = result.pop('device_key')
+            member[device_key] = dict()
+            member[device_key].update(result)
         return member, member_table
 
     def run(self):
@@ -458,12 +416,8 @@ class EventProcessor(Thread, ZMQEndpoint):
             config.get('config', 'general_config_table'))
         self._input_config, self._input_config_table = self.__setup_config_table(
             config.get('config', 'input_config_table'))
-        self._input_links, self._input_links_table = self.__setup_config_table(
-            config.get('config', 'input_link_table'))
         self._output_config, self._output_config_table = self.__setup_config_table(
             config.get('config', 'output_config_table'))
-        self._output_links, self._output_links_table = self.__setup_config_table(
-            config.get('config', 'output_link_table'))
 
         while True:
             try:

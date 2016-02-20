@@ -7,7 +7,7 @@
                 <div class="panel panel-default">
                     <div class="panel-heading">
                         <h4 class="panel-title">
-                            <a data-toggle="collapse" data-parent="#accordion" href="#collapse{{loop.index}}">{{ input_device['device_label'] }}{% if 'linked_devices' in input_device %} <span class="badge">{{ input_device['linked_devices']|count }}</span>{% endif %}</a>
+                            <a data-toggle="collapse" data-parent="#accordion" href="#collapse{{loop.index}}">{{ input_device['device_label'] }}{% if 'linked_outputs' in input_device %} <span class="badge">{{ input_device['linked_outputs']|count }}</span>{% endif %}</a>
                         </h4>
                     </div>
                     <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if loop.first %} in{% endif %}">
@@ -16,12 +16,12 @@
                                 {% for output_device_key, output_device in outputs|dictsort %}
                                 <div class="form-group">
                                     <div class="checkbox">
-                                        <label><input type="checkbox" name="linked_output" value="{{ output_device_key }}"{% if output_device_key in input_device['linked_devices'] %} checked{% endif %}>{{ output_device['device_label'] }}</label>
+                                        <label><input type="checkbox" name="linked_output" value="{{ output_device_key }}"{% if output_device_key in input_device['linked_outputs'] %} checked{% endif %}>{{ output_device['device_label'] }}</label>
                                     </div>
                                 </div>
                                 {% endfor %}
                                 <div class="form-group">
-                                    <button type="submit" class="btn btn-default" name="input_device" value="{{ input_device_key }}"><span class="glyphicon glyphicon-floppy-disk"></span> Save</button>
+                                    <button type="submit" class="btn btn-default" name="device_key" value="{{ input_device_key }}"><span class="glyphicon glyphicon-floppy-disk"></span> Save</button>
                                 </div>
                             </form>
                         </div>
