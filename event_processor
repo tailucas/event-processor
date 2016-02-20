@@ -310,7 +310,7 @@ class EventProcessor(Thread, ZMQEndpoint):
             if len(updated_config) == 0:
                 del device_config[device_key]
             else:
-                if device_key not in devices:
+                if device_key not in device_config:
                     device_config[device_key] = dict()
                 device_config[device_key].update(updated_config)
         return device_config
