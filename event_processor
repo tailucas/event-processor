@@ -274,9 +274,7 @@ class EventProcessor(Thread, ZMQEndpoint):
 
     @staticmethod
     def _update_config(device_key, devices, device_config, config_data, table_member, primary_key):
-        label = device_key
-        if 'device_label' in devices[device_key]:
-            label = devices[device_key]['device_label']
+        device_label = devices[device_key]['device_label']
         updated_config = dict()
         try:
             if len(config_data) > 0:
@@ -298,12 +296,12 @@ class EventProcessor(Thread, ZMQEndpoint):
             else:
                 saved = table_member.delete_item(**primary_key)
             if saved:
-                flash("Updated '{}'".format(label))
+                flash("Updated '{}'".format(device_label))
             else:
-                flash("'{}' not updated.".format(label), category='warning')
+                flash("'{}' not updated.".format(device_label), category='warning')
                 return None
         except Exception as e:
-            message = "Cannot update '{}'".format(label)
+            message = "Cannot update '{}'".format(device_label)
             log.exception(message)
             flash(message='{}: {}'.format(message, e.message), category='danger')
         if updated_config:
