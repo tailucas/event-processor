@@ -239,8 +239,10 @@ class EventProcessor(Thread, ZMQEndpoint):
     @property
     def input_config(self):
         devices = copy.deepcopy(self.inputs)
-        if self._input_config:
-            devices.update(self._input_config)
+        devices_config = self._input_config
+        for device_key in devices.keys():
+            if device_key in devices_config:
+                devices[device_key].update(devices_config[device_key])
         return devices
 
     @input_config.setter
@@ -257,8 +259,10 @@ class EventProcessor(Thread, ZMQEndpoint):
     @property
     def output_config(self):
         devices = copy.deepcopy(self.outputs)
-        if self._output_config:
-            devices.update(self._output_config)
+        devices_config = self._output_config
+        for device_key in devices.keys():
+            if device_key in devices_config:
+                devices[device_key].update(devices_config[device_key])
         return devices
 
     @output_config.setter
@@ -391,15 +395,16 @@ class EventProcessor(Thread, ZMQEndpoint):
             connection=self._db_storage)
         log.info("Reading table '{}'...".format(table_name))
         member = dict()
-        device_key = None
-        member_config = dict()
         for result in member_table.scan():
+            device_key = None
+            member_config = dict()
             for key, value in result.items():
                 if key == 'device_key':
                     device_key = value
                 else:
                     member_config.update([(key, value)])
-        member[device_key] = member_config
+            if device_key and len(member_config) > 0:
+                member[device_key] = member_config
         return member, member_table
 
     def run(self):
