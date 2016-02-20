@@ -400,7 +400,7 @@ class EventProcessor(Thread, ZMQEndpoint):
                 if key == 'device_key':
                     device_key = value
                 else:
-                    member_config.update((key, value))
+                    member_config.update([(key, value)])
         member[device_key] = member_config
         return member, member_table
 
