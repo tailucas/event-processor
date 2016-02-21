@@ -111,9 +111,9 @@ def show_config():
 def input_config():
     if request.method == 'POST':
         to_save = dict()
-        friendly_name = request.form['friendly_name'].strip()
-        if len(friendly_name) > 0:
-            to_save['friendly_name'] = friendly_name
+        group_name = request.form['group_name'].strip()
+        if len(group_name) > 0:
+            to_save['group_name'] = group_name
             to_save['customized'] = True
         if len(request.form['activations_per_trigger']) > 0:
             to_save['activations_per_trigger'] = int(request.form['activations_per_trigger'])
