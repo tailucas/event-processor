@@ -286,9 +286,9 @@ class EventProcessor(Thread, ZMQEndpoint):
                 log.info("Updating table '{}'...".format(table_name))
                 try:
                     table_item = table_member.get_item(**primary_key)
-                    table_item.update(config_data)
+                    for key, value in config_data.items():
+                        table_item[key] = value
                     saved = table_item.partial_save()
-                    updated_config.update(table_item)
                 except ItemNotFound:
                     log.debug("Item '{}' not found in '{}'. Creating new.".format(primary_key, table_name))
                     put_args = dict()
@@ -296,11 +296,13 @@ class EventProcessor(Thread, ZMQEndpoint):
                     put_args['data'].update(primary_key)
                     put_args['data'].update(config_data)
                     saved = table_member.put_item(**put_args)
-                    updated_config.update(put_args['data'])
             else:
                 saved = table_member.delete_item(**primary_key)
             if saved:
                 flash("Updated '{}'".format(device_label))
+                for key, value in config_data.items():
+                    log.debug("Updating '{}': '{}' = '{}'".format(device_key, key, value))
+                    updated_config[key] = value
             else:
                 flash("'{}' not updated.".format(device_label), category='warning')
                 return None
