@@ -166,7 +166,7 @@ def output_config():
         if len(device_params) > 0:
             to_save['device_params'] = device_params
         event_processor.output_config = (
-            request.form['output_device'],
+            request.form['device_key'],
             to_save
         )
     return render_template('output_config.html',
