@@ -258,6 +258,7 @@ class EventProcessor(Thread, ZMQEndpoint):
         device_key, updated_config = config_update
         EventProcessor._update_config(
             device_key=device_key,
+            devices=self.inputs,
             device_configs=self._input_config,
             updates=updated_config,
             table_member=self._input_config_table,
@@ -277,14 +278,15 @@ class EventProcessor(Thread, ZMQEndpoint):
         device_key, updated_config = config_update
         EventProcessor._update_config(
             device_key=device_key,
+            devices=self.outputs,
             device_configs=self._output_config,
             updates=updated_config,
             table_member=self._output_config_table,
             primary_key={'device_key': device_key})
 
     @staticmethod
-    def _update_config(device_key, device_configs, updates, table_member, primary_key):
-        device_label = device_configs[device_key]['device_label']
+    def _update_config(device_key, devices, device_configs, updates, table_member, primary_key):
+        device_label = devices[device_key]['device_label']
         device_config = dict()
         try:
             device_config = device_configs[device_key]
