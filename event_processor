@@ -312,7 +312,11 @@ class EventProcessor(Thread, ZMQEndpoint):
                 saved = table_member.put_item(**put_args)
             if saved:
                 flash("Updated '{}'".format(device_label))
-                device_config.update(updates)
+                for key, value in updates.items():
+                    if value:
+                        device_config[key] = value
+                    else:
+                        del device_config[key]
             else:
                 flash("'{}' not updated.".format(device_label), category='warning')
         except Exception as e:
