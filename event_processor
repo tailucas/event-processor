@@ -256,10 +256,9 @@ class EventProcessor(Thread, ZMQEndpoint):
     @input_config.setter
     def input_config(self, config_update):
         device_key, updated_config = config_update
-        device_label = self.inputs[device_key]['device_label']
         EventProcessor._update_config(
-            device_label=device_label,
-            device_config=self._input_config[device_key],
+            device_key=device_key,
+            device_configs=self._input_config,
             updates=updated_config,
             table_member=self._input_config_table,
             primary_key={'device_key': device_key})
@@ -276,16 +275,21 @@ class EventProcessor(Thread, ZMQEndpoint):
     @output_config.setter
     def output_config(self, config_update):
         device_key, updated_config = config_update
-        device_label = self.outputs[device_key]['device_label']
         EventProcessor._update_config(
-            device_label=device_label,
-            device_config=self._output_config[device_key],
+            device_key=device_key,
+            device_configs=self._output_config,
             updates=updated_config,
             table_member=self._output_config_table,
             primary_key={'device_key': device_key})
 
     @staticmethod
-    def _update_config(device_label, device_config, updates, table_member, primary_key):
+    def _update_config(device_key, device_configs, updates, table_member, primary_key):
+        device_label = device_configs[device_key]['device_label']
+        device_config = dict()
+        try:
+            device_config = device_configs[device_key]
+        except KeyError:
+            device_configs[device_key] = device_config
         try:
             table_name = table_member.table_name
             log.info("Updating table '{}'...".format(table_name))
