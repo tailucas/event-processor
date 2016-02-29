@@ -115,15 +115,23 @@ def input_config():
         if len(group_name) > 0:
             to_save['group_name'] = group_name
             to_save['customized'] = True
+        else:
+            to_save['group_name'] = None
         if len(request.form['activations_per_trigger']) > 0:
             to_save['activations_per_trigger'] = int(request.form['activations_per_trigger'])
             to_save['customized'] = True
+        else:
+            to_save['activations_per_trigger'] = None
         if len(request.form['activation_interval']) > 0:
             to_save['activation_interval'] = int(request.form['activation_interval'])
             to_save['customized'] = True
+        else:
+            to_save['activation_interval'] = None
         if len(request.form['trigger_window']) > 0:
             to_save['trigger_window'] = int(request.form['trigger_window'])
             to_save['customized'] = True
+        else:
+            to_save['trigger_window'] = None
         event_processor.input_config = (
             request.form['device_key'],
             to_save
@@ -232,8 +240,8 @@ class EventProcessor(Thread, ZMQEndpoint):
         return self._general_config
 
     @general_config.setter
-    def general_config(self, config_tuple):
-        config_key, config_data = config_tuple
+    def general_config(self, config_update):
+        config_key, updated_config = config_update
         self._general_config = dict()
 
     @property
@@ -246,13 +254,13 @@ class EventProcessor(Thread, ZMQEndpoint):
         return devices
 
     @input_config.setter
-    def input_config(self, config_tuple):
-        device_key, config_data = config_tuple
-        self._input_config = EventProcessor._update_config(
-            device_key=device_key,
-            devices=self.inputs,
-            device_config=self._input_config,
-            config_data=config_data,
+    def input_config(self, config_update):
+        device_key, updated_config = config_update
+        device_label = self.inputs[device_key]['device_label']
+        EventProcessor._update_config(
+            device_label=device_label,
+            device_config=self._input_config[device_key],
+            updates=updated_config,
             table_member=self._input_config_table,
             primary_key={'device_key': device_key})
 
@@ -266,58 +274,45 @@ class EventProcessor(Thread, ZMQEndpoint):
         return devices
 
     @output_config.setter
-    def output_config(self, config_tuple):
-        device_key, config_data = config_tuple
-        self._output_config = EventProcessor._update_config(
-            device_key=device_key,
-            devices=self.outputs,
-            device_config=self._output_config,
-            config_data=config_data,
+    def output_config(self, config_update):
+        device_key, updated_config = config_update
+        device_label = self.outputs[device_key]['device_label']
+        EventProcessor._update_config(
+            device_label=device_label,
+            device_config=self._output_config[device_key],
+            updates=updated_config,
             table_member=self._output_config_table,
             primary_key={'device_key': device_key})
 
     @staticmethod
-    def _update_config(device_key, devices, device_config, config_data, table_member, primary_key):
-        device_label = devices[device_key]['device_label']
-        updated_config = dict()
+    def _update_config(device_label, device_config, updates, table_member, primary_key):
         try:
-            if len(config_data) > 0:
-                table_name = table_member.table_name
-                log.info("Updating table '{}'...".format(table_name))
-                try:
-                    table_item = table_member.get_item(**primary_key)
-                    for key, value in config_data.items():
+            table_name = table_member.table_name
+            log.info("Updating table '{}'...".format(table_name))
+            try:
+                table_item = table_member.get_item(**primary_key)
+                for key, value in updates.items():
+                    if value:
                         table_item[key] = value
-                    saved = table_item.partial_save()
-                except ItemNotFound:
-                    log.debug("Item '{}' not found in '{}'. Creating new.".format(primary_key, table_name))
-                    put_args = dict()
-                    put_args['data'] = dict()
-                    put_args['data'].update(primary_key)
-                    put_args['data'].update(config_data)
-                    saved = table_member.put_item(**put_args)
-            else:
-                saved = table_member.delete_item(**primary_key)
+                    else:
+                        del table_item[key]
+                saved = table_item.partial_save()
+            except ItemNotFound:
+                log.debug("Item '{}' not found in '{}'. Creating new.".format(primary_key, table_name))
+                put_args = dict()
+                put_args['data'] = dict()
+                put_args['data'].update(primary_key)
+                put_args['data'].update(updates)
+                saved = table_member.put_item(**put_args)
             if saved:
                 flash("Updated '{}'".format(device_label))
-                for key, value in config_data.items():
-                    log.debug("Updating '{}': '{}' = '{}'".format(device_key, key, value))
-                    updated_config[key] = value
+                device_config.update(updates)
             else:
                 flash("'{}' not updated.".format(device_label), category='warning')
-                return None
         except Exception as e:
             message = "Cannot update '{}'".format(device_label)
             log.exception(message)
             flash(message='{}: {}'.format(message, e.message), category='danger')
-        if updated_config:
-            if len(updated_config) == 0:
-                del device_config[device_key]
-            else:
-                if device_key not in device_config:
-                    device_config[device_key] = dict()
-                device_config[device_key].update(updated_config)
-        return device_config
 
     def _update_devices(self, device_origin, device_info):
         for input_outputs, origin, io in [(self.inputs, self._input_origin, 'inputs'),
