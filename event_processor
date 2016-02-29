@@ -300,7 +300,7 @@ class EventProcessor(Thread, ZMQEndpoint):
                 for key, value in updates.items():
                     if value:
                         table_item[key] = value
-                    else:
+                    elif key in table_item:
                         del table_item[key]
                 saved = table_item.partial_save()
             except ItemNotFound:
@@ -315,7 +315,7 @@ class EventProcessor(Thread, ZMQEndpoint):
                 for key, value in updates.items():
                     if value:
                         device_config[key] = value
-                    else:
+                    elif key in device_config:
                         del device_config[key]
             else:
                 flash("'{}' not updated.".format(device_label), category='warning')
