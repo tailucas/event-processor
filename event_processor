@@ -110,32 +110,37 @@ def show_config():
 @rest_api.route('/input_config', methods=['GET', 'POST'])
 def input_config():
     if request.method == 'POST':
-        to_save = dict()
-        group_name = request.form['group_name'].strip()
-        if len(group_name) > 0:
-            to_save['group_name'] = group_name
-            to_save['customized'] = True
-        else:
-            to_save['group_name'] = None
-        if len(request.form['activations_per_trigger']) > 0:
-            to_save['activations_per_trigger'] = int(request.form['activations_per_trigger'])
-            to_save['customized'] = True
-        else:
-            to_save['activations_per_trigger'] = None
-        if len(request.form['activation_interval']) > 0:
-            to_save['activation_interval'] = int(request.form['activation_interval'])
-            to_save['customized'] = True
-        else:
-            to_save['activation_interval'] = None
-        if len(request.form['trigger_window']) > 0:
-            to_save['trigger_window'] = int(request.form['trigger_window'])
-            to_save['customized'] = True
-        else:
-            to_save['trigger_window'] = None
-        event_processor.input_config = (
-            request.form['device_key'],
-            to_save
-        )
+        device_key = request.form['device_key']
+        try:
+            to_save = dict()
+            group_name = request.form['group_name'].strip()
+            if len(group_name) > 0:
+                to_save['group_name'] = group_name
+                to_save['customized'] = True
+            else:
+                to_save['group_name'] = None
+            if len(request.form['activations_per_trigger']) > 0:
+                to_save['activations_per_trigger'] = int(request.form['activations_per_trigger'])
+                to_save['customized'] = True
+            else:
+                to_save['activations_per_trigger'] = None
+            if len(request.form['activation_interval']) > 0:
+                to_save['activation_interval'] = int(request.form['activation_interval'])
+                to_save['customized'] = True
+            else:
+                to_save['activation_interval'] = None
+            if len(request.form['trigger_window']) > 0:
+                to_save['trigger_window'] = int(request.form['trigger_window'])
+                to_save['customized'] = True
+            else:
+                to_save['trigger_window'] = None
+            event_processor.input_config = (
+                device_key,
+                to_save
+            )
+        except ValueError as e:
+            message = "Cannot update '{}'".format(event_processor.input_config[device_key]['device_label'])
+            flash(message='{}: {}'.format(message, e.message), category='danger')
     return render_template('input_config.html',
                            inputs=event_processor.input_config,
                            default_activations_per_trigger=int(config.get('config', 'default_activations_per_trigger')),
