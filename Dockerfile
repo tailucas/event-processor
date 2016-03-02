@@ -32,7 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY ./config/pip_freeze /tmp/
 # update pip
-RUN pip install --upgrade pip
+RUN pip install --ignore-installed pip && pip install pip==8.0.3
 RUN pip install --upgrade setuptools
 RUN pip install -r /tmp/pip_freeze
 # show outdated packages since the freeze
