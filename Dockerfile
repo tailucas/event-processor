@@ -1,4 +1,4 @@
-FROM resin/rpi-raspbian:wheezy-20160106
+FROM resin/rpi-raspbian:wheezy-20160113
 
 MAINTAINER db2inst1 <db2inst1@webafrica.org.za>
 LABEL Description="event_processor" Vendor="db2inst1" Version="1.0"
@@ -30,10 +30,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     vim \
     wget
 
-RUN rm -rf /tmp/*
 COPY ./config/pip_freeze /tmp/
 # update pip
-RUN pip install -U pip
+RUN pip install --upgrade pip
 RUN pip install --upgrade setuptools
 RUN pip install -r /tmp/pip_freeze
 # show outdated packages since the freeze
