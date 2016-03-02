@@ -30,6 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     vim \
     wget
 
+RUN rm -rf /tmp/*
 COPY ./config/pip_freeze /tmp/
 # update pip
 RUN pip install -U pip
