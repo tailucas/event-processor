@@ -28,11 +28,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ssl-cert \
     supervisor \
     vim \
-    wget
+    wget \
+    && pip install -U pip
 
 COPY ./config/pip_freeze /tmp/
-# update pip
-RUN pip install --ignore-installed pip==8.0.3
 RUN pip install --upgrade setuptools
 RUN pip install -r /tmp/pip_freeze
 # show outdated packages since the freeze
