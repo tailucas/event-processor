@@ -180,6 +180,8 @@ def output_config():
         device_params = request.form['device_params'].strip()
         if len(device_params) > 0:
             to_save['device_params'] = device_params
+        else:
+            to_save['device_params'] = None
         event_processor.output_config = (
             request.form['device_key'],
             to_save
