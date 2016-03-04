@@ -112,28 +112,30 @@ def input_config():
     if request.method == 'POST':
         device_key = request.form['device_key']
         try:
+            customized = False
             to_save = dict()
             group_name = request.form['group_name'].strip()
             if len(group_name) > 0:
                 to_save['group_name'] = group_name
-                to_save['customized'] = True
+                customized = True
             else:
                 to_save['group_name'] = None
             if len(request.form['activations_per_trigger']) > 0:
                 to_save['activations_per_trigger'] = int(request.form['activations_per_trigger'])
-                to_save['customized'] = True
+                customized = True
             else:
                 to_save['activations_per_trigger'] = None
             if len(request.form['activation_interval']) > 0:
                 to_save['activation_interval'] = int(request.form['activation_interval'])
-                to_save['customized'] = True
+                customized = True
             else:
                 to_save['activation_interval'] = None
             if len(request.form['trigger_window']) > 0:
                 to_save['trigger_window'] = int(request.form['trigger_window'])
-                to_save['customized'] = True
+                customized = True
             else:
                 to_save['trigger_window'] = None
+            to_save['customized'] = customized
             event_processor.input_config = (
                 device_key,
                 to_save
