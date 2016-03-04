@@ -3,6 +3,8 @@ FROM resin/rpi-raspbian:wheezy
 MAINTAINER db2inst1 <db2inst1@webafrica.org.za>
 LABEL Description="event_processor" Vendor="db2inst1" Version="1.0"
 
+COPY ./pipstrap.py /tmp/
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     alsa-utils \
     ca-certificates \
@@ -29,10 +31,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     supervisor \
     vim \
     wget \
-    && pip install -U pip
+    # pip 8
+    && python /tmp/pipstrap.py
 
 COPY ./config/pip_freeze /tmp/
-RUN pip install --upgrade setuptools
 RUN pip install -r /tmp/pip_freeze
 # show outdated packages since the freeze
 RUN pip list --outdated
