@@ -1,17 +1,16 @@
 {% extends "layout.html" %}
 {% set active_page = "index" %}
 {% block body %}
-            <!-- Main component for a primary marketing message or call to action -->
-            <div class="jumbotron">
-                <div class="row">
-                    <form action={{url_for('notification_toggle')}} method='POST'>
-                        <button type="submit" class="btn btn-lg btn-success">{{ notifications }}</button>
-                    </form>
-                </div>
-                <div class="row">
-                    <form action={{url_for('relay_ctrl_toggle')}} method='POST'>
-                        <button type="submit" class="btn btn-lg btn-success">{{ relays }}</button>
-                    </form>
-                </div>
-            </div>
+<div class="container">
+  <ul class="list-group">
+    {% for input_device_key, input_device in inputs|dictsort %}
+    <a class="list-group-item active">{% if 'linked_inputs' in input_device %}<span class="badge">{{ input_device['linked_inputs']|count }}</span>{% endif %}
+      <button type="button" class="btn btn-success">{{ input_device['device_label'] }} ON</button>
+      {% for linked_input_device_key, linked_input_device in input_device['linked_inputs']|dictsort %}
+      <p class="list-group-item-text">{{ linked_input_device['device_label'] }}</p>
+      {% endfor %}
+    </a>
+    {% endfor %}
+  </ul>
+</div>
 {% endblock %}
