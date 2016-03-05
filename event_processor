@@ -414,13 +414,15 @@ class EventProcessor(Thread, ZMQEndpoint):
         self.metric_namespace = '{}:{}'.format(config.get('metric', 'namespace'), APP)
         # load configuration data
         self._general_config, self._general_config_table = self.__setup_config_table(
-            config.get('config', 'general_config_table'))
+            table_name=config.get('config', 'general_config_table'),
+            primary_key='config_key')
         self._input_config, self._input_config_table = self.__setup_config_table(
-            config.get('config', 'input_config_table'))
+            table_name=config.get('config', 'input_config_table'))
         self._input_groups, self._input_groups_table = self.__setup_config_table(
-            config.get('config', 'input_groups_table'))
+            table_name=config.get('config', 'input_groups_table'),
+            primary_key='group_name')
         self._output_config, self._output_config_table = self.__setup_config_table(
-            config.get('config', 'output_config_table'))
+            table_name=config.get('config', 'output_config_table'))
 
         while True:
             try:
