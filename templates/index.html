@@ -6,9 +6,11 @@
     {% for input_device_key, input_device in inputs|dictsort %}
     <a class="list-group-item active">{% if 'linked_inputs' in input_device %}<span class="badge">{{ input_device['linked_inputs']|count }}</span>{% endif %}
       <button type="button" class="btn btn-success">{{ input_device['device_label'] }} ON</button>
-      {% for linked_input_device_key, linked_input_device in input_device['linked_inputs']|dictsort %}
-      <p class="list-group-item-text">{{ linked_input_device['device_label'] }}</p>
+      {% if 'linked_inputs' in input_device %}
+      {% for linked_input_device_key in input_device['linked_inputs']|sort %}
+      <p class="list-group-item-text">{{ inputs[linked_input_device_key]['device_label'] }}</p>
       {% endfor %}
+      {% endif %}
     </a>
     {% endfor %}
   </ul>
