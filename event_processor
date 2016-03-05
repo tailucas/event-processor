@@ -74,6 +74,7 @@ def debug():
 def index():
     group_disabled = dict()
     device_listing = dict()
+    input_labels = dict()
     for device_key, device_config in event_processor.input_config.items():
         if 'group_name' not in device_config:
             device_listing[device_key] = device_config
@@ -81,8 +82,11 @@ def index():
             group_name = device_config['group_name']
             if group_name not in device_listing:
                 device_listing[group_name] = dict()
-                device_listing[group_name]['grouped_inputs'] = list()
-            device_listing[group_name]['grouped_inputs'].append(device_config)
+                device_listing[group_name]['grouped_inputs'] = dict()
+            device_listing[group_name]['grouped_inputs'][device_key] = device_config
+            if group_name not in input_labels:
+                input_labels[group_name] = list()
+            input_labels[group_name].append(device_config['device_label'])
             # manufacture a device label for the group
             device_listing[group_name]['device_label'] = group_name
             # check for enabled/disabled disparity
@@ -93,7 +97,7 @@ def index():
                     device_listing[group_name]['mixed_disabled'] = True
     if request.method == 'POST':
         device_key = request.form['device_key']
-        if 'grouped_inputs' not in device_listing:
+        if 'grouped_inputs' not in device_listing[device_key]:
             disable = False
             if 'device_disabled' not in device_listing[device_key]:
                 disable = True
@@ -106,23 +110,24 @@ def index():
                 {'device_disabled': disable}
             )
         else:
-            devices = device_listing[device_key]['grouped_inputs']
             disable = False
             # fail enabled
-            if 'mixed_disabled' not in devices:
-                disable = group_disabled[group_name]
+            if 'mixed_disabled' not in device_listing[device_key]:
+                if device_key in group_disabled:
+                    disable = group_disabled[device_key]
             else:
                 del device_listing[device_key]['mixed_disabled']
             if not disable:
                 disable = None
-            for device in devices['grouped_inputs']:
-                device['device_disabled'] = disable
+            for grouped_device_key, grouped_device in device_listing[device_key]['grouped_inputs'].items():
+                grouped_device['device_disabled'] = disable
                 event_processor.input_config = (
-                    device['device_key'],
+                    grouped_device_key,
                     {'device_disabled': disable}
                 )
     return render_template('index.html',
-                           inputs=device_listing)
+                           inputs=device_listing,
+                           input_labels=input_labels)
 
 
 @rest_api.route('/config', methods=['GET', 'POST'])
