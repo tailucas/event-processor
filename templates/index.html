@@ -6,9 +6,11 @@
     {% for device_label, input_devices in devices|dictsort %}
     <a class="list-group-item active">{% if input_devices is sequence %}<span class="badge">{{ input_devices|count }}</span>{% endif %}
       <button type="button" class="btn btn-success">{{ device_label }} ON</button>
+      {% if input_devices %}
       {% for input_device_label in input_devices|sort %}
       <p class="list-group-item-text">{{ input_device_label }}</p>
       {% endfor %}
+      {% endif %}
     </a>
     {% endfor %}
   </ul>
