@@ -85,6 +85,7 @@ def index():
         else:
             group_name = device_config['group_name']
             if group_name not in device_listing:
+                device_listing[group_name] = dict()
                 device_listing[group_name]['grouped_inputs'] = list()
             device_listing[group_name]['grouped_inputs'].append(device_config)
             # manufacture a device label for the group
