@@ -1,18 +1,20 @@
 {% extends "layout.html" %}
 {% set active_page = "index" %}
 {% block body %}
-<div class="container">
-  <ul class="list-group">
-    {% for device_label, input_devices in devices|dictsort %}
-    <a class="list-group-item active">{% if input_devices is sequence %}<span class="badge">{{ input_devices|count }}</span>{% endif %}
-      <button type="button" class="btn btn-success">{{ device_label }} ON</button>
-      {% if input_devices %}
-      {% for input_device_label in input_devices|sort %}
-      <p class="list-group-item-text">{{ input_device_label }}</p>
+<form class="form-horizontal" role="form" method='POST'>
+  <div class="container">
+    <ul class="list-group">
+      {% for input_device_key, input_device in inputs|dictsort %}
+      <a class="list-group-item{% if input_device['device_enabled'] %} active{% endif %}">{% if input_device is sequence %}<span class="badge">{{ input_device|count }}</span>{% endif %}
+        <button type="submit" class="btn btn-success" name="device_key" value="{{ input_device_key }}">{{ input_device['device_label'] }} <span class="glyphicon glyphicon-volume-{% if input_device['device_enabled'] %}up{% else %}off{% endif %}"></span></button>
+        {% if input_device is sequence %}
+        {% for grouped_input_device in input_device|sort %}
+        <p class="list-group-item-text">{{ grouped_input_device['device_label'] }}</p>
+        {% endfor %}
+        {% endif %}
+      </a>
       {% endfor %}
-      {% endif %}
-    </a>
-    {% endfor %}
-  </ul>
-</div>
+    </ul>
+  </div>
+</form>
 {% endblock %}
