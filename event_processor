@@ -72,8 +72,18 @@ def debug():
 
 @rest_api.route('/', methods=['GET', 'POST'])
 def index():
+    device_listing = dict()
+    for device_key, device_config in event_processor.input_config.items():
+        device_label = device_config['device_label']
+        if 'group_name' in device_config:
+            group_name = device_config['group_name']
+            if group_name not in device_listing:
+                device_listing[group_name] = list()
+            device_listing[group_name].append(device_label)
+        else:
+            device_listing[device_label] = None
     return render_template('index.html',
-                           inputs=event_processor.input_config)
+                           devices=device_listing)
 
 
 @rest_api.route('/config', methods=['GET', 'POST'])
