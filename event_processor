@@ -209,6 +209,9 @@ class EventProcessor(Thread, ZMQEndpoint):
         self._input_config = None
         self._input_config_table = None
 
+        self._input_groups = None
+        self._input_groups_table = None
+
         self._output_config = None
         self._output_config_table = None
 
@@ -378,7 +381,7 @@ class EventProcessor(Thread, ZMQEndpoint):
                                      timestamp=timestamp,
                                      unit=unit)
 
-    def __setup_config_table(self, table_name):
+    def __setup_config_table(self, table_name, primary_key='device_key'):
         log.info("Loading Dynamo table '{}'...".format(table_name))
         member_table = Table(
             table_name=table_name,
@@ -389,7 +392,7 @@ class EventProcessor(Thread, ZMQEndpoint):
             device_key = None
             member_config = dict()
             for key, value in result.items():
-                if key == 'device_key':
+                if key == primary_key:
                     device_key = value
                 else:
                     member_config.update([(key, value)])
@@ -414,6 +417,8 @@ class EventProcessor(Thread, ZMQEndpoint):
             config.get('config', 'general_config_table'))
         self._input_config, self._input_config_table = self.__setup_config_table(
             config.get('config', 'input_config_table'))
+        self._input_groups, self._input_groups_table = self.__setup_config_table(
+            config.get('config', 'input_groups_table'))
         self._output_config, self._output_config_table = self.__setup_config_table(
             config.get('config', 'output_config_table'))
 
