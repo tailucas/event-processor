@@ -90,7 +90,8 @@ def index():
             # manufacture a device label for the group
             device_listing[group_name]['device_label'] = group_name
             # check for enabled/disabled disparity
-            if 'device_disabled' in device_config and device_config['device_disabled']:
+            if 'device_disabled' in device_config:
+                device_listing[group_name]['device_disabled'] = device_config['device_disabled']
                 if group_name not in group_disabled:
                     group_disabled[group_name] = device_config['device_disabled']
                 elif group_disabled[group_name] != device_config['device_disabled']:
@@ -98,11 +99,10 @@ def index():
     if request.method == 'POST':
         device_key = request.form['device_key']
         if 'grouped_inputs' not in device_listing[device_key]:
-            disable = False
             if 'device_disabled' not in device_listing[device_key]:
                 disable = True
                 device_listing[device_key]['device_disabled'] = True
-            elif not device_listing[device_key]['device_disabled']:
+            else:
                 disable = None
                 del device_listing[device_key]['device_disabled']
             event_processor.input_config = (
@@ -110,15 +110,17 @@ def index():
                 {'device_disabled': disable}
             )
         else:
-            disable = False
-            # fail enabled
-            if 'mixed_disabled' not in device_listing[device_key]:
-                if device_key in group_disabled:
-                    disable = group_disabled[device_key]
-            else:
-                del device_listing[device_key]['mixed_disabled']
-            if not disable:
+            # ambiguity => enabled
+            if 'mixed_disabled' in device_listing[device_key]:
                 disable = None
+                # ambiguity resolved
+                del device_listing[device_key]['mixed_disabled']
+            elif 'device_disabled' in device_listing[device_key]:
+                disable = None
+                del device_listing[device_key]['device_disabled']
+            else:
+                disable = True
+                device_listing[device_key]['device_disabled'] = True
             for grouped_device_key, grouped_device in device_listing[device_key]['grouped_inputs'].items():
                 grouped_device['device_disabled'] = disable
                 event_processor.input_config = (
@@ -333,6 +335,7 @@ class EventProcessor(Thread, ZMQEndpoint):
             table_name = table_member.table_name
             log.info("Updating table '{}'...".format(table_name))
             try:
+                log.debug("Item '{}' to be updated with '{}'".format(primary_key, updates))
                 table_item = table_member.get_item(**primary_key)
                 for key, value in updates.items():
                     if value:
