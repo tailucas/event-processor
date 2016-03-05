@@ -5,8 +5,8 @@
   <div class="container">
     <ul class="list-group">
       {% for input_device_key, input_device in inputs|dictsort %}
-      <a class="list-group-item{% if input_device['device_enabled'] %} active{% endif %}">{% if 'grouped_inputs' in input_device %}<span class="badge">{{ input_device['grouped_inputs']|count }}</span>{% endif %}
-        <button type="submit" class="btn btn-success" name="device_key" value="{{ input_device_key }}">{{ input_device['device_label'] }} <span class="glyphicon glyphicon-volume-{% if input_device['device_enabled'] %}up{% else %}off{% endif %}"></span></button>
+      <a class="list-group-item{% if not input_device['device_disabled'] %} active{% endif %}">{% if 'grouped_inputs' in input_device %}<span class="badge">{{ input_device['grouped_inputs']|count }}</span>{% endif %}
+        <button type="submit" class="btn btn-{% if input_device['mixed_disabled'] %}warning{% else %}success" name="device_key" value="{{ input_device_key }}">{{ input_device['device_label'] }} <span class="glyphicon glyphicon-volume-{% if not input_device['device_disabled'] %}up{% elif input_device['mixed_disabled'] %}down{% else %}off{% endif %}"></span></button>
         {% for grouped_input_device in input_device['grouped_inputs']|sort %}
         <p class="list-group-item-text">{{ grouped_input_device['device_label'] }}</p>
         {% endfor %}

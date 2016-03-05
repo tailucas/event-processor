@@ -72,16 +72,11 @@ def debug():
 
 @rest_api.route('/', methods=['GET', 'POST'])
 def index():
-    if request.method == 'POST':
-        if event_processor._inputs_enabled:
-            event_processor._inputs_enabled = False
-        else:
-            event_processor._inputs_enabled = True
+    group_disabled = dict()
     device_listing = dict()
     for device_key, device_config in event_processor.input_config.items():
         if 'group_name' not in device_config:
             device_listing[device_key] = device_config
-            device_listing[device_key]['device_enabled'] = event_processor._inputs_enabled
         else:
             group_name = device_config['group_name']
             if group_name not in device_listing:
@@ -90,7 +85,42 @@ def index():
             device_listing[group_name]['grouped_inputs'].append(device_config)
             # manufacture a device label for the group
             device_listing[group_name]['device_label'] = group_name
-            device_listing[group_name]['device_enabled'] = event_processor._inputs_enabled
+            # check for enabled/disabled disparity
+            if 'device_disabled' in device_config and device_config['device_disabled']:
+                if group_name not in group_disabled:
+                    group_disabled[group_name] = device_config['device_disabled']
+                elif group_disabled[group_name] != device_config['device_disabled']:
+                    device_listing[group_name]['mixed_disabled'] = True
+    if request.method == 'POST':
+        device_key = request.form['device_key']
+        if 'grouped_inputs' not in device_listing:
+            disable = False
+            if 'device_disabled' not in device_listing[device_key]:
+                disable = True
+                device_listing[device_key]['device_disabled'] = True
+            elif not device_listing[device_key]['device_disabled']:
+                disable = None
+                del device_listing[device_key]['device_disabled']
+            event_processor.input_config = (
+                device_key,
+                {'device_disabled': disable}
+            )
+        else:
+            devices = device_listing[device_key]['grouped_inputs']
+            disable = False
+            # fail enabled
+            if 'mixed_disabled' not in devices:
+                disable = group_disabled[group_name]
+            else:
+                del device_listing[device_key]['mixed_disabled']
+            if not disable:
+                disable = None
+            for device in devices['grouped_inputs']:
+                device['device_disabled'] = disable
+                event_processor.input_config = (
+                    device['device_key'],
+                    {'device_disabled': disable}
+                )
     return render_template('index.html',
                            inputs=device_listing)
 
@@ -224,8 +254,6 @@ class EventProcessor(Thread, ZMQEndpoint):
 
         self._general_config = None
         self._general_config_table = None
-
-        self._inputs_enabled = False
 
         self._input_config = None
         self._input_config_table = None
