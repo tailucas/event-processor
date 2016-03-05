@@ -85,8 +85,8 @@ def index():
         else:
             group_name = device_config['group_name']
             if group_name not in device_listing:
-                device_listing[group_name] = list()
-            device_listing[group_name].append(device_config)
+                device_listing[group_name]['grouped_inputs'] = list()
+            device_listing[group_name]['grouped_inputs'].append(device_config)
             # manufacture a device label for the group
             device_listing[group_name]['device_label'] = group_name
             device_listing[group_name]['device_enabled'] = event_processor._inputs_enabled
