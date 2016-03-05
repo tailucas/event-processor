@@ -209,9 +209,6 @@ class EventProcessor(Thread, ZMQEndpoint):
         self._input_config = None
         self._input_config_table = None
 
-        self._input_groups = None
-        self._input_groups_table = None
-
         self._output_config = None
         self._output_config_table = None
 
@@ -418,9 +415,6 @@ class EventProcessor(Thread, ZMQEndpoint):
             primary_key='config_key')
         self._input_config, self._input_config_table = self.__setup_config_table(
             table_name=config.get('config', 'input_config_table'))
-        self._input_groups, self._input_groups_table = self.__setup_config_table(
-            table_name=config.get('config', 'input_groups_table'),
-            primary_key='group_name')
         self._output_config, self._output_config_table = self.__setup_config_table(
             table_name=config.get('config', 'output_config_table'))
 
