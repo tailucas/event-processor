@@ -12,7 +12,7 @@
                     </div>
                     <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if loop.first %} in{% endif %}">
                         <div class="panel-body">
-                            <form class="form-horizontal" role="form" method='POST'>
+                            <form class="form" role="form" method='POST'>
                                 <div class="form-group">
                                     <label for="group_name">Group name:</label>
                                     <input id="group_name" class="form-control" type="text" name="group_name" placeholder="{{ input_device['device_label'] }}" value="{{ input_device['group_name'] }}">
