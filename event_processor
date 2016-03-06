@@ -96,6 +96,8 @@ def index():
                     group_disabled[group_name] = device_config['device_disabled']
                 elif group_disabled[group_name] != device_config['device_disabled']:
                     device_listing[group_name]['mixed_disabled'] = True
+            elif group_name in group_disabled and group_disabled[group_name]:
+                device_listing[group_name]['mixed_disabled'] = True
     if request.method == 'POST':
         device_key = request.form['device_key']
         if 'grouped_inputs' not in device_listing[device_key]:
@@ -115,12 +117,13 @@ def index():
                 disable = None
                 # ambiguity resolved
                 del device_listing[device_key]['mixed_disabled']
-            elif 'device_disabled' in device_listing[device_key]:
-                disable = None
                 del device_listing[device_key]['device_disabled']
-            else:
+            elif 'device_disabled' not in device_listing[device_key]:
                 disable = True
                 device_listing[device_key]['device_disabled'] = True
+            else:
+                disable = None
+                del device_listing[device_key]['device_disabled']
             for grouped_device_key, grouped_device in device_listing[device_key]['grouped_inputs'].items():
                 grouped_device['device_disabled'] = disable
                 event_processor.input_config = (
