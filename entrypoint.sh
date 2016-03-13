@@ -58,12 +58,12 @@ echo "$DEVICE_NAME" > /etc/hostname
 echo "127.0.1.1 ${DEVICE_NAME}" >> /etc/hosts
 
 if [ -n "${RSYSLOG_SERVER:-}" ] && ! grep -q "$RSYSLOG_SERVER" /etc/rsyslog.conf; then
+  set +x
   if [ -n "${RSYSLOG_TOKEN:-}" ] && ! grep -q "$RSYSLOG_TOKEN" /etc/rsyslog.conf; then
-    set +x
-    echo "\$template LogentriesFormat,\"${RSYSLOG_TOKEN} %HOSTNAME% %syslogtag%%msg%\n\"" > /etc/rsyslog.conf
-    set -x
+    echo "\$template LogentriesFormat,\"${RSYSLOG_TOKEN} %HOSTNAME% %syslogtag%%msg%\n\"" >> /etc/rsyslog.conf
     RSYSLOG_TEMPLATE=";LogentriesFormat"
   fi
+  set -x
   echo "*.*          @@${RSYSLOG_SERVER}${RSYSLOG_TEMPLATE:-}" | tee -a /etc/rsyslog.conf
 fi
 
