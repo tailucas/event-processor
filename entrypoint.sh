@@ -68,9 +68,11 @@ if [ -n "${RSYSLOG_SERVER:-}" ] && ! grep -q "$RSYSLOG_SERVER" /etc/rsyslog.conf
 fi
 
 # log archival (no tee for secrets)
-cat /var/awslogs/etc/aws.conf | python /app/config_interpol /app/config/aws.conf > /var/awslogs/etc/aws.conf.new
-mv /var/awslogs/etc/aws.conf /var/awslogs/etc/aws.conf.backup
-mv /var/awslogs/etc/aws.conf.new /var/awslogs/etc/aws.conf
+if [ -d /var/awslogs/etc/ ]; then
+  cat /var/awslogs/etc/aws.conf | python /app/config_interpol /app/config/aws.conf > /var/awslogs/etc/aws.conf.new
+  mv /var/awslogs/etc/aws.conf /var/awslogs/etc/aws.conf.backup
+  mv /var/awslogs/etc/aws.conf.new /var/awslogs/etc/aws.conf
+fi
 
 # configuration update
 export ETH0_IP="$(/sbin/ifconfig eth0 | grep 'inet addr' | awk '{ print $2 }' | cut -f2 -d ':')"
