@@ -230,6 +230,7 @@ def output_config():
 def thread_nanny(threads_tracked):
     while True:
         # TODO: check on overdue heartbeats?
+        # TODO: exit on thread death?
         threads_alive = Set()
         for thread_info in threading.enumerate():
             if thread_info.isAlive():
