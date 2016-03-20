@@ -230,7 +230,6 @@ def output_config():
 def thread_nanny(threads_tracked):
     while True:
         # TODO: check on overdue heartbeats?
-        # TODO: exit on thread death?
         threads_alive = Set()
         for thread_info in threading.enumerate():
             if thread_info.isAlive():
@@ -238,6 +237,7 @@ def thread_nanny(threads_tracked):
         if len(threads_tracked - threads_alive) > 0:
             message = 'A thread has died. Expected threads are [{}], missing is [{}].'.format(threads_tracked, threads_tracked - threads_alive)
             log.error(message)
+            sys.exit(1)
         time.sleep(10)
 
 
