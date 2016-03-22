@@ -494,11 +494,16 @@ class EventProcessor(Thread, ZMQEndpoint):
                 event = self.socket.recv_pyobj()
                 log.debug(event)
                 if isinstance(event, dict):
-                    for origin, data in event.items():
-                        if 'data' in data:
-                            if 'device_info' in data['data']:
-                                self._update_devices(device_origin=origin, device_info=data['data']['device_info'])
-                            if 'samples' in data['data']:
+                    for origin, event_data in event.items():
+                        timestamp = None
+                        if 'timestamp' in event_data:
+                            timestamp = dateutil.parser.parse(event_data['timestamp'])
+                        else:
+                            tiemstamp = datetime.utcnow().replace(tzinfo=pytz.utc)
+                        if 'data' in event_data:
+                            if 'device_info' in event_data['data']:
+                                self._update_devices(device_origin=origin, device_info=event_data['data']['device_info'])
+                            if 'active_devices' in event_data['data']:
                                 log.info(event)
             except ContextTerminated:
                 break
