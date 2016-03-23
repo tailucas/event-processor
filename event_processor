@@ -383,21 +383,31 @@ class EventProcessor(Thread, ZMQEndpoint):
         for input_outputs, origin, io in [(self.inputs, self._input_origin, 'inputs'),
                                           (self.outputs, self._output_origin, 'outputs')]:
             for device in device_info[io]:
-                # device_key must always be present
-                device_key = device['device_key']
-                # has this device been seen?
-                if device_key not in origin:
-                    origin[device_key] = device_origin
-                elif origin[device_key] != device_origin:
-                    log.error("Device with key '{}' is already present at '{}' "
-                              "but is also present at '{}' and is ignored.".format(device_key,
-                                                                                   origin[device_key],
-                                                                                   device_origin))
-                    continue
-                if device_key not in input_outputs:
-                    input_outputs[device_key] = device
-                    devices_updated += 1
+                try:
+                    devices_updated += self._update_device(
+                        input_outputs=input_outputs,
+                        origin=origin,
+                        device_origin=device_origin,
+                        device=device
+                    )
+                except RuntimeError:
+                    log.exception('Bad device @ {}.'.format(device_origin))
         return devices_updated
+
+    def _update_device(self, input_outputs, origin, device_origin, device):
+        # device_key must always be present
+        device_key = device['device_key']
+        # has this device been seen?
+        if device_key not in origin:
+            origin[device_key] = device_origin
+        elif origin[device_key] != device_origin:
+            raise RuntimeError("Device with key '{}' is already present at '{}' "
+                               "but is also present at '{}' and is ignored.".format(device_key,
+                                                                                    origin[device_key],
+                                                                                    device_origin))
+        if device_key not in input_outputs:
+            input_outputs[device_key] = device
+            return 1
 
     def _process_device_event(self, event_origin, timestamp, device):
         pass
@@ -482,6 +492,12 @@ class EventProcessor(Thread, ZMQEndpoint):
                                     log.info('{} new devices recognized.'.format(devices_updated))
                             if 'active_devices' in event_data['data']:
                                 for active_device in event_data['active_devices']:
+                                    # active devices are presently assumed to be inputs
+                                    self._update_device(
+                                        input_outputs=self.inputs,
+                                        origin=self._input_origin,
+                                        device_origin=origin,
+                                        device=active_device)
                                     log.info('{} @ {}'.format(active_device['device_key'], origin))
                                     self._process_device_event(
                                         event_origin=origin,
