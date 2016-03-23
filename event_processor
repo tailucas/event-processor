@@ -493,7 +493,7 @@ class EventProcessor(Thread, ZMQEndpoint):
                                     device_origin=origin,
                                     device_info=event_data['data']['device_info'])
                                 if devices_updated > 0:
-                                    log.info('{} new devices recognized.'.format(devices_updated))
+                                    log.info('{} new devices recognized @ {}.'.format(devices_updated, origin))
                             if 'active_devices' in event_data['data']:
                                 for active_device in event_data['data']['active_devices']:
                                     # active devices are presently assumed to be inputs
