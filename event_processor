@@ -379,44 +379,12 @@ class EventProcessor(Thread, ZMQEndpoint):
             flash(message='{}: {}'.format(message, e.message), category='danger')
 
     def _update_devices(self, device_origin, device_info):
+        devices_updated = 0
         for input_outputs, origin, io in [(self.inputs, self._input_origin, 'inputs'),
                                           (self.outputs, self._output_origin, 'outputs')]:
             for device in device_info[io]:
-                identifier = None
-                try:
-                    device_name = device['name']
-                    identifier = device_name
-                except KeyError:
-                    device_name = None
-                try:
-                    device_type = device['type']
-                    identifier = device_type
-                except KeyError:
-                    device_type = None
-                try:
-                    device_location = device['location']
-                    identifier = device_location
-                except KeyError:
-                    device_location = None
-                if identifier is None:
-                    log.error("No distinct device identifier for '{}' and is ignored.".format(device))
-                    continue
-                # construct the device key and associated friendly name
-                device_key = device_type
-                device_label = device_key
-                if device_name is not None:
-                    device_label = '{} {}'.format(device_name, device_type)
-                    if device_location is not None:
-                        # friendly name includes location only if the name is missing
-                        device_key = '{} {} ({})'.format(device_name, device_type, device_location)
-                    else:
-                        device_key = '{} {}'.format(device_name, device_type)
-                        device_label = device_key
-                elif device_location is not None:
-                    device_key = '{} {}'.format(device_location, device_type)
-                    device_label = device_key
-                # add the friendly name
-                device['device_label'] = device_label
+                # device_key must always be present
+                device_key = device['device_key']
                 # has this device been seen?
                 if device_key not in origin:
                     origin[device_key] = device_origin
@@ -428,6 +396,11 @@ class EventProcessor(Thread, ZMQEndpoint):
                     continue
                 if device_key not in input_outputs:
                     input_outputs[device_key] = device
+                    devices_updated += 1
+        return devices_updated
+
+    def _process_device_event(self, event_origin, timestamp, device):
+        pass
 
     def post_metric(self, name, value, timestamp=None, unit='Count'):
         scalar = None
@@ -499,12 +472,21 @@ class EventProcessor(Thread, ZMQEndpoint):
                         if 'timestamp' in event_data:
                             timestamp = dateutil.parser.parse(event_data['timestamp'])
                         else:
-                            tiemstamp = datetime.utcnow().replace(tzinfo=pytz.utc)
+                            timestamp = datetime.utcnow().replace(tzinfo=pytz.utc)
                         if 'data' in event_data:
                             if 'device_info' in event_data['data']:
-                                self._update_devices(device_origin=origin, device_info=event_data['data']['device_info'])
+                                devices_updated = self._update_devices(
+                                    device_origin=origin,
+                                    device_info=event_data['data']['device_info'])
+                                if devices_updated > 0:
+                                    log.info('{} new devices recognized.'.format(devices_updated))
                             if 'active_devices' in event_data['data']:
-                                log.info(event)
+                                for active_device in event_data['active_devices']:
+                                    log.info('{} @ {}'.format(active_device['device_key'], origin))
+                                    self._process_device_event(
+                                        event_origin=origin,
+                                        timestamp=timestamp,
+                                        device=active_device)
             except ContextTerminated:
                 break
             except Exception:
