@@ -396,7 +396,10 @@ class EventProcessor(Thread, ZMQEndpoint):
 
     def _update_device(self, input_outputs, origin, device_origin, device):
         # device_key must always be present
-        device_key = device['device_key']
+        try:
+            device_key = device['device_key']
+        except KeyError:
+            raise RuntimeError("No device key in {}".format(device))
         # has this device been seen?
         if device_key not in origin:
             origin[device_key] = device_origin
