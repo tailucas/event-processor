@@ -408,6 +408,7 @@ class EventProcessor(Thread, ZMQEndpoint):
         if device_key not in input_outputs:
             input_outputs[device_key] = device
             return 1
+        return 0
 
     def _process_device_event(self, event_origin, timestamp, device):
         pass
