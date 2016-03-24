@@ -157,11 +157,11 @@ def input_config():
                 customized = True
             else:
                 to_save['group_name'] = None
-            if len(request.form['activations_per_trigger']) > 0:
-                to_save['activations_per_trigger'] = int(request.form['activations_per_trigger'])
+            if request.form.get('multi_trigger'):
+                to_save['multi_trigger'] = True
                 customized = True
             else:
-                to_save['activations_per_trigger'] = None
+                to_save['multi_trigger'] = None
             if len(request.form['activation_interval']) > 0:
                 to_save['activation_interval'] = int(request.form['activation_interval'])
                 customized = True
@@ -172,6 +172,11 @@ def input_config():
                 customized = True
             else:
                 to_save['trigger_window'] = None
+            if request.form.get('critical_device'):
+                to_save['critical_device'] = True
+                customized = True
+            else:
+                to_save['critical_device'] = None
             to_save['customized'] = customized
             event_processor.input_config = (
                 device_key,
@@ -182,7 +187,6 @@ def input_config():
             flash(message='{}: {}'.format(message, e.message), category='danger')
     return render_template('input_config.html',
                            inputs=event_processor.input_config,
-                           default_activations_per_trigger=int(config.get('config', 'default_activations_per_trigger')),
                            default_trigger_window=int(config.get('config', 'default_trigger_window')),
                            default_activation_interval=int(config.get('config', 'default_activation_interval')))
 
