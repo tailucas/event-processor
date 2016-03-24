@@ -37,6 +37,13 @@ sys.displayhook = pprint
 
 APP = os.path.basename(__file__)
 DIR = os.path.abspath(os.path.dirname(__file__))
+# PID file check
+pidfile = '/var/run/{}.pid'.format(APP)
+if os.path.isfile(pidfile):
+    print '{} already exists.'.format(pidfile)
+    sys.exit(1)
+file(pidfile, 'w').write(str(os.getpid()))
+
 # set the working directory for libraries that assume this (such as PyDrive)
 os.chdir(DIR)
 log = logging.getLogger(APP)
@@ -622,3 +629,5 @@ if __name__ == "__main__":
                 thread_info.close()
         log.info('Closing messaging...')
         zmq_context.term()
+    finally:
+        os.unlink(pidfile)
