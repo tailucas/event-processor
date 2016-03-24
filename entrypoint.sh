@@ -30,6 +30,8 @@ id -u "${APP_USER}" || useradd -r -g "${APP_GROUP}" "${APP_USER}"
 chown -R "${APP_USER}:${APP_GROUP}" /app/
 # non-volatile storage
 chown -R "${APP_USER}:${APP_GROUP}" /data/
+# pidfile
+chown "${APP_USER}" /var/run/
 
 
 TZ_CACHE=/data/localtime
