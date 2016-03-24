@@ -550,7 +550,7 @@ class SourceSubscriber(Thread, ZMQEndpoint):
         ZMQEndpoint.__init__(self, zmq_sockets=[self.subscriber, self.processor])
 
     def run(self):
-        log.info('Connecting event processor to {} @ {}'.format(self._label, self._publisher_endpoint))
+        log.info('Subscribing to {} @ {}'.format(self._label, self._publisher_endpoint))
         self.subscriber.connect(self._publisher_endpoint)
         self.subscriber.setsockopt(zmq.SUBSCRIBE, "")
         self.processor.connect(URL_WORKER_EVENT_PROCESSOR)
@@ -587,7 +587,6 @@ if __name__ == "__main__":
         source_label = label_ip[0]
         source_ip = label_ip[1]
         connection_string = 'tcp://{}:{}'.format(source_ip, config.get('zmq', 'pubsub_port'))
-        log.debug('Subscribing to {} @ {}'.format(source_label, connection_string))
         subscriber = SourceSubscriber(label=source_label, publisher_endpoint=connection_string)
         threads_tracked.add(subscriber.getName())
         subscriber.start()
