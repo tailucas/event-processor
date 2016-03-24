@@ -18,11 +18,11 @@
                                     <input id="group_name" class="form-control" type="text" name="group_name" placeholder="{{ input_device['device_label'] }}" value="{{ input_device['group_name'] }}">
                                 </div>
                                 <div class="form-group">
-                                    <label for="interval"><input type="checkbox" name="multi_trigger" value="{{ input_device_key }}"{% if input_device['multi_trigger'] %} checked{% endif %}>Active only on multiple triggers within this interval:</label>
+                                    <label for="interval"><input type="checkbox" name="multi_trigger" value="{{ input_device_key }}"{% if input_device['multi_trigger'] %} checked{% endif %}>Treated as active only on multiple triggers within this interval:</label>
                                     <input id="interval" class="form-control" type="text" name="trigger_window" placeholder="{{ default_trigger_window }} seconds" value="{{ input_device['trigger_window'] }}">
                                 </div>
                                 <div class="form-group">
-                                    <label for="latch">Activation interval:</label>
+                                    <label for="latch">Latched as activated for this duration irrespective of ongoing triggers:</label>
                                     <input id="latch" class="form-control" type="text" name="activation_interval" placeholder="{{ default_activation_interval }} seconds" value="{{ input_device['activation_interval'] }}">
                                 </div>
                                 <div class="form-group">
