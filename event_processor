@@ -261,6 +261,9 @@ class EventProcessor(Thread, ZMQEndpoint):
         self.inputs = dict()
         self.outputs = dict()
 
+        self._origin_ips = dict()
+        self._origin_connections = dict()
+
         self._input_origin = dict()
         self._output_origin = dict()
 
@@ -417,7 +420,11 @@ class EventProcessor(Thread, ZMQEndpoint):
 
     def _process_device_event(self, event_origin, timestamp, active_device_key, active_device):
         input_device = self.inputs[active_device_key]
-        log.info('{} {} {} ({})'.format(event_origin, timestamp, active_device, input_device))
+        if 'linked_outputs' in self._input_config:
+            output_device_keys = self._input_config['linked_outputs']
+            log.info('{} {} => {}'.format(event_origin, active_device_key, output_device_keys))
+            for output_device_key in output_device_keys:
+                pass
 
     def post_metric(self, name, value, timestamp=None, unit='Count'):
         scalar = None
@@ -458,6 +465,9 @@ class EventProcessor(Thread, ZMQEndpoint):
                 member[device_key] = member_config
         return member, member_table
 
+    def add_event_origin(self, origin, ip):
+        self._origin_ips[origin] = ip
+
     def run(self):
         # connect to AWS services
         self._db_storage = dynamodb2.connect_to_region(
@@ -478,6 +488,12 @@ class EventProcessor(Thread, ZMQEndpoint):
             table_name=config.get('config', 'input_config_table'))
         self._output_config, self._output_config_table = self.__setup_config_table(
             table_name=config.get('config', 'output_config_table'))
+        # connect to event origins
+        for origin, ip in self._origin_ips.items():
+            connection_string = 'tcp://{}:{}'.format(ip, config.get('zmq', 'pushpull_port'))
+            origin_push_socket = zmq_context.socket(zmq.PUSH)
+            origin_push_socket.connect(connection_string)
+            self._origin_connections[origin] = origin_push_socket
 
         while True:
             try:
@@ -564,20 +580,22 @@ if __name__ == "__main__":
     threads_tracked = Set()
     # bind main processor first
     event_processor = EventProcessor()
-    event_processor.start()
-    threads_tracked.add(event_processor.getName())
     # set up subscribers
-    pubsub_port = config.get('zmq', 'pubsub_port')
     subscription_sources = config.get('app', 'subscription_sources').split(',')
-    log.debug('Subscribing to these sources: {}'.format(subscription_sources))
     for source in subscription_sources:
         label_ip = source.split(':')
         source_label = label_ip[0]
         source_ip = label_ip[1]
-        connection_string = 'tcp://{}:{}'.format(source_ip, pubsub_port)
+        connection_string = 'tcp://{}:{}'.format(source_ip, config.get('zmq', 'pubsub_port'))
+        log.debug('Subscribing to {} @ {}'.format(source_label, connection_string))
         subscriber = SourceSubscriber(label=source_label, publisher_endpoint=connection_string)
         threads_tracked.add(subscriber.getName())
         subscriber.start()
+        # make sure that the event processor creates a PUSH socket for each output
+        event_processor.add_event_origin(origin=source_label, ip=source_ip)
+    # start the event processor
+    event_processor.start()
+    threads_tracked.add(event_processor.getName())
     # set up signal handlers
     signal.signal(signal.SIGHUP, signal_handler)
     # start threads
