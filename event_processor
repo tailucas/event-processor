@@ -400,6 +400,9 @@ class EventProcessor(Thread, ZMQEndpoint):
             device_key = device['device_key']
         except KeyError:
             raise RuntimeError("No device key in {}".format(device))
+        # set the device label if that hasn't already been done
+        if 'device_label' not in device:
+            device['device_label'] = device_key
         # has this device been seen?
         if device_key not in origin:
             origin[device_key] = device_origin
@@ -413,8 +416,9 @@ class EventProcessor(Thread, ZMQEndpoint):
             return 1
         return 0
 
-    def _process_device_event(self, event_origin, timestamp, device):
-        pass
+    def _process_device_event(self, event_origin, timestamp, active_device_key, active_device):
+        input_device = self.inputs[active_device_key]
+        log.info('{} {} {} ({})'.format(event_origin, timestamp, active_device, input_device))
 
     def post_metric(self, name, value, timestamp=None, unit='Count'):
         scalar = None
@@ -493,20 +497,22 @@ class EventProcessor(Thread, ZMQEndpoint):
                                     device_origin=origin,
                                     device_info=event_data['data']['device_info'])
                                 if devices_updated > 0:
-                                    log.info('{} new devices recognized @ {}.'.format(devices_updated, origin))
+                                    log.info('{} advertised {} new devices.'.format(origin, devices_updated))
                             if 'active_devices' in event_data['data']:
                                 for active_device in event_data['data']['active_devices']:
+                                    active_device_key = active_device['device_key']
                                     # active devices are presently assumed to be inputs
                                     self._update_device(
                                         input_outputs=self.inputs,
                                         origin=self._input_origin,
                                         device_origin=origin,
                                         device=active_device)
-                                    log.info('{} @ {}'.format(active_device['device_key'], origin))
+                                    log.info('{} {}'.format(origin, active_device_key))
                                     self._process_device_event(
                                         event_origin=origin,
                                         timestamp=timestamp,
-                                        device=active_device)
+                                        active_device_key=active_device_key,
+                                        active_device=active_device)
             except ContextTerminated:
                 break
             except Exception:
