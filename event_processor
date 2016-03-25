@@ -401,23 +401,23 @@ class EventProcessor(Thread, ZMQEndpoint):
             log.exception(message)
             flash(message='{}: {}'.format(message, e.message), category='danger')
 
-    def _update_devices(self, device_origin, device_info):
+    def _update_devices(self, event_origin, device_info):
         devices_updated = 0
-        for input_outputs, origin, io in [(self.inputs, self._input_origin, 'inputs'),
+        for input_outputs, device_origin, io in [(self.inputs, self._input_origin, 'inputs'),
                                           (self.outputs, self._output_origin, 'outputs')]:
             for device in device_info[io]:
                 try:
                     devices_updated += self._update_device(
                         input_outputs=input_outputs,
-                        origin=origin,
                         device_origin=device_origin,
+                        event_origin=event_origin,
                         device=device
                     )
                 except RuntimeError:
                     log.exception('Bad device @ {}.'.format(device_origin))
         return devices_updated
 
-    def _update_device(self, input_outputs, origin, device_origin, device):
+    def _update_device(self, input_outputs, device_origin, event_origin, device):
         # device_key must always be present
         try:
             device_key = device['device_key']
@@ -427,20 +427,19 @@ class EventProcessor(Thread, ZMQEndpoint):
         if 'device_label' not in device:
             device['device_label'] = device_key
         # has this device been seen?
-        if device_key not in origin:
-            origin[device_key] = device_origin
-        elif origin[device_key] != device_origin:
+        if device_key not in device_origin:
+            device_origin[device_key] = event_origin
+        elif device_origin[device_key] != event_origin:
             raise RuntimeError("Device with key '{}' is already present at '{}' "
                                "but is also present at '{}' and is ignored.".format(device_key,
-                                                                                    origin[device_key],
-                                                                                    device_origin))
+                                                                                    device_origin[device_key],
+                                                                                    event_origin))
         if device_key not in input_outputs:
             input_outputs[device_key] = device
             return 1
         return 0
 
     def _process_device_event(self, event_origin, timestamp, active_device_key, active_device):
-        input_device = self.inputs[active_device_key]
         if active_device_key in self._input_config and 'linked_outputs' in self._input_config[active_device_key]:
             output_device_keys = self._input_config[active_device_key]['linked_outputs']
             log.debug('{} {} => {}'.format(event_origin, active_device_key, output_device_keys))
@@ -450,7 +449,12 @@ class EventProcessor(Thread, ZMQEndpoint):
                     log.warn('{} is linked to an unknown output {}'.format(active_device_key,
                                                                            output_device_key))
                     continue
-                event_destination = None
+                if output_device_key not in self._output_origin:
+                    log.warn('{} {} => {} but nowhere to route the response.'.format(event_origin,
+                                                                                     active_device_key,
+                                                                                     output_device_key))
+                    continue
+                event_destination = self._output_origin[output_device_key]
                 log.info('{} {} => {} {}'.format(
                     event_origin,
                     active_device_key,
@@ -459,7 +463,7 @@ class EventProcessor(Thread, ZMQEndpoint):
                 output_device_activation.update(self.outputs[output_device_key])
                 if output_device_key in self._output_config:
                     output_device_activation.update(self._output_config[output_device_key])
-                output_push_socket = self._origin_connections[event_origin]
+                output_push_socket = self._origin_connections[event_destination]
                 output_push_socket.send(make_payload(
                     timestamp=None,
                     data={
@@ -544,7 +548,7 @@ class EventProcessor(Thread, ZMQEndpoint):
                 event = self.socket.recv_pyobj()
                 log.debug(event)
                 if isinstance(event, dict):
-                    for origin, event_data in event.items():
+                    for event_origin, event_data in event.items():
                         timestamp = None
                         if 'timestamp' in event_data:
                             timestamp = dateutil.parser.parse(event_data['timestamp'])
@@ -553,7 +557,7 @@ class EventProcessor(Thread, ZMQEndpoint):
                         if 'data' in event_data:
                             if 'device_info' in event_data['data']:
                                 devices_updated = self._update_devices(
-                                    device_origin=origin,
+                                    event_origin=event_origin,
                                     device_info=event_data['data']['device_info'])
                                 if devices_updated > 0:
                                     log.info('{} advertised {} new devices.'.format(origin, devices_updated))
@@ -563,8 +567,8 @@ class EventProcessor(Thread, ZMQEndpoint):
                                     # active devices are presently assumed to be inputs
                                     self._update_device(
                                         input_outputs=self.inputs,
-                                        origin=self._input_origin,
-                                        device_origin=origin,
+                                        device_origin=self._input_origin,
+                                        event_origin=event_origin,
                                         device=active_device)
                                     log.debug('{} {}'.format(origin, active_device_key))
                                     self._process_device_event(
