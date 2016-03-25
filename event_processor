@@ -443,13 +443,19 @@ class EventProcessor(Thread, ZMQEndpoint):
         input_device = self.inputs[active_device_key]
         if active_device_key in self._input_config and 'linked_outputs' in self._input_config[active_device_key]:
             output_device_keys = self._input_config[active_device_key]['linked_outputs']
-            log.info('{} {} => {}'.format(event_origin, active_device_key, output_device_keys))
+            log.debug('{} {} => {}'.format(event_origin, active_device_key, output_device_keys))
             for output_device_key in output_device_keys:
                 output_device_activation = dict()
                 if output_device_key not in self.outputs:
                     log.warn('{} is linked to an unknown output {}'.format(active_device_key,
                                                                            output_device_key))
                     continue
+                event_destination = None
+                log.info('{} {} => {} {}'.format(
+                    event_origin,
+                    active_device_key,
+                    event_destination,
+                    output_device_key))
                 output_device_activation.update(self.outputs[output_device_key])
                 if output_device_key in self._output_config:
                     output_device_activation.update(self._output_config[output_device_key])
@@ -560,7 +566,7 @@ class EventProcessor(Thread, ZMQEndpoint):
                                         origin=self._input_origin,
                                         device_origin=origin,
                                         device=active_device)
-                                    log.info('{} {}'.format(origin, active_device_key))
+                                    log.debug('{} {}'.format(origin, active_device_key))
                                     self._process_device_event(
                                         event_origin=origin,
                                         timestamp=timestamp,
