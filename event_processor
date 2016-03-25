@@ -446,11 +446,11 @@ class EventProcessor(Thread, ZMQEndpoint):
             log.info('{} {} => {}'.format(event_origin, active_device_key, output_device_keys))
             for output_device_key in output_device_keys:
                 output_device_activation = dict()
-                if output_device_key not in self._outputs:
+                if output_device_key not in self.outputs:
                     log.warn('{} is linked to an unknown output {}'.format(active_device_key,
                                                                            output_device_key))
                     continue
-                output_device_activation.update(self._outputs[output_device_key])
+                output_device_activation.update(self.outputs[output_device_key])
                 if output_device_key in self._output_config:
                     output_device_activation.update(self._output_config[output_device_key])
                 output_push_socket = self._origin_connections[event_origin]
@@ -528,6 +528,7 @@ class EventProcessor(Thread, ZMQEndpoint):
         # connect to event origins
         for origin, ip in self._origin_ips.items():
             connection_string = 'tcp://{}:{}'.format(ip, config.get('zmq', 'pushpull_port'))
+            log.info('Device events will be responded to via {} @ {}'.format(origin, connection_string))
             origin_push_socket = zmq_context.socket(zmq.PUSH)
             origin_push_socket.connect(connection_string)
             self._origin_connections[origin] = origin_push_socket
