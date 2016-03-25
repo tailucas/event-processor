@@ -6,6 +6,7 @@ import logging.handlers
 
 import abc
 import copy
+import json
 import os
 import pytz
 import signal
@@ -54,6 +55,8 @@ config = ConfigParser()
 config.optionxform = str
 config.read([os.path.join(DIR, '{}.conf'.format(APP))])
 
+DATE_FORMAT = '%Y-%m-%dT%H:%M:%S.%f%z'
+
 rest_api = Flask(APP)
 
 URL_WORKER_EVENT_PROCESSOR = 'inproc://event-processor'
@@ -69,6 +72,17 @@ def signal_handler(signum, frame):
 
 def is_list(value):
     return isinstance(value, list)
+
+
+def make_payload(timestamp=None, data=None):
+    payload = dict()
+    if timestamp is None:
+        timestamp = time.time()
+    payload['timestamp'] = datetime.utcfromtimestamp(timestamp).replace(tzinfo=pytz.utc).strftime(DATE_FORMAT)
+    if data is not None and len(data) > 0:
+        payload['data'] = data
+    log.debug(json.dumps(payload))
+    return umsgpack.packb(payload)
 
 
 @rest_api.route('/logging')
@@ -427,11 +441,27 @@ class EventProcessor(Thread, ZMQEndpoint):
 
     def _process_device_event(self, event_origin, timestamp, active_device_key, active_device):
         input_device = self.inputs[active_device_key]
-        if 'linked_outputs' in self._input_config:
-            output_device_keys = self._input_config['linked_outputs']
+        if active_device_key in self._input_config and 'linked_outputs' in self._input_config[active_device_key]:
+            output_device_keys = self._input_config[active_device_key]['linked_outputs']
             log.info('{} {} => {}'.format(event_origin, active_device_key, output_device_keys))
             for output_device_key in output_device_keys:
-                pass
+                output_device_activation = dict()
+                if output_device_key not in self._outputs:
+                    log.warn('{} is linked to an unknown output {}'.format(active_device_key,
+                                                                           output_device_key))
+                    continue
+                output_device_activation.update(self._outputs[output_device_key])
+                if output_device_key in self._output_config:
+                    output_device_activation.update(self._output_config[output_device_key])
+                output_push_socket = self._origin_connections[event_origin]
+                output_push_socket.send(make_payload(
+                    timestamp=None,
+                    data={
+                        'trigger_output': output_device_activation,
+                        'input_context': active_device
+                    }))
+        else:
+            log.warn('{} is not configured or linked to any output: {}'.format(active_device_key, active_device))
 
     def post_metric(self, name, value, timestamp=None, unit='Count'):
         scalar = None
