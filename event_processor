@@ -282,6 +282,8 @@ class EventProcessor(Thread, ZMQEndpoint):
         self.inputs = dict()
         self.outputs = dict()
 
+        self._input_history = dict()
+
         self._origin_ips = dict()
         self._origin_connections = dict()
 
@@ -404,7 +406,7 @@ class EventProcessor(Thread, ZMQEndpoint):
     def _update_devices(self, event_origin, device_info):
         devices_updated = 0
         for input_outputs, device_origin, io in [(self.inputs, self._input_origin, 'inputs'),
-                                          (self.outputs, self._output_origin, 'outputs')]:
+                                                 (self.outputs, self._output_origin, 'outputs')]:
             for device in device_info[io]:
                 try:
                     devices_updated += self._update_device(
@@ -564,6 +566,17 @@ class EventProcessor(Thread, ZMQEndpoint):
                             if 'active_devices' in event_data['data']:
                                 for active_device in event_data['data']['active_devices']:
                                     active_device_key = active_device['device_key']
+                                    # debounce this input
+                                    if active_device_key in self._input_config and 'activation_interval' in self._input_config[active_device_key]:
+                                        activation_interval = self._input_config[active_device_key]['activation_interval']
+                                    else:
+                                        activation_interval = int(config.get('config', 'default_activation_interval'))
+                                    if active_device_key not in self._input_history:
+                                        self._input_history[active_device_key] = time.time()
+                                    else:
+                                        input_last_active = self._input_history[active_device_key]
+                                        if time.time() - input_last_active < activation_interval:
+                                            continue
                                     # active devices are presently assumed to be inputs
                                     self._update_device(
                                         input_outputs=self.inputs,
