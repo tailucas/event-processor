@@ -567,7 +567,7 @@ class EventProcessor(Thread, ZMQEndpoint):
                                 for active_device in event_data['data']['active_devices']:
                                     active_device_key = active_device['device_key']
                                     # input disabled?
-                                    if active_device_key in self._input_config and 'device_disabled' in self._input_config:
+                                    if active_device_key in self._input_config and 'device_disabled' in self._input_config[active_device_key]:
                                         continue
                                     # debounce this input
                                     if active_device_key in self._input_config and 'activation_interval' in self._input_config[active_device_key]:
