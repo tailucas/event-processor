@@ -580,6 +580,7 @@ class EventProcessor(Thread, ZMQEndpoint):
                                         input_last_active = self._input_history[active_device_key]
                                         if time.time() - input_last_active < activation_interval:
                                             continue
+                                    self._input_history[active_device_key] = time.time()
                                     # active devices are presently assumed to be inputs
                                     self._update_device(
                                         input_outputs=self.inputs,
