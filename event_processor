@@ -41,8 +41,19 @@ DIR = os.path.abspath(os.path.dirname(__file__))
 # PID file check
 pidfile = '/var/run/{}.pid'.format(APP)
 if os.path.isfile(pidfile):
-    print '{} already exists.'.format(pidfile)
-    sys.exit(1)
+    pid = int(open(pidfile, 'r').read())
+    message = '{} already exists containing PID {}.'.format(pidfile, pid)
+    proc_path = '/proc/{}/cmdline'.format(pid)
+    # existing process?
+    if os.path.isfile(proc_path):
+        proc_info = open(proc_path, 'r').read()
+        if 'python' in proc_info and APP in proc_info:
+            print '{} is already running. {}'.format(APP, message)
+            sys.exit(1)
+    print '{} Removing stale PID file.'.format(message)
+    # what's in the PID file is stale, destroy it
+    os.unlink(pidfile)
+# create a new PID file
 file(pidfile, 'w').write(str(os.getpid()))
 
 # set the working directory for libraries that assume this (such as PyDrive)
@@ -61,13 +72,9 @@ rest_api = Flask(APP)
 
 URL_WORKER_EVENT_PROCESSOR = 'inproc://event-processor'
 zmq_context = zmq.Context()
+zmq_context.setsockopt(zmq.LINGER, 0)
 
 event_processor = None
-
-
-def signal_handler(signum, frame):
-    log.warn('Signal {} received.'.format(signum))
-    log.setLevel(logging.DEBUG)
 
 
 def is_list(value):
@@ -247,9 +254,32 @@ def output_config():
                            outputs=event_processor.output_config)
 
 
-def thread_nanny(threads_tracked):
+class SignalHandler:
+
+    def __init__(self):
+        self.last_signal = 0
+        signal.signal(signal.SIGTERM, self.terminate)
+        signal.signal(signal.SIGHUP, self.hup)
+
+    def hup(self, signum, frame):
+        log.warn('Signal {} received.'.format(signum))
+        self.last_signal = signum
+        if log.getEffectiveLevel() == logging.INFO:
+            log.setLevel(logging.DEBUG)
+        elif log.getEffectiveLevel() == logging.DEBUG:
+            log.setLevel(logging.INFO)
+
+    def terminate(self, signum, frame):
+        log.warn('Signal {} received.'.format(signum))
+        self.last_signal = signum
+        raise RuntimeWarning()
+
+
+def thread_nanny(threads_tracked, signal_handler):
     while True:
-        # TODO: check on overdue heartbeats?
+        # kill the nanny now
+        if signal_handler.last_signal == signal.SIGTERM:
+            break
         threads_alive = Set()
         for thread_info in threading.enumerate():
             if thread_info.isAlive():
@@ -257,22 +287,10 @@ def thread_nanny(threads_tracked):
         if len(threads_tracked - threads_alive) > 0:
             message = 'A thread has died. Expected threads are [{}], missing is [{}].'.format(threads_tracked, threads_tracked - threads_alive)
             log.error(message)
-            sys.exit(1)
         time.sleep(10)
 
 
-class ZMQEndpoint(object):
-    __metaclass__ = abc.ABCMeta
-
-    def __init__(self, zmq_sockets):
-        self._zmq_sockets = zmq_sockets
-
-    def close(self):
-        for socket in self._zmq_sockets:
-            socket.close()
-
-
-class EventProcessor(Thread, ZMQEndpoint):
+class EventProcessor(Thread):
 
     def __init__(self):
         super(EventProcessor, self).__init__()
@@ -307,7 +325,6 @@ class EventProcessor(Thread, ZMQEndpoint):
 
         self.socket = zmq_context.socket(zmq.PULL)
         self.socket.bind(URL_WORKER_EVENT_PROCESSOR)
-        ZMQEndpoint.__init__(self, zmq_sockets=[self.socket])
 
     @property
     def general_config(self):
@@ -594,13 +611,15 @@ class EventProcessor(Thread, ZMQEndpoint):
                                         active_device_key=active_device_key,
                                         active_device=active_device)
             except ContextTerminated:
+                self.socket.close()
+                origin_push_socket.close()
                 break
             except Exception:
                 log.exception(self.__class__.__name__)
                 continue
 
 
-class SourceSubscriber(Thread, ZMQEndpoint):
+class SourceSubscriber(Thread):
 
     def __init__(self, label, publisher_endpoint):
         super(SourceSubscriber, self).__init__()
@@ -612,7 +631,6 @@ class SourceSubscriber(Thread, ZMQEndpoint):
 
         self.subscriber = zmq_context.socket(zmq.SUB)
         self.processor = zmq_context.socket(zmq.PUSH)
-        ZMQEndpoint.__init__(self, zmq_sockets=[self.subscriber, self.processor])
 
     def run(self):
         log.info('Subscribing to {} @ {}'.format(self._label, self._publisher_endpoint))
@@ -626,6 +644,8 @@ class SourceSubscriber(Thread, ZMQEndpoint):
                 log.exception('Cannot unpack message from {}.'.format(self._label))
                 continue
             except ContextTerminated:
+                self.subscriber.close()
+                self.processor.close()
                 break
             self.processor.send_pyobj({self._label: publisher_event})
 
@@ -661,9 +681,9 @@ if __name__ == "__main__":
     event_processor.start()
     threads_tracked.add(event_processor.getName())
     # set up signal handlers
-    signal.signal(signal.SIGHUP, signal_handler)
+    signal_handler = SignalHandler()
     # start threads
-    f = threading.Thread(name='nanny', target=thread_nanny, args=(threads_tracked,))
+    f = threading.Thread(name='nanny', target=thread_nanny, args=(threads_tracked, signal_handler,))
     f.setDaemon(True)
     f.start()
     try:
@@ -680,12 +700,12 @@ if __name__ == "__main__":
             port=int(config.get('flask', 'http_port')),
             debug=config.get('flask', 'debug').lower() == 'true',
             use_reloader=False)
-    except(KeyboardInterrupt, SystemExit):
-        for thread_info in threading.enumerate():
-            if thread_info.isAlive() and isinstance(thread_info, ZMQEndpoint):
-                log.info("Closing sockets for '{}'".format(thread_info.getName()))
-                thread_info.close()
-        log.info('Closing messaging...')
+    except(KeyboardInterrupt, RuntimeWarning):
         zmq_context.term()
     finally:
+        log.info('Removing PID file {}'.format(pidfile))
         os.unlink(pidfile)
+
+    log.info('Exiting with code {}'.format(signal_handler.last_signal))
+    # exit using the signal, if any
+    sys.exit(signal_handler.last_signal)
