@@ -604,15 +604,25 @@ class EventProcessor(Thread):
                                             continue
                                         input_last_triggered = self._input_trigger_history[active_device_key]
                                         # the device must have been considered active within the trigger window
-                                        if time.time() - input_last_triggered > trigger_window:
+                                        last_triggered = time.time() - input_last_triggered
+                                        if last_triggered > trigger_window:
                                             # update the history and continue
                                             self._input_trigger_history[active_device_key] = time.time()
+                                            log.debug('Not activating {} because it was triggered '
+                                                      'more than {} seconds ago. ({})'.format(active_device_key,
+                                                                                              trigger_window,
+                                                                                              last_triggered))
                                             continue
                                     # debounce
                                     if active_device_key in self._input_active_history:
                                         input_last_active = self._input_active_history[active_device_key]
-                                        if time.time() - input_last_active < activation_interval:
+                                        last_activated = time.time() - input_last_active
+                                        if last_activated < activation_interval:
                                             # device is still considered active
+                                            log.debug('Not activating {} because it was triggered '
+                                                      'less than {} seconds ago. ({})'.format(active_device_key,
+                                                                                              activation_interval,
+                                                                                              last_activated))
                                             continue
                                     self._input_active_history[active_device_key] = time.time()
                                     # active devices are presently assumed to be inputs
