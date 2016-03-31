@@ -579,7 +579,7 @@ class EventProcessor(Thread):
                                     event_origin=event_origin,
                                     device_info=event_data['data']['device_info'])
                                 if devices_updated > 0:
-                                    log.info('{} advertised {} new devices.'.format(origin, devices_updated))
+                                    log.info('{} advertised {} new devices.'.format(event_origin, devices_updated))
                             if 'active_devices' in event_data['data']:
                                 for active_device in event_data['data']['active_devices']:
                                     active_device_key = active_device['device_key']
