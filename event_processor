@@ -484,12 +484,15 @@ class EventProcessor(Thread):
                 if output_device_key in self._output_config:
                     output_device_activation.update(self._output_config[output_device_key])
                 output_push_socket = self._origin_connections[event_destination]
+                activation_command = {
+                    'trigger_output': output_device_activation,
+                    'input_context': active_device
+                }
+                if 'activation_interval' in self._input_config[active_device_key]:
+                    activation_command['trigger_duration'] = self._input_config[active_device_key]['activation_interval']
                 output_push_socket.send(make_payload(
                     timestamp=None,
-                    data={
-                        'trigger_output': output_device_activation,
-                        'input_context': active_device
-                    }))
+                    data=activation_command))
         else:
             log.warn('{} is not configured or linked to any output: {}'.format(active_device_key, active_device))
 
