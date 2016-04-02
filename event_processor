@@ -489,7 +489,9 @@ class EventProcessor(Thread):
                     'input_context': active_device
                 }
                 if 'activation_interval' in self._input_config[active_device_key]:
-                    activation_command['trigger_duration'] = self._input_config[active_device_key]['activation_interval']
+                    activation_command['trigger_duration'] = int(
+                        self._input_config[active_device_key]['activation_interval']
+                    )
                 output_push_socket.send(make_payload(
                     timestamp=None,
                     data=activation_command))
