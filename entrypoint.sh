@@ -78,7 +78,12 @@ if [ -d /var/awslogs/etc/ ]; then
 fi
 
 # configuration update
-export ETH0_IP="$(/sbin/ifconfig eth0 | grep 'inet addr' | awk '{ print $2 }' | cut -f2 -d ':')"
+for iface in eth0 wlan0; do
+  export ETH0_IP="$(/sbin/ifconfig ${iface} | grep 'inet addr' | awk '{ print $2 }' | cut -f2 -d ':')"
+  if [ -n "$ETH0_IP" ]; then
+    break
+  fi
+done
 SUB_CACHE=/data/sub_src
 if [ -e "$SUB_CACHE" ]; then
   export SUB_SRC="$(cat "$SUB_CACHE")"
