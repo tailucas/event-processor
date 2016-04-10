@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     less \
     libffi-dev \
     libssl-dev \
+    man-db \
     manpages \
     net-tools \
     openssh-server \
