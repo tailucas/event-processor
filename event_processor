@@ -699,37 +699,37 @@ class OriginNanny(Thread):
 
     def run(self):
         # warm-up to wait for first volley of heartbeats
-        sleep(60)
+        sleep(self._max_heartbeat_delay)
         while True:
             resin_device = Device()
             for origin, (ip, subscriber) in self.origin_subscriber.items():
-                device_status = None
-                device_last_seen = None
-                last_message = subscriber.last_message
-                if last_message:
-                    last_message = datetime.utcfromtimestamp(last_message).replace(tzinfo=pytz.utc).strftime(DATE_FORMAT)
-                else:
-                    last_message = "never"
-                try:
-                    for d in resin_device.get_by_name(origin):
-                        device_ip = d['ip_address'].split()[0]
-                        # this matches the origin by name and IP
-                        if device_ip == ip:
-                            device_status = d['status']
-                            device_last_seen = d['last_seen_time']
-                            if device_last_seen is None:
-                                device_last_seen = "unknown"
-                except RequestError as e:
-                    log.debug("Unable to fetch device information for Resin device '{}': {}".format(origin, e))
-                # when last was an event seen
-                #if time.time() - subscriber.last_message > self._max_heartbeat_delay:
-                log_message = "'{}' last activity was {}.".format(origin, last_message)
-                if device_status:
-                    log.warn("{} Device is {} (last seen: {})".format(log_message,
-                                                                      device_status,
-                                                                      device_last_seen))
-                else:
-                    log.warn(log_message)
+                # when last was an event seen by this subscriber
+                if time.time() - subscriber.last_message > self._max_heartbeat_delay:
+                    device_status = None
+                    device_last_seen = None
+                    last_message = subscriber.last_message
+                    if last_message:
+                        last_message = datetime.utcfromtimestamp(last_message).replace(tzinfo=pytz.utc).strftime(DATE_FORMAT)
+                    else:
+                        last_message = "never"
+                    try:
+                        for d in resin_device.get_by_name(origin):
+                            device_ip = d['ip_address'].split()[0]
+                            # this matches the origin by name and IP
+                            if device_ip == ip:
+                                device_status = d['status']
+                                device_last_seen = d['last_seen_time']
+                                if device_last_seen is None:
+                                    device_last_seen = "unknown"
+                    except RequestError as e:
+                        log.debug("Unable to fetch device information for Resin device '{}': {}".format(origin, e))
+                    log_message = "'{}' last activity was {}.".format(origin, last_message)
+                    if device_status:
+                        log.warn("{} Device is {} (last seen: {})".format(log_message,
+                                                                          device_status,
+                                                                          device_last_seen))
+                    else:
+                        log.warn(log_message)
             sleep(self._max_heartbeat_delay)
 
 if __name__ == "__main__":
