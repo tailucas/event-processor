@@ -311,6 +311,9 @@ class EventProcessor(Thread):
         self._input_origin = dict()
         self._output_origin = dict()
 
+        self._inputs_by_origin = dict()
+        self._outputs_by_origin = dict()
+
         self._db_storage = None
 
         self._general_config = None
@@ -425,13 +428,16 @@ class EventProcessor(Thread):
 
     def _update_devices(self, event_origin, device_info):
         devices_updated = 0
-        for input_outputs, device_origin, io in [(self.inputs, self._input_origin, 'inputs'),
-                                                 (self.outputs, self._output_origin, 'outputs')]:
+        for input_outputs, device_origin, origin_devices, io in [
+            (self.inputs, self._input_origin, self._inputs_by_origin, 'inputs'),
+            (self.outputs, self._output_origin, self._outputs_by_origin, 'outputs')
+        ]:
             for device in device_info[io]:
                 try:
                     devices_updated += self._update_device(
                         input_outputs=input_outputs,
                         device_origin=device_origin,
+                        origin_devices=origin_devices,
                         event_origin=event_origin,
                         device=device
                     )
@@ -439,7 +445,7 @@ class EventProcessor(Thread):
                     log.exception('Bad device @ {}.'.format(device_origin))
         return devices_updated
 
-    def _update_device(self, input_outputs, device_origin, event_origin, device):
+    def _update_device(self, input_outputs, device_origin, origin_devices, event_origin, device):
         # device_key must always be present
         try:
             device_key = device['device_key']
@@ -448,6 +454,11 @@ class EventProcessor(Thread):
         # set the device label if that hasn't already been done
         if 'device_label' not in device:
             device['device_label'] = device_key
+        # associate the device with this event origin
+        if event_origin not in origin_devices:
+            origin_devices[event_origin] = set()
+        if device_key not in origin_devices[event_origin]:
+            origin_devices[event_origin].add(device_key)
         # has this device been seen?
         if device_key not in device_origin:
             device_origin[device_key] = event_origin
@@ -582,6 +593,10 @@ class EventProcessor(Thread):
                         else:
                             timestamp = datetime.utcnow().replace(tzinfo=pytz.utc)
                         if 'data' in event_data:
+                            if 'stale_heartbeat' in event_data['data']:
+                                heartbeat = event_data['data']['stale_heartbeat']
+                                hb = datetime.utcfromtimestamp(heartbeat).replace(tzinfo=pytz.utc).strftime(DATE_FORMAT)
+                                log.warn("'{}' last checked-in at {}".format(event_origin, hb))
                             if 'device_info' in event_data['data']:
                                 devices_updated = self._update_devices(
                                     event_origin=event_origin,
@@ -677,6 +692,7 @@ class SourceSubscriber(Thread):
             try:
                 publisher_event = umsgpack.unpackb(self.subscriber.recv())
                 self.last_message = time.time()
+                self.processor.send_pyobj({self._label: publisher_event})
             except UnpackException:
                 log.exception('Cannot unpack message from {}.'.format(self._label))
                 continue
@@ -684,7 +700,9 @@ class SourceSubscriber(Thread):
                 self.subscriber.close()
                 self.processor.close()
                 break
-            self.processor.send_pyobj({self._label: publisher_event})
+            except Exception:
+                log.exception(self.__class__.__name__)
+                continue
 
 
 class OriginNanny(Thread):
@@ -694,6 +712,8 @@ class OriginNanny(Thread):
         self.name = self.__class__.__name__
         self.daemon = True
 
+        self.processor = zmq_context.socket(zmq.PUSH)
+
         self.origin_subscriber = dict()
         self._max_heartbeat_delay = int(config.get('app', 'max_heartbeat_delay_seconds'))
 
@@ -701,6 +721,7 @@ class OriginNanny(Thread):
         self.origin_subscriber[origin] = (ip, subscriber)
 
     def run(self):
+        self.processor.connect(URL_WORKER_EVENT_PROCESSOR)
         # warm-up to wait for first volley of heartbeats
         sleep(self._max_heartbeat_delay)
         while True:
@@ -725,14 +746,26 @@ class OriginNanny(Thread):
                                 if device_last_seen is None:
                                     device_last_seen = "unknown"
                     except RequestError as e:
-                        log.debug("Unable to fetch device information for Resin device '{}': {}".format(origin, e))
+                        log.debug("Unable to fetch device information for Resin device '{}': {}".format(origin,
+                                                                                                        e.message))
                     log_message = "'{}' last activity was {}.".format(origin, last_message)
                     if device_status:
-                        log.warn("{} Device is {} (last seen: {})".format(log_message,
-                                                                          device_status,
-                                                                          device_last_seen))
+                        log.debug("{} Device is {} (last seen: {})".format(log_message,
+                                                                           device_status,
+                                                                           device_last_seen))
                     else:
-                        log.warn(log_message)
+                        log.debug(log_message)
+                    try:
+                        # used as an out-of-band trigger for something amiss
+                        payload = {
+                            'stale_heartbeat': subscriber.last_message,
+                        }
+                        if device_status:
+                            payload['device_status'] = device_status
+                        self.processor.send_pyobj({self._label: {'data': payload}})
+                    except ContextTerminated:
+                        self.processor.close()
+                        break
             sleep(self._max_heartbeat_delay)
 
 if __name__ == "__main__":
