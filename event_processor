@@ -26,6 +26,8 @@ from dateutil import tz
 from pprint import pprint
 from sets import Set
 from Queue import Queue, Empty
+from resin.exceptions import RequestError
+from resin.models.device import Device
 from threading import Thread, Timer
 from time import sleep
 from umsgpack import UnpackException
@@ -287,7 +289,7 @@ def thread_nanny(threads_tracked, signal_handler):
         if len(threads_tracked - threads_alive) > 0:
             message = 'A thread has died. Expected threads are [{}], missing is [{}].'.format(threads_tracked, threads_tracked - threads_alive)
             log.error(message)
-        time.sleep(10)
+        sleep(10)
 
 
 class EventProcessor(Thread):
@@ -664,6 +666,8 @@ class SourceSubscriber(Thread):
         self.subscriber = zmq_context.socket(zmq.SUB)
         self.processor = zmq_context.socket(zmq.PUSH)
 
+        self.last_message = None
+
     def run(self):
         log.info('Subscribing to {} @ {}'.format(self._label, self._publisher_endpoint))
         self.subscriber.connect(self._publisher_endpoint)
@@ -672,6 +676,7 @@ class SourceSubscriber(Thread):
         while True:
             try:
                 publisher_event = umsgpack.unpackb(self.subscriber.recv())
+                self.last_message = time.time()
             except UnpackException:
                 log.exception('Cannot unpack message from {}.'.format(self._label))
                 continue
@@ -681,6 +686,50 @@ class SourceSubscriber(Thread):
                 break
             self.processor.send_pyobj({self._label: publisher_event})
 
+
+class OriginNanny(Thread):
+
+    def __init__(self):
+        self.origin_ips = dict()
+        self._max_heartbeat_delay = int(config.get('app', 'max_heartbeat_delay_seconds'))
+
+    def add_origin_subscriber(self, origin, ip, subscriber):
+        self.origin_subscriber[origin] = (ip, subscriber)
+
+    def run(self):
+        # warm-up to wait for first volley of heartbeats
+        sleep(60)
+        while True:
+            resin_device = Device()
+            for origin, (ip, subscriber) in self.origin_subscriber.items():
+                device_status = None
+                device_last_seen = None
+                last_message = subscriber.last_message
+                if last_message:
+                    last_message = datetime.utcfromtimestamp(last_message).replace(tzinfo=pytz.utc).strftime(DATE_FORMAT)
+                else:
+                    last_message = "never"
+                try:
+                    for d in resin_device.get_by_name(origin):
+                        device_ip = d['ip_address'].split()[0]
+                        # this matches the origin by name and IP
+                        if device_ip == ip:
+                            device_status = d['status']
+                            device_last_seen = d['last_seen_time']
+                            if device_last_seen is None:
+                                device_last_seen = "unknown"
+                except RequestError as e:
+                    log.debug("Unable to fetch device information for Resin device '{}': {}".format(origin, e))
+                # when last was an event seen
+                #if time.time() - subscriber.last_message > self._max_heartbeat_delay:
+                log_message = "'{}' last activity was {}.".format(origin, last_message)
+                if device_status:
+                    log.warn("{} Device is {} (last seen: {})".format(log_message,
+                                                                      device_status,
+                                                                      device_last_seen))
+                else:
+                    log.warn(log_message)
+            sleep(self._max_heartbeat_delay)
 
 if __name__ == "__main__":
     # DEBUG logging until startup complete
@@ -697,6 +746,7 @@ if __name__ == "__main__":
     threads_tracked = Set()
     # bind main processor first
     event_processor = EventProcessor()
+    origin_nanny = OriginNanny()
     # set up subscribers
     subscription_sources = config.get('app', 'subscription_sources').split(',')
     for source in subscription_sources:
@@ -707,10 +757,13 @@ if __name__ == "__main__":
         subscriber = SourceSubscriber(label=source_label, publisher_endpoint=connection_string)
         threads_tracked.add(subscriber.getName())
         subscriber.start()
+        # nanny the heartbeats
+        origin_nanny.add_origin_subscriber(origin=source_label, ip=source_ip, subscriber=subscriber)
         # make sure that the event processor creates a PUSH socket for each output
         event_processor.add_event_origin(origin=source_label, ip=source_ip)
     # start the event processor
     event_processor.start()
+    origin_nanny.start()
     threads_tracked.add(event_processor.getName())
     # set up signal handlers
     signal_handler = SignalHandler()
