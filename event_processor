@@ -768,7 +768,7 @@ class OriginNanny(Thread):
                         }
                         if device_status:
                             payload['device_status'] = device_status
-                        self.processor.send_pyobj({self._label: {'data': payload}})
+                        self.processor.send_pyobj({origin: {'data': payload}})
                     except ContextTerminated:
                         self.processor.close()
                         break
