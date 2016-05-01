@@ -103,6 +103,10 @@ rmmod w1_gpio||true
 # so app user can make the noise
 adduser "${APP_USER}" audio
 
+# Used by resin-sdk Settings
+export USER="${APP_USER}"
+export HOME=/data/
+
 # I'm the supervisor
 cat /app/config/supervisord.conf | python /app/config_interpol | tee /etc/supervisor/conf.d/supervisord.conf
 /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
