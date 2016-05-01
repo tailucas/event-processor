@@ -690,6 +690,7 @@ class SourceSubscriber(Thread):
 class OriginNanny(Thread):
 
     def __init__(self):
+        super(OriginNanny, self).__init__()
         self.origin_subscriber = dict()
         self._max_heartbeat_delay = int(config.get('app', 'max_heartbeat_delay_seconds'))
 
