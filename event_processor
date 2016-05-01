@@ -704,10 +704,10 @@ class OriginNanny(Thread):
             resin_device = Device()
             for origin, (ip, subscriber) in self.origin_subscriber.items():
                 # when last was an event seen by this subscriber
-                if time.time() - subscriber.last_message > self._max_heartbeat_delay:
+                last_message = subscriber.last_message
+                if last_message is None or time.time() - subscriber.last_message > self._max_heartbeat_delay:
                     device_status = None
                     device_last_seen = None
-                    last_message = subscriber.last_message
                     if last_message:
                         last_message = datetime.utcfromtimestamp(last_message).replace(tzinfo=pytz.utc).strftime(DATE_FORMAT)
                     else:
