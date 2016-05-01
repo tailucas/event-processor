@@ -596,7 +596,13 @@ class EventProcessor(Thread):
                             if 'stale_heartbeat' in event_data['data']:
                                 heartbeat = event_data['data']['stale_heartbeat']
                                 hb = datetime.utcfromtimestamp(heartbeat).replace(tzinfo=pytz.utc).strftime(DATE_FORMAT)
-                                log.warn("'{}' last checked-in at {}".format(event_origin, hb))
+                                device_status = "unknown"
+                                if 'device_status' in event_data['data']:
+                                    device_status = event_data['data']['device_status']
+                                log.warn("'{}' last checked-in at {} in an '{}' state.".format(
+                                    event_origin,
+                                    hb,
+                                    device_status.lower()))
                             if 'device_info' in event_data['data']:
                                 devices_updated = self._update_devices(
                                     event_origin=event_origin,
