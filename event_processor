@@ -621,7 +621,7 @@ class EventProcessor(Thread):
                                     (self.inputs, self._inputs_by_origin, self._awol_inputs),
                                     (self.outputs, self._outputs_by_origin, self._awol_outputs)
                                 ]:
-                                    if len(origin_devices[event_origin]) > 0:
+                                    if event_origin in origin_devices and len(origin_devices[event_origin]) > 0:
                                         log.debug("'{}' last checked-in: {} in an '{}' state.".format(
                                             event_origin,
                                             hb,
