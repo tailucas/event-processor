@@ -105,6 +105,9 @@ def index():
     group_disabled = dict()
     device_listing = dict()
     input_labels = dict()
+    awol_inputs = event_processor.awol_inputs
+    if len(awol_inputs) > 0:
+        flash(message='{} devices are unavailable at this time.'.format(len(awol_inputs)), category='danger')
     for device_key, device_config in event_processor.input_config.items():
         if 'group_name' not in device_config:
             device_listing[device_key] = device_config
@@ -166,7 +169,8 @@ def index():
             event_processor.flash_info = True
     return render_template('index.html',
                            inputs=device_listing,
-                           input_labels=input_labels)
+                           input_labels=input_labels,
+                           awol_inputs=awol_inputs)
 
 
 @rest_api.route('/config', methods=['GET', 'POST'])
@@ -314,6 +318,9 @@ class EventProcessor(Thread):
         self._inputs_by_origin = dict()
         self._outputs_by_origin = dict()
 
+        self._awol_inputs = set()
+        self._awol_outputs = set()
+
         self._db_storage = None
 
         self._general_config = None
@@ -383,6 +390,10 @@ class EventProcessor(Thread):
             primary_key={'device_key': device_key},
             flash_info=self.flash_info)
 
+    @property
+    def awol_inputs(self):
+        return self._awol_inputs
+
     @staticmethod
     def _update_config(device_key, devices, device_configs, updates, table_member, primary_key, flash_info=True):
         device_label = devices[device_key]['device_label']
@@ -428,9 +439,9 @@ class EventProcessor(Thread):
 
     def _update_devices(self, event_origin, device_info):
         devices_updated = 0
-        for input_outputs, device_origin, origin_devices, io in [
-            (self.inputs, self._input_origin, self._inputs_by_origin, 'inputs'),
-            (self.outputs, self._output_origin, self._outputs_by_origin, 'outputs')
+        for input_outputs, device_origin, origin_devices, awol_devices, io in [
+            (self.inputs, self._input_origin, self._inputs_by_origin, self._awol_inputs, 'inputs'),
+            (self.outputs, self._output_origin, self._outputs_by_origin, self._awol_outputs, 'outputs')
         ]:
             for device in device_info[io]:
                 try:
@@ -439,13 +450,14 @@ class EventProcessor(Thread):
                         device_origin=device_origin,
                         origin_devices=origin_devices,
                         event_origin=event_origin,
+                        awol_devices=awol_devices,
                         device=device
                     )
                 except RuntimeError:
                     log.exception('Bad device @ {}.'.format(device_origin))
         return devices_updated
 
-    def _update_device(self, input_outputs, device_origin, origin_devices, event_origin, device):
+    def _update_device(self, input_outputs, device_origin, origin_devices, event_origin, awol_devices, device):
         # device_key must always be present
         try:
             device_key = device['device_key']
@@ -459,6 +471,8 @@ class EventProcessor(Thread):
             origin_devices[event_origin] = set()
         if device_key not in origin_devices[event_origin]:
             origin_devices[event_origin].add(device_key)
+        # has this device been awol?
+        awol_devices.discard(device_key)
         # has this device been seen?
         if device_key not in device_origin:
             device_origin[device_key] = event_origin
@@ -601,10 +615,26 @@ class EventProcessor(Thread):
                                 device_status = "unknown"
                                 if 'device_status' in event_data['data']:
                                     device_status = event_data['data']['device_status']
-                                log.warn("'{}' last checked-in: {} in an '{}' state.".format(
-                                    event_origin,
-                                    hb,
-                                    device_status.lower()))
+                                new_awol = 0
+                                # check if there are any inputs or outputs configured for this origin
+                                for devices, origin_devices, awol_devices in [
+                                    (self.inputs, self._inputs_by_origin, self._awol_inputs),
+                                    (self.outputs, self._outputs_by_origin, self._awol_outputs)
+                                ]:
+                                    if len(origin_devices[event_origin]) > 0:
+                                        log.debug("'{}' last checked-in: {} in an '{}' state.".format(
+                                            event_origin,
+                                            hb,
+                                            device_status.lower()))
+                                        for device_key in origin_devices[event_origin]:
+                                            if device_key not in awol_devices:
+                                                awol_devices.add(device_key)
+                                                new_awol += 1
+                                if new_awol > 0:
+                                    log.warn("{} new devices are unavailable because '{}' has gone AWOL.".format(
+                                        new_awol,
+                                        event_origin
+                                    ))
                             if 'device_info' in event_data['data']:
                                 devices_updated = self._update_devices(
                                     event_origin=event_origin,
