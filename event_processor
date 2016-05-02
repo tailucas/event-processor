@@ -111,7 +111,7 @@ def index():
         flash(message='{} devices are unavailable right now.'.format(len(awol_inputs)), category='danger')
     for device_key, device_config in event_processor.input_config.items():
         if device_key in awol_inputs:
-            awol_input_labels.add(device_key['device_label'])
+            awol_input_labels.add(device_config['device_label'])
         if 'group_name' not in device_config:
             device_listing[device_key] = device_config
         else:
