@@ -689,7 +689,9 @@ class EventProcessor(Thread):
                                     self._update_device(
                                         input_outputs=self.inputs,
                                         device_origin=self._input_origin,
+                                        origin_devices=self._inputs_by_origin,
                                         event_origin=event_origin,
+                                        awol_devices=self._awol_inputs,
                                         device=active_device)
                                     log.debug('{} {}'.format(origin, active_device_key))
                                     self._process_device_event(
