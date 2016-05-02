@@ -105,10 +105,13 @@ def index():
     group_disabled = dict()
     device_listing = dict()
     input_labels = dict()
+    awol_input_labels = set()
     awol_inputs = event_processor.awol_inputs
     if len(awol_inputs) > 0:
-        flash(message='{} devices are unavailable at this time.'.format(len(awol_inputs)), category='danger')
+        flash(message='{} devices are unavailable right now.'.format(len(awol_inputs)), category='danger')
     for device_key, device_config in event_processor.input_config.items():
+        if device_key in awol_inputs:
+            awol_input_labels.add(device_key['device_label'])
         if 'group_name' not in device_config:
             device_listing[device_key] = device_config
         else:
@@ -170,7 +173,8 @@ def index():
     return render_template('index.html',
                            inputs=device_listing,
                            input_labels=input_labels,
-                           awol_inputs=awol_inputs)
+                           awol_inputs=awol_inputs,
+                           awol_input_labels=awol_input_labels)
 
 
 @rest_api.route('/config', methods=['GET', 'POST'])
