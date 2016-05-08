@@ -210,6 +210,16 @@ def input_config():
                 customized = True
             else:
                 to_save['trigger_window'] = None
+            if len(request.form['meter_low_limit']) > 0:
+                to_save['meter_low_limit'] = int(request.form['meter_low_limit'])
+                customized = True
+            else:
+                to_save['meter_low_limit'] = None
+            if len(request.form['meter_high_limit']) > 0:
+                to_save['meter_high_limit'] = int(request.form['meter_high_limit'])
+                customized = True
+            else:
+                to_save['meter_high_limit'] = None
             to_save['customized'] = customized
             event_processor.input_config = (
                 device_key,

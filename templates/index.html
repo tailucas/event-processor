@@ -7,12 +7,18 @@
   <a class="list-group-item{% if not input_device['device_disabled'] %} active{% endif %}">{% if 'grouped_inputs' in input_device %}<span class="badge">{{ input_device['grouped_inputs']|count }}</span>{% endif %}
     <form class="form-horizontal" role="form" method='POST'>
       <button type="submit" class="btn btn-{% if input_device['mixed_disabled'] %}warning{% else %}success{% endif %}" name="device_key" value="{{ input_device_key }}">{% if strike_thru %}<del>{% endif %}{{ input_device['device_label'] }}{% if strike_thru %}</del>{% endif %} <span class="glyphicon glyphicon-volume-{% if not input_device['device_disabled'] %}up{% elif input_device['mixed_disabled'] %}down{% else %}off{% endif %}"></span></button>
+      {% if input_device['type'] == 'Meter' %}
+      <button type="submit" class="btn btn-warning" name="meter_reset" value="{{ input_device_key }}">Reset <span class="glyphicon glyphicon-scale"></span></button>
+      {% endif %}
     </form>
     {% for grouped_input_label in input_labels[input_device_key]|sort %}
     {% with strike_thru = grouped_input_label in awol_input_labels %}
     <p class="list-group-item-text">{% if strike_thru %}<del>{% endif %}{{ grouped_input_label }}{% if strike_thru %}</del>{% endif %}</p>
     {% endwith %}
     {% endfor %}
+    {% if input_device['type'] == 'Meter' %}
+    <p class="list-group-item-text">Meter status goes here.</p>
+    {% endif %}
   </a>
   {% endwith %}
   {% endfor %}

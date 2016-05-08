@@ -13,10 +13,12 @@
                     <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if loop.first %} in{% endif %}">
                         <div class="panel-body">
                             <form class="form" role="form" method='POST'>
+                                {% if input_device['type'] != 'Meter' %}
                                 <div class="form-group">
                                     <label for="group_name">Group name:</label>
                                     <input id="group_name" class="form-control" type="text" name="group_name" placeholder="{{ input_device['device_label'] }}" value="{{ input_device['group_name'] }}">
                                 </div>
+                                {% endif %}
                                 <div class="form-group">
                                     <label for="interval"><input type="checkbox" name="multi_trigger" value="{{ input_device_key }}"{% if input_device['multi_trigger'] %} checked{% endif %}>Treated as active only on multiple triggers within this interval:</label>
                                     <input id="interval" class="form-control" type="text" name="trigger_window" placeholder="{{ default_trigger_window }} seconds" value="{{ input_device['trigger_window'] }}">
@@ -25,6 +27,16 @@
                                     <label for="latch">Latched as activated for this duration irrespective of ongoing triggers:</label>
                                     <input id="latch" class="form-control" type="text" name="activation_interval" placeholder="{{ default_activation_interval }} seconds" value="{{ input_device['activation_interval'] }}">
                                 </div>
+                                {% if input_device['type'] == 'Meter' %}
+                                <div class="form-group">
+                                    <label for="meter_low">Active if the metered value is below this value:</label>
+                                    <input id="meter_low" class="form-control" type="text" name="meter_low_limit" placeholder="0" value="{{ input_device['meter_low'] }}">
+                                </div>
+                                <div class="form-group">
+                                    <label for="meter_high">Active if the metered value is above this value:</label>
+                                    <input id="meter_high" class="form-control" type="text" name="meter_high_limit" placeholder="0" value="{{ input_device['meter_high'] }}">
+                                </div>
+                                {% endif %}
                                 <div class="form-group">
                                     <button type="submit" class="btn btn-default" name="device_key" value="{{ input_device_key }}"><span class="glyphicon glyphicon-floppy-disk"></span> Save</button>
                                 </div>
