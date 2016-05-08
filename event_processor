@@ -135,41 +135,52 @@ def index():
             elif group_name in group_disabled and group_disabled[group_name]:
                 device_listing[group_name]['mixed_disabled'] = True
     if request.method == 'POST':
-        device_key = request.form['device_key']
-        if 'grouped_inputs' not in device_listing[device_key]:
-            if 'device_disabled' not in device_listing[device_key]:
-                disable = True
-                device_listing[device_key]['device_disabled'] = True
-            else:
-                disable = None
-                del device_listing[device_key]['device_disabled']
+        if 'meter_reset' in request.form:
+            device_key = request.form['meter_reset']
             event_processor.flash_info = False
             event_processor.input_config = (
                 device_key,
-                {'device_disabled': disable}
+                {'meter_value': 0}
             )
             event_processor.flash_info = True
-        else:
-            # ambiguity => enabled
-            if 'mixed_disabled' in device_listing[device_key]:
-                disable = None
-                # ambiguity resolved
-                del device_listing[device_key]['mixed_disabled']
-                del device_listing[device_key]['device_disabled']
-            elif 'device_disabled' not in device_listing[device_key]:
-                disable = True
-                device_listing[device_key]['device_disabled'] = True
-            else:
-                disable = None
-                del device_listing[device_key]['device_disabled']
-            event_processor.flash_info = False
-            for grouped_device_key, grouped_device in device_listing[device_key]['grouped_inputs'].items():
-                grouped_device['device_disabled'] = disable
+        elif 'device_key' in request.form:
+            device_key = request.form['device_key']
+            if 'grouped_inputs' not in device_listing[device_key]:
+                if 'device_disabled' not in device_listing[device_key]:
+                    disable = True
+                    device_listing[device_key]['device_disabled'] = True
+                else:
+                    disable = None
+                    del device_listing[device_key]['device_disabled']
+                event_processor.flash_info = False
                 event_processor.input_config = (
-                    grouped_device_key,
+                    device_key,
                     {'device_disabled': disable}
                 )
-            event_processor.flash_info = True
+                event_processor.flash_info = True
+            else:
+                # ambiguity => enabled
+                if 'mixed_disabled' in device_listing[device_key]:
+                    disable = None
+                    # ambiguity resolved
+                    del device_listing[device_key]['mixed_disabled']
+                    del device_listing[device_key]['device_disabled']
+                elif 'device_disabled' not in device_listing[device_key]:
+                    disable = True
+                    device_listing[device_key]['device_disabled'] = True
+                else:
+                    disable = None
+                    del device_listing[device_key]['device_disabled']
+                event_processor.flash_info = False
+                for grouped_device_key, grouped_device in device_listing[device_key]['grouped_inputs'].items():
+                    grouped_device['device_disabled'] = disable
+                    event_processor.input_config = (
+                        grouped_device_key,
+                        {'device_disabled': disable}
+                    )
+                event_processor.flash_info = True
+        else:
+            log.error('No action associated with this request: {}'.format(request.form))
     return render_template('index.html',
                            inputs=device_listing,
                            input_labels=input_labels,
@@ -658,18 +669,32 @@ class EventProcessor(Thread):
                             if 'active_devices' in event_data['data']:
                                 for active_device in event_data['data']['active_devices']:
                                     active_device_key = active_device['device_key']
-                                    # input disabled?
-                                    if active_device_key in self._input_config and 'device_disabled' in self._input_config[active_device_key]:
+                                    # input known?
+                                    if active_device_key not in self._input_config:
+                                        log.warn("Input device '{}' is not configured, ignoring.".format(active_device_key))
                                         continue
-                                    # debounce this input
-                                    if active_device_key in self._input_config and 'activation_interval' in self._input_config[active_device_key]:
-                                        activation_interval = self._input_config[active_device_key]['activation_interval']
-                                    else:
-                                        activation_interval = int(config.get('config', 'default_activation_interval'))
+                                    active_device_config = self._input_config[active_device_key]
+                                    # update meter if necessary
+                                    if 'meter' in active_device['type'].lower():
+                                        meter_update = active_device['sample_value']
+                                        if 'meter_value' in active_device_config:
+                                            old_value = active_device_config['meter_value']
+                                            meter_update += old_value
+                                        self.flash_info = False
+                                        event_processor.input_config = (
+                                            active_device_key,
+                                            {'meter_value': meter_update}
+                                        )
+                                        self.flash_info = True
+                                    # input disabled?
+                                    if 'device_disabled' in active_device_config:
+                                        continue
+                                    # only consider a meter active if the value is out of bounds
+                                    #TODO: test metered bounds
                                     # multi-trigger
-                                    if 'multi_trigger' in self._input_config[active_device_key]:
-                                        if 'trigger_window' in self._input_config[active_device_key]:
-                                            trigger_window = self._input_config[active_device_key]['trigger_window']
+                                    if 'multi_trigger' in active_device_config:
+                                        if 'trigger_window' in active_device_config:
+                                            trigger_window = active_device_config['trigger_window']
                                         else:
                                             trigger_window = int(config.get('config', 'default_trigger_window'))
                                         # if not in the trigger history, treat as never activated
@@ -689,6 +714,11 @@ class EventProcessor(Thread):
                                             continue
                                     # debounce
                                     if active_device_key in self._input_active_history:
+                                        # debounce this input
+                                        if active_device_key in self._input_config and 'activation_interval' in active_device_config:
+                                            activation_interval = active_device_config['activation_interval']
+                                        else:
+                                            activation_interval = int(config.get('config', 'default_activation_interval'))
                                         input_last_active = self._input_active_history[active_device_key]
                                         last_activated = time.time() - input_last_active
                                         if last_activated < activation_interval:

@@ -16,8 +16,8 @@
     <p class="list-group-item-text">{% if strike_thru %}<del>{% endif %}{{ grouped_input_label }}{% if strike_thru %}</del>{% endif %}</p>
     {% endwith %}
     {% endfor %}
-    {% if input_device['type'] == 'Meter' %}
-    <p class="list-group-item-text">Meter status goes here.</p>
+    {% if input_device['type'] == 'Meter' and 'meter_value' in input_device %}
+    <p class="list-group-item-text">Reading: {{ input_device['meter_value'] }}</p>
     {% endif %}
   </a>
   {% endwith %}
