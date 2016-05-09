@@ -137,10 +137,14 @@ def index():
     if request.method == 'POST':
         if 'meter_reset' in request.form:
             device_key = request.form['meter_reset']
+            reset_value = 0
+            if 'meter_reset_value' in device_listing[device_key]:
+                reset_value = device_listing[device_key]['meter_reset_value']
+            device_listing[device_key]['meter_value'] = reset_value
             event_processor.flash_info = False
             event_processor.input_config = (
                 device_key,
-                {'meter_value': 0}
+                {'meter_value': reset_value}
             )
             event_processor.flash_info = True
         elif 'device_key' in request.form:
@@ -221,6 +225,11 @@ def input_config():
                 customized = True
             else:
                 to_save['trigger_window'] = None
+            if request.form['meter_mode'].lower() != 'default':
+                to_save['meter_mode'] = request.form['meter_mode'].lower()
+                customized = True
+            else:
+                to_save['meter_mode'] = None
             if len(request.form['meter_low_limit']) > 0:
                 to_save['meter_low_limit'] = int(request.form['meter_low_limit'])
                 customized = True
@@ -231,6 +240,11 @@ def input_config():
                 customized = True
             else:
                 to_save['meter_high_limit'] = None
+            if len(request.form['meter_reset_value']) > 0:
+                to_save['meter_reset_value'] = int(request.form['meter_reset_value'])
+                customized = True
+            else:
+                to_save['meter_reset_value'] = None
             to_save['customized'] = customized
             event_processor.input_config = (
                 device_key,
@@ -676,14 +690,21 @@ class EventProcessor(Thread):
                                     active_device_config = self._input_config[active_device_key]
                                     # update meter if necessary
                                     if 'meter' in active_device['type'].lower():
-                                        meter_update = active_device['sample_value']
+                                        meter_update = int(active_device['sample_value'])
+                                        cur_value = 0
                                         if 'meter_value' in active_device_config:
-                                            old_value = active_device_config['meter_value']
-                                            meter_update += old_value
+                                            cur_value = active_device_config['meter_value']
+                                        elif 'meter_reset_value' in active_device_config:
+                                            cur_value = active_device_config['meter_reset_value']
+                                        if 'meter_mode' in active_device_config:
+                                            if active_device_config['meter_mode'] == 'incrementing':
+                                                cur_value += meter_update
+                                            elif active_device_config['meter_mode'] == 'decrementing':
+                                                cur_value -= meter_update
                                         self.flash_info = False
                                         event_processor.input_config = (
                                             active_device_key,
-                                            {'meter_value': meter_update}
+                                            {'meter_value': cur_value}
                                         )
                                         self.flash_info = True
                                     # input disabled?
