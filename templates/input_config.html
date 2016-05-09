@@ -35,15 +35,15 @@
                                 </div>
                                 <div class="form-group">
                                     <label for="meter_reset">Reset value for the meter:</label>
-                                    <input id="meter_reset" class="form-control" type="text" name="meter_reset_value" placeholder="0" value="{{ input_device['reset_value'] }}">
+                                    <input id="meter_reset" class="form-control" type="text" name="meter_reset_value" placeholder="0" value="{{ input_device['meter_reset_value'] }}">
                                 </div>
                                 <div class="form-group">
                                     <label for="meter_low">Active if the metered value is below this value:</label>
-                                    <input id="meter_low" class="form-control" type="text" name="meter_low_limit" placeholder="" value="{{ input_device['meter_low'] }}">
+                                    <input id="meter_low" class="form-control" type="text" name="meter_low_limit" placeholder="" value="{{ input_device['meter_low_limit'] }}">
                                 </div>
                                 <div class="form-group">
                                     <label for="meter_high">Active if the metered value is above this value:</label>
-                                    <input id="meter_high" class="form-control" type="text" name="meter_high_limit" placeholder="" value="{{ input_device['meter_high'] }}">
+                                    <input id="meter_high" class="form-control" type="text" name="meter_high_limit" placeholder="" value="{{ input_device['meter_high_limit'] }}">
                                 </div>
                                 {% endif %}
                                 <div class="form-group">
