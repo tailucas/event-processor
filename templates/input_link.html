@@ -10,7 +10,7 @@
                             <a data-toggle="collapse" data-parent="#accordion" href="#collapse{{loop.index}}">{{ input_device['device_label'] }}{% if 'linked_inputs' in input_device %} <span class="badge">{{ input_device['linked_inputs']|count }}</span>{% endif %}</a>
                         </h4>
                     </div>
-                    <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if input_device_key == last_saved_device_key or loop.first %} in{% endif %}">
+                    <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if input_device_key == last_saved_device_key or (loop.first and last_saved_device_key is None) %} in{% endif %}">
                         <div class="panel-body">
                             <form role="form" method='POST'>
                                 {% for linkable_input_key, linkable_input in inputs|dictsort %}

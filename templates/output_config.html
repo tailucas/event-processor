@@ -10,7 +10,7 @@
                             <a data-toggle="collapse" data-parent="#accordion" href="#collapse{{loop.index}}">{{ output_device['device_label'] }}{% if 'device_params' in output_device %} <span class="badge">Customized</span>{% endif %}</a>
                         </h4>
                     </div>
-                    <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if output_device_key == last_saved_device_key or loop.first %} in{% endif %}">
+                    <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if output_device_key == last_saved_device_key or (loop.first and last_saved_device_key is None) %} in{% endif %}">
                         <div class="panel-body">
                             <form role="form" method='POST'>
                                 <div class="form-group">
