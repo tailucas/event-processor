@@ -102,7 +102,6 @@ def debug():
 
 @rest_api.route('/', methods=['GET', 'POST'])
 def index():
-    device_key = None
     group_disabled = dict()
     device_listing = dict()
     input_labels = dict()
@@ -199,7 +198,6 @@ def index():
     return render_template('index.html',
                            inputs=device_listing,
                            input_labels=input_labels,
-                           last_saved_device_key=device_key,
                            awol_inputs=awol_inputs,
                            awol_input_labels=awol_input_labels)
 
