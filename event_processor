@@ -689,7 +689,7 @@ class EventProcessor(Thread):
                                         continue
                                     active_device_config = self._input_config[active_device_key]
                                     # update meter if necessary
-                                    if 'meter' in active_device['type'].lower():
+                                    if 'type' in active_device and 'meter' in active_device['type'].lower():
                                         meter_update = int(active_device['sample_value'])
                                         cur_value = 0
                                         if 'meter_value' in active_device_config:
