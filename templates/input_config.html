@@ -29,9 +29,9 @@
                                 </div>
                                 {% if input_device['type'] == 'Meter' %}
                                 <div class="form-group">
-                                    <label class="radio-inline"><input type="radio" name="meter_mode"{% if not input_device['meter_mode'] %} checked{% endif %}>Default</label>
-                                    <label class="radio-inline"><input type="radio" name="meter_mode"{% if input_device['meter_mode'] == 'incrementing' %} checked{% endif %}>Incrementing</label>
-                                    <label class="radio-inline"><input type="radio" name="meter_mode"{% if input_device['meter_mode'] == 'decrementing' %} checked{% endif %}>Decrementing</label>
+                                    <label class="radio-inline"><input type="radio" name="meter_mode" value="default"{% if not input_device['meter_mode'] %} checked{% endif %}>Default</label>
+                                    <label class="radio-inline"><input type="radio" name="meter_mode" value="incrementing"{% if input_device['meter_mode'] == 'incrementing' %} checked{% endif %}>Incrementing</label>
+                                    <label class="radio-inline"><input type="radio" name="meter_mode" value="decrementing"{% if input_device['meter_mode'] == 'decrementing' %} checked{% endif %}>Decrementing</label>
                                 </div>
                                 <div class="form-group">
                                     <label for="meter_reset">Reset value for the meter:</label>

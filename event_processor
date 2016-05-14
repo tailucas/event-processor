@@ -237,8 +237,8 @@ def input_config():
                 customized = True
             else:
                 to_save['trigger_window'] = None
-            if request.form['meter_mode'].lower() != 'default':
-                to_save['meter_mode'] = request.form['meter_mode'].lower()
+            if request.form['meter_mode'] != 'default':
+                to_save['meter_mode'] = request.form['meter_mode']
                 customized = True
             else:
                 to_save['meter_mode'] = None
