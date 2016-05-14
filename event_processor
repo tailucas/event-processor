@@ -140,6 +140,16 @@ def index():
             reset_value = 0
             if 'meter_reset_value' in device_listing[device_key]:
                 reset_value = device_listing[device_key]['meter_reset_value']
+            if 'meter_reset_additive' in device_listing[device_key]:
+                meter_value = device_listing[device_key]['meter_value']
+                if 'meter_mode' in device_listing[device_key]:
+                    if device_listing[device_key]['meter_mode'] == 'incrementing':
+                        meter_value += reset_value
+                    elif device_listing[device_key]['meter_mode'] == 'decrementing':
+                        meter_value -= reset_value
+                    # override the reset value
+                    reset_value = meter_value
+            # update both the in memory model and the stored configuration
             device_listing[device_key]['meter_value'] = reset_value
             event_processor.flash_info = False
             event_processor.input_config = (
