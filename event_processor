@@ -245,6 +245,11 @@ def input_config():
                 customized = True
             else:
                 to_save['meter_reset_value'] = None
+            if len(request.form.getlist('meter_reset_additive')) > 0:
+                to_save['meter_reset_additive'] = True
+                customized = True
+            else:
+                to_save['meter_reset_additive'] = None
             to_save['customized'] = customized
             event_processor.input_config = (
                 device_key,
