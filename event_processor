@@ -102,6 +102,7 @@ def debug():
 
 @rest_api.route('/', methods=['GET', 'POST'])
 def index():
+    device_key = None
     group_disabled = dict()
     device_listing = dict()
     input_labels = dict()
@@ -198,6 +199,7 @@ def index():
     return render_template('index.html',
                            inputs=device_listing,
                            input_labels=input_labels,
+                           last_saved_device_key=device_key,
                            awol_inputs=awol_inputs,
                            awol_input_labels=awol_input_labels)
 
@@ -209,6 +211,7 @@ def show_config():
 
 @rest_api.route('/input_config', methods=['GET', 'POST'])
 def input_config():
+    device_key = None
     if request.method == 'POST':
         device_key = request.form['device_key']
         try:
@@ -271,36 +274,45 @@ def input_config():
             flash(message='{}: {}'.format(message, e.message), category='danger')
     return render_template('input_config.html',
                            inputs=event_processor.input_config,
+                           last_saved_device_key=device_key,
                            default_trigger_window=int(config.get('config', 'default_trigger_window')),
                            default_activation_interval=int(config.get('config', 'default_activation_interval')))
 
 
 @rest_api.route('/input_link', methods=['GET', 'POST'])
 def input_link():
+    device_key = None
     if request.method == 'POST':
+        device_key = request.form['device_key']
         event_processor.input_config = (
-            request.form['device_key'],
+            device_key,
             {'linked_inputs': request.form.getlist('linked_input')}
         )
     return render_template('input_link.html',
-                           inputs=event_processor.input_config)
+                           inputs=event_processor.input_config,
+                           last_saved_device_key=device_key)
 
 
 @rest_api.route('/output_link', methods=['GET', 'POST'])
 def output_link():
+    device_key = None
     if request.method == 'POST':
+        device_key = request.form['device_key']
         event_processor.input_config = (
-            request.form['device_key'],
+            device_key,
             {'linked_outputs': request.form.getlist('linked_output')}
         )
     return render_template('output_link.html',
                            inputs=event_processor.input_config,
+                           last_saved_device_key=device_key,
                            outputs=event_processor.outputs)
 
 
 @rest_api.route('/output_config', methods=['GET', 'POST'])
 def output_config():
+    device_key = None
     if request.method == 'POST':
+        device_key = request.form['device_key']
         to_save = dict()
         device_params = request.form['device_params'].strip()
         if len(device_params) > 0:
@@ -308,11 +320,12 @@ def output_config():
         else:
             to_save['device_params'] = None
         event_processor.output_config = (
-            request.form['device_key'],
+            device_key,
             to_save
         )
     return render_template('output_config.html',
-                           outputs=event_processor.output_config)
+                           outputs=event_processor.output_config,
+                           last_saved_device_key=device_key)
 
 
 class SignalHandler:
