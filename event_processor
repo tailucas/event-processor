@@ -734,7 +734,17 @@ class EventProcessor(Thread):
                                     if 'device_disabled' in active_device_config:
                                         continue
                                     # only consider a meter active if the value is out of bounds
-                                    #TODO: test metered bounds
+                                    if 'type' in active_device and 'meter' in active_device['type'].lower():
+                                        meter_value = active_device_config['meter_value']
+                                        out_of_range = False
+                                        if 'meter_low_limit' in active_device_config:
+                                            if meter_value < active_device_config['meter_low_limit']:
+                                                out_of_range = True
+                                        if 'meter_high_limit' in active_device_config:
+                                            if meter_value > active_device_config['meter_high_limit']:
+                                                out_of_range = True
+                                        if not out_of_range:
+                                            continue
                                     # multi-trigger
                                     if 'multi_trigger' in active_device_config:
                                         if 'trigger_window' in active_device_config:
