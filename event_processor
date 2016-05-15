@@ -466,7 +466,7 @@ class EventProcessor(Thread):
             device_configs[device_key] = device_config
         try:
             table_name = table_member.table_name
-            log.info("Updating table '{}'...".format(table_name))
+            log.debug("Updating table '{}'...".format(table_name))
             try:
                 log.debug("Item '{}' to be updated with '{}'".format(primary_key, updates))
                 table_item = table_member.get_item(**primary_key)
