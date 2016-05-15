@@ -218,6 +218,11 @@ def input_config():
                     customized = True
                 else:
                     to_save['group_name'] = None
+            if device_key in request.form.getlist('info_notify'):
+                to_save['info_notify'] = True
+                customized = True
+            else:
+                to_save['info_notify'] = None
             if request.form.get('multi_trigger'):
                 to_save['multi_trigger'] = True
                 customized = True
@@ -656,7 +661,10 @@ class EventProcessor(Thread):
             origin_push_socket = zmq_context.socket(zmq.PUSH)
             origin_push_socket.connect(connection_string)
             self._origin_connections[origin] = origin_push_socket
-
+        # informational notifications
+        # TODO: move to UI configuration
+        self.notify_not_before_time = dateutil.parser.parse(config.get('info_notify', 'not_before_time'))
+        self.notify_not_after_time = dateutil.parser.parse(config.get('info_notify', 'not_after_time'))
         while True:
             try:
                 event = self.socket.recv_pyobj()
@@ -792,6 +800,36 @@ class EventProcessor(Thread):
                                         awol_devices=self._awol_inputs,
                                         device=active_device)
                                     log.debug('{} {}'.format(origin, active_device_key))
+                                    # informational event?
+                                    #TODO: move to _process_device_event
+                                    if 'info_notify' in active_device_config:
+                                        # make a future date that is relative (after) now time.
+                                        now = datetime.now().replace(tzinfo=tz.tzlocal())
+                                        not_before = now.replace(
+                                            hour=self.notify_not_before_time.hour,
+                                            minute=self.notify_not_before_time.minute,
+                                            second=0,
+                                            microsecond=0)
+                                        not_after = now.replace(
+                                            hour=self.notify_not_after_time.hour,
+                                            minute=self.notify_not_after_time.minute,
+                                            second=0,
+                                            microsecond=0)
+                                        defer_until = None
+                                        if now < not_before:
+                                            defer_until = not_before
+                                        if now >= not_after:
+                                            # the not-before time may not be on the same day
+                                            if now > not_before:
+                                                defer_until = not_before + timedelta(days=1)
+                                        else:
+                                            defer_until = not_before
+                                        if defer_until:
+                                            # defer the notification
+                                            log.info("Deferring notification for '{}' until {}".format(
+                                                active_device_key,
+                                                defer_until))
+                                            continue
                                     self._process_device_event(
                                         event_origin=origin,
                                         timestamp=timestamp,

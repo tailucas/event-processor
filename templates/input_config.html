@@ -13,6 +13,9 @@
                     <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if input_device_key == last_saved_device_key or (loop.first and last_saved_device_key is none) %} in{% endif %}">
                         <div class="panel-body">
                             <form class="form" role="form" method='POST'>
+                                <div class="form-group">
+                                    <label><input type="checkbox" name="info_notify" value="{{ input_device_key }}"{% if input_device['info_notify'] %} checked{% endif %}>Notifications are informational (daylight hours only)</label>
+                                </div>
                                 {% if input_device['type'] != 'Meter' %}
                                 <div class="form-group">
                                     <label for="group_name">Group name:</label>
