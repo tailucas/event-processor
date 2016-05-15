@@ -820,10 +820,7 @@ class EventProcessor(Thread):
                                             defer_until = not_before
                                         if now >= not_after:
                                             # the not-before time may not be on the same day
-                                            if now > not_before:
-                                                defer_until = not_before + timedelta(days=1)
-                                        else:
-                                            defer_until = not_before
+                                            defer_until = not_before + timedelta(days=1)
                                         if defer_until:
                                             # defer the notification
                                             log.info("Deferring notification for '{}' until {}".format(
