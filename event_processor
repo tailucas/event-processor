@@ -706,14 +706,17 @@ class EventProcessor(Thread):
                                     # update meter if necessary
                                     if 'type' in active_device and 'meter' in active_device['type'].lower():
                                         meter_update = int(active_device['sample_value'])
+                                        # metric dimensions
+                                        metric_dimensions = dict()
+                                        metric_dimensions['device_type'] = 'meter'
+                                        if 'device_label' in active_device:
+                                            metric_dimensions['device_label'] = active_device['device_label']
                                         # show this as a metric
                                         self._metrics.put_metric_data(
                                             namespace=self.metric_namespace,
                                             name=active_device_key,
                                             value=meter_update,
-                                            dimensions={
-                                                'device_type': 'meter',
-                                            },
+                                            dimensions=metric_dimensions,
                                             timestamp=timestamp)
                                         cur_value = 0
                                         if 'meter_value' in active_device_config:
