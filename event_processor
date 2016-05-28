@@ -696,7 +696,8 @@ class EventProcessor(Thread):
                                     dimensions={
                                         'Device': event_origin,
                                     },
-                                    timestamp=timestamp)
+                                    timestamp=timestamp,
+                                    unit='Seconds')
                             if 'device_info' in event_data['data']:
                                 devices_updated = self._update_devices(
                                     event_origin=event_origin,
@@ -725,7 +726,8 @@ class EventProcessor(Thread):
                                             name=active_device_key,
                                             value=meter_update,
                                             dimensions=metric_dimensions,
-                                            timestamp=timestamp)
+                                            timestamp=timestamp,
+                                            unit='Count')
                                         cur_value = 0
                                         if 'meter_value' in active_device_config:
                                             cur_value = active_device_config['meter_value']
