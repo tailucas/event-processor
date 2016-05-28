@@ -10,6 +10,7 @@ import json
 import os
 import pytz
 import signal
+import sqlite3
 import sys
 import threading
 import time
@@ -389,6 +390,7 @@ class EventProcessor(Thread):
         self._awol_outputs = set()
 
         self._db_storage = None
+        self._ddb_storage = None
 
         self._general_config = None
         self._general_config_table = None
@@ -592,31 +594,11 @@ class EventProcessor(Thread):
         else:
             log.warn('{} is not configured or linked to any output: {}'.format(active_device_key, active_device))
 
-    def post_metric(self, name, value, timestamp=None, unit='Count'):
-        scalar = None
-        if isinstance(value, list):
-            scalar = len(value)
-        elif isinstance(value, int):
-            scalar = value
-        else:
-            raise RuntimeError('Unable to determine scalar value from {}'.format(value))
-        if timestamp is None:
-            timestamp = datetime.utcfromtimestamp(time.time()).replace(tzinfo=pytz.utc)
-        log.debug("Posting '{}' of '{}' for '{}' at {}".format(unit,
-                                                               scalar,
-                                                               self.metric_namespace,
-                                                               timestamp.isoformat()))
-        self._metrics.put_metric_data(namespace=self.metric_namespace,
-                                     name=name,
-                                     value=scalar,
-                                     timestamp=timestamp,
-                                     unit=unit)
-
     def __setup_config_table(self, table_name, primary_key='device_key'):
         log.info("Loading Dynamo table '{}'...".format(table_name))
         member_table = Table(
             table_name=table_name,
-            connection=self._db_storage)
+            connection=self._ddb_storage)
         log.info("Reading table '{}'...".format(table_name))
         member = dict()
         for result in member_table.scan():
@@ -635,8 +617,10 @@ class EventProcessor(Thread):
         self._origin_ips[origin] = ip
 
     def run(self):
+        # set up local DB storage
+        self._db_storage = sqlite3.connect(database=config.get('db', 'tablespace_path'))
         # connect to AWS services
-        self._db_storage = dynamodb2.connect_to_region(
+        self._ddb_storage = dynamodb2.connect_to_region(
             region_name=config.get('aws', 'region'),
             aws_access_key_id=config.get('aws', 'aws_access_key_id'),
             aws_secret_access_key=config.get('aws', 'aws_secret_access_key'))
@@ -722,6 +706,12 @@ class EventProcessor(Thread):
                                     # update meter if necessary
                                     if 'type' in active_device and 'meter' in active_device['type'].lower():
                                         meter_update = int(active_device['sample_value'])
+                                        # show this as a metric
+                                        self._metrics.put_metric_data(
+                                            namespace=self.metric_namespace,
+                                            name=active_device_key,
+                                            value=meter_update,
+                                            timestamp=timestamp)
                                         cur_value = 0
                                         if 'meter_value' in active_device_config:
                                             cur_value = active_device_config['meter_value']
