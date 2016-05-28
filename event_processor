@@ -662,10 +662,7 @@ class EventProcessor(Thread):
                             timestamp = datetime.utcnow().replace(tzinfo=pytz.utc)
                         if 'data' in event_data:
                             if 'stale_heartbeat' in event_data['data']:
-                                heartbeat = event_data['data']['stale_heartbeat']
-                                hb = "never"
-                                if heartbeat:
-                                    hb = datetime.utcfromtimestamp(heartbeat).replace(tzinfo=pytz.utc).strftime(DATE_FORMAT)
+                                stale_heartbeat = event_data['data']['stale_heartbeat']
                                 device_status = "unknown"
                                 if 'device_status' in event_data['data']:
                                     device_status = event_data['data']['device_status']
@@ -678,7 +675,7 @@ class EventProcessor(Thread):
                                     if event_origin in origin_devices and len(origin_devices[event_origin]) > 0:
                                         log.debug("'{}' last checked-in: {} in an '{}' state.".format(
                                             event_origin,
-                                            hb,
+                                            stale_heartbeat,
                                             device_status.lower()))
                                         for device_key in origin_devices[event_origin]:
                                             if device_key not in awol_devices:
@@ -689,6 +686,17 @@ class EventProcessor(Thread):
                                         new_awol,
                                         event_origin
                                     ))
+                            if 'heartbeat_age' in event_data['data']:
+                                heartbeat_age = int(event_data['data']['heartbeat_age'])
+                                # show this as a metric
+                                self._metrics.put_metric_data(
+                                    namespace=self.metric_namespace,
+                                    name='Heartbeat Age',
+                                    value=heartbeat_age,
+                                    dimensions={
+                                        'Device': event_origin,
+                                    },
+                                    timestamp=timestamp)
                             if 'device_info' in event_data['data']:
                                 devices_updated = self._update_devices(
                                     event_origin=event_origin,
@@ -893,12 +901,17 @@ class OriginNanny(Thread):
         self.processor.connect(URL_WORKER_EVENT_PROCESSOR)
         # warm-up to wait for first volley of heartbeats
         sleep(self._max_heartbeat_delay)
-        while True:
+        nannying = True
+        while nannying:
             resin_device = Device()
             for origin, (ip, subscriber) in self.origin_subscriber.items():
+                payload = dict()
                 # when last was an event seen by this subscriber
                 last_message = subscriber.last_message
-                if last_message is None or time.time() - subscriber.last_message > self._max_heartbeat_delay:
+                heartbeat_age = None
+                if last_message:
+                    heartbeat_age = time.time() - subscriber.last_message
+                if last_message is None or heartbeat_age > self._max_heartbeat_delay:
                     device_status = None
                     device_last_seen = None
                     if last_message:
@@ -924,16 +937,20 @@ class OriginNanny(Thread):
                                                                            device_last_seen))
                     else:
                         log.debug(log_message)
+                    # used as an out-of-band trigger for something amiss
+                    payload['stale_heartbeat'] = last_message
+                    if device_status:
+                        payload['device_status'] = device_status
+                # do this for each device irrespective of stale or not
+                if heartbeat_age:
+                    payload['heartbeat_age'] = heartbeat_age
+                # send out either a stale alert or the heartbeat
+                if len(payload) > 0:
                     try:
-                        # used as an out-of-band trigger for something amiss
-                        payload = {
-                            'stale_heartbeat': subscriber.last_message,
-                        }
-                        if device_status:
-                            payload['device_status'] = device_status
                         self.processor.send_pyobj({origin: {'data': payload}})
                     except ContextTerminated:
                         self.processor.close()
+                        nannying = False
                         break
             sleep(self._max_heartbeat_delay)
 
