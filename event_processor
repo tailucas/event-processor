@@ -711,6 +711,9 @@ class EventProcessor(Thread):
                                             namespace=self.metric_namespace,
                                             name=active_device_key,
                                             value=meter_update,
+                                            dimensions={
+                                                'device_type': 'meter',
+                                            },
                                             timestamp=timestamp)
                                         cur_value = 0
                                         if 'meter_value' in active_device_config:
