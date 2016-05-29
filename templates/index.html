@@ -18,7 +18,7 @@
     {% endfor %}
     {% if input_device['type'] == 'Meter' and 'meter_value' in input_device %}
     <p class="list-group-item-text">Reading: {{ input_device['meter_value'] }}</p>
-    <div id="chart_div"/>
+    <div id="chart_div"></div>
     {% endif %}
   </a>
   {% endwith %}
