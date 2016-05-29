@@ -1,12 +1,5 @@
 {% extends "layout.html" %}
 {% set active_page = "index" %}
-{% block head %}
-        <style>
-            #chart_div {
-                min-height: 400px;
-            }
-        </style>
-{% endblock %}
 {% block body %}
 <ul class="list-group">
   {% for input_device_key, input_device in inputs|dictsort %}
@@ -25,7 +18,7 @@
     {% endfor %}
     {% if input_device['type'] == 'Meter' and 'meter_value' in input_device %}
     <p class="list-group-item-text">Reading: {{ input_device['meter_value'] }}</p>
-    <div id="chart_div"></div>
+    <div id="chart_div"/>
     {% endif %}
   </a>
   {% endwith %}
@@ -35,10 +28,10 @@
 {% block script %}
         <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
         <script type="text/javascript">
-            google.charts.load('current', {packages: ['corechart', 'line']});
-            google.charts.setOnLoadCallback(drawCurveTypes);
+            google.charts.load('current', {packages: ['corechart']});
+            google.charts.setOnLoadCallback(drawChart);
 
-            function drawCurveTypes() {
+            function drawChart() {
                   var data = new google.visualization.DataTable();
                   data.addColumn('number', 'X');
                   data.addColumn('number', 'Dogs');
