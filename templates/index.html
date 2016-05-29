@@ -37,7 +37,7 @@
                   var data = new google.visualization.DataTable();
                   data.addColumn('datetime', 'Time');
                   data.addColumn('number', 'Units');
-                  data.addRows({{ meter_history['Electricity Meter (House)'] }});
+                  data.addRows({{ meter_history['Electricity Meter (House)'] | safe }});
 
                   var options = {
                     enableInteractivity: false,
