@@ -138,14 +138,14 @@ def index():
                 device_listing[group_name]['mixed_disabled'] = True
         if device_config['type'] == 'Meter':
             end_time = datetime.now().replace(tzinfo=tz.tzlocal())
-            start_time = end_time - timedelta(days=1)
             meter_stats = event_processor._metrics.get_metric_statistics(
-                60,
-                start_time,
-                end_time,
-                device_key,
-                event_processor.metric_namespace,
-                'Average')
+                period=60,
+                start_time=end_time - timedelta(days=1),
+                end_time=end_time,
+                metric_name=device_key,
+                namespace=event_processor.metric_namespace,
+                statistics='Average')
+            log.debug('Meter stats for {}::{}: {}'.format(event_processor.metric_namespace, device_key, meter_stats))
             meter_history[device_key] = meter_stats
     if request.method == 'POST':
         if 'meter_reset' in request.form:
