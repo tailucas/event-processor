@@ -103,6 +103,7 @@ def debug():
 
 @rest_api.route('/', methods=['GET', 'POST'])
 def index():
+    meter_history = dict()
     group_disabled = dict()
     device_listing = dict()
     input_labels = dict()
@@ -135,6 +136,18 @@ def index():
                     device_listing[group_name]['mixed_disabled'] = True
             elif group_name in group_disabled and group_disabled[group_name]:
                 device_listing[group_name]['mixed_disabled'] = True
+        if device_config['type'] == 'Meter':
+            end_time = time.time()
+            #TODO: fix
+            start_time = end_time - 24*60*60
+            meter_stats = event_processor._metrics.get_metric_statistics(
+                60,
+                datetime.utcfromtimestamp(start_time).replace(tzinfo=pytz.utc).strftime(DATE_FORMAT),
+                datetime.utcfromtimestamp(end_time).replace(tzinfo=pytz.utc).strftime(DATE_FORMAT),
+                device_key,
+                event_processor.metric_namespace,
+                'Average')
+            meter_history[device_key] = meter_stats
     if request.method == 'POST':
         if 'meter_reset' in request.form:
             device_key = request.form['meter_reset']
@@ -196,7 +209,8 @@ def index():
                            inputs=device_listing,
                            input_labels=input_labels,
                            awol_inputs=awol_inputs,
-                           awol_input_labels=awol_input_labels)
+                           awol_input_labels=awol_input_labels,
+                           meter_history=meter_history)
 
 
 @rest_api.route('/config', methods=['GET', 'POST'])
