@@ -18,7 +18,9 @@
     {% endfor %}
     {% if input_device['type'] == 'Meter' and 'meter_value' in input_device %}
     <p class="list-group-item-text">Reading: {{ input_device['meter_value'] }}</p>
+    <!--
     <div id="chart_div" name="{{ input_device_key }}"></div>
+    -->
     {% endif %}
   </a>
   {% endwith %}
@@ -33,11 +35,29 @@
 
             function drawChart() {
                   var data = new google.visualization.DataTable();
-                  data.addColumn('timeofday', 'Time');
+                  data.addColumn('datetime', 'Time');
                   data.addColumn('number', 'Units');
                   data.addRows({{ meter_history['Electricity Meter (House)'] }});
 
                   var options = {
+                    enableInteractivity: false,
+                    chartArea: {
+                      width: '95%',
+                      height: '95%',
+                    },
+                    gridlines: {
+                        count: -1,
+                        units: {
+                          days: {format: ['MMM dd']},
+                          hours: {format: ['HH:mm', 'ha']},
+                        }
+                    },
+                    minorGridlines: {
+                        units: {
+                          hours: {format: ['hh:mm:ss a', 'ha']},
+                          minutes: {format: ['HH:mm a Z', ':mm']}
+                        }
+                    }
                     legend : {
                       position: 'in'
                     },
