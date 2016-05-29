@@ -137,13 +137,12 @@ def index():
             elif group_name in group_disabled and group_disabled[group_name]:
                 device_listing[group_name]['mixed_disabled'] = True
         if device_config['type'] == 'Meter':
-            end_time = time.time()
-            #TODO: fix
-            start_time = end_time - 24*60*60
+            end_time = datetime.now().replace(tzinfo=tz.tzlocal())
+            start_time = end_time - timedelta(days=1)
             meter_stats = event_processor._metrics.get_metric_statistics(
                 60,
-                datetime.utcfromtimestamp(start_time).replace(tzinfo=pytz.utc).strftime(DATE_FORMAT),
-                datetime.utcfromtimestamp(end_time).replace(tzinfo=pytz.utc).strftime(DATE_FORMAT),
+                start_time,
+                end_time,
                 device_key,
                 event_processor.metric_namespace,
                 'Average')
