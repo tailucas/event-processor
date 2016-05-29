@@ -137,16 +137,22 @@ def index():
             elif group_name in group_disabled and group_disabled[group_name]:
                 device_listing[group_name]['mixed_disabled'] = True
         if device_config['type'] == 'Meter':
-            end_time = datetime.now().replace(tzinfo=tz.tzlocal())
-            meter_stats = event_processor._metrics.get_metric_statistics(
-                period=60,
-                start_time=end_time - timedelta(days=1),
-                end_time=end_time,
+            meter_metric = event_processor._metrics.list_metrics(
                 metric_name=device_key,
-                namespace=event_processor.metric_namespace,
-                statistics='Average')
-            log.debug('Meter stats for {}::{}: {}'.format(event_processor.metric_namespace, device_key, meter_stats))
-            meter_history[device_key] = meter_stats
+                namespace=event_processor.metric_namespace)
+            if len(meter_metric) > 0:
+                end_time = datetime.now().replace(tzinfo=tz.tzlocal())
+                meter_stats = meter_metric[0].query(
+                    start_time=end_time - timedelta(days=1),
+                    end_time=end_time,
+                    statistics='Average')
+                log.debug('Meter stats for {}::{}: {}'.format(event_processor.metric_namespace, device_key, meter_stats))
+                graph_stats = list()
+                for meter_stat in meter_stats:
+                    time_of_day = meter_stat['Timestamp']
+                    avg = meter_stat['Average']
+                    graph_stats.append([[time_of_day.hour, time_of_day.minute, time_of_day.second], avg])
+                meter_history[device_key] = graph_stats
     if request.method == 'POST':
         if 'meter_reset' in request.form:
             device_key = request.form['meter_reset']
