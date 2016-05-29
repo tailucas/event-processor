@@ -480,11 +480,17 @@ class EventProcessor(Thread):
     @staticmethod
     def _update_config(device_key, devices, device_configs, updates, table_member, primary_key, flash_info=True):
         device_label = devices[device_key]['device_label']
+        # try to get the existing device config, or create a new mapping
         device_config = dict()
         try:
             device_config = device_configs[device_key]
         except KeyError:
             device_configs[device_key] = device_config
+        # these are not explicitly configured, but required
+        if 'type' in devices[device_key] and 'type' not in device_configs[device_key]:
+            updates['type'] = devices[device_key]['type']
+        if 'device_label' in devices[device_key] and 'device_label' not in device_configs[device_key]:
+            updates['device_label'] = devices[device_key]['device_label']
         try:
             table_name = table_member.table_name
             log.debug("Updating table '{}'...".format(table_name))
