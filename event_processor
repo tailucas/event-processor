@@ -156,7 +156,7 @@ def index():
             )
             event_processor.flash_info = True
         elif 'meter_history' in request.form:
-            return redirect(url_for('metrics.html', meter=request.form['meter_history']))
+            return redirect(url_for('show_metrics', meter=request.form['meter_history']))
         elif 'device_key' in request.form:
             device_key = request.form['device_key']
             if 'grouped_inputs' not in device_listing[device_key]:
@@ -210,7 +210,7 @@ def show_metrics():
     device_config = event_processor.input_config[device_key]
     if device_config['type'] != 'Meter':
         flash('{} is not a meter.'.format(device_key), category='danger')
-        return redirect(url_for('index.html'))
+        return redirect(url_for('index'))
     meter_metric = event_processor._metrics.list_metrics(
         metric_name=device_key,
         namespace=event_processor.metric_namespace)
@@ -226,7 +226,7 @@ def show_metrics():
             avg = meter_stat['Average']
             meter_history.append((time_of_day.isoformat(), avg))
     return render_template('metrics.html',
-                           meter_history=meter_history)
+                           meter_history=sorted(meter_history))
 
 
 @rest_api.route('/config', methods=['GET', 'POST'])

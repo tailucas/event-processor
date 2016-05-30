@@ -14,27 +14,29 @@
                   data.addColumn('datetime', 'Time');
                   data.addColumn('number', 'Units');
                   {% for metric_date, metric_value in meter_history %}
-                  data.addRow([new Date(metric_date), metric_value]);
+                  data.addRow([new Date('{{ metric_date }}'), {{ metric_value }}]);
                   {% endfor %}
                   var options = {
                     enableInteractivity: false,
                     chartArea: {
-                      width: '95%',
-                      height: '95%',
+                      width: '85%',
+                      height: '85%',
                     },
-                    gridlines: {
+                    hAxis: {
+                      gridlines: {
                         count: -1,
                         units: {
                           days: {format: ['MMM dd']},
                           hours: {format: ['HH:mm', 'ha']},
                         }
-                    },
-                    minorGridlines: {
+                      },
+                      minorGridlines: {
                         units: {
                           hours: {format: ['hh:mm:ss a', 'ha']},
                           minutes: {format: ['HH:mm a Z', ':mm']}
                         }
-                    }
+                      }
+                    },
                     legend : {
                       position: 'in'
                     },
