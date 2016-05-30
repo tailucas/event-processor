@@ -1,0 +1,50 @@
+{% extends "layout.html" %}
+{% set active_page = "show_metrics" %}
+{% block body %}
+    <div id="chart_div_hourly"></div>
+{% endblock %}
+{% block script %}
+        <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+        <script type="text/javascript">
+            google.charts.load('current', {packages: ['corechart']});
+            google.charts.setOnLoadCallback(drawChart);
+
+            function drawChart() {
+                  var data = new google.visualization.DataTable();
+                  data.addColumn('datetime', 'Time');
+                  data.addColumn('number', 'Units');
+                  {% for metric_date, metric_value in meter_history %}
+                  data.addRow([new Date(metric_date), metric_value]);
+                  {% endfor %}
+                  var options = {
+                    enableInteractivity: false,
+                    chartArea: {
+                      width: '95%',
+                      height: '95%',
+                    },
+                    gridlines: {
+                        count: -1,
+                        units: {
+                          days: {format: ['MMM dd']},
+                          hours: {format: ['HH:mm', 'ha']},
+                        }
+                    },
+                    minorGridlines: {
+                        units: {
+                          hours: {format: ['hh:mm:ss a', 'ha']},
+                          minutes: {format: ['HH:mm a Z', ':mm']}
+                        }
+                    }
+                    legend : {
+                      position: 'in'
+                    },
+                    series: {
+                      1: {curveType: 'function'}
+                    },
+                  };
+
+                  var chart = new google.visualization.LineChart(document.getElementById('chart_div_hourly'));
+                  chart.draw(data, options);
+                }
+        </script>
+{% endblock %}
