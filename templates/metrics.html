@@ -17,11 +17,7 @@
                   data.addRow([new Date('{{ metric_date }}'), {{ metric_value }}]);
                   {% endfor %}
                   var options = {
-                    enableInteractivity: false,
-                    chartArea: {
-                      width: '85%',
-                      height: '85%',
-                    },
+                    enableInteractivity: true,
                     hAxis: {
                       gridlines: {
                         count: -1,
@@ -44,7 +40,6 @@
                       1: {curveType: 'function'}
                     },
                   };
-
                   var chart = new google.visualization.LineChart(document.getElementById('chart_div_hourly'));
                   chart.draw(data, options);
                 }
