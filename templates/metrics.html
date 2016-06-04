@@ -48,7 +48,10 @@
                   data.addRow([new Date('{{ metric_date }}'), {{ metric_value }}]);
                   {% endfor %}
                   var chart = new google.visualization.LineChart(document.getElementById('chart_div_day'));
-                  chart.draw(data, options);
+                  var options_title = {
+                    title: '{{ meter_history_day_title }}',
+                  };
+                  chart.draw(data, $.extend(options_title, options));
 
                   var data = new google.visualization.DataTable();
                   data.addColumn('datetime', 'Time');
@@ -57,7 +60,11 @@
                   data.addRow([new Date('{{ metric_date }}'), {{ metric_value }}]);
                   {% endfor %}
                   var chart = new google.visualization.LineChart(document.getElementById('chart_div_week'));
-                  chart.draw(data, options);
+                  var weekly_options = {
+                    title: '{{ meter_history_week_title }}',
+                    curveType: 'function',
+                  };
+                  chart.draw(data, $.extend(weekly_options, options));
 
                   var data = new google.visualization.DataTable();
                   data.addColumn('datetime', 'Time');
@@ -66,7 +73,11 @@
                   data.addRow([new Date('{{ metric_date }}'), {{ metric_value }}]);
                   {% endfor %}
                   var chart = new google.visualization.LineChart(document.getElementById('chart_div_month'));
-                  chart.draw(data, options);
+                  var monthly_options = {
+                    title: '{{ meter_history_month_title }}',
+                    curveType: 'function',
+                  };
+                  chart.draw(data, $.extend(monthly_options, options));
                 }
         </script>
 {% endblock %}

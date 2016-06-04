@@ -221,13 +221,13 @@ def show_metrics():
         for stat_period, stat_interval, time_delta in [
             (300, meter_history_day, timedelta(days=1)),
             (3600, meter_history_week, timedelta(days=7)),
-            (7200, meter_history_month, timedelta(days=31))
+            (86400, meter_history_month, timedelta(days=31))
         ]:
             meter_stats = meter_metric[0].query(
                 start_time=end_time - time_delta,
                 end_time=end_time,
                 period=stat_period,
-                statistics='Average')
+                statistics='Sum')
             log.info('Meter stats for {}::{} for period {}: {}'.format(
                 event_processor.metric_namespace,
                 device_key,
@@ -240,8 +240,11 @@ def show_metrics():
     return render_template('metrics.html',
                            metric_title=device_config['device_label'],
                            meter_history_day=sorted(meter_history_day),
+                           meter_history_day_title='5-minute sum',
                            meter_history_week=sorted(meter_history_week),
-                           meter_history_month=sorted(meter_history_month))
+                           meter_history_week_title='1-hour sum',
+                           meter_history_month=sorted(meter_history_month),
+                           meter_history_month_title='24-hour sum')
 
 
 @rest_api.route('/config', methods=['GET', 'POST'])
