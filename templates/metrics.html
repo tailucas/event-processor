@@ -1,7 +1,7 @@
 {% extends "layout.html" %}
 {% set active_page = "show_metrics" %}
 {% block body %}
-    <h3>{{ metric_title }}</h3>
+    <p class="text-center"><h3>{{ metric_title }}</h3></p>
     <div id="chart_div_day"></div>
     <div id="chart_div_week"></div>
     <div id="chart_div_month"></div>
@@ -12,7 +12,6 @@
             google.charts.load('current', {packages: ['corechart']});
             google.charts.setOnLoadCallback(drawChart);
             function drawChart() {
-                  # default chart options
                   var options = {
                     enableInteractivity: true,
                     height: 500,
@@ -41,7 +40,7 @@
                       1: {curveType: 'function'}
                     },
                   };
-                  # day
+
                   var data = new google.visualization.DataTable();
                   data.addColumn('datetime', 'Time');
                   data.addColumn('number', 'Units');
@@ -50,7 +49,7 @@
                   {% endfor %}
                   var chart = new google.visualization.LineChart(document.getElementById('chart_div_day'));
                   chart.draw(data, options);
-                  # week
+
                   var data = new google.visualization.DataTable();
                   data.addColumn('datetime', 'Time');
                   data.addColumn('number', 'Units');
@@ -59,7 +58,7 @@
                   {% endfor %}
                   var chart = new google.visualization.LineChart(document.getElementById('chart_div_week'));
                   chart.draw(data, options);
-                  # month
+
                   var data = new google.visualization.DataTable();
                   data.addColumn('datetime', 'Time');
                   data.addColumn('number', 'Units');

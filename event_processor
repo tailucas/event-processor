@@ -228,7 +228,7 @@ def show_metrics():
                 end_time=end_time,
                 period=stat_period,
                 statistics='Average')
-            log.debug('Meter stats for {}::{} for period {}: {}'.format(
+            log.info('Meter stats for {}::{} for period {}: {}'.format(
                 event_processor.metric_namespace,
                 device_key,
                 stat_period,
@@ -238,7 +238,7 @@ def show_metrics():
                 avg = meter_stat['Average']
                 stat_interval.append((time_of_day.isoformat(), avg))
     return render_template('metrics.html',
-                           metric_title=device_config[device_key]['device_label'],
+                           metric_title=device_config['device_label'],
                            meter_history_day=sorted(meter_history_day),
                            meter_history_week=sorted(meter_history_week),
                            meter_history_month=sorted(meter_history_month))
