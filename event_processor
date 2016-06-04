@@ -235,8 +235,8 @@ def show_metrics():
                 len(meter_stats)))
             for meter_stat in meter_stats:
                 time_of_day = meter_stat['Timestamp']
-                avg = meter_stat['Average']
-                stat_interval.append((time_of_day.isoformat(), avg))
+                metric = meter_stat['Sum']
+                stat_interval.append((time_of_day.isoformat(), metric))
     return render_template('metrics.html',
                            metric_title=device_config['device_label'],
                            meter_history_day=sorted(meter_history_day),
