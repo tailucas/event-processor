@@ -1,23 +1,24 @@
 {% extends "layout.html" %}
 {% set active_page = "show_metrics" %}
 {% block body %}
-    <div id="chart_div_hourly"></div>
+    <h3>{{ metric_title }}</h3>
+    <div id="chart_div_day"></div>
+    <div id="chart_div_week"></div>
+    <div id="chart_div_month"></div>
 {% endblock %}
 {% block script %}
         <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
         <script type="text/javascript">
             google.charts.load('current', {packages: ['corechart']});
             google.charts.setOnLoadCallback(drawChart);
-
             function drawChart() {
-                  var data = new google.visualization.DataTable();
-                  data.addColumn('datetime', 'Time');
-                  data.addColumn('number', 'Units');
-                  {% for metric_date, metric_value in meter_history %}
-                  data.addRow([new Date('{{ metric_date }}'), {{ metric_value }}]);
-                  {% endfor %}
+                  # default chart options
                   var options = {
                     enableInteractivity: true,
+                    height: 500,
+                    chartArea: {
+                      width:'95%',
+                    },
                     hAxis: {
                       gridlines: {
                         count: -1,
@@ -40,7 +41,32 @@
                       1: {curveType: 'function'}
                     },
                   };
-                  var chart = new google.visualization.LineChart(document.getElementById('chart_div_hourly'));
+                  # day
+                  var data = new google.visualization.DataTable();
+                  data.addColumn('datetime', 'Time');
+                  data.addColumn('number', 'Units');
+                  {% for metric_date, metric_value in meter_history_day %}
+                  data.addRow([new Date('{{ metric_date }}'), {{ metric_value }}]);
+                  {% endfor %}
+                  var chart = new google.visualization.LineChart(document.getElementById('chart_div_day'));
+                  chart.draw(data, options);
+                  # week
+                  var data = new google.visualization.DataTable();
+                  data.addColumn('datetime', 'Time');
+                  data.addColumn('number', 'Units');
+                  {% for metric_date, metric_value in meter_history_week %}
+                  data.addRow([new Date('{{ metric_date }}'), {{ metric_value }}]);
+                  {% endfor %}
+                  var chart = new google.visualization.LineChart(document.getElementById('chart_div_week'));
+                  chart.draw(data, options);
+                  # month
+                  var data = new google.visualization.DataTable();
+                  data.addColumn('datetime', 'Time');
+                  data.addColumn('number', 'Units');
+                  {% for metric_date, metric_value in meter_history_month %}
+                  data.addRow([new Date('{{ metric_date }}'), {{ metric_value }}]);
+                  {% endfor %}
+                  var chart = new google.visualization.LineChart(document.getElementById('chart_div_month'));
                   chart.draw(data, options);
                 }
         </script>

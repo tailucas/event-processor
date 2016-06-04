@@ -205,7 +205,9 @@ def index():
 
 @rest_api.route('/metrics', methods=['GET', 'POST'])
 def show_metrics():
-    meter_history = list()
+    meter_history_day = list()
+    meter_history_week = list()
+    meter_history_month = list()
     device_key = request.args.get('meter')
     device_config = event_processor.input_config[device_key]
     if device_config['type'] != 'Meter':
@@ -216,17 +218,30 @@ def show_metrics():
         namespace=event_processor.metric_namespace)
     if len(meter_metric) > 0:
         end_time = datetime.now().replace(tzinfo=tz.tzlocal())
-        meter_stats = meter_metric[0].query(
-            start_time=end_time - timedelta(days=1),
-            end_time=end_time,
-            statistics='Average')
-        log.debug('Meter stats for {}::{}: {}'.format(event_processor.metric_namespace, device_key, meter_stats))
-        for meter_stat in meter_stats:
-            time_of_day = meter_stat['Timestamp']
-            avg = meter_stat['Average']
-            meter_history.append((time_of_day.isoformat(), avg))
+        for stat_period, stat_interval, time_delta in [
+            (300, meter_history_day, timedelta(days=1)),
+            (3600, meter_history_week, timedelta(days=7)),
+            (7200, meter_history_month, timedelta(days=31))
+        ]:
+            meter_stats = meter_metric[0].query(
+                start_time=end_time - time_delta,
+                end_time=end_time,
+                period=stat_period,
+                statistics='Average')
+            log.debug('Meter stats for {}::{} for period {}: {}'.format(
+                event_processor.metric_namespace,
+                device_key,
+                stat_period,
+                len(meter_stats)))
+            for meter_stat in meter_stats:
+                time_of_day = meter_stat['Timestamp']
+                avg = meter_stat['Average']
+                stat_interval.append((time_of_day.isoformat(), avg))
     return render_template('metrics.html',
-                           meter_history=sorted(meter_history))
+                           metric_title=device_config[device_key]['device_label'],
+                           meter_history_day=sorted(meter_history_day),
+                           meter_history_week=sorted(meter_history_week),
+                           meter_history_month=sorted(meter_history_month))
 
 
 @rest_api.route('/config', methods=['GET', 'POST'])
