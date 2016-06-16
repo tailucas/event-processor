@@ -719,7 +719,7 @@ class EventProcessor(Thread):
                         else:
                             timestamp = datetime.utcnow().replace(tzinfo=pytz.utc)
                             log.warn("Message from {} does not include a 'timestamp' so it can't be filtered if it is"
-                                     "stale. Using {}.".format(timestamp.strftime(DATE_FORMAT)))
+                                     "stale. Using {}.".format(event_origin, timestamp.strftime(DATE_FORMAT)))
                         if 'data' in event_data:
                             if 'stale_heartbeat' in event_data['data']:
                                 stale_heartbeat = event_data['data']['stale_heartbeat']
