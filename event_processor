@@ -453,6 +453,8 @@ class EventProcessor(Thread):
 
         self.flash_info = True
 
+        self._max_message_validity_seconds = None
+
         self.socket = zmq_context.socket(zmq.PULL)
         self.socket.bind(URL_WORKER_EVENT_PROCESSOR)
 
@@ -703,6 +705,8 @@ class EventProcessor(Thread):
         # TODO: move to UI configuration
         self.notify_not_before_time = dateutil.parser.parse(config.get('info_notify', 'not_before_time'))
         self.notify_not_after_time = dateutil.parser.parse(config.get('info_notify', 'not_after_time'))
+        # message validity
+        self._max_message_validity_seconds = int(config.get('app', 'max_message_validity_seconds'))
         while True:
             try:
                 event = self.socket.recv_pyobj()
@@ -714,6 +718,8 @@ class EventProcessor(Thread):
                             timestamp = dateutil.parser.parse(event_data['timestamp'])
                         else:
                             timestamp = datetime.utcnow().replace(tzinfo=pytz.utc)
+                            log.warn("Message from {} does not include a 'timestamp' so it can't be filtered if it is"
+                                     "stale. Using {}.".format(timestamp.strftime(DATE_FORMAT)))
                         if 'data' in event_data:
                             if 'stale_heartbeat' in event_data['data']:
                                 stale_heartbeat = event_data['data']['stale_heartbeat']
@@ -798,6 +804,16 @@ class EventProcessor(Thread):
                                             {'meter_value': cur_value}
                                         )
                                         self.flash_info = True
+                                    # message stale?
+                                    message_age = datetime.utcnow().replace(tzinfo=pytz.utc) - timestamp
+                                    if message_age > timedelta(seconds=self._max_message_validity_seconds):
+                                        log.warn('Skipping further processing of {} from {} due to '
+                                                 'message age {} exceeding {} seconds.'.format(
+                                            active_device_key,
+                                            event_origin,
+                                            message_age.seconds,
+                                            self._max_message_validity_seconds))
+                                        continue
                                     # input disabled?
                                     if 'device_disabled' in active_device_config:
                                         continue
