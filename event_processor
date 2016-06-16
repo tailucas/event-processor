@@ -718,8 +718,12 @@ class EventProcessor(Thread):
                             timestamp = dateutil.parser.parse(event_data['timestamp'])
                         else:
                             timestamp = datetime.utcnow().replace(tzinfo=pytz.utc)
-                            log.warn("Message from {} does not include a 'timestamp' so it can't be filtered if it is"
-                                     "stale. Using {}.".format(event_origin, timestamp.strftime(DATE_FORMAT)))
+                            log_msg = "Message from {} does not include a 'timestamp' so it can't be filtered if it " \
+                                      "is stale. Using {}.".format(event_origin, timestamp.strftime(DATE_FORMAT))
+                            if 'data' in event_data and 'active_devices' in event_data['data']:
+                                log.warn(log_msg)
+                            else:
+                                log.debug(log_msg)
                         if 'data' in event_data:
                             if 'stale_heartbeat' in event_data['data']:
                                 stale_heartbeat = event_data['data']['stale_heartbeat']
