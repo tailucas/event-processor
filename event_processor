@@ -651,9 +651,15 @@ class EventProcessor(Thread):
                     #TODO: make this configurable
                     if (timestamp - activation_time).seconds > 5*60:
                         continue
+                    #TODO: fix
+                    try:
+                        device_label = device_config['device_label']
+                    except KeyError:
+                        log.warn('No label for device {}'.format(active_device_key))
+                        device_label = active_device_key
                     # list of tuples
                     activation_history.append((
-                        device_config['device_label'],
+                        device_label,
                         (timestamp - activation_time).seconds
                     ))
                 # get the event destination
