@@ -88,8 +88,14 @@ def is_list(value):
 def make_payload(timestamp=None, data=None):
     payload = dict()
     if timestamp is None:
-        timestamp = time.time()
-    payload['timestamp'] = datetime.utcfromtimestamp(timestamp).replace(tzinfo=pytz.utc).strftime(DATE_FORMAT)
+        timestamp = datetime.utcnow().replace(tzinfo=pytz.utc)
+    elif isinstance(timestamp, float):
+        timestamp = datetime.utcfromtimestamp(timestamp).replace(tzinfo=pytz.utc)
+    if isinstance(timestamp, datetime):
+        timestamp = timestamp.strftime(DATE_FORMAT)
+    if not isinstance(timestamp, basestring):
+        log.warn('Non-string timestamp {} for payload {}'.format(timestamp, data))
+    payload['timestamp'] = timestamp
     if data is not None and len(data) > 0:
         payload['data'] = data
     log.debug(json.dumps(payload))
