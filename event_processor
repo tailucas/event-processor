@@ -633,7 +633,7 @@ class EventProcessor(Thread):
                 self._device_event_lru[active_device_key] = timestamp
                 # build up the device activation history
                 activation_history = list()
-                for device_key, activation_time in self._device_event_lru:
+                for device_key, activation_time in self._device_event_lru.items():
                     # filter out the device being activated
                     if device_key == active_device_key:
                         continue
