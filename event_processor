@@ -26,6 +26,7 @@ from datetime import datetime, timedelta
 from dateutil import tz
 from pprint import pprint
 from sets import Set
+from pylru import lrucache
 from Queue import Queue, Empty
 from resin.exceptions import RequestError
 from resin.models.device import Device
@@ -455,6 +456,8 @@ class EventProcessor(Thread):
 
         self._max_message_validity_seconds = None
 
+        self._device_event_lru = lrucache(100)
+
         self.socket = zmq_context.socket(zmq.PULL)
         self.socket.bind(URL_WORKER_EVENT_PROCESSOR)
 
@@ -626,6 +629,25 @@ class EventProcessor(Thread):
                                                                                      active_device_key,
                                                                                      output_device_key))
                     continue
+                # put the event information into the LRU
+                self._device_event_lru[active_device_key] = timestamp
+                # build up the device activation history
+                activation_history = list()
+                for device_key, activation_time in self._device_event_lru:
+                    try:
+                        device_config = self._input_config[device_key]
+                    except KeyError:
+                        del self._device_event_lru[device_key]
+                        continue
+                    #TODO: make this configurable
+                    if (timestamp - activation_time).minute > 5:
+                        continue
+                    # list of tuples
+                    activation_history.append((
+                        device_config['device_label'],
+                        (timestamp - activation_time).seconds
+                    ))
+                # get the event destination
                 event_destination = self._output_origin[output_device_key]
                 log.info('{} {} => {} {}'.format(
                     event_origin,
@@ -635,17 +657,17 @@ class EventProcessor(Thread):
                 output_device_activation.update(self.outputs[output_device_key])
                 if output_device_key in self._output_config:
                     output_device_activation.update(self._output_config[output_device_key])
-                output_push_socket = self._origin_connections[event_destination]
                 activation_command = {
                     'trigger_output': output_device_activation,
-                    'input_context': active_device
+                    'input_context': active_device,
+                    'trigger_history': activation_history,
                 }
                 if 'activation_interval' in self._input_config[active_device_key]:
                     activation_command['trigger_duration'] = int(
                         self._input_config[active_device_key]['activation_interval']
                     )
-                output_push_socket.send(make_payload(
-                    timestamp=None,
+                self._origin_connections[event_destination].send(make_payload(
+                    timestamp=timestamp,
                     data=activation_command))
         else:
             log.warn('{} is not configured or linked to any output: {}'.format(active_device_key, active_device))
