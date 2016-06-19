@@ -634,6 +634,9 @@ class EventProcessor(Thread):
                 # build up the device activation history
                 activation_history = list()
                 for device_key, activation_time in self._device_event_lru:
+                    # filter out the device being activated
+                    if device_key == active_device_key:
+                        continue
                     try:
                         device_config = self._input_config[device_key]
                     except KeyError:
