@@ -93,24 +93,24 @@
         <!-- Latest compiled and minified JavaScript -->
         <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js" integrity="sha384-0mSbJDEHialfmuBBQP6A4Qrprq5OVfW37PRR3j5ELqxss1yVqOtnepnHVP9aJ7xS" crossorigin="anonymous"></script>
 
+        <!-- bootbox code -->
+        <script src="{{url_for('static', filename='bootbox.min.js')}}"></script>
+
         <script>
         $(document).ready(function(){
             $(".btn").click(function(){
-                $(this).button('loading');
-            });
-        });
-        </script>
+                var context = $(this);
+                if ($(this).data("bb") === 'confirm') {
+                  bootbox.confirm("Are you sure?", function(result) {
+                    if (result) {
+                      context.button('loading');
+                      context.context.form.submit();
 
-        <!-- bootbox code -->
-        <script src="bootbox.min.js"></script>
-
-        <script>
-        $(document).on("click", "a[data-bb]", function(e) {
-            e.preventDefault();
-            var type = $(this).data("bb");
-            bootbox.confirm("Are you sure?", function(result) {
-                var type = $(this).data("bb");
-                console.log(type+" result is: "+result);
+                    }
+                  });
+               } else {
+                  context.button('loading');
+               }
             });
         });
         </script>

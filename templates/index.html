@@ -8,9 +8,8 @@
     <form class="form-horizontal" role="form" method='POST'>
       <button type="submit" class="btn btn-{% if input_device['mixed_disabled'] %}warning{% else %}success{% endif %}" name="device_key" value="{{ input_device_key }}">{% if strike_thru %}<del>{% endif %}{{ input_device['device_label'] }}{% if strike_thru %}</del>{% endif %} <span class="glyphicon glyphicon-volume-{% if not input_device['device_disabled'] %}up{% elif input_device['mixed_disabled'] %}down{% else %}off{% endif %}"></span></button>
       {% if input_device['type'] == 'Meter' %}
-      <button type="submit" class="btn btn-warning" name="meter_reset" value="{{ input_device_key }}">Reset <span class="glyphicon glyphicon-scale"></span></button>
+      <button type="button" data-bb="confirm" class="btn btn-warning" name="meter_reset" value="{{ input_device_key }}">Reset <span class="glyphicon glyphicon-scale"></span></button>
       <button type="submit" class="btn btn-success" name="meter_history" value="{{ input_device_key }}">Stats <span class="glyphicon glyphicon-stats"></span></button>
-      <a href="#" data-bb="confirm" class="btn btn-warning">Confirm <i class="glyphicon glyphicon-scale"></i></a>
       {% endif %}
     </form>
     {% for grouped_input_label in input_labels[input_device_key]|sort %}
