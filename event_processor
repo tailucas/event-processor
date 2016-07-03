@@ -226,7 +226,7 @@ def show_metrics():
     if len(meter_metric) > 0:
         end_time = datetime.now().replace(tzinfo=tz.tzlocal())
         for stat_period, stat_interval, time_delta in [
-            (300, meter_history_day, timedelta(days=1)),
+            (60, meter_history_day, timedelta(days=1)),
             (3600, meter_history_week, timedelta(days=7)),
             (86400, meter_history_month, timedelta(days=31))
         ]:
@@ -248,7 +248,7 @@ def show_metrics():
                            metric_title=device_config['device_label'],
                            metric_legend='Units',
                            meter_history_day=sorted(meter_history_day),
-                           meter_history_day_title='5-minute sum',
+                           meter_history_day_title='1-minute sum',
                            meter_history_week=sorted(meter_history_week),
                            meter_history_week_title='1-hour sum',
                            meter_history_month=sorted(meter_history_month),
