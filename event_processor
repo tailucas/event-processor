@@ -35,6 +35,7 @@ from time import sleep
 from umsgpack import UnpackException
 from zmq import ContextTerminated
 from flask import Flask, flash, request, render_template, url_for, redirect, session, escape
+from flask.ext.compress import Compress
 
 # unbuffered STDOUT for print
 sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
@@ -73,6 +74,7 @@ config.read([os.path.join(DIR, '{}.conf'.format(APP))])
 DATE_FORMAT = '%Y-%m-%dT%H:%M:%S.%f%z'
 
 rest_api = Flask(APP)
+Compress(rest_api)
 
 URL_WORKER_EVENT_PROCESSOR = 'inproc://event-processor'
 zmq_context = zmq.Context()
