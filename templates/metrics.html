@@ -33,17 +33,19 @@
                         }
                       }
                     },
+                    vAxis: {
+                      viewWindow: {
+                        min: 0
+                      },
+                    },
                     legend : {
                       position: 'in'
-                    },
-                    vAxis: {
-                      minValue: 0
                     },
                   };
 
                   var data = new google.visualization.DataTable();
                   data.addColumn('datetime', 'Time');
-                  data.addColumn('number', 'Units');
+                  data.addColumn('number', '{{ metric_legend }}');
                   {% for metric_date, metric_value in meter_history_day %}
                   data.addRow([new Date('{{ metric_date }}'), {{ metric_value }}]);
                   {% endfor %}
@@ -55,7 +57,7 @@
 
                   var data = new google.visualization.DataTable();
                   data.addColumn('datetime', 'Time');
-                  data.addColumn('number', 'Units');
+                  data.addColumn('number', '{{ metric_legend }}');
                   {% for metric_date, metric_value in meter_history_week %}
                   data.addRow([new Date('{{ metric_date }}'), {{ metric_value }}]);
                   {% endfor %}
@@ -68,7 +70,7 @@
 
                   var data = new google.visualization.DataTable();
                   data.addColumn('datetime', 'Time');
-                  data.addColumn('number', 'Units');
+                  data.addColumn('number', '{{ metric_legend }}');
                   {% for metric_date, metric_value in meter_history_month %}
                   data.addRow([new Date('{{ metric_date }}'), {{ metric_value }}]);
                   {% endfor %}

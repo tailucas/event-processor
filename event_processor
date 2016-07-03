@@ -243,9 +243,10 @@ def show_metrics():
             for meter_stat in meter_stats:
                 time_of_day = meter_stat['Timestamp']
                 metric = meter_stat['Sum']
-                stat_interval.append((time_of_day.isoformat(), metric))
+                stat_interval.append((time_of_day.isoformat(), metric / 1000.0))
     return render_template('metrics.html',
                            metric_title=device_config['device_label'],
+                           metric_legend='Units',
                            meter_history_day=sorted(meter_history_day),
                            meter_history_day_title='5-minute sum',
                            meter_history_week=sorted(meter_history_week),
