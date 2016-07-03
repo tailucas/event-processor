@@ -101,6 +101,20 @@
         });
         </script>
 
+        <!-- bootbox code -->
+        <script src="bootbox.min.js"></script>
+
+        <script>
+        $(document).on("click", "a[data-bb]", function(e) {
+            e.preventDefault();
+            var type = $(this).data("bb");
+            bootbox.confirm("Are you sure?", function(result) {
+                var type = $(this).data("bb");
+                console.log(type+" result is: "+result);
+            });
+        });
+        </script>
+
         {% block script %}{% endblock %}
 
     </body>

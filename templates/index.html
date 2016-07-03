@@ -10,6 +10,7 @@
       {% if input_device['type'] == 'Meter' %}
       <button type="submit" class="btn btn-warning" name="meter_reset" value="{{ input_device_key }}">Reset <span class="glyphicon glyphicon-scale"></span></button>
       <button type="submit" class="btn btn-success" name="meter_history" value="{{ input_device_key }}">Stats <span class="glyphicon glyphicon-stats"></span></button>
+      <a href="#" data-bb="confirm" class="btn btn-warning">Confirm <i class="glyphicon glyphicon-scale"></i></a>
       {% endif %}
     </form>
     {% for grouped_input_label in input_labels[input_device_key]|sort %}
