@@ -1120,7 +1120,7 @@ if __name__ == "__main__":
             'is_list': is_list,
         })
         rest_api.run(
-            processes=4,
+            threaded=True,
             host=config.get('app', 'eth0_ip'),
             port=int(config.get('flask', 'http_port')),
             debug=config.get('flask', 'debug').lower() == 'true',
