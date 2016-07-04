@@ -749,6 +749,17 @@ class EventProcessor(Thread):
         self.notify_not_after_time = dateutil.parser.parse(config.get('info_notify', 'not_after_time'))
         # message validity
         self._max_message_validity_seconds = int(config.get('app', 'max_message_validity_seconds'))
+        # set up the special input for the panic button
+        self._update_device(
+            input_outputs=self.inputs,
+            device_origin=self._input_origin,
+            origin_devices=self._inputs_by_origin,
+            event_origin=config.get('app', 'device_name'),
+            awol_devices=self._awol_inputs,
+            device={
+                'device_key': 'Panic Button',
+                'type': 'Panic Button'
+            })
         while True:
             try:
                 event = self.socket.recv_pyobj()
