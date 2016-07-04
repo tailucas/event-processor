@@ -146,7 +146,9 @@ def index():
             elif group_name in group_disabled and group_disabled[group_name]:
                 device_listing[group_name]['mixed_disabled'] = True
     if request.method == 'POST':
-        if 'meter_reset' in request.form:
+        if 'panic_button' in request.form:
+            log.info('Panic button pressed.')
+        elif 'meter_reset' in request.form:
             device_key = request.form['meter_reset']
             reset_value = 0
             if 'meter_reset_value' in device_listing[device_key]:
