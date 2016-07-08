@@ -4,6 +4,7 @@
             <p>Customize inputs.</p>
             <div class="panel-group" id="accordion">
                 {% for input_device_key, input_device in inputs|dictsort %}
+                {% if input_device['type'] == 'Panic Button' %}{% continue %}{% endif %}
                 <div class="panel panel-default">
                     <div class="panel-heading">
                         <h4 class="panel-title">
