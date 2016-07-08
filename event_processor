@@ -148,6 +148,22 @@ def index():
     if request.method == 'POST':
         if 'panic_button' in request.form:
             log.info('Panic button pressed.')
+            processor = zmq_context.socket(zmq.PUSH)
+            processor.connect(URL_WORKER_EVENT_PROCESSOR)
+            processor.send_pyobj({
+                config.get('app', 'device_name'): {
+                    'data': {
+                        'active_devices': [
+                            {
+                                'device_key': 'App Panic Button',
+                                'device_label': 'Panic Button',
+                                'type': 'Panic Button'
+                            }
+                        ]
+                    }
+                }
+            })
+            processor.close()
         elif 'meter_reset' in request.form:
             device_key = request.form['meter_reset']
             reset_value = 0
@@ -757,7 +773,8 @@ class EventProcessor(Thread):
             event_origin=config.get('app', 'device_name'),
             awol_devices=self._awol_inputs,
             device={
-                'device_key': 'Panic Button',
+                'device_key': 'App Panic Button',
+                'device_label': 'Panic Button',
                 'type': 'Panic Button'
             })
         while True:
