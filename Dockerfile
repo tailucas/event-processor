@@ -5,7 +5,7 @@ LABEL Description="event_processor" Vendor="db2inst1" Version="1.0"
 
 RUN apt-get update && apt-get install -y --no-install-recommends unzip
 COPY . /app
-RUN unzip /app/ngrok-stable-linux-arm -d /app/
+RUN unzip /app/*.zip -d /app/
 
 COPY ./pipstrap.py /tmp/
 
@@ -53,9 +53,9 @@ RUN mkdir /var/run/sshd
 RUN mkdir /root/.ssh/
 
 
-# unzip helpers
-RUN unzip ./*.zip
 COPY . /app
+# unzip helpers
+RUN unzip /app/ngrok-stable-linux-arm -d /app/
 COPY ./entrypoint.sh /
 
 ENTRYPOINT ["/entrypoint.sh"]
