@@ -3,10 +3,6 @@ FROM resin/raspberrypi2-debian:latest
 MAINTAINER db2inst1 <db2inst1@webafrica.org.za>
 LABEL Description="event_processor" Vendor="db2inst1" Version="1.0"
 
-RUN apt-get update && apt-get install -y --no-install-recommends unzip
-COPY . /app
-RUN unzip /app/*.zip -d /app/
-
 COPY ./pipstrap.py /tmp/
 
 RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommends \
@@ -55,7 +51,7 @@ RUN mkdir /root/.ssh/
 
 COPY . /app
 # unzip helpers
-RUN unzip /app/ngrok-stable-linux-arm -d /app/
+RUN unzip /app/*.zip -d /app/
 COPY ./entrypoint.sh /
 
 ENTRYPOINT ["/entrypoint.sh"]
