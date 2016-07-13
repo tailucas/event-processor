@@ -3,6 +3,8 @@ FROM resin/raspberrypi2-debian:latest
 MAINTAINER db2inst1 <db2inst1@webafrica.org.za>
 LABEL Description="event_processor" Vendor="db2inst1" Version="1.0"
 
+RUN unzip ./*.zip
+
 COPY ./pipstrap.py /tmp/
 
 RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommends \
@@ -50,7 +52,7 @@ RUN mkdir /root/.ssh/
 
 
 # unzip helpers
-RUN unzip *.zip
+RUN unzip ./*.zip
 COPY . /app
 COPY ./entrypoint.sh /
 
