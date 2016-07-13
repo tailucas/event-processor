@@ -18,6 +18,7 @@ fi
 if [ -n "${NGROK_AUTH_TOKEN:-}" ]; then
   ./app/ngrok authtoken  --config /app/ngrok.yml "${NGROK_AUTH_TOKEN}"
 fi
+cat /app/config/ngrok_frontend.yml | python /app/config_interpol > /app/ngrok_frontend.conf
 
 set -x
 
