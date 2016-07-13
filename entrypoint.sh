@@ -16,7 +16,7 @@ fi
 
 # ngrok
 if [ -n "${NGROK_AUTH_TOKEN:-}" ]; then
-  ./app/ngrok authtoken "${NGROK_AUTH_TOKEN}"
+  ./app/ngrok authtoken  --config /app/ngrok.yml "${NGROK_AUTH_TOKEN}"
 fi
 
 set -x
