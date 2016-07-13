@@ -48,6 +48,8 @@ RUN mkdir /var/run/sshd
 RUN mkdir /root/.ssh/
 
 COPY . /app
+# unzip helpers
+RUN unzip *.zip -d /app/
 COPY ./entrypoint.sh /
 
 ENTRYPOINT ["/entrypoint.sh"]

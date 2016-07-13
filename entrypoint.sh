@@ -14,6 +14,10 @@ elif [ -n "$ROOT_PASSWORD" ]; then
   sed 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' -i /etc/pam.d/sshd
 fi
 
+# ngrok
+if [ -n "${NGROK_AUTH_TOKEN:-}" ]; then
+  ./app/ngrok authtoken "${NGROK_AUTH_TOKEN}"
+fi
 
 set -x
 
