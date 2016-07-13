@@ -48,9 +48,10 @@ EXPOSE 22 5000 5556 5558
 RUN mkdir /var/run/sshd
 RUN mkdir /root/.ssh/
 
-COPY . /app
+
 # unzip helpers
-RUN unzip ./*.zip -d /app/
+RUN unzip *.zip
+COPY . /app
 COPY ./entrypoint.sh /
 
 ENTRYPOINT ["/entrypoint.sh"]
