@@ -18,8 +18,11 @@ fi
 if [ -n "${NGROK_AUTH_TOKEN:-}" ]; then
   ./app/ngrok authtoken  --config /app/ngrok.yml "${NGROK_AUTH_TOKEN}"
 fi
-cat /app/config/ngrok_frontend.yml | python /app/config_interpol > /app/ngrok_frontend.yml
-
+cat /app/config/ngrok_frontend.yml \
+  | sed 's@APP_FLASK_HTTP_PORT@'"$APP_FLASK_HTTP_PORT"'@' \
+  | sed 's@FRONTEND_USER@'"$FRONTEND_USER"'@' \
+  | sed 's@FRONTEND_PASSWORD@'"$FRONTEND_PASSWORD"'@' \
+  > /app/ngrok_frontend.yml
 set -x
 
 

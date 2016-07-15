@@ -1,5 +1,5 @@
 tunnels:
   frontend:
     proto: http
-    addr: %(APP_FLASK_HTTP_PORT)s
-    auth: "%(FRONTEND_USER)s:%(FRONTEND_PASSWORD)s"
+    addr: APP_FLASK_HTTP_PORT
+    auth: "FRONTEND_USER:FRONTEND_PASSWORD"
