@@ -1151,7 +1151,8 @@ if __name__ == "__main__":
         })
         rest_api.run(
             threaded=True,
-            host=config.get('app', 'eth0_ip'),
+            # listen on all interfaces
+            host=None,
             port=int(config.get('flask', 'http_port')),
             debug=config.get('flask', 'debug').lower() == 'true',
             use_reloader=False)
