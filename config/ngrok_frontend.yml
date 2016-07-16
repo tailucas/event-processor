@@ -5,3 +5,6 @@ tunnels:
     bind_tls: true
     addr: APP_FLASK_HTTP_PORT
     auth: "FRONTEND_USER:FRONTEND_PASSWORD"
+    log_level: info
+    log_format: logfmt
+    log: /var/log/ngrok.log
