@@ -23,15 +23,8 @@ export APP_GROUP="${APP_GROUP:-app}"
 
 # groups
 groupadd -f -r "${APP_GROUP}"
-
 # non-root users
 id -u "${APP_USER}" || useradd -r -g "${APP_GROUP}" "${APP_USER}"
-chown -R "${APP_USER}:${APP_GROUP}" /app/
-# non-volatile storage
-chown -R "${APP_USER}:${APP_GROUP}" /data/
-# pidfile
-chown "${APP_USER}" /var/run/
-
 
 TZ_CACHE=/data/localtime
 # a valid symlink
@@ -118,6 +111,13 @@ set -x
 # Used by resin-sdk Settings
 export USER="${APP_USER}"
 export HOME=/data/
+
+# give the app user access to all its things
+chown -R "${APP_USER}:${APP_GROUP}" /app/
+# non-volatile storage
+chown -R "${APP_USER}:${APP_GROUP}" /data/
+# pidfile
+chown "${APP_USER}" /var/run/
 
 # I'm the supervisor
 cat /app/config/supervisord.conf | python /app/config_interpol | tee /etc/supervisor/conf.d/supervisord.conf
