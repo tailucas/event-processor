@@ -275,6 +275,11 @@ def show_metrics():
                            meter_history_month_title='24-hour sum')
 
 
+@rest_api.route('/event_log', methods=['GET', 'POST'])
+def event_log():
+    return render_template('event_log.html')
+
+
 @rest_api.route('/config', methods=['GET', 'POST'])
 def show_config():
     return render_template('config.html')
