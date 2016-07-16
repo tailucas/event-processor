@@ -2,7 +2,7 @@ region: eu
 log_level: info
 log_format: json
 log: false
-web_addr: 0.0.0.0:4040
+web_addr: 0.0.0.0:NGROK_CLIENT_API_PORT
 tunnels:
   frontend:
     proto: http
