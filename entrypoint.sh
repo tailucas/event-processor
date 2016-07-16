@@ -116,6 +116,8 @@ export HOME=/data/
 chown -R "${APP_USER}:${APP_GROUP}" /app/
 # non-volatile storage
 chown -R "${APP_USER}:${APP_GROUP}" /data/
+# logging
+chown "${APP_USER}" /var/log/
 # pidfile
 chown "${APP_USER}" /var/run/
 
