@@ -42,7 +42,7 @@ RUN pip install -r /tmp/pip_freeze
 RUN pip list --outdated
 
 # ssh, http, zmq
-EXPOSE 22 5000 5556 5558
+EXPOSE 22 5000 5556 5558 4040 8080
 
 # sshd configuration
 RUN mkdir /var/run/sshd

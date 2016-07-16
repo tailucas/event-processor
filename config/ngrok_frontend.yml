@@ -1,10 +1,11 @@
+region: eu
+log_level: info
+log_format: logfmt
+log: /var/log/ngrok.log
+web_addr: ETH0_IP:4040
 tunnels:
   frontend:
-    region: eu
     proto: http
     bind_tls: true
     addr: APP_FLASK_HTTP_PORT
     auth: "FRONTEND_USER:FRONTEND_PASSWORD"
-    log_level: info
-    log_format: logfmt
-    log: /var/log/ngrok.log

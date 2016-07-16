@@ -14,15 +14,6 @@ elif [ -n "$ROOT_PASSWORD" ]; then
   sed 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' -i /etc/pam.d/sshd
 fi
 
-# ngrok
-if [ -n "${NGROK_AUTH_TOKEN:-}" ]; then
-  ./app/ngrok authtoken  --config /app/ngrok.yml "${NGROK_AUTH_TOKEN}"
-fi
-cat /app/config/ngrok_frontend.yml \
-  | sed 's@APP_FLASK_HTTP_PORT@'"$APP_FLASK_HTTP_PORT"'@' \
-  | sed 's@FRONTEND_USER@'"$FRONTEND_USER"'@' \
-  | sed 's@FRONTEND_PASSWORD@'"$FRONTEND_PASSWORD"'@' \
-  > /app/ngrok_frontend.yml
 set -x
 
 
@@ -101,7 +92,6 @@ else
 fi
 # application configuration (no tee for secrets)
 cat /app/config/app.conf | python /app/config_interpol > "/app/${APP_NAME}.conf"
-unset ETH0_IP
 unset SUB_SRC
 
 
@@ -110,6 +100,20 @@ rmmod w1_gpio||true
 
 # so app user can make the noise
 adduser "${APP_USER}" audio
+
+# ngrok
+set +x
+if [ -n "${NGROK_AUTH_TOKEN:-}" ]; then
+  ./app/ngrok authtoken  --config /app/ngrok.yml "${NGROK_AUTH_TOKEN}"
+fi
+cat /app/config/ngrok_frontend.yml \
+  | sed 's@APP_FLASK_HTTP_PORT@'"$APP_FLASK_HTTP_PORT"'@' \
+  | sed 's@FRONTEND_USER@'"$FRONTEND_USER"'@' \
+  | sed 's@FRONTEND_PASSWORD@'"$FRONTEND_PASSWORD"'@' \
+  | sed 's@ETH0_IP@'"$ETH0_IP"'@' \
+  > /app/ngrok_frontend.yml
+unset ETH0_IP
+set -x
 
 # Used by resin-sdk Settings
 export USER="${APP_USER}"
