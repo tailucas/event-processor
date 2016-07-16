@@ -1,5 +1,7 @@
 tunnels:
   frontend:
+    region: eu
     proto: http
+    bind_tls: true
     addr: APP_FLASK_HTTP_PORT
     auth: "FRONTEND_USER:FRONTEND_PASSWORD"
