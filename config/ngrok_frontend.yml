@@ -1,8 +1,8 @@
 region: eu
 log_level: info
 log_format: json
-log: stdout
-web_addr: ETH0_IP:4040
+log: false
+web_addr: 0.0.0.0:4040
 tunnels:
   frontend:
     proto: http
