@@ -1,7 +1,7 @@
 region: eu
 log_level: info
-log_format: logfmt
-log: /var/log/ngrok.log
+log_format: json
+log: stdout
 web_addr: ETH0_IP:4040
 tunnels:
   frontend:
