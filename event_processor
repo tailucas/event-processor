@@ -77,10 +77,12 @@ rest_api = Flask(APP)
 Compress(rest_api)
 
 URL_WORKER_EVENT_PROCESSOR = 'inproc://event-processor'
+URL_WORKER_EVENT_LOG = 'inproc://event-log'
 zmq_context = zmq.Context()
 zmq_context.setsockopt(zmq.LINGER, 0)
 
 event_processor = None
+event_log = None
 
 
 def is_list(value):
@@ -263,6 +265,7 @@ def show_metrics():
             for meter_stat in meter_stats:
                 time_of_day = meter_stat['Timestamp']
                 metric = meter_stat['Sum']
+                # TODO: fix units
                 stat_interval.append((time_of_day.isoformat(), metric / 1000.0))
     return render_template('metrics.html',
                            metric_title=device_config['device_label'],
@@ -483,6 +486,7 @@ class EventProcessor(Thread):
         self._output_config_table = None
 
         self._metrics = None
+        self.metric_namespace = None
 
         self.flash_info = True
 
@@ -492,6 +496,8 @@ class EventProcessor(Thread):
 
         self.socket = zmq_context.socket(zmq.PULL)
         self.socket.bind(URL_WORKER_EVENT_PROCESSOR)
+
+        self.event_log = zmq_context.socket(zmq.PUSH)
 
     @property
     def general_config(self):
@@ -561,7 +567,7 @@ class EventProcessor(Thread):
         if 'type' in devices[device_key] and 'type' not in device_configs[device_key]:
             updates['type'] = devices[device_key]['type']
         if 'device_label' in devices[device_key] and 'device_label' not in device_configs[device_key]:
-            updates['device_label'] = devices[device_key]['device_label']
+            updates['device_label'] = device_label
         try:
             table_name = table_member.table_name
             log.debug("Updating table '{}'...".format(table_name))
@@ -670,7 +676,7 @@ class EventProcessor(Thread):
                     if device_key == active_device_key:
                         continue
                     try:
-                        device_config = self._input_config[device_key]
+                        input_device_config = self._input_config[device_key]
                     except KeyError:
                         del self._device_event_lru[device_key]
                         continue
@@ -679,13 +685,13 @@ class EventProcessor(Thread):
                         continue
                     #TODO: fix
                     try:
-                        device_label = device_config['device_label']
+                        input_device_label = input_device_config['device_label']
                     except KeyError:
                         log.warn('No label for device {}'.format(active_device_key))
-                        device_label = active_device_key
+                        input_device_label = active_device_key
                     # list of tuples
                     activation_history.append((
-                        device_label,
+                        input_device_label,
                         (timestamp - activation_time).seconds
                     ))
                 # get the event destination
@@ -695,7 +701,9 @@ class EventProcessor(Thread):
                     active_device_key,
                     event_destination,
                     output_device_key))
+                # add information about the output device
                 output_device_activation.update(self.outputs[output_device_key])
+                # add output device configuration, if any
                 if output_device_key in self._output_config:
                     output_device_activation.update(self._output_config[output_device_key])
                 activation_command = {
@@ -707,9 +715,24 @@ class EventProcessor(Thread):
                     activation_command['trigger_duration'] = int(
                         self._input_config[active_device_key]['activation_interval']
                     )
+                # dispatch the event
                 self._origin_connections[event_destination].send(make_payload(
                     timestamp=timestamp,
                     data=activation_command))
+                # add an entry into the event log
+                try:
+                    input_device_label = self._input_config[active_device_key]['device_label']
+                except KeyError:
+                    input_device_label = active_device_key
+                try:
+                    output_device_label = self._output_config[output_device_key]['device_label']
+                except KeyError:
+                    output_device_label = output_device_key
+                self.event_log.send_pyobj({
+                    'timestamp': timestamp,
+                    'input_device': input_device_label,
+                    'output_device': output_device_label,
+                })
         else:
             log.warn('{} is not configured or linked to any output: {}'.format(active_device_key, active_device))
 
@@ -764,6 +787,8 @@ class EventProcessor(Thread):
             origin_push_socket = zmq_context.socket(zmq.PUSH)
             origin_push_socket.connect(connection_string)
             self._origin_connections[origin] = origin_push_socket
+        # event log
+        self.event_log.connect(URL_WORKER_EVENT_LOG)
         # informational notifications
         # TODO: move to UI configuration
         self.notify_not_before_time = dateutil.parser.parse(config.get('info_notify', 'not_before_time'))
@@ -989,7 +1014,77 @@ class EventProcessor(Thread):
                                         active_device=active_device)
             except ContextTerminated:
                 self.socket.close()
-                origin_push_socket.close()
+                for origin_push_socket in self._origin_connections.values():
+                    origin_push_socket.close()
+                self.event_log.close()
+                break
+            except Exception:
+                log.exception(self.__class__.__name__)
+                continue
+
+
+class EventLog(Thread):
+
+    def __init__(self):
+        super(EventLog, self).__init__()
+        self.name = self.__class__.__name__
+        self.daemon = True
+
+        self._ddb_storage = None
+        self._event_log_table = None
+        self._metrics = None
+        self.metric_namespace = None
+
+        self.socket = zmq_context.socket(zmq.PULL)
+        self.socket.bind(URL_WORKER_EVENT_LOG)
+
+    @property.getter
+    def events(self):
+        return list()
+
+    def run(self):
+        # connect to AWS services
+        self._ddb_storage = dynamodb2.connect_to_region(
+            region_name=config.get('aws', 'region'),
+            aws_access_key_id=config.get('aws', 'aws_access_key_id'),
+            aws_secret_access_key=config.get('aws', 'aws_secret_access_key'))
+        self._event_log_table = Table(
+            table_name='event_log',
+            connection=self._ddb_storage)
+        # set up metrics
+        self._metrics = cloudwatch.connect_to_region(
+            region_name=config.get('aws', 'region'),
+            aws_access_key_id=config.get('aws', 'aws_access_key_id'),
+            aws_secret_access_key=config.get('aws', 'aws_secret_access_key'))
+        self.metric_namespace = '{}:{}'.format(config.get('metric', 'namespace'), APP)
+        while True:
+            try:
+                event = self.socket.recv_pyobj()
+                log.debug(event)
+                timestamp = event['timestamp']
+                put_args = dict()
+                put_args['data'] = dict()
+                put_args['data'].update({
+                    'timestamp': int(timestamp.strftime('%s')),
+                    'input_device': event['input_device'],
+                    'output_device': event['output_device'],
+                })
+                saved = self._event_log_table.put_item(**put_args)
+                if not saved:
+                    log.warn('Unable to save event log entry: {}'.format(event))
+                    continue
+                # show this as a metric
+                self._metrics.put_metric_data(
+                    namespace=self.metric_namespace,
+                    name='Device Event',
+                    value=1,
+                    dimensions={
+                        'Device': config.get('app', 'device_name'),
+                    },
+                    timestamp=timestamp,
+                    unit='Count')
+            except ContextTerminated:
+                self.socket.close()
                 break
             except Exception:
                 log.exception(self.__class__.__name__)
@@ -1118,7 +1213,8 @@ if __name__ == "__main__":
         stream_handler.setFormatter(formatter)
         log.addHandler(stream_handler)
     threads_tracked = Set()
-    # bind main processor first
+    # bind listeners first
+    event_log = EventLog()
     event_processor = EventProcessor()
     origin_nanny = OriginNanny()
     # set up subscribers
@@ -1136,6 +1232,7 @@ if __name__ == "__main__":
         # make sure that the event processor creates a PUSH socket for each output
         event_processor.add_event_origin(origin=source_label, ip=source_ip)
     # start the event processor
+    event_log.start()
     event_processor.start()
     origin_nanny.start()
     threads_tracked.add(event_processor.getName())
