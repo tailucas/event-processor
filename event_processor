@@ -5,6 +5,7 @@ import logging
 import logging.handlers
 
 import abc
+import collections
 import copy
 import json
 import os
@@ -283,7 +284,9 @@ def event_log():
     events = dict()
     if request.method == 'GET':
         # TODO: configurable
-        events = event_log.get_events(since_ts=(datetime.utcnow() - timedelta(hours=24)).strftime('%s'))
+        events = event_log.get_events(since_ts=int(
+            (datetime.utcnow() - timedelta(hours=24)).strftime('%s')
+        ))
     return render_template('event_log.html',
                            events=events)
 
@@ -1044,7 +1047,29 @@ class EventLog(Thread):
         self.socket.bind(URL_WORKER_EVENT_LOG)
 
     def get_events(self, since_ts):
-        return self._event_log_table.scan(timestamp__gte=since_ts)
+        event_data = self._event_log_table.scan(timestamp__gte=since_ts)
+        # extract the event data, keyed on timestamp
+        event_log = dict()
+        for event in event_data:
+            input_device = event['input_device']
+            output_device = event['output_device']
+            timestamp = event['timestamp']
+            if timestamp not in event_log:
+                event_log[timestamp] = list()
+            event_log[timestamp].append({
+                'input_device': input_device,
+                'output_device': output_device,
+                'timestamp': timestamp,
+            })
+        # reorder the timestamp data
+        ordered_event_log = collections.OrderedDict(sorted(event_log.items()))
+        output_event_log = list()
+        for event_log_entries in ordered_event_log.values():
+            for event_log_entry in event_log_entries:
+                output_event_log.append(event_log_entry)
+        log.info("Event data is {}".format(output_event_log))
+        return output_event_log
+
 
     def run(self):
         # connect to AWS services
