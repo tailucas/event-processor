@@ -11,11 +11,11 @@
       </tr>
     </thead>
     <tbody>
-    {% for event in events %}
+    {% for _, input_device, output_device, timestamp in events %}
       <tr>
-        <td>{{ event['input_device'] }}</td>
-        <td>{{ event['output_device'] }}</td>
-        <td>{{ event['timestamp'] }}</td>
+        <td>{{ input_device }}</td>
+        <td>{{ output_device }}</td>
+        <td>{{ timestamp }}</td>
       </tr>
     {% endfor %}
     </tbody>

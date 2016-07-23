@@ -25,6 +25,7 @@ from boto.ec2 import cloudwatch
 from ConfigParser import ConfigParser
 from datetime import datetime, timedelta
 from dateutil import tz
+from operator import itemgetter, attrgetter
 from pprint import pprint
 from sets import Set
 from pylru import lrucache
@@ -1048,28 +1049,18 @@ class EventLog(Thread):
 
     def get_events(self, since_ts):
         event_data = self._event_log_table.scan(timestamp__gte=since_ts)
-        # extract the event data, keyed on timestamp
-        event_log = dict()
+        # extract the event data from the result set
+        event_log = list()
         for event in event_data:
-            input_device = event['input_device']
-            output_device = event['output_device']
             timestamp = event['timestamp']
-            if timestamp not in event_log:
-                event_log[timestamp] = list()
-            event_log[timestamp].append({
-                'input_device': input_device,
-                'output_device': output_device,
-                'timestamp': timestamp,
-            })
-        # reorder the timestamp data
-        ordered_event_log = collections.OrderedDict(sorted(event_log.items()))
-        output_event_log = list()
-        for event_log_entries in ordered_event_log.values():
-            for event_log_entry in event_log_entries:
-                output_event_log.append(event_log_entry)
-        log.info("Event data is {}".format(output_event_log))
-        return output_event_log
-
+            event_log.append((
+                int(timestamp),
+                event['input_device'],
+                event['output_device'],
+                datetime.utcfromtimestamp(timestamp).replace(tzinfo=tz.tzlocal()).strftime('%c')
+            ))
+        # reorder based on the timestamp
+        return sorted(event_log, key=itemgetter(1,2,3), reverse=True)
 
     def run(self):
         # connect to AWS services
