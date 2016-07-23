@@ -1057,7 +1057,7 @@ class EventLog(Thread):
                 int(timestamp),
                 event['input_device'],
                 event['output_device'],
-                datetime.utcfromtimestamp(timestamp).replace(tzinfo=tz.tzlocal()).strftime('%c')
+                datetime.utcfromtimestamp(timestamp).replace(tzinfo=pytz.utc).astimezone(tz=tz.tzlocal()).strftime('%c')
             ))
         # reorder based on the timestamp
         return sorted(event_log, key=itemgetter(1,2,3), reverse=True)
@@ -1085,7 +1085,8 @@ class EventLog(Thread):
                 put_args = dict()
                 put_args['data'] = dict()
                 put_args['data'].update({
-                    'timestamp': int(timestamp.strftime('%s')),
+                    # work around Python's brain-dead date handling
+                    'timestamp': int((timestamp.replace(tzinfo=None) - datetime(1970, 1, 1)).total_seconds()),
                     'input_device': event['input_device'],
                     'output_device': event['output_device'],
                 })
