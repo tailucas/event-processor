@@ -335,22 +335,22 @@ def input_config():
                 customized = True
             else:
                 to_save['trigger_window'] = None
-            if request.form['meter_mode'] != 'default':
+            if request.form.get('meter_mode', None) and request.form['meter_mode'] != 'default':
                 to_save['meter_mode'] = request.form['meter_mode']
                 customized = True
             else:
                 to_save['meter_mode'] = None
-            if len(request.form['meter_low_limit']) > 0:
+            if request.form.get('meter_low_limit', None) and len(request.form['meter_low_limit']) > 0:
                 to_save['meter_low_limit'] = int(request.form['meter_low_limit'])
                 customized = True
             else:
                 to_save['meter_low_limit'] = None
-            if len(request.form['meter_high_limit']) > 0:
+            if request.form.get('meter_high_limit', None) and len(request.form['meter_high_limit']) > 0:
                 to_save['meter_high_limit'] = int(request.form['meter_high_limit'])
                 customized = True
             else:
                 to_save['meter_high_limit'] = None
-            if len(request.form['meter_reset_value']) > 0:
+            if request.form.get('meter_reset_value', None) and len(request.form['meter_reset_value']) > 0:
                 to_save['meter_reset_value'] = int(request.form['meter_reset_value'])
                 customized = True
             else:
