@@ -14,7 +14,6 @@ RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommend
     dbus \
     g++ \
     gcc \
-    jq \
     less \
     libffi-dev \
     libssl-dev \
