@@ -23,6 +23,7 @@ cat /app/config/ngrok_frontend.yml \
   | sed 's@FRONTEND_USER@'"$FRONTEND_USER"'@' \
   | sed 's@FRONTEND_PASSWORD@'"$FRONTEND_PASSWORD"'@' \
   | sed 's@NGROK_CLIENT_API_PORT@'"$NGROK_CLIENT_API_PORT"'@' \
+  | sed 's@NGROK_TUNNEL_NAME@'"$NGROK_TUNNEL_NAME"'@' \
   > /app/ngrok_frontend.yml
 
 

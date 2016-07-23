@@ -4,7 +4,7 @@ log_format: json
 log: false
 web_addr: 0.0.0.0:NGROK_CLIENT_API_PORT
 tunnels:
-  frontend:
+  NGROK_TUNNEL_NAME:
     proto: http
     bind_tls: true
     addr: APP_FLASK_HTTP_PORT

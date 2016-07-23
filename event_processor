@@ -10,6 +10,7 @@ import copy
 import json
 import os
 import pytz
+import requests
 import signal
 import sqlite3
 import sys
@@ -30,6 +31,7 @@ from pprint import pprint
 from sets import Set
 from pylru import lrucache
 from Queue import Queue, Empty
+from requests.exceptions import ConnectionError
 from resin.exceptions import RequestError
 from resin.models.device import Device
 from threading import Thread, Timer
@@ -85,6 +87,7 @@ zmq_context.setsockopt(zmq.LINGER, 0)
 
 event_processor = None
 event_log = None
+ngrok_tunnel_url = None
 
 
 def is_list(value):
@@ -720,6 +723,8 @@ class EventProcessor(Thread):
                     'input_context': active_device,
                     'trigger_history': activation_history,
                 }
+                if ngrok_tunnel_url:
+                    activation_command.update({'callback_url': ngrok_tunnel_url})
                 if 'activation_interval' in self._input_config[active_device_key]:
                     activation_command['trigger_duration'] = int(
                         self._input_config[active_device_key]['activation_interval']
@@ -1221,6 +1226,34 @@ class OriginNanny(Thread):
                         break
             sleep(self._max_heartbeat_delay)
 
+
+class CallbackUrlDiscovery(Thread):
+
+    def __init__(self):
+        super(CallbackUrlDiscovery, self).__init__()
+        self.name = self.__class__.__name__
+        self.daemon = True
+
+        self._discover_url = 'http://127.0.0.1:{}/api/tunnels/{}'.format(
+            config.get('ngrok', 'client_api_port'),
+            config.get('ngrok', 'tunnel_name'))
+
+    def run(self):
+        while True:
+            fault = False
+            try:
+                ngrok_tunnel_url = requests.get(self._discover_url).json()['public_url']
+                log.info('External call-back URL is {}'.format(ngrok_tunnel_url))
+                break
+            except ConnectionError:
+                fault = True
+            except Exception:
+                log.exception('Unable to determine ngrok URL.')
+                fault = True
+            if fault:
+                sleep(1)
+
+
 if __name__ == "__main__":
     # DEBUG logging until startup complete
     log.setLevel(logging.DEBUG)
@@ -1267,6 +1300,9 @@ if __name__ == "__main__":
         # startup completed
         # back to INFO logging
         log.setLevel(logging.INFO)
+        # discover callback URL
+        CallbackUrlDiscovery().start()
+        # start frontend
         rest_api.secret_key = config.get('flask', 'session_secret_key')
         rest_api.jinja_env.add_extension('jinja2.ext.loopcontrols')
         rest_api.jinja_env.filters.update({
