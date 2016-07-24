@@ -1241,6 +1241,8 @@ class CallbackUrlDiscovery(Thread):
     def run(self):
         while True:
             try:
+                # sudo update
+                global ngrok_tunnel_url
                 ngrok_tunnel_url = requests.get(self._discover_url).json()['public_url']
                 log.info('External call-back URL is {}'.format(ngrok_tunnel_url))
                 break
