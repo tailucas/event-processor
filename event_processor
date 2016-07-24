@@ -1065,7 +1065,7 @@ class EventLog(Thread):
                 datetime.utcfromtimestamp(timestamp).replace(tzinfo=pytz.utc).astimezone(tz=tz.tzlocal()).strftime('%c')
             ))
         # reorder based on the timestamp
-        return sorted(event_log, key=itemgetter(1,2,3), reverse=True)
+        return sorted(event_log, key=itemgetter(0, 1, 2), reverse=True)
 
     def run(self):
         # connect to AWS services
@@ -1240,17 +1240,11 @@ class CallbackUrlDiscovery(Thread):
 
     def run(self):
         while True:
-            fault = False
             try:
                 ngrok_tunnel_url = requests.get(self._discover_url).json()['public_url']
                 log.info('External call-back URL is {}'.format(ngrok_tunnel_url))
                 break
-            except ConnectionError:
-                fault = True
             except Exception:
-                log.exception('Unable to determine ngrok URL.')
-                fault = True
-            if fault:
                 sleep(1)
 
 
