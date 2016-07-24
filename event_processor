@@ -190,14 +190,11 @@ def index():
             )
             event_processor.flash_info = True
         elif 'meter_history' in request.form:
-            url = url_for('show_metrics', meter=request.form['meter_history'])
-            if url.startswith('http://'):
-                if 'Referer' in request.headers and request.headers['Referer'].startswith('https://'):
-                    url = request.url.replace('http://', 'https://', 1)
-                    code = 301
-                return redirect(url, code=code)
+            if 'Referer' in request.headers and request.headers['Referer'].startswith('https://'):
+                url = url_for('show_metrics', meter=request.form['meter_history'], _external=True, _scheme='https')
             else:
-                return redirect(url)
+                url = url_for('show_metrics', meter=request.form['meter_history'])
+            return redirect(url)
         elif 'device_key' in request.form:
             device_key = request.form['device_key']
             if 'grouped_inputs' not in device_listing[device_key]:
