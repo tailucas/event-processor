@@ -172,12 +172,17 @@ def index():
             })
             processor.close()
         elif 'meter_reset' in request.form:
-            if 'prompt-val' in request.form:
-                log.info('{} reset with value {}'.format(request.form['meter_reset'], request.form['prompt-val']))
             device_key = request.form['meter_reset']
             reset_value = 0
             if 'meter_reset_value' in device_listing[device_key]:
                 reset_value = device_listing[device_key]['meter_reset_value']
+            # override with the prompt value if specified
+            if 'prompt_val' in request.form:
+                try:
+                    reset_value = int(request.form['prompt_val'])
+                except:
+                    # oh well
+                    pass
             if 'meter_reset_additive' in device_listing[device_key]:
                 meter_value = device_listing[device_key]['meter_value']
                 meter_value += reset_value

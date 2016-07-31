@@ -126,8 +126,11 @@
                           hiddenField.setAttribute("type", "hidden");
                           hiddenField.setAttribute("name", context[0].name);
                           hiddenField.setAttribute("value", context[0].value);
+                          context.context.form.appendChild(hiddenField);
                           // and the prompt result
-                          hiddenField.setAttribute("name", "prompt-val");
+                          hiddenField = document.createElement("input");
+                          hiddenField.setAttribute("type", "hidden");
+                          hiddenField.setAttribute("name", "prompt_val");
                           hiddenField.setAttribute("value", result);
                           context.context.form.appendChild(hiddenField);
                           context.context.form.submit();
