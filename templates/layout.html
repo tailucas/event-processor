@@ -113,6 +113,26 @@
                       context.context.form.submit();
                     }
                   });
+               } else if ($(this).data("bb") === 'prompt') {
+                  bootbox.prompt({
+                      title: "Continue using this value?",
+                      value: $(this).data("prompt-val"),
+                      callback: function(result) {
+                        if (result) {
+                          context.button('loading');
+                          var hiddenField = document.createElement("input");
+                          # the original request parameters
+                          hiddenField.setAttribute("type", "hidden");
+                          hiddenField.setAttribute("name", context[0].name);
+                          hiddenField.setAttribute("value", context[0].value);
+                          # and the prompt result
+                          hiddenField.setAttribute("name", "prompt-val");
+                          hiddenField.setAttribute("value", result);
+                          context.context.form.appendChild(hiddenField);
+                          context.context.form.submit();
+                        }
+                      }
+                    });
                } else {
                   context.button('loading');
                }

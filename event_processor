@@ -172,6 +172,8 @@ def index():
             })
             processor.close()
         elif 'meter_reset' in request.form:
+            if 'prompt-val' in request.form:
+                log.info('{} reset with value {}'.format(request.form['meter_reset'], request.form['prompt-val']))
             device_key = request.form['meter_reset']
             reset_value = 0
             if 'meter_reset_value' in device_listing[device_key]:
