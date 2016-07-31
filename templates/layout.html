@@ -105,6 +105,7 @@
                   bootbox.confirm("Are you sure?", function(result) {
                     if (result) {
                       context.button('loading');
+                      // repackage the original request parameters
                       var hiddenField = document.createElement("input");
                       hiddenField.setAttribute("type", "hidden");
                       hiddenField.setAttribute("name", context[0].name);
@@ -120,12 +121,12 @@
                       callback: function(result) {
                         if (result) {
                           context.button('loading');
+                          // repackage the original request parameters
                           var hiddenField = document.createElement("input");
-                          # the original request parameters
                           hiddenField.setAttribute("type", "hidden");
                           hiddenField.setAttribute("name", context[0].name);
                           hiddenField.setAttribute("value", context[0].value);
-                          # and the prompt result
+                          // and the prompt result
                           hiddenField.setAttribute("name", "prompt-val");
                           hiddenField.setAttribute("value", result);
                           context.context.form.appendChild(hiddenField);
