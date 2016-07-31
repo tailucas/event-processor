@@ -6,6 +6,7 @@ from getpass import getpass
 from sys import stderr
 
 from resin.auth import Auth
+from resin.exceptions import NotLoggedIn
 from resin.models.application import Application
 from resin.models.device import Device
 
@@ -41,19 +42,25 @@ if __name__ == "__main__":
     auth = Auth()
     auth_token = None
 
+    # first test to see if the local system has the auth details cached
+    try:
+        auth.who_am_i()
+    except NotLoggedIn:
+        if AUTH_TOKEN_VAR in os.environ:
+            auth_token = os.environ.get(AUTH_TOKEN_VAR)
+        elif API_KEY_VAR not in os.environ:
+            auth_token = getpass(prompt='Resin Auth Token:')
+        if auth_token and len(auth_token.strip()) > 0:
+            auth.login_with_token(auth_token)
+        else:
+            raise
+
+    log('Authenticated to Resin.io APIs using {} ({})'.format(auth.who_am_i(), auth.get_email()))
+
     # environment variables
     device_uuid = None
     if DEVICE_UUID_VAR in os.environ:
         device_uuid = os.environ.get(DEVICE_UUID_VAR)
-    if AUTH_TOKEN_VAR in os.environ:
-        auth_token = os.environ.get(AUTH_TOKEN_VAR)
-        auth.login_with_token(auth_token)
-    elif API_KEY_VAR not in os.environ:
-        auth_token = getpass(prompt='Resin Auth Token:')
-
-    if auth_token:
-        auth.login_with_token(auth_token)
-        log('Authenticated to APIs using {} ({})'.format(auth.who_am_i(), auth.get_email()))
 
     # log some info about the device context
     device = Device()
