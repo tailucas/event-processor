@@ -1101,11 +1101,13 @@ class EventLog(Thread):
                 event = self.socket.recv_pyobj()
                 log.debug(event)
                 timestamp = event['timestamp']
+                # work around Python's brain-dead date handling
+                unix_timestamp = int((timestamp.replace(tzinfo=None) - datetime(1970, 1, 1)).total_seconds())
                 put_args = dict()
                 put_args['data'] = dict()
                 put_args['data'].update({
-                    # work around Python's brain-dead date handling
-                    'timestamp': int((timestamp.replace(tzinfo=None) - datetime(1970, 1, 1)).total_seconds()),
+                    # pad some millis for the actual insertion time to avoid key conflicts
+                    'timestamp': float('{}.{}'.format(unix_timestamp, datetime.now().microsecond)),
                     'input_device': event['input_device'],
                     'output_device': event['output_device'],
                 })
