@@ -936,7 +936,7 @@ class EventProcessor(Thread):
                                             {'meter_value': cur_value}
                                         )
                                         # TODO: units
-                                        event_detail = "({:.1f} units)".format(cur_value/1000.0)
+                                        event_detail = "({:.1f} units)".format(int(cur_value) / 1000.0)
                                         if 'event_detail' in active_device:
                                             event_detail = "{} {}".format(active_device['event_detail'], event_detail)
                                         active_device['event_detail'] = event_detail
