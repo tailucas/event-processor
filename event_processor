@@ -935,6 +935,11 @@ class EventProcessor(Thread):
                                             active_device_key,
                                             {'meter_value': cur_value}
                                         )
+                                        # TODO: units
+                                        event_detail = "({:.1f} units)".format(cur_value/1000.0)
+                                        if 'event_detail' in active_device:
+                                            event_detail = "{} {}".format(active_device['event_detail'], event_detail)
+                                        active_device['event_detail'] = event_detail
                                         self.flash_info = True
                                     # message stale?
                                     message_age = datetime.utcnow().replace(tzinfo=pytz.utc) - timestamp
