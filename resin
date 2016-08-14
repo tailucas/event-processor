@@ -6,7 +6,6 @@ from getpass import getpass
 from sys import stderr
 
 from resin.auth import Auth
-from resin.exceptions import NotLoggedIn
 from resin.models.application import Application
 from resin.models.device import Device
 
@@ -22,7 +21,8 @@ def log(message):
 if __name__ == "__main__":
     # arguments
     parser = argparse.ArgumentParser(description='Resin API helper. '
-                                                 'Set environment variable {} with auth token'.format(AUTH_TOKEN_VAR))
+                                                 'Set environment variable {} with auth token or {} with API key'
+                                     .format(AUTH_TOKEN_VAR, API_KEY_VAR))
     parser.add_argument('resource_id',
                         help='Resin resource.', nargs='?')
     app_group = parser.add_mutually_exclusive_group()
@@ -38,24 +38,16 @@ if __name__ == "__main__":
                         help='Get the name for this device or UUID')
     args = parser.parse_args()
 
-    # login
-    auth = Auth()
-    auth_token = None
-
-    # first test to see if the local system has the auth details cached
-    try:
-        auth.who_am_i()
-    except NotLoggedIn:
+    if API_KEY_VAR not in os.environ:
+        auth = Auth()
+        auth_token = None
         if AUTH_TOKEN_VAR in os.environ:
             auth_token = os.environ.get(AUTH_TOKEN_VAR)
-        elif API_KEY_VAR not in os.environ:
+        else:
             auth_token = getpass(prompt='Resin Auth Token:')
         if auth_token and len(auth_token.strip()) > 0:
             auth.login_with_token(auth_token)
-        else:
-            raise
-
-    log('Authenticated to Resin.io APIs using {} ({})'.format(auth.who_am_i(), auth.get_email()))
+            log('Authenticated to Resin.io APIs using {} ({}). Please retry.'.format(auth.who_am_i(), auth.get_email()))
 
     # environment variables
     device_uuid = None
