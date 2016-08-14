@@ -138,4 +138,5 @@ trap 'kill -TERM $PID' TERM INT HUP
 PID=$!
 wait $PID
 wait $PID
+sleep 5
 EXIT_STATUS=$?
