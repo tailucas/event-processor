@@ -49,9 +49,6 @@ else
   cp -a /etc/localtime "$TZ_CACHE"
 fi
 
-# Used by resin-sdk Settings
-export USER="${APP_USER}"
-export HOME=/data/
 # invoke resin tool to write resin-sdk settings file
 python /app/resin
 
@@ -120,6 +117,10 @@ chown -R "${APP_USER}:${APP_GROUP}" /data/
 chown "${APP_USER}" /var/log/
 # pidfile
 chown "${APP_USER}" /var/run/
+
+# Used by resin-sdk Settings
+export USER="${APP_USER}"
+export HOME=/data/
 
 # I'm the supervisor
 cat /app/config/supervisord.conf | python /app/config_interpol | tee /etc/supervisor/conf.d/supervisord.conf
