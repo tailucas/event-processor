@@ -55,8 +55,16 @@ python /app/resin
 # remote system logging
 HN_CACHE=/data/hostname
 if [ -e "$HN_CACHE" ]; then
-  export DEVICE_NAME="$(cat "$HN_CACHE")"
-else
+  DEVICE_NAME="$(cat "$HN_CACHE")"
+  # reject if there is a space
+  space_pattern=" |'"
+  if [[ $DEVICE_NAME =~ $space_pattern ]]; then
+    unset DEVICE_NAME
+  else
+    export DEVICE_NAME
+  fi
+fi
+if [ -z "${DEVICE_NAME:-}" ]; then
   export DEVICE_NAME="$(python /app/resin --get-device-name)"
   echo "$DEVICE_NAME" > "$HN_CACHE"
 fi
