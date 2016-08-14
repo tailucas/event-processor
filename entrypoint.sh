@@ -137,5 +137,6 @@ trap 'kill -TERM $PID' TERM INT HUP
 /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf &
 PID=$!
 wait $PID
+trap - TERM INT HUP
 wait $PID
 EXIT_STATUS=$?
