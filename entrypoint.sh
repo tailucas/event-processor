@@ -133,10 +133,7 @@ export HOME=/data/
 # I'm the supervisor
 cat /app/config/supervisord.conf | python /app/config_interpol | tee /etc/supervisor/conf.d/supervisord.conf
 
-trap 'kill -TERM $PID' TERM INT HUP
+trap 'kill -TERM $PID; fg' TERM INT HUP
 /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf &
 PID=$!
 wait $PID
-trap - TERM INT HUP
-wait $PID
-EXIT_STATUS=$?
