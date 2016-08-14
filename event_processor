@@ -85,6 +85,8 @@ URL_WORKER_EVENT_LOG = 'inproc://event-log'
 zmq_context = zmq.Context()
 zmq_context.setsockopt(zmq.LINGER, 0)
 
+interruptable_sleep = threading.Event()
+
 event_processor = None
 event_log = None
 ngrok_tunnel_url = None
@@ -1193,59 +1195,58 @@ class OriginNanny(Thread):
     def run(self):
         self.processor.connect(URL_WORKER_EVENT_PROCESSOR)
         # warm-up to wait for first volley of heartbeats
-        sleep(self._max_heartbeat_delay)
-        nannying = True
-        while nannying:
-            resin_device = Device()
-            for origin, (ip, subscriber) in self.origin_subscriber.items():
-                payload = dict()
-                # when last was an event seen by this subscriber
-                last_message = subscriber.last_message
-                heartbeat_age = None
-                if last_message:
-                    heartbeat_age = time.time() - subscriber.last_message
-                if last_message is None or heartbeat_age > self._max_heartbeat_delay:
-                    device_status = None
-                    device_last_seen = None
+        interruptable_sleep.wait(self._max_heartbeat_delay)
+        while True:
+            try:
+                resin_device = Device()
+                for origin, (ip, subscriber) in self.origin_subscriber.items():
+                    payload = dict()
+                    # when last was an event seen by this subscriber
+                    last_message = subscriber.last_message
+                    heartbeat_age = None
                     if last_message:
-                        last_message = datetime.utcfromtimestamp(last_message).replace(tzinfo=pytz.utc).strftime(DATE_FORMAT)
-                    else:
-                        last_message = "never"
-                    try:
-                        for d in resin_device.get_by_name(origin):
-                            device_ip = d['ip_address'].split()[0]
-                            # this matches the origin by name and IP
-                            if device_ip == ip:
-                                device_status = d['status']
-                                device_last_seen = d['last_seen_time']
-                                if device_last_seen is None:
-                                    device_last_seen = "unknown"
-                    except RequestError as e:
-                        log.debug("Unable to fetch device information for Resin device '{}': {}".format(origin,
-                                                                                                        e.message))
-                    log_message = "'{}' last activity was {}.".format(origin, last_message)
-                    if device_status:
-                        log.debug("{} Device is {} (last seen: {})".format(log_message,
-                                                                           device_status,
-                                                                           device_last_seen))
-                    else:
-                        log.debug(log_message)
-                    # used as an out-of-band trigger for something amiss
-                    payload['stale_heartbeat'] = last_message
-                    if device_status:
-                        payload['device_status'] = device_status
-                # do this for each device irrespective of stale or not
-                if heartbeat_age:
-                    payload['heartbeat_age'] = heartbeat_age
-                # send out either a stale alert or the heartbeat
-                if len(payload) > 0:
-                    try:
+                        heartbeat_age = time.time() - subscriber.last_message
+                    if last_message is None or heartbeat_age > self._max_heartbeat_delay:
+                        device_status = None
+                        device_last_seen = None
+                        if last_message:
+                            last_message = datetime.utcfromtimestamp(last_message).replace(tzinfo=pytz.utc).strftime(DATE_FORMAT)
+                        else:
+                            last_message = "never"
+                        try:
+                            for d in resin_device.get_by_name(origin):
+                                device_ip = d['ip_address'].split()[0]
+                                # this matches the origin by name and IP
+                                if device_ip == ip:
+                                    device_status = d['status']
+                                    device_last_seen = d['last_seen_time']
+                                    if device_last_seen is None:
+                                        device_last_seen = "unknown"
+                        except RequestError as e:
+                            log.debug("Unable to fetch device information for Resin device '{}': {}".format(origin,
+                                                                                                            e.message))
+                        log_message = "'{}' last activity was {}.".format(origin, last_message)
+                        if device_status:
+                            log.debug("{} Device is {} (last seen: {})".format(log_message,
+                                                                               device_status,
+                                                                               device_last_seen))
+                        else:
+                            log.debug(log_message)
+                        # used as an out-of-band trigger for something amiss
+                        payload['stale_heartbeat'] = last_message
+                        if device_status:
+                            payload['device_status'] = device_status
+                    # do this for each device irrespective of stale or not
+                    if heartbeat_age:
+                        payload['heartbeat_age'] = heartbeat_age
+                    # send out either a stale alert or the heartbeat
+                    if len(payload) > 0:
                         self.processor.send_pyobj({origin: {'data': payload}})
-                    except ContextTerminated:
-                        self.processor.close()
-                        nannying = False
-                        break
-            sleep(self._max_heartbeat_delay)
+            except ContextTerminated:
+                self.processor.close()
+                break
+            # sleep here unless interrupted
+            interruptable_sleep.wait(self._max_heartbeat_delay)
 
 
 class CallbackUrlDiscovery(Thread):
@@ -1333,6 +1334,8 @@ if __name__ == "__main__":
             debug=config.get('flask', 'debug').lower() == 'true',
             use_reloader=False)
     except(KeyboardInterrupt, RuntimeWarning):
+        # bring any threads out of their Pythonic coma
+        interruptable_sleep.set()
         zmq_context.term()
     finally:
         log.info('Removing PID file {}'.format(pidfile))
