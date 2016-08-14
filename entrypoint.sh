@@ -49,6 +49,11 @@ else
   cp -a /etc/localtime "$TZ_CACHE"
 fi
 
+# Used by resin-sdk Settings
+export USER="${APP_USER}"
+export HOME=/data/
+# invoke resin tool to write resin-sdk settings file
+python /app/resin
 
 # remote system logging
 HN_CACHE=/data/hostname
@@ -106,10 +111,6 @@ rmmod w1_gpio||true
 
 # so app user can make the noise
 adduser "${APP_USER}" audio
-
-# Used by resin-sdk Settings
-export USER="${APP_USER}"
-export HOME=/data/
 
 # give the app user access to all its things
 chown -R "${APP_USER}:${APP_GROUP}" /app/
