@@ -1,5 +1,6 @@
 #!/bin/bash
 set -eu
+set -o pipefail
 
 # Resin API key
 export RESIN_API_KEY="${RESIN_API_KEY:-$API_KEY_RESIN}"
