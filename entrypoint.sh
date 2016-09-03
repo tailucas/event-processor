@@ -50,9 +50,6 @@ else
   cp -a /etc/localtime "$TZ_CACHE"
 fi
 
-# invoke resin tool to write resin-sdk settings file
-python /app/resin
-
 # remote system logging
 HN_CACHE=/data/hostname
 if [ -e "$HN_CACHE" ]; then
