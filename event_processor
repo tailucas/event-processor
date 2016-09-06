@@ -666,6 +666,8 @@ class EventProcessor(Thread):
         if device_key not in origin_devices[event_origin]:
             origin_devices[event_origin].add(device_key)
         # has this device been awol?
+        if device_key in awol_devices:
+            log.info("'{}' is no longer AWOL.".format(device_key))
         awol_devices.discard(device_key)
         # has this device been seen?
         if device_key not in device_origin:
@@ -878,8 +880,8 @@ class EventProcessor(Thread):
                                 if new_awol > 0:
                                     log.warn("{} devices are unavailable because '{}' has gone AWOL ({} devices on {}).".format(
                                         len(awol_devices),
-                                        new_awol,
                                         event_origin,
+                                        new_awol,
                                         event_origin
                                     ))
                             if 'heartbeat_age' in event_data['data']:
