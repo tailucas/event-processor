@@ -1166,13 +1166,13 @@ class SourceSubscriber(Thread):
         self.processor.connect(URL_WORKER_EVENT_PROCESSOR)
         while True:
             try:
-                zmq_events = self.subscriber.poll(timeout=self._zmq_poll_period)
+                # timeout in millis
+                zmq_events = self.subscriber.poll(timeout=self._zmq_poll_period*1000)
                 if zmq_events == 0:
                     #TODO: fixme
                     log.info('{} has no events in the last {} seconds.'.format(
                         self._label,
                         self._zmq_poll_period))
-                    sleep(2)
                     continue
                 publisher_event = umsgpack.unpackb(
                     self.subscriber.recv(zmq.NOBLOCK))
