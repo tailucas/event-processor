@@ -1172,6 +1172,7 @@ class SourceSubscriber(Thread):
                     log.info('{} has no events in the last {} seconds.'.format(
                         self._label,
                         self._zmq_poll_period))
+                    sleep(2)
                     continue
                 publisher_event = umsgpack.unpackb(
                     self.subscriber.recv(zmq.NOBLOCK))
