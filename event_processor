@@ -876,8 +876,10 @@ class EventProcessor(Thread):
                                                 awol_devices.add(device_key)
                                                 new_awol += 1
                                 if new_awol > 0:
-                                    log.warn("{} new devices are unavailable because '{}' has gone AWOL.".format(
+                                    log.warn("{} devices are unavailable because '{}' has gone AWOL ({} devices on {}).".format(
+                                        len(awol_devices),
                                         new_awol,
+                                        event_origin,
                                         event_origin
                                     ))
                             if 'heartbeat_age' in event_data['data']:
@@ -1154,6 +1156,8 @@ class SourceSubscriber(Thread):
         self.processor = zmq_context.socket(zmq.PUSH)
 
         self.last_message = None
+        # use half of the tolerated heartbeat value
+        self._zmq_poll_period = int(config.get('app', 'max_heartbeat_delay_seconds'))/2
 
     def run(self):
         log.info('Subscribing to {} @ {}'.format(self._label, self._publisher_endpoint))
@@ -1162,7 +1166,15 @@ class SourceSubscriber(Thread):
         self.processor.connect(URL_WORKER_EVENT_PROCESSOR)
         while True:
             try:
-                publisher_event = umsgpack.unpackb(self.subscriber.recv())
+                zmq_events = self.subscriber.poll(timeout=self._zmq_poll_period)
+                if zmq_events == 0:
+                    #TODO: fixme
+                    log.info('{} has no events in the last {} seconds.'.format(
+                        self._label,
+                        self._zmq_poll_period))
+                    continue
+                publisher_event = umsgpack.unpackb(
+                    self.subscriber.recv(zmq.NOBLOCK))
                 self.last_message = time.time()
                 self.processor.send_pyobj({self._label: publisher_event})
             except UnpackException:
