@@ -40,6 +40,7 @@ from umsgpack import UnpackException
 from zmq import ContextTerminated
 from flask import Flask, flash, request, render_template, url_for, redirect, session, escape
 from flask.ext.compress import Compress
+from zmq.error import ZMQError
 
 # unbuffered STDOUT for print
 sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
@@ -1177,6 +1178,7 @@ class SourceSubscriber(Thread):
                             self._label,
                             self._zmq_poll_period))
                         self.subscriber.close()
+                        self.subscriber = zmq_context.socket(zmq.SUB)
                         self.subscriber.connect(self._publisher_endpoint)
                         self.subscriber.setsockopt(zmq.SUBSCRIBE, "")
                     continue
@@ -1184,6 +1186,10 @@ class SourceSubscriber(Thread):
                     self.subscriber.recv(zmq.NOBLOCK))
                 self.last_message = time.time()
                 self.processor.send_pyobj({self._label: publisher_event})
+            except ZMQError:
+                log.exception(self.name)
+                # prevent spinning on broken socket
+                break
             except UnpackException:
                 log.exception('Cannot unpack message from {}.'.format(self._label))
                 continue
