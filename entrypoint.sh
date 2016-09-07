@@ -44,11 +44,9 @@ TZ_CACHE=/data/localtime
 # a valid symlink
 if [ -h "$TZ_CACHE" ] && [ -e "$TZ_CACHE" ]; then
   cp -a "$TZ_CACHE" /etc/localtime
-else
-  # set the timezone
-  tzupdate
-  cp -a /etc/localtime "$TZ_CACHE"
 fi
+# set the timezone
+(tzupdate && cp -a /etc/localtime "$TZ_CACHE") || [ -e "$TZ_CACHE" ]
 
 # remote system logging
 HN_CACHE=/data/hostname
