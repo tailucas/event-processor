@@ -1173,9 +1173,12 @@ class SourceSubscriber(Thread):
                 if zmq_events == 0:
                     #TODO: remove nanny
                     if self.last_message:
-                        log.info('{} has no events in the last {} seconds.'.format(
+                        log.info('{} has no events in the last {} seconds. Re-connecting socket...'.format(
                             self._label,
                             self._zmq_poll_period))
+                        self.subscriber.close()
+                        self.subscriber.connect(self._publisher_endpoint)
+                        self.subscriber.setsockopt(zmq.SUBSCRIBE, "")
                     continue
                 publisher_event = umsgpack.unpackb(
                     self.subscriber.recv(zmq.NOBLOCK))
