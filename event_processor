@@ -1188,6 +1188,11 @@ class SourceSubscriber(Thread):
                         self.subscriber.setsockopt(zmq.SUBSCRIBE, "")
                         self._msg_received = False
                     continue
+                # output how long since the last message
+                if not self._msg_received and self.last_message:
+                    log.info('{} resumes events after {} seconds.'.format(
+                        self._label,
+                        (time.time() - self.last_message).seconds))
                 self._msg_received = True
                 publisher_event = umsgpack.unpackb(
                     self.subscriber.recv(zmq.NOBLOCK))
