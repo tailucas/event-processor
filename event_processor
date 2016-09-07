@@ -1159,6 +1159,7 @@ class SourceSubscriber(Thread):
         self.processor = zmq_context.socket(zmq.PUSH)
 
         self.last_message = None
+        self._msg_received = False
         # use half of the tolerated heartbeat value
         self._zmq_poll_period = int(config.get('app', 'max_heartbeat_delay_seconds'))/2
 
@@ -1174,14 +1175,20 @@ class SourceSubscriber(Thread):
                 if zmq_events == 0:
                     #TODO: remove nanny
                     if self.last_message:
-                        log.info('{} has no events in the last {} seconds. Re-connecting socket...'.format(
+                        log.info('{} has no events in the last {} seconds.'.format(
                             self._label,
                             self._zmq_poll_period))
+                    if self._msg_received:
+                        log.info('{} reconnecting socket for {}...'.format(
+                            self.name,
+                            self._label))
                         self.subscriber.close()
                         self.subscriber = zmq_context.socket(zmq.SUB)
                         self.subscriber.connect(self._publisher_endpoint)
                         self.subscriber.setsockopt(zmq.SUBSCRIBE, "")
+                        self._msg_received = False
                     continue
+                self._msg_received = True
                 publisher_event = umsgpack.unpackb(
                     self.subscriber.recv(zmq.NOBLOCK))
                 self.last_message = time.time()
