@@ -668,7 +668,7 @@ class EventProcessor(Thread):
             origin_devices[event_origin].add(device_key)
         # has this device been awol?
         if device_key in awol_devices:
-            log.info("'{}' is no longer AWOL.".format(device_key))
+            log.debug("'{}' is no longer AWOL.".format(device_key))
         awol_devices.discard(device_key)
         # has this device been seen?
         if device_key not in device_origin:
