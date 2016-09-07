@@ -1197,10 +1197,6 @@ class SourceSubscriber(Thread):
                     self.subscriber.recv(zmq.NOBLOCK))
                 self.last_message = time.time()
                 self.processor.send_pyobj({self._label: publisher_event})
-            except ZMQError:
-                log.exception(self.name)
-                # prevent spinning on broken socket
-                break
             except UnpackException:
                 log.exception('Cannot unpack message from {}.'.format(self._label))
                 continue
@@ -1208,7 +1204,7 @@ class SourceSubscriber(Thread):
                 self.subscriber.close()
                 self.processor.close()
                 break
-            except Exception:
+            except (Exception, ZMQError):
                 log.exception(self.__class__.__name__)
                 continue
 
