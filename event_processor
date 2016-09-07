@@ -1179,9 +1179,9 @@ class SourceSubscriber(Thread):
                             self._label,
                             self._zmq_poll_period))
                     if self._msg_received:
-                        log.info('{} reconnecting socket for {}...'.format(
+                        log.info('{} reconnecting socket to {}...'.format(
                             self.name,
-                            self._label))
+                            self._publisher_endpoint))
                         self.subscriber.close()
                         self.subscriber = zmq_context.socket(zmq.SUB)
                         self.subscriber.connect(self._publisher_endpoint)
