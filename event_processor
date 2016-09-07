@@ -1204,7 +1204,10 @@ class SourceSubscriber(Thread):
                 self.subscriber.close()
                 self.processor.close()
                 break
-            except (Exception, ZMQError):
+            except ZMQError:
+                log.exception(self.__class__.__name__)
+                break
+            except Exception:
                 log.exception(self.__class__.__name__)
                 continue
 
