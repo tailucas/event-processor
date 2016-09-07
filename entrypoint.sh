@@ -124,7 +124,7 @@ chown "${APP_USER}" /var/run/
 # Used by resin-sdk Settings
 export USER="${APP_USER}"
 export HOME=/data/
-echo "export HISTFILE=/data/.bash_history_\${USER}" >> /etc/skel/.bashrc
+echo "export HISTFILE=/data/.bash_history_\${USER}" >> /etc/bash.bashrc
 
 # I'm the supervisor
 cat /app/config/supervisord.conf | python /app/config_interpol | tee /etc/supervisor/conf.d/supervisord.conf
