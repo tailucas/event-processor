@@ -1191,7 +1191,7 @@ class SourceSubscriber(Thread):
                 if not self._msg_received and self.last_message:
                     log.info('{} resumes events after {} seconds.'.format(
                         self._label,
-                        (time.time() - self.last_message).seconds))
+                        time.time() - self.last_message))
                 self._msg_received = True
                 publisher_event = umsgpack.unpackb(
                     self.subscriber.recv(zmq.NOBLOCK))
