@@ -39,7 +39,7 @@ from time import sleep
 from umsgpack import UnpackException
 from flask import Flask, flash, request, render_template, url_for, redirect, session, escape
 from flask.ext.compress import Compress
-from zmq.error import ZMQError, ContextTerminated
+from zmq.error import ZMQError, ContextTerminated, Again
 
 # unbuffered STDOUT for print
 sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
@@ -1157,6 +1157,7 @@ class SourceSubscriber(Thread):
         self.subscriber = zmq_context.socket(zmq.SUB)
         self.processor = zmq_context.socket(zmq.PUSH)
 
+        self._reconnected = False
         self.last_message = None
         # use half of the tolerated heartbeat value
         self._zmq_poll_period = int(config.get('app', 'max_heartbeat_delay_seconds'))/2
@@ -1185,15 +1186,21 @@ class SourceSubscriber(Thread):
                         self.subscriber = zmq_context.socket(zmq.SUB)
                         self.subscriber.connect(self._publisher_endpoint)
                         self.subscriber.setsockopt(zmq.SUBSCRIBE, "")
+                        self._reconnected = True
                         continue
+                try:
+                    publisher_event = umsgpack.unpackb(
+                        self.subscriber.recv(zmq.NOBLOCK))
+                except Again:
+                    log.exception(self.__class__.__name__)
+                    continue
                 # output how long since the last message
-                if self.last_message:
+                if self.last_message and self._reconnected:
                     log.info('{} resumes events after {} seconds.'.format(
                         self._label,
                         time.time() - self.last_message))
                 self.last_message = time.time()
-                publisher_event = umsgpack.unpackb(
-                    self.subscriber.recv(zmq.NOBLOCK))
+                self.reconnected = False
                 self.processor.send_pyobj({self._label: publisher_event})
             except UnpackException:
                 log.exception('Cannot unpack message from {}.'.format(self._label))
