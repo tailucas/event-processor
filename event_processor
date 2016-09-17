@@ -1158,7 +1158,6 @@ class SourceSubscriber(Thread):
         self.processor = zmq_context.socket(zmq.PUSH)
 
         self.last_message = None
-        self._msg_received = False
         # use half of the tolerated heartbeat value
         self._zmq_poll_period = int(config.get('app', 'max_heartbeat_delay_seconds'))/2
 
@@ -1171,31 +1170,30 @@ class SourceSubscriber(Thread):
             try:
                 # timeout in millis
                 zmq_events = self.subscriber.poll(timeout=self._zmq_poll_period*1000)
+                #TODO: remove nanny
                 if zmq_events == 0:
-                    #TODO: remove nanny
+                    # if a single message has been received ever
                     if self.last_message:
-                        log.info('{} has no events in the last {} seconds.'.format(
-                            self._label,
-                            self._zmq_poll_period))
-                    if self._msg_received:
-                        log.info('{} reconnecting socket to {}...'.format(
+                        log.info('{} reconnecting to {} after more than {} seconds of inactivity...'.format(
                             self.name,
-                            self._publisher_endpoint))
-                        self.subscriber.close()
+                            self._publisher_endpoint,
+                            self._zmq_poll_period))
+                        try:
+                            self.subscriber.close()
+                        except ZMQError:
+                            log.exception(self.__class__.__name__)
                         self.subscriber = zmq_context.socket(zmq.SUB)
                         self.subscriber.connect(self._publisher_endpoint)
                         self.subscriber.setsockopt(zmq.SUBSCRIBE, "")
-                        self._msg_received = False
-                    continue
+                        continue
                 # output how long since the last message
-                if not self._msg_received and self.last_message:
+                if self.last_message:
                     log.info('{} resumes events after {} seconds.'.format(
                         self._label,
                         time.time() - self.last_message))
-                self._msg_received = True
+                self.last_message = time.time()
                 publisher_event = umsgpack.unpackb(
                     self.subscriber.recv(zmq.NOBLOCK))
-                self.last_message = time.time()
                 self.processor.send_pyobj({self._label: publisher_event})
             except UnpackException:
                 log.exception('Cannot unpack message from {}.'.format(self._label))
@@ -1257,7 +1255,7 @@ class OriginNanny(Thread):
                                     device_last_seen = d['last_seen_time']
                                     if device_last_seen is None:
                                         device_last_seen = "unknown"
-                        except RequestError as e:
+                        except (RequestError, ConnectionError) as e:
                             log.debug("Unable to fetch device information for Resin device '{}': {}".format(origin,
                                                                                                             e.message))
                         log_message = "'{}' last activity was {}.".format(origin, last_message)
