@@ -1201,7 +1201,7 @@ class SourceSubscriber(Thread):
                         self._label,
                         time.time() - self.last_message))
                 self.last_message = time.time()
-                self.reconnected = False
+                self._reconnected = False
                 self.processor.send_pyobj({self._label: publisher_event})
             except UnpackException:
                 log.exception('Cannot unpack message from {}.'.format(self._label))
