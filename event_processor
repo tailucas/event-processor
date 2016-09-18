@@ -1193,7 +1193,7 @@ class SourceSubscriber(Thread):
                     publisher_event = umsgpack.unpackb(
                         self.subscriber.recv(zmq.NOBLOCK))
                 except Again as e:
-                    log.debug('{}: {}'.format(self.name, e.message)
+                    log.debug('{}: {}'.format(self.name, e.message))
                     continue
                 # output how long since the last message
                 if self.last_message and self._reconnected:
