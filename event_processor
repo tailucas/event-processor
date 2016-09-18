@@ -1182,17 +1182,18 @@ class SourceSubscriber(Thread):
                         try:
                             self.subscriber.close()
                         except ZMQError:
-                            log.exception(self.__class__.__name__)
+                            log.exception(self.name)
                         self.subscriber = zmq_context.socket(zmq.SUB)
                         self.subscriber.connect(self._publisher_endpoint)
                         self.subscriber.setsockopt(zmq.SUBSCRIBE, "")
                         self._reconnected = True
-                        continue
+                    # nothing to do otherwise
+                    continue
                 try:
                     publisher_event = umsgpack.unpackb(
                         self.subscriber.recv(zmq.NOBLOCK))
-                except Again:
-                    log.exception(self.__class__.__name__)
+                except Again as e:
+                    log.debug('{}: {}'.format(self.name, e.message)
                     continue
                 # output how long since the last message
                 if self.last_message and self._reconnected:
@@ -1210,10 +1211,10 @@ class SourceSubscriber(Thread):
                 self.processor.close()
                 break
             except ZMQError:
-                log.exception(self.__class__.__name__)
+                log.exception(self.name)
                 break
             except Exception:
-                log.exception(self.__class__.__name__)
+                log.exception(self.name)
                 continue
 
 
