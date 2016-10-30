@@ -1,4 +1,4 @@
-FROM resin/raspberrypi2-debian:latest
+FROM resin/raspberrypi3-debian:latest
 
 MAINTAINER db2inst1 <db2inst1@webafrica.org.za>
 LABEL Description="event_processor" Vendor="db2inst1" Version="1.0"
