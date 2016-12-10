@@ -50,15 +50,18 @@ DIR = os.path.abspath(os.path.dirname(__file__))
 # PID file check
 pidfile = '/var/run/{}.pid'.format(APP)
 if os.path.isfile(pidfile):
-    pid = int(open(pidfile, 'r').read())
-    message = '{} already exists containing PID {}.'.format(pidfile, pid)
-    proc_path = '/proc/{}/cmdline'.format(pid)
-    # existing process?
-    if os.path.isfile(proc_path):
-        proc_info = open(proc_path, 'r').read()
-        if 'python' in proc_info and APP in proc_info:
-            print '{} is already running. {}'.format(APP, message)
-            sys.exit(1)
+    try:
+        pid = int(open(pidfile, 'r').read())
+        message = '{} already exists containing PID {}.'.format(pidfile, pid)
+        proc_path = '/proc/{}/cmdline'.format(pid)
+        # existing process?
+        if os.path.isfile(proc_path):
+            proc_info = open(proc_path, 'r').read()
+            if 'python' in proc_info and APP in proc_info:
+                print '{} is already running. {}'.format(APP, message)
+                sys.exit(1)
+    except ValueError:
+        message = '{} contains no valid PID.'.format(pidfile)
     print '{} Removing stale PID file.'.format(message)
     # what's in the PID file is stale, destroy it
     os.unlink(pidfile)
