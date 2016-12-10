@@ -5,6 +5,7 @@
     <div id="chart_div_day"></div>
     <div id="chart_div_week"></div>
     <div id="chart_div_month"></div>
+    <div id="chart_div_year"></div>
 {% endblock %}
 {% block script %}
         <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
@@ -80,6 +81,19 @@
                     curveType: 'function',
                   };
                   chart.draw(data, $.extend(monthly_options, options));
+
+                  var data = new google.visualization.DataTable();
+                  data.addColumn('datetime', 'Time');
+                  data.addColumn('number', '{{ metric_legend }}');
+                  {% for metric_date, metric_value in meter_history_year %}
+                  data.addRow([new Date('{{ metric_date }}'), {{ metric_value }}]);
+                  {% endfor %}
+                  var chart = new google.visualization.LineChart(document.getElementById('chart_div_year'));
+                  var yearly_options = {
+                    title: '{{ meter_history_year_title }}',
+                    curveType: 'function',
+                  };
+                  chart.draw(data, $.extend(yearly_options, options));
                 }
         </script>
 {% endblock %}

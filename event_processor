@@ -261,6 +261,7 @@ def show_metrics():
     meter_history_day = list()
     meter_history_week = list()
     meter_history_month = list()
+    meter_history_year = list()
     device_key = request.args.get('meter')
     device_config = event_processor.input_config[device_key]
     if device_config['type'] != 'Meter':
@@ -274,7 +275,8 @@ def show_metrics():
         for stat_period, stat_interval, time_delta in [
             (60, meter_history_day, timedelta(days=1)),
             (3600, meter_history_week, timedelta(days=7)),
-            (86400, meter_history_month, timedelta(days=31))
+            (86400, meter_history_month, timedelta(days=31)),
+            (604800, meter_history_year, timedelta(days=365))
         ]:
             meter_stats = meter_metric[0].query(
                 start_time=end_time - time_delta,
@@ -299,7 +301,9 @@ def show_metrics():
                            meter_history_week=sorted(meter_history_week),
                            meter_history_week_title='1-hour sum',
                            meter_history_month=sorted(meter_history_month),
-                           meter_history_month_title='24-hour sum')
+                           meter_history_month_title='24-hour sum',
+                           meter_history_year=sorted(meter_history_year),
+                           meter_history_year_title='1-week sum')
 
 
 @rest_api.route('/event_log', methods=['GET', 'POST'])
