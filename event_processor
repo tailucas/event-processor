@@ -1252,7 +1252,7 @@ class SQSListener(Thread):
         self.processor.connect(URL_WORKER_EVENT_PROCESSOR)
         while True:
             try:
-                sqs_message = self._sqs_queue.read(wait_time_seconds=60)
+                sqs_message = self._sqs_queue.read(wait_time_seconds=20)
                 if sqs_message is None:
                     continue
                 self.processor.send_pyobj({'sqs': sqs_message.get_body()})
