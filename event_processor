@@ -1233,7 +1233,7 @@ class SQSListener(Thread):
 
     def __init__(self):
         super(SQSListener, self).__init__()
-        self.name = '{}::{}'.format(self.__class__.__name__, label)
+        self.name = self.__class__.__name__
         self.daemon = True
 
         self.processor = zmq_context.socket(zmq.PUSH)
