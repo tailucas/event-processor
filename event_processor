@@ -1255,7 +1255,10 @@ class SQSListener(Thread):
                 sqs_message = self._sqs_queue.read(wait_time_seconds=20)
                 if sqs_message is None:
                     continue
+                # forward for further processing
                 self.processor.send_pyobj({'sqs': sqs_message.get_body()})
+                # done with the message
+                self._sqs_queue.delete_message(sqs_message)
             except UnpackException:
                 log.exception('Cannot unpack message from {}.'.format(self._label))
                 continue
