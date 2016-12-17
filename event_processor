@@ -864,7 +864,34 @@ class EventProcessor(Thread):
                             else:
                                 log.debug(log_msg)
                         if 'sqs' in event_origin:
+                            #TODO: remove
                             log.info('SQS message received: {}'.format(event_data))
+                            device_disable = None
+                            if 'enable' in event_data:
+                                device_disable = False
+                            elif 'disable' in event_data:
+                                device_disable = True
+                            # no action?
+                            if device_disable is None:
+                                log.warn('No valid action found in SQS message: {}'.format(event_data))
+                                continue
+                            # this is a fuzzy name that refers to either a group or specific device
+                            device_description = None
+                            if 'device_description' in event_data:
+                                device_description = event_data['device_description']
+                            if device_description is None:
+                                log.warn('No valid device description found in SQS message: {}'.format(event_data))
+                                continue
+                            event_processor.flash_info = False
+                            for device_key, device_config in self._input_config.items():
+                                if device_config['device_label'].lower().startswith(device_description.lower()) or ('group_name' in device_config and device_config['group_name'].lower().startswith(device_description.lower())):
+                                    # device matches our description
+                                    log.info('Updating device {} based on matching description {}; disable: {}'.format(device_key, device_description, device_disable))
+                                    event_processor.input_config = (
+                                        device_key,
+                                        {'device_disabled': device_disable}
+                                    )
+                            event_processor.flash_info = True
                         elif 'data' in event_data:
                             if 'stale_heartbeat' in event_data['data']:
                                 stale_heartbeat = event_data['data']['stale_heartbeat']
@@ -1256,8 +1283,13 @@ class SQSListener(Thread):
                 if sqs_message is None:
                     continue
                 # forward for further processing
-                self.processor.send_pyobj({'sqs': sqs_message.get_body()})
-                # done with the message
+                #TODO: discard old messages
+                message_body = sqs_message.get_body()
+                try:
+                    self.processor.send_pyobj({'sqs': json.loads(message_body)})
+                except ValueError:
+                    log.exception('Unstructured SQS message: {}'.format(message_body))
+                # done with the message, at any rate
                 self._sqs_queue.delete_message(sqs_message)
             except UnpackException:
                 log.exception('Cannot unpack message from {}.'.format(self._label))
