@@ -874,21 +874,22 @@ class EventProcessor(Thread):
                                 log.warn('No valid action found in SQS message: {}'.format(event_data))
                                 continue
                             # this is a fuzzy name that refers to either a group or specific device
-                            device_description = None
+                            device_descriptions = None
                             if 'device_description' in event_data:
-                                device_description = event_data['device_description']
-                            if device_description is None:
+                                device_descriptions = event_data['device_description']
+                            if device_descriptions is None:
                                 log.warn('No valid device description found in SQS message: {}'.format(event_data))
                                 continue
                             event_processor.flash_info = False
-                            for device_key, device_config in self._input_config.items():
-                                if device_config['device_label'].lower().startswith(device_description.lower()) or ('group_name' in device_config and device_config['group_name'].lower().startswith(device_description.lower())):
-                                    # device matches our description
-                                    log.debug('Updating device {} based on matching description {}; disable: {}'.format(device_key, device_description, device_disable))
-                                    event_processor.input_config = (
-                                        device_key,
-                                        {'device_disabled': device_disable}
-                                    )
+                            for device_description in device_descriptions:
+                                for device_key, device_config in self._input_config.items():
+                                    if device_config['device_label'].lower().startswith(device_description.lower()) or ('group_name' in device_config and device_config['group_name'].lower().startswith(device_description.lower())):
+                                        # device matches our description
+                                        log.info('Updating device {} based on matching description {}; disable: {}'.format(device_key, device_description, device_disable))
+                                        event_processor.input_config = (
+                                            device_key,
+                                            {'device_disabled': device_disable}
+                                        )
                             event_processor.flash_info = True
                         elif 'data' in event_data:
                             if 'stale_heartbeat' in event_data['data']:
