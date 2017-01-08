@@ -1289,7 +1289,11 @@ class SQSListener(Thread):
                 message_body = sqs_message.get_body()
                 try:
                     message = json.loads(message_body)
-                    log.info('SQS message: {} converted to {} ({})'.format(message_body, message.__class__, message))
+                    log.info('SQS message: {} converted from {} to {} ({})'.format(
+                        message_body,
+                        message_body.__class__,
+                        message.__class__,
+                        message))
                     self.processor.send_pyobj({'sqs': message})
                 except ValueError:
                     log.exception('Unstructured SQS message: {}'.format(message_body))
