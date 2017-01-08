@@ -853,7 +853,8 @@ class EventProcessor(Thread):
                 if isinstance(event, dict):
                     for event_origin, event_data in event.items():
                         if not isinstance(event_data, dict):
-                            log.warn('Ignoring unknown event format from {}: {}'.format(event_origin, event_data))
+                            log.warn('Ignoring non-dict event format from {}: {} ({})'.format(
+                                event_origin, event_data.__class__, event_data))
                             continue
                         timestamp = None
                         if 'timestamp' in event_data:
