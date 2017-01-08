@@ -852,6 +852,9 @@ class EventProcessor(Thread):
                 log.debug(event)
                 if isinstance(event, dict):
                     for event_origin, event_data in event.items():
+                        if not isinstance(event_data, dict):
+                            log.warn('Ignoring unknown event format from {}: {}'.format(event_origin, event_data))
+                            continue
                         timestamp = None
                         if 'timestamp' in event_data:
                             timestamp = dateutil.parser.parse(event_data['timestamp'])
