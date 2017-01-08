@@ -11,6 +11,7 @@ import os
 import pytz
 import requests
 import signal
+import simplejson as json
 import sqlite3
 import sys
 import threading
@@ -28,7 +29,6 @@ from dateutil import tz
 from operator import itemgetter, attrgetter
 from pprint import pprint
 from sets import Set
-from simplejson import json
 from pylru import lrucache
 from Queue import Queue, Empty
 from requests.exceptions import ConnectionError
