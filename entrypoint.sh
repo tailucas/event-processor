@@ -27,6 +27,19 @@ cat /app/config/ngrok_frontend.yml \
   | sed 's@NGROK_TUNNEL_NAME@'"$NGROK_TUNNEL_NAME"'@' \
   > /app/ngrok_frontend.yml
 
+# aws code commit
+if [ -n "${AWS_REPO_SSH_KEY_ID:-}" ]; then
+  # ssh
+  echo "$AWS_REPO_SSH_PRIVATE_KEY" > /root/.ssh/codecommit_rsa
+  cat << EOF >> /root/.ssh/config
+StrictHostKeyChecking=no
+
+Host git-codecommit.*.amazonaws.com
+  User $AWS_REPO_SSH_KEY_ID
+  IdentityFile /root/.ssh/codecommit_rsa
+EOF
+  chmod 600 /root/.ssh/config
+fi
 
 set -x
 
