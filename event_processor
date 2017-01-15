@@ -888,7 +888,21 @@ class EventProcessor(Thread):
                             event_processor.flash_info = False
                             for device_description in device_descriptions:
                                 for device_key, device_config in self._input_config.items():
-                                    if device_config['device_label'].lower().startswith(device_description.lower()) or ('group_name' in device_config and device_config['group_name'].lower().startswith(device_description.lower())):
+                                    device_name_match = False
+                                    device_name_test = device_config['device_label'].lower()
+                                    # custom skill
+                                    if device_name_test.startswith(device_description.lower()):
+                                        device_name_match = True
+                                    # smart home skill device ID
+                                    elif device_name_test.replace(' ','_').replace('(', '#').replace(')', '#') == device_description:
+                                        device_name_match = True
+                                    elif 'group_name' in device_config and device_config['group_name']:
+                                        device_name_test = device_config['group_name'].lower()
+                                        if device_name_test.startswith(device_description.lower()):
+                                            device_name_match = True
+                                        elif device_name_test.replace(' ','_').replace('(', '#').replace(')', '#') == device_description:
+                                            device_name_match = True
+                                    if device_name_match:
                                         # device matches our description
                                         log.info('Updating device {} based on matching description {}; disable: {}'.format(device_key, device_description, device_disable))
                                         event_processor.input_config = (
