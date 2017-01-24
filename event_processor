@@ -1047,6 +1047,10 @@ class EventProcessor(Thread):
                                                                                               trigger_window,
                                                                                               last_triggered))
                                             continue
+                                    # get the event detail for debouncing
+                                    event_detail = None
+                                    if 'event_detail' in active_device:
+                                        event_detail = active_device['event_detail']
                                     # debounce
                                     if active_device_key in self._input_active_history:
                                         # debounce this input
@@ -1054,16 +1058,18 @@ class EventProcessor(Thread):
                                             activation_interval = active_device_config['activation_interval']
                                         else:
                                             activation_interval = int(config.get('config', 'default_activation_interval'))
-                                        input_last_active = self._input_active_history[active_device_key]
-                                        last_activated = time.time() - input_last_active
-                                        if last_activated < activation_interval:
-                                            # device is still considered active
-                                            log.debug('Not activating {} because it was triggered '
-                                                      'less than {} seconds ago. ({})'.format(active_device_key,
-                                                                                              activation_interval,
-                                                                                              last_activated))
-                                            continue
-                                    self._input_active_history[active_device_key] = time.time()
+                                        input_last_active, last_event_detail = self._input_active_history[active_device_key]
+                                        if last_event_detail == event_detail:
+                                            last_activated = time.time() - input_last_active
+                                            if last_activated < activation_interval:
+                                                # device is still considered active
+                                                log.debug('Not activating {} ({}) because it was triggered '
+                                                          'less than {} seconds ago. ({})'.format(active_device_key,
+                                                                                                  last_event_detail,
+                                                                                                  activation_interval,
+                                                                                                  last_activated))
+                                                continue
+                                    self._input_active_history[active_device_key] = (time.time(), event_detail)
                                     # active devices are presently assumed to be inputs
                                     self._update_device(
                                         input_outputs=self.inputs,
