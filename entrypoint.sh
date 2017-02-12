@@ -92,6 +92,13 @@ if [ -n "${RSYSLOG_SERVER:-}" ]; then
   echo "*.*          @@${RSYSLOG_SERVER}${RSYSLOG_TEMPLATE:-}" >> /etc/rsyslog.d/custom.conf
   set -x
 fi
+# supervisor runs rsyslog; destroy the PID file to work around
+# inability (by rsyslogd or start-stop-daemon?) to detect the
+# stale PID that could be reused by another process.
+# The result is that the rsyslogd process is treated as running
+# when it is not.
+# loosely related: https://github.com/vmware/harbor/issues/1163
+rm -f /var/run/rsyslogd.pid
 
 # log archival (no tee for secrets)
 if [ -d /var/awslogs/etc/ ]; then
