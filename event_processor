@@ -1340,6 +1340,8 @@ class OriginNanny(Thread):
 
         self.origin_subscriber = dict()
         self._max_heartbeat_delay = int(config.get('app', 'max_heartbeat_delay_seconds'))
+        # set the Resin.io API key as expected by the resin-python-sdk
+        os.environ['RESIN_API_KEY'] = config.get('resin', 'api_key')
 
     def add_origin_subscriber(self, origin, ip, subscriber):
         self.origin_subscriber[origin] = (ip, subscriber)
