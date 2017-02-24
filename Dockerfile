@@ -1,5 +1,4 @@
 FROM resin/raspberrypi3-debian:latest
-ENV INITSYSTEM on
 
 MAINTAINER db2inst1 <db2inst1@webafrica.org.za>
 LABEL Description="event_processor" Vendor="db2inst1" Version="1.0"
@@ -58,5 +57,7 @@ COPY . /app
 # unzip helpers
 RUN unzip /app/*.zip -d /app/
 COPY ./entrypoint.sh /
+
+ENV INITSYSTEM on
 
 ENTRYPOINT ["/entrypoint.sh"]
