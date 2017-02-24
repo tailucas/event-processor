@@ -24,7 +24,6 @@ from boto.dynamodb2.table import Table
 from boto.dynamodb2.exceptions import ItemNotFound, JSONResponseError, DynamoDBError
 from boto.ec2 import cloudwatch
 from ConfigParser import ConfigParser
-from daemonize import Daemonize
 from datetime import datetime, timedelta
 from dateutil import tz
 from operator import itemgetter, attrgetter
@@ -49,7 +48,29 @@ sys.displayhook = pprint
 
 APP = os.path.basename(__file__)
 DIR = os.path.abspath(os.path.dirname(__file__))
+# PID file check
 pidfile = '/var/run/{}.pid'.format(APP)
+if os.path.isfile(pidfile):
+    try:
+        pid = int(open(pidfile, 'r').read())
+        message = '{} already exists containing PID {}.'.format(pidfile, pid)
+        proc_path = '/proc/{}/cmdline'.format(pid)
+        # existing process?
+        if os.path.isfile(proc_path):
+            proc_info = open(proc_path, 'r').read()
+            if 'python' in proc_info and APP in proc_info:
+                print '{} is already running. {}'.format(APP, message)
+                sys.exit(1)
+    except ValueError:
+        message = '{} contains no valid PID.'.format(pidfile)
+    print '{} Removing stale PID file.'.format(message)
+    # what's in the PID file is stale, destroy it
+    os.unlink(pidfile)
+# create a new PID file
+file(pidfile, 'w').write(str(os.getpid()))
+
+# set the working directory for libraries that assume this (such as PyDrive)
+os.chdir(DIR)
 log = logging.getLogger(APP)
 # do not propagate to console logging
 log.propagate = False
@@ -448,8 +469,11 @@ class SignalHandler:
         raise RuntimeWarning()
 
 
-def thread_nanny(threads_tracked):
+def thread_nanny(threads_tracked, signal_handler):
     while True:
+        # kill the nanny now
+        if signal_handler.last_signal == signal.SIGTERM:
+            break
         threads_alive = Set()
         for thread_info in threading.enumerate():
             if thread_info.isAlive():
@@ -1316,8 +1340,6 @@ class OriginNanny(Thread):
 
         self.origin_subscriber = dict()
         self._max_heartbeat_delay = int(config.get('app', 'max_heartbeat_delay_seconds'))
-        # set the Resin.io API key as expected by the resin-python-sdk
-        os.environ['RESIN_API_KEY'] = config.get('resin', 'api_key')
 
     def add_origin_subscriber(self, origin, ip, subscriber):
         self.origin_subscriber[origin] = (ip, subscriber)
@@ -1402,7 +1424,7 @@ class CallbackUrlDiscovery(Thread):
                 sleep(1)
 
 
-def main():
+if __name__ == "__main__":
     # DEBUG logging until startup complete
     log.setLevel(logging.DEBUG)
     syslog_handler = logging.handlers.SysLogHandler(address='/dev/log')
@@ -1442,8 +1464,10 @@ def main():
     threads_tracked.add(event_processor.getName())
     sqs_listener.start()
     threads_tracked.add(sqs_listener.getName())
+    # set up signal handlers
+    signal_handler = SignalHandler()
     # start threads
-    f = threading.Thread(name='nanny', target=thread_nanny, args=(threads_tracked,))
+    f = threading.Thread(name='nanny', target=thread_nanny, args=(threads_tracked, signal_handler,))
     f.setDaemon(True)
     f.start()
     try:
@@ -1469,7 +1493,10 @@ def main():
         # bring any threads out of their Pythonic coma
         interruptable_sleep.set()
         zmq_context.term()
+    finally:
+        log.info('Removing PID file {}'.format(pidfile))
+        os.unlink(pidfile)
 
-
-daemon = Daemonize(app=APP, pid=pidfile, action=main, logger=log, chdir=DIR)
-daemon.start()
+    log.info('Exiting with code {}'.format(signal_handler.last_signal))
+    # exit using the signal, if any
+    sys.exit(signal_handler.last_signal)
