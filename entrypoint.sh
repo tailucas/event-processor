@@ -148,8 +148,9 @@ echo "export HISTFILE=/data/.bash_history_\${USER}" >> /etc/bash.bashrc
 
 # I'm the supervisor
 cat /app/config/supervisord.conf | python /app/config_interpol | tee /etc/supervisor/conf.d/supervisord.conf
+/usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
 
 trap 'kill -TERM $PID; wait $PID; exit $?' TERM INT HUP
-/usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf &
+/usr/bin/python "/app/${APP_NAME}" &
 PID=$!
 wait $PID
