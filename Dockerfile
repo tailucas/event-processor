@@ -53,7 +53,6 @@ EXPOSE 22 5000 5556 5558 4040 8080
 RUN mkdir /var/run/sshd
 RUN mkdir /root/.ssh/
 
-
 COPY . /app
 # unzip helpers
 RUN unzip /app/*.zip -d /app/
