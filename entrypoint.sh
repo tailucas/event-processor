@@ -150,5 +150,5 @@ for systemdsvc in app ngrok; do
 done
 systemctl daemon-reload
 for systemdsvc in app ngrok; do
-  systemctl start "${systemdsvc}.service"
+  systemctl start "${systemdsvc}"
 done

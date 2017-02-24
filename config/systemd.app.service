@@ -9,6 +9,7 @@ ExecStart=/usr/bin/python /app/%(APP_NAME)s
 Restart=always
 User=%(APP_USER)s
 Group=%(APP_GROUP)s
+Environment="HOME=/data/" "USER=%(APP_USER)s"
 
 [Install]
 WantedBy=multi-user.target
