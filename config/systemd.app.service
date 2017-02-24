@@ -3,7 +3,7 @@ Description=%(APP_NAME)s
 After=network.target syslog.service
 
 [Service]
-Type=forking
+Type=simple
 PIDFile=/var/run/%(APP_NAME)s.pid
 ExecStart=/usr/bin/python /app/%(APP_NAME)s
 Restart=always
