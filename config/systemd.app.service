@@ -1,0 +1,14 @@
+[Unit]
+Description=%(APP_NAME)s
+After=network.target syslog.service
+
+[Service]
+Type=forking
+PIDFile=/var/run/%(APP_NAME)s.pid
+ExecStart=/usr/bin/python /app/%(APP_NAME)s
+Restart=always
+User=%(APP_USER)s
+Group=%(APP_GROUP)s
+
+[Install]
+WantedBy=multi-user.target

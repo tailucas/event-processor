@@ -18,6 +18,7 @@ RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommend
     git \
     htop \
     less \
+    lsof \
     libffi-dev \
     libssl-dev \
     man-db \
@@ -33,7 +34,6 @@ RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommend
     rsyslog \
     ssl-cert \
     strace \
-    supervisor \
     unzip \
     vim \
     wavemon \

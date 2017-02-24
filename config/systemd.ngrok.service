@@ -1,0 +1,13 @@
+[Unit]
+Description=ngrok
+After=network.target syslog.service app.service
+
+[Service]
+Type=forking
+ExecStart=/app/ngrok start --config /app/ngrok.yml --config /app/ngrok_frontend.yml frontend
+Restart=always
+User=%(APP_USER)s
+Group=%(APP_GROUP)s
+
+[Install]
+WantedBy=multi-user.target
