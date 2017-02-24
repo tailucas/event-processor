@@ -32,6 +32,7 @@ RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommend
     python2.7-dev \
     rsyslog \
     ssl-cert \
+    strace \
     supervisor \
     unzip \
     vim \
