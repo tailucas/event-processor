@@ -49,4 +49,4 @@ RUN unzip /app/*.zip -d /app/
 
 # ssh, http, zmq, ngrok
 EXPOSE 22 5000 5556 5558 4040 8080
-CMD ["./app/entrypoint.sh"]
+CMD ["/app/entrypoint.sh"]
