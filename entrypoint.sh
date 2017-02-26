@@ -5,6 +5,7 @@ set -o pipefail
 # Resin API key
 export RESIN_API_KEY="${RESIN_API_KEY:-$API_KEY_RESIN}"
 # root user access, prefer key
+mkdir /root/.ssh/
 if [ -n "$SSH_AUTHORIZED_KEY" ]; then
   echo "$SSH_AUTHORIZED_KEY" > /root/.ssh/authorized_keys
   chmod 600 /root/.ssh/authorized_keys

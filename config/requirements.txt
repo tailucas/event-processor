@@ -1,0 +1,15 @@
+argparse
+boto
+pathtools
+pylru
+python-dateutil
+python-magic
+pytz
+pyzmq
+requests
+resin-sdk
+simplejson
+tzupdate
+u-msgpack-python
+Flask
+flask-compress
