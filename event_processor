@@ -39,7 +39,7 @@ from threading import Thread, Timer
 from time import sleep
 from umsgpack import UnpackException
 from flask import Flask, flash, request, render_template, url_for, redirect, session, escape
-from flask.ext.compress import Compress
+from flask_compress import Compress
 from zmq.error import ZMQError, ContextTerminated, Again
 
 # unbuffered STDOUT for print
