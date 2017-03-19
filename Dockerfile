@@ -47,6 +47,9 @@ COPY . /app
 # unzip helpers
 RUN unzip /app/*.zip -d /app/
 
+# Resin systemd
+COPY ./config/systemd.launch.service /etc/systemd/system/launch.service.d/app_override.conf
+
 # ssh, http, zmq, ngrok
 EXPOSE 22 5000 5556 5558 4040 8080
 CMD ["/app/entrypoint.sh"]

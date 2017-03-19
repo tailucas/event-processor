@@ -146,10 +146,12 @@ echo "export HISTFILE=/data/.bash_history_\${USER}" >> /etc/bash.bashrc
 
 # systemd configuration
 for systemdsvc in app ngrok; do
-  cat "/app/config/systemd.${systemdsvc}.service" | python /app/config_interpol | tee "/etc/systemd/system/${systemdsvc}.service"
-  chmod 664 "/etc/systemd/system/${systemdsvc}.service"
+  if [ ! -e "/etc/systemd/system/${systemdsvc}.service" ]; then
+    cat "/app/config/systemd.${systemdsvc}.service" | python /app/config_interpol | tee "/etc/systemd/system/${systemdsvc}.service"
+    chmod 664 "/etc/systemd/system/${systemdsvc}.service"
+    systemctl daemon-reload
+  fi
 done
-systemctl daemon-reload
 for systemdsvc in app ngrok; do
-  systemctl start "${systemdsvc}"
+  systemctl start "${systemdsvc}"&
 done

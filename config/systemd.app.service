@@ -1,6 +1,6 @@
 [Unit]
 Description=%(APP_NAME)s
-After=network.target syslog.service
+After=network.target syslog.service launch.service
 
 [Service]
 Type=simple
