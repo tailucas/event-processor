@@ -16,6 +16,7 @@ RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommend
     gcc \
     git \
     htop \
+    ifupdown \
     less \
     lsof \
     libffi-dev \
