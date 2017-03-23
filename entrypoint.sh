@@ -138,11 +138,8 @@ chown "${APP_USER}" /var/log/
 # pidfile
 chown "${APP_USER}" /var/run/
 
-# Used by resin-sdk Settings
-export USER="${APP_USER}"
-export HOME=/data/
 # Bash history
-echo "export HISTFILE=/data/.bash_history_\${USER}" >> /etc/bash.bashrc
+echo "export HISTFILE=/data/.bash_history" >> /etc/bash.bashrc
 
 # systemd configuration
 for systemdsvc in app ngrok; do
