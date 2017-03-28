@@ -5,6 +5,8 @@ MAINTAINER db2inst1 <db2inst1@webafrica.org.za>
 LABEL Description="event_processor" Vendor="db2inst1" Version="1.0"
 
 COPY ./pipstrap.py /tmp/
+# http://unix.stackexchange.com/questions/339132/reinstall-man-pages-fix-man
+RUN rm -f /etc/dpkg/dpkg.cfg.d/01_nodoc
 RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommends \
     alsa-utils \
     ca-certificates \
