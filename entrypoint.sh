@@ -111,17 +111,18 @@ for iface in eth0 wlan0; do
     break
   fi
 done
-SUB_CACHE=/data/sub_src
-if [ -e "$SUB_CACHE" ]; then
-  SUB_SRC="$(cat "$SUB_CACHE")"
-  # use if not empty after trim
-  if [[ -n "${SUB_SRC// }" ]]; then
-    export SUB_SRC
-  fi
+# get the latest sources
+export SUB_SRC="$(python /app/resin --get-devices | grep -v "$ETH0_IP" | paste -d, -s)"
+# test cache
+export SUB_CACHE=/data/sub_src
+if [[ -z "${SUB_SRC// }" ]]; then
+  export SUB_SRC="$(cat "$SUB_CACHE")"
+else
+  echo "$SUB_SRC" > "$SUB_CACHE"
 fi
-# get the latest sources and bail unless cached
-export SUB_SRC="$(python /app/resin --get-devices | grep -v "$ETH0_IP" | paste -d, -s)" || [ -n "${SUB_SRC:-}" ]
-echo "$SUB_SRC" > "$SUB_CACHE"
+unset SUB_CACHE
+# bail unless cached
+[[ -n "${SUB_SRC// }" ]]
 # application configuration (no tee for secrets)
 cat /app/config/app.conf | python /app/config_interpol > "/app/${APP_NAME}.conf"
 unset ETH0_IP
