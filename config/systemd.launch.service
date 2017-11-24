@@ -1,3 +1,4 @@
 [Service]
 Type=oneshot
+Restart=no
 RemainAfterExit=yes
