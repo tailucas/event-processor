@@ -53,21 +53,20 @@ pidfile = '/var/run/{}.pid'.format(APP)
 if os.path.isfile(pidfile):
     try:
         pid = int(open(pidfile, 'r').read())
-        message = '{} already exists containing PID {}.'.format(pidfile, pid)
+        message = '{} exists for PID {}.'.format(pidfile, pid)
         proc_path = '/proc/{}/cmdline'.format(pid)
         # existing process?
         if os.path.isfile(proc_path):
             proc_info = open(proc_path, 'r').read()
-            if 'python' in proc_info and APP in proc_info:
-                print '{} is already running. {}'.format(APP, message)
-                sys.exit(1)
+        # there is an existing process and may be this program
+        if proc_info is not None and 'python' in proc_info and APP in proc_info and os.getpid() != pid:
+            print '{} is already running. {}'.format(APP, message)
+            sys.exit(1)
     except ValueError:
-        message = '{} contains no valid PID.'.format(pidfile)
-    print '{} Removing stale PID file.'.format(message)
-    # what's in the PID file is stale, destroy it
-    os.unlink(pidfile)
-# create a new PID file
-file(pidfile, 'w').write(str(os.getpid()))
+        pid = str(os.getpid())
+        print '{} contains no valid PID, updating with {}'.format(pidfile, pid)
+        # create a new PID file
+        file(pidfile, 'w').write(pid)
 
 # set the working directory for libraries that assume this (such as PyDrive)
 os.chdir(DIR)
