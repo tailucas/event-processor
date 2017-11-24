@@ -26,6 +26,8 @@ RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommend
     man-db \
     manpages \
     net-tools \
+    nodejs \
+    npm \
     openssh-server \
     openssl \
     psmisc \
@@ -45,6 +47,8 @@ RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommend
 
 COPY ./config/requirements.txt /tmp/
 RUN pip install -r /tmp/requirements.txt
+
+RUN npm install --global --production resin-cli
 
 COPY . /app
 # unzip helpers
