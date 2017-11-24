@@ -26,8 +26,6 @@ RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommend
     man-db \
     manpages \
     net-tools \
-    nodejs \
-    npm \
     openssh-server \
     openssl \
     psmisc \
@@ -48,7 +46,12 @@ RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommend
 COPY ./config/requirements.txt /tmp/
 RUN pip install -r /tmp/requirements.txt
 
-RUN npm install --global --production resin-cli
+# Resin junk
+RUN curl -sL https://deb.nodesource.com/setup_6.x | sudo -E bash - \
+    && apt-get install -y \
+    nodejs \
+    npm \
+    && npm install --global --production resin-cli
 
 COPY . /app
 # unzip helpers
