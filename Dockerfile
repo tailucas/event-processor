@@ -47,12 +47,6 @@ RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommend
 COPY ./config/requirements.txt /tmp/
 RUN pip install -r /tmp/requirements.txt
 
-# Resin junk
-RUN curl -sL https://deb.nodesource.com/setup_8.x | sudo -E bash - \
-    && apt-get install -y --no-install-recommends \
-    nodejs \
-    && npm install --global --production resin-cli
-
 COPY . /app
 # unzip helpers
 RUN unzip /app/*.zip -d /app/
