@@ -113,7 +113,11 @@ for iface in eth0 wlan0; do
 done
 SUB_CACHE=/data/sub_src
 if [ -e "$SUB_CACHE" ]; then
-  export SUB_SRC="$(cat "$SUB_CACHE")"
+  SUB_SRC="$(cat "$SUB_CACHE")"
+  # use if not empty after trim
+  if [[ -n "${SUB_SRC// }" ]]; then
+    export SUB_SRC
+  fi
 fi
 # get the latest sources and bail unless cached
 export SUB_SRC="$(python /app/resin --get-devices | grep -v "$ETH0_IP" | paste -d, -s)" || [ -n "${SUB_SRC:-}" ]
