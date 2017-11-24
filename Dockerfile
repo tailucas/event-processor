@@ -48,9 +48,8 @@ RUN pip install -r /tmp/requirements.txt
 
 # Resin junk
 RUN curl -sL https://deb.nodesource.com/setup_6.x | sudo -E bash - \
-    && apt-get install -y \
+    && apt-get install -y --no-install-recommends \
     nodejs \
-    npm \
     && npm install --global --production resin-cli
 
 COPY . /app
