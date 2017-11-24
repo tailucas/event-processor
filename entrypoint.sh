@@ -136,7 +136,9 @@ chown -R "${APP_USER}:${APP_GROUP}" /data/
 # logging
 chown "${APP_USER}" /var/log/
 # pidfile
-chown "${APP_USER}" "/var/run/${APP_NAME}.pid"
+if [ -e "/var/run/${APP_NAME}.pid" ]; then
+  chown "${APP_USER}" "/var/run/${APP_NAME}.pid"
+fi
 
 # Bash history
 echo "export HISTFILE=/data/.bash_history" >> /etc/bash.bashrc
