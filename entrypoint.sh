@@ -140,7 +140,8 @@ chown -R "${APP_USER}:${APP_GROUP}" /app/
 chown -R "${APP_USER}:${APP_GROUP}" /data/
 # logging
 chown "${APP_USER}" /var/log/
-# pidfile
+# pidfile access
+chown "${APP_USER}" /run/
 if [ -e "/var/run/${APP_NAME}.pid" ]; then
   chown "${APP_USER}" "/var/run/${APP_NAME}.pid"
 fi
