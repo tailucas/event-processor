@@ -56,15 +56,16 @@ if os.path.isfile(pidfile):
         pid = int(open(pidfile, 'r').read())
     except ValueError:
         print '{} contains no valid PID, updating with {}'.format(pidfile, mypid)
-    message = '{} exists for PID {}.'.format(pidfile, pid)
-    proc_path = '/proc/{}/cmdline'.format(pid)
-    # existing process?
-    if os.path.isfile(proc_path):
-        proc_info = open(proc_path, 'r').read()
-        # there is an existing process and may be this program
-        if proc_info is not None and 'python' in proc_info and APP in proc_info and mypid != pid:
-            print '{} is already running. {}'.format(APP, message)
-            sys.exit(1)
+    if pid is not None:
+        message = '{} exists for PID {}.'.format(pidfile, pid)
+        proc_path = '/proc/{}/cmdline'.format(pid)
+        # existing process?
+        if os.path.isfile(proc_path):
+            proc_info = open(proc_path, 'r').read()
+            # there is an existing process and may be this program
+            if proc_info is not None and 'python' in proc_info and APP in proc_info and mypid != pid:
+                print '{} is already running. {}'.format(APP, message)
+                sys.exit(1)
 # take control of PID file
 file(pidfile, 'w').write(str(mypid))
 # set the working directory for libraries that assume this (such as PyDrive)
