@@ -49,7 +49,8 @@ COPY ./config/requirements.txt /tmp/
 RUN pip install -r /tmp/requirements.txt
 
 # ngrok
-RUN ./ngrok_setup.sh
+COPY ./ngrok_setup.sh /tmp/
+RUN /tmp/ngrok_setup.sh
 
 # Resin systemd
 COPY ./config/systemd.launch.service /etc/systemd/system/launch.service.d/app_override.conf
