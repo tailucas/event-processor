@@ -18,6 +18,7 @@ RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommend
     g++ \
     gcc \
     git \
+    html-xml-utils \
     htop \
     ifupdown \
     less \
@@ -47,9 +48,8 @@ RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommend
 COPY ./config/requirements.txt /tmp/
 RUN pip install -r /tmp/requirements.txt
 
-COPY . /app
-# unzip helpers
-RUN unzip /app/*.zip -d /app/
+# ngrok
+RUN ./ngrok_setup.sh
 
 # Resin systemd
 COPY ./config/systemd.launch.service /etc/systemd/system/launch.service.d/app_override.conf
