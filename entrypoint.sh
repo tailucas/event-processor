@@ -112,8 +112,6 @@ for iface in eth0 wlan0; do
   fi
 done
 # get the latest sources
-# FIXME
-python /app/resin --get-devices
 export SUB_SRC="$(python /app/resin --get-devices | grep -v "$ETH0_IP" | paste -d, -s)"
 # test cache
 export SUB_CACHE=/data/sub_src
