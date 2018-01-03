@@ -19,7 +19,6 @@ RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommend
     g++ \
     gcc \
     git \
-    groff-base \
     html-xml-utils \
     htop \
     ifupdown \
