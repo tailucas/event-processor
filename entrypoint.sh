@@ -2,8 +2,8 @@
 set -eu
 set -o pipefail
 
-# Resin API key
-export RESIN_API_KEY="${RESIN_API_KEY:-$API_KEY_RESIN}"
+# Resin API key (prefer override from application/device environment)
+export RESIN_API_KEY="${API_KEY_RESIN:-$RESIN_API_KEY}"
 # root user access, prefer key
 mkdir -p /root/.ssh/
 if [ -n "$SSH_AUTHORIZED_KEY" ]; then
