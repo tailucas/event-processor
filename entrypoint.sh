@@ -130,6 +130,9 @@ unset SUB_SRC
 
 # remove unnecessary kernel drivers
 rmmod w1_gpio||true
+if [ -n "${NO_WLAN:-}" ]; then
+  rmmod brcmfmac brcmutil||true
+fi
 
 # so app user can make the noise
 adduser "${APP_USER}" audio

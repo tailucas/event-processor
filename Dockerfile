@@ -57,6 +57,10 @@ RUN /app/ngrok_setup.sh
 # Resin systemd
 COPY ./config/systemd.launch.service /etc/systemd/system/launch.service.d/app_override.conf
 
+# no ipv6
+RUN echo '\n\
+net.ipv6.conf.all.disable_ipv6 = 1' >> /etc/sysctl.conf
+
 # ssh, http, zmq, ngrok
 EXPOSE 22 5000 5556 5558 4040 8080
 CMD ["/app/entrypoint.sh"]
