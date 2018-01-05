@@ -1379,7 +1379,6 @@ class OriginNanny(Thread):
                             log.debug("Unable to fetch device information for Resin device '{}': {}".format(origin,
                                                                                                             e.message))
                         log_message = "'{}' last activity was {}.".format(origin, last_message)
-                                                            if device_last_seen is None:
                         if device_last_seen is None:
                             device_last_seen = "unknown"
                         if device_status:
