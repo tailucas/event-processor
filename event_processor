@@ -1372,13 +1372,16 @@ class OriginNanny(Thread):
                                 # this matches the origin by name and IP
                                 if device_ip == ip:
                                     device_status = d['status']
-                                    device_last_seen = d['last_seen_time']
-                                    if device_last_seen is None:
-                                        device_last_seen = "unknown"
+                                    if 'last_seen_time' in d:
+                                        device_last_seen = d['last_seen_time']
+
                         except (RequestError, ConnectionError) as e:
                             log.debug("Unable to fetch device information for Resin device '{}': {}".format(origin,
                                                                                                             e.message))
                         log_message = "'{}' last activity was {}.".format(origin, last_message)
+                                                            if device_last_seen is None:
+                        if device_last_seen is None:
+                            device_last_seen = "unknown"
                         if device_status:
                             log.debug("{} Device is {} (last seen: {})".format(log_message,
                                                                                device_status,
