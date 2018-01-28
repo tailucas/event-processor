@@ -1449,7 +1449,7 @@ class MeterTimer(Thread):
                     payload=b'{"message": "foo"}'
                 )
                 log.info('Meter response is {}'.format(response))
-                sleep(5)
+                sleep(3600)
             except Exception:
                 log.exception('IoT problem.')
                 sleep(1)
