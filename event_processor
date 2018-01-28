@@ -1439,7 +1439,7 @@ class MeterTimer(Thread):
     def run(self):
         while True:
             try:
-                response = client.publish(
+                response = self.iot.publish(
                     topic=self.meter_topic,
                     qos=0,
                     payload=b'{"message": "foo"}'
