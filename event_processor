@@ -1435,6 +1435,7 @@ class MeterTimer(Thread):
         self.daemon = True
         self.iot = boto3.client('iot-data')
         self.meter_topic = config.get('iot_topic', 'meter')
+        log.info("Environment variables are: {}".format(os.environ.keys()))
 
     def run(self):
         while True:
