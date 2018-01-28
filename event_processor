@@ -1433,7 +1433,10 @@ class MeterTimer(Thread):
     def __init__(self):
         super(MeterTimer, self).__init__(name=self.__class__.__name__)
         self.daemon = True
-        self.iot = boto3.client('iot-data')
+        self.iot = boto3.client('iot-data',
+            region_name=config.get('aws', 'region'),
+            aws_access_key_id=config.get('aws', 'aws_access_key_id'),
+            aws_secret_access_key=config.get('aws', 'aws_secret_access_key'))
         self.meter_topic = config.get('iot_topic', 'meter')
         log.info("Environment variables are: {}".format(os.environ.keys()))
 
