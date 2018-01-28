@@ -1,5 +1,6 @@
 argparse
 boto
+boto3
 pathtools
 pylru
 python-dateutil
