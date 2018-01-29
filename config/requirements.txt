@@ -1,6 +1,6 @@
 argparse
+AWSIoTPythonSDK
 boto
-boto3
 pathtools
 pylru
 python-dateutil

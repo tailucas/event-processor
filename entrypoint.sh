@@ -134,6 +134,12 @@ if [ -n "${NO_WLAN:-}" ]; then
   rmmod brcmfmac brcmutil||true
 fi
 
+# Load app environment, overriding HOME and USER
+# https://www.freedesktop.org/software/systemd/man/systemd.exec.html
+cat /etc/docker.env | egrep -v "^HOME|^USER" > /app/environment.env
+echo "HOME=/data/" >> /app/environment.env
+echo "USER=${APP_USER}" >> /app/environment.env
+
 # so app user can make the noise
 adduser "${APP_USER}" audio
 
