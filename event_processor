@@ -19,6 +19,8 @@ import time
 import umsgpack
 import zmq
 
+from AWSIoTPythonSDK.MQTTLib import AWSIoTMQTTClient
+
 from boto import dynamodb2, sqs
 from boto.dynamodb2.table import Table
 from boto.dynamodb2.exceptions import ItemNotFound, JSONResponseError, DynamoDBError
@@ -1432,26 +1434,33 @@ class MeterTimer(Thread):
     def __init__(self):
         super(MeterTimer, self).__init__(name=self.__class__.__name__)
         self.daemon = True
-        #self.iot = boto3.client('iot-data',
-        #    region_name=config.get('aws', 'region'),
-        #    aws_access_key_id=config.get('aws', 'aws_access_key_id'),
-        #    aws_secret_access_key=config.get('aws', 'aws_secret_access_key'))
-        #self.meter_topic = config.get('iot_topic', 'meter')
-        log.info("Environment variables are: {}".format(os.environ.keys()))
+        self.iot = AWSIoTMQTTClient(APP, useWebsocket=True)
+        self.iot.configureEndpoint(
+            config.get('iot', 'endpoint'),
+            8883)
+        self.iot.configureIAMCredentials(
+            config.get('aws', 'aws_access_key_id'),
+            config.get('aws', 'aws_secret_access_key'))
+        self.iot.configureCredentials(config.get('iot', 'root_ca_path'))
+        self.iot.configureOfflinePublishQueueing(0)
+        self.iot.configureDrainingFrequency(2)
+        self.iot.configureConnectDisconnectTimeout(10)
+        self.iot.configureMQTTOperationTimeout(5)
+
+    @staticmethod
+    def sub_callback(client, userdata, message):
+        log.info('Meter response is {}'.format(message))
 
     def run(self):
+        self.iot.connect()
+        self.iot.subscribe(config.get('iot', 'topic_sub_meter'), 1, MeterTimer.sub_callback)
         while True:
             try:
-                #response = self.iot.publish(
-                #    topic=self.meter_topic,
-                #    qos=0,
-                #    payload=b'{"message": "foo"}'
-                #)
-                #log.info('Meter response is {}'.format(response))
-                sleep(3600)
+                self.iot.publish(config.get('iot', 'topic_pub_meter'), '{"message": "foo"}', 0)
+                sleep(30)
             except Exception:
                 log.exception('IoT problem.')
-                sleep(1)
+                sleep(10)
 
 
 if __name__ == "__main__":
