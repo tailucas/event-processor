@@ -488,8 +488,7 @@ def thread_nanny(threads_tracked, signal_handler):
 class EventProcessor(Thread):
 
     def __init__(self):
-        super(EventProcessor, self).__init__()
-        self.name = self.__class__.__name__
+        super(EventProcessor, self).__init__(name=self.__class__.__name__)
         self.daemon = True
 
         self.inputs = dict()
@@ -1127,8 +1126,7 @@ class EventProcessor(Thread):
 class EventLog(Thread):
 
     def __init__(self):
-        super(EventLog, self).__init__()
-        self.name = self.__class__.__name__
+        super(EventLog, self).__init__(name=self.__class__.__name__)
         self.daemon = True
 
         self._ddb_storage = None
@@ -1284,8 +1282,7 @@ class SourceSubscriber(Thread):
 class SQSListener(Thread):
 
     def __init__(self):
-        super(SQSListener, self).__init__()
-        self.name = self.__class__.__name__
+        super(SQSListener, self).__init__(name=self.__class__.__name__)
         self.daemon = True
 
         self.processor = zmq_context.socket(zmq.PUSH)
@@ -1333,8 +1330,7 @@ class SQSListener(Thread):
 class OriginNanny(Thread):
 
     def __init__(self):
-        super(OriginNanny, self).__init__()
-        self.name = self.__class__.__name__
+        super(OriginNanny, self).__init__(name=self.__class__.__name__)
         self.daemon = True
 
         self.processor = zmq_context.socket(zmq.PUSH)
@@ -1409,8 +1405,7 @@ class OriginNanny(Thread):
 class CallbackUrlDiscovery(Thread):
 
     def __init__(self):
-        super(CallbackUrlDiscovery, self).__init__()
-        self.name = self.__class__.__name__
+        super(CallbackUrlDiscovery, self).__init__(name=self.__class__.__name__)
         self.daemon = True
 
         self._discover_url = 'http://127.0.0.1:{}/api/tunnels/{}'.format(
@@ -1449,7 +1444,7 @@ class MeterTimer(Thread):
 
     @staticmethod
     def sub_callback(client, userdata, message):
-        log.info('[{}]: IoT [{}] {}'.format(threading.current_thread, message.topic, message.payload))
+        log.info('[{}]: IoT [{}] {}'.format(threading.currentThread(), message.topic, message.payload))
 
     def run(self):
         self.iot.connect()
