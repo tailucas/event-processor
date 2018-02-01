@@ -1449,19 +1449,14 @@ class MeterTimer(Thread):
 
     @staticmethod
     def sub_callback(client, userdata, message):
-        log.info('Meter response is {}'.format(message))
+        log.info('[{}]: IoT [{}] {}'.format(threading.current_thread, message.topic, message.payload))
 
     def run(self):
         self.iot.connect()
         self.iot.subscribe(config.get('iot', 'topic_sub_meter'), 1, MeterTimer.sub_callback)
+        self.iot.publish(config.get('iot', 'topic_pub_meter'), '{"message": "foo"}', 0)
         while True:
-            try:
-                self.iot.publish(config.get('iot', 'topic_pub_meter'), '{"message": "foo"}', 0)
-                sleep(30)
-            except Exception:
-                log.exception('IoT problem.')
-                sleep(10)
-
+            sleep(3600)
 
 if __name__ == "__main__":
     # DEBUG logging until startup complete
