@@ -1447,6 +1447,7 @@ class MeterTimer(Thread):
         log.info('[{}]: IoT [{}] {}'.format(threading.currentThread(), message.topic, message.payload))
 
     def run(self):
+        log.info('[{}]: IoT connect.'.format(threading.currentThread()))
         self.iot.connect()
         self.iot.subscribe(config.get('iot', 'topic_sub_meter'), 1, MeterTimer.sub_callback)
         self.iot.publish(config.get('iot', 'topic_pub_meter'), '{"message": "foo"}', 0)
@@ -1496,6 +1497,7 @@ if __name__ == "__main__":
     sqs_listener.start()
     threads_tracked.add(sqs_listener.getName())
     meter_timer.start()
+    threads_tracked.add(meter_timer.getName())
     # set up signal handlers
     signal_handler = SignalHandler()
     # start threads
