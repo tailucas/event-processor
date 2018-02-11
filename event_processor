@@ -1462,8 +1462,8 @@ class MeterTimer(Thread):
             iot_payload = json.loads(message.payload)
             #FIXME: {"last_metered_minute":1518336745.555320,"last_minute_metered":9,"last_sample_value":0,"uptime":79320.530861}
             event_processor_message = dict()
+            event_processor_message['timestamp'] = datetime.utcfromtimestamp(iot_payload['last_metered_minute']).replace(tzinfo=pytz.utc)
             event_processor_message['data'] = dict()
-            event_processor_message['data']['timestamp'] = datetime.utcfromtimestamp(iot_payload['last_metered_minute']).replace(tzinfo=pytz.utc)
             event_processor_message['data']['active_devices'] = list()
             event_processor_message['data']['active_devices'].append({
                 'device_key': 'Electricity Meter (House)',
