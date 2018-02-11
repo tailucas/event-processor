@@ -875,7 +875,7 @@ class EventProcessor(Thread):
                             continue
                         timestamp = None
                         if 'timestamp' in event_data:
-                            timestamp = parse_timestamp(event_data['timestamp']))
+                            timestamp = parse_timestamp(event_data['timestamp'])
                         else:
                             timestamp = parse_timestamp(timestamp=None)
                             log_msg = "Message from {} does not include a 'timestamp' so it can't be filtered if it " \
