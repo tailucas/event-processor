@@ -1426,6 +1426,8 @@ class CallbackUrlDiscovery(Thread):
 
 class MeterTimer(Thread):
 
+    processor = None
+
     def __init__(self):
         super(MeterTimer, self).__init__(name=self.__class__.__name__)
         self.daemon = True
@@ -1441,15 +1443,34 @@ class MeterTimer(Thread):
         self.iot.configureDrainingFrequency(2)
         self.iot.configureConnectDisconnectTimeout(10)
         self.iot.configureMQTTOperationTimeout(5)
+        # for interaction with static callback method
+        MeterTimer.processor = zmq_context.socket(zmq.PUSH)
 
     @staticmethod
     def sub_callback(client, userdata, message):
         log.info('[{}]: IoT [{}] {}'.format(threading.currentThread(), message.topic, message.payload))
+        try:
+            MeterTimer.processor.connect(URL_WORKER_EVENT_PROCESSOR)
+            iot_payload = json.loads(message.payload)
+            #FIXME: {"last_metered_minute":1518336745.555320,"last_minute_metered":9,"last_sample_value":0,"uptime":79320.530861}
+            event_processor_message = dict()
+            event_processor_message['data'] = dict()
+            event_processor_message['data']['active_devices'] = list()
+            event_processor_message['data']['active_devices'].append({
+                'device_key': 'Electricity Meter (House)',
+                'device_label': 'Electricity Meter',
+                'type': 'meter',
+                'sample_value': iot_payload['last_minute_metered'],
+                'timestamp': datetime.utcfromtimestamp(iot_payload['last_metered_minute']).replace(tzinfo=pytz.utc)
+            })
+            MeterTimer.processor.send_pyobj({'iot': event_processor_message})
+        finally:
+            MeterTimer.processor.close()
 
     def run(self):
-        log.info('[{}]: IoT connect.'.format(threading.currentThread()))
         self.iot.connect()
         self.iot.subscribe(config.get('iot', 'topic_sub_meter'), 1, MeterTimer.sub_callback)
+        #FIXME: standardize
         self.iot.publish(config.get('iot', 'topic_pub_meter'), '{"message": "foo"}', 0)
         while True:
             sleep(3600)
