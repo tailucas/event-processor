@@ -101,7 +101,7 @@ def is_list(value):
     return isinstance(value, list)
 
 
-def parse_timestamp(timestamp=None, make_string=False):
+def make_timestamp(timestamp=None, make_string=False):
     if timestamp is None:
         timestamp = datetime.utcnow().replace(tzinfo=pytz.utc)
     elif isinstance(timestamp, float):
@@ -115,7 +115,7 @@ def parse_timestamp(timestamp=None, make_string=False):
 
 def make_payload(timestamp=None, data=None):
     payload = dict()
-    payload['timestamp'] = parse_timestamp(timestamp, True)
+    payload['timestamp'] = make_timestamp(timestamp, True)
     if data is not None and len(data) > 0:
         payload['data'] = data
     log.debug(json.dumps(payload))
@@ -835,8 +835,8 @@ class EventProcessor(Thread):
         self.event_log.connect(URL_WORKER_EVENT_LOG)
         # informational notifications
         # TODO: move to UI configuration
-        self.notify_not_before_time = dateutil.parser.parse(config.get('info_notify', 'not_before_time'))
-        self.notify_not_after_time = dateutil.parser.parse(config.get('info_notify', 'not_after_time'))
+        self.notify_not_before_time = make_timestamp(config.get('info_notify', 'not_before_time'))
+        self.notify_not_after_time = make_timestamp(config.get('info_notify', 'not_after_time'))
         # message validity
         self._max_message_validity_seconds = int(config.get('app', 'max_message_validity_seconds'))
         # set up the special input for the panic button
@@ -875,9 +875,9 @@ class EventProcessor(Thread):
                             continue
                         timestamp = None
                         if 'timestamp' in event_data:
-                            timestamp = parse_timestamp(event_data['timestamp'])
+                            timestamp = make_timestamp(event_data['timestamp'])
                         else:
-                            timestamp = parse_timestamp(timestamp=None)
+                            timestamp = make_timestamp()
                             log_msg = "Message from {} does not include a 'timestamp' so it can't be filtered if it " \
                                       "is stale. Using {}.".format(event_origin, timestamp.strftime(DATE_FORMAT))
                             if 'data' in event_data and 'active_devices' in event_data['data']:
@@ -1018,7 +1018,7 @@ class EventProcessor(Thread):
                                         active_device['event_detail'] = event_detail
                                         self.flash_info = True
                                     # message stale?
-                                    message_age = datetime.utcnow().replace(tzinfo=pytz.utc) - timestamp
+                                    message_age = make_timestamp() - timestamp
                                     if message_age > timedelta(seconds=self._max_message_validity_seconds):
                                         log.warn('Skipping further processing of {} from {} due to '
                                                  'message age {} exceeding {} seconds.'.format(
@@ -1158,12 +1158,11 @@ class EventLog(Thread):
         # extract the event data from the result set
         event_log = list()
         for event in event_data:
-            timestamp = event['timestamp']
             event_log.append((
                 int(timestamp),
                 event['input_device'],
                 event['output_device'],
-                datetime.utcfromtimestamp(timestamp).replace(tzinfo=pytz.utc).astimezone(tz=tz.tzlocal()).strftime('%c')
+                make_timestamp(event['timestamp']).astimezone(tz=tz.tzlocal()).strftime('%c')
             ))
         # reorder based on the timestamp
         return sorted(event_log, key=itemgetter(0, 1, 2), reverse=True)
