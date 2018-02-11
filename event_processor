@@ -1475,7 +1475,7 @@ class MeterTimer(Thread):
             })
             processor.send_pyobj({'iot': event_processor_message})
         except Exception:
-            log.exception(self.name)
+            log.exception(threading.currentThread().name)
         finally:
             processor.close()
 
