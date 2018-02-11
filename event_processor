@@ -1455,14 +1455,12 @@ class MeterTimer(Thread):
         self.iot.configureDrainingFrequency(2)
         self.iot.configureConnectDisconnectTimeout(10)
         self.iot.configureMQTTOperationTimeout(5)
-        # for interaction with static callback method
-        MeterTimer.processor = zmq_context.socket(zmq.PUSH)
 
     @staticmethod
     def sub_callback(client, userdata, message):
-        log.info('[{}]: IoT [{}] {}'.format(threading.currentThread(), message.topic, message.payload))
+        processor = zmq_context.socket(zmq.PUSH)
+        processor.connect(URL_WORKER_EVENT_PROCESSOR)
         try:
-            MeterTimer.processor.connect(URL_WORKER_EVENT_PROCESSOR)
             iot_payload = json.loads(message.payload)
             #FIXME: {"last_metered_minute":1518336745.555320,"last_minute_metered":9,"last_sample_value":0,"uptime":79320.530861}
             event_processor_message = dict()
@@ -1475,9 +1473,11 @@ class MeterTimer(Thread):
                 'sample_value': iot_payload['last_minute_metered'],
                 'timestamp': datetime.utcfromtimestamp(iot_payload['last_metered_minute']).replace(tzinfo=pytz.utc)
             })
-            MeterTimer.processor.send_pyobj({'iot': event_processor_message})
+            processor.send_pyobj({'iot': event_processor_message})
+        except Exception:
+            log.exception(self.name)
         finally:
-            MeterTimer.processor.close()
+            processor.close()
 
     def run(self):
         self.iot.connect()
