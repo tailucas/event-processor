@@ -101,17 +101,21 @@ def is_list(value):
     return isinstance(value, list)
 
 
-def make_payload(timestamp=None, data=None):
-    payload = dict()
+def parse_timestamp(timestamp=None, make_string=False):
     if timestamp is None:
         timestamp = datetime.utcnow().replace(tzinfo=pytz.utc)
     elif isinstance(timestamp, float):
         timestamp = datetime.utcfromtimestamp(timestamp).replace(tzinfo=pytz.utc)
-    if isinstance(timestamp, datetime):
-        timestamp = timestamp.strftime(DATE_FORMAT)
-    if not isinstance(timestamp, basestring):
-        log.warn('Non-string timestamp {} for payload {}'.format(timestamp, data))
-    payload['timestamp'] = timestamp
+    elif isinstance(timestamp, basestring):
+        timestamp = dateutil.parser.parse(timestamp)
+    if make_string:
+        return timestamp.strftime(DATE_FORMAT)
+    return timestamp
+
+
+def make_payload(timestamp=None, data=None):
+    payload = dict()
+    payload['timestamp'] = parse_timestamp(timestamp, True)
     if data is not None and len(data) > 0:
         payload['data'] = data
     log.debug(json.dumps(payload))
@@ -871,9 +875,9 @@ class EventProcessor(Thread):
                             continue
                         timestamp = None
                         if 'timestamp' in event_data:
-                            timestamp = dateutil.parser.parse(event_data['timestamp'])
+                            timestamp = parse_timestamp(event_data['timestamp']))
                         else:
-                            timestamp = datetime.utcnow().replace(tzinfo=pytz.utc)
+                            timestamp = parse_timestamp(timestamp=None)
                             log_msg = "Message from {} does not include a 'timestamp' so it can't be filtered if it " \
                                       "is stale. Using {}.".format(event_origin, timestamp.strftime(DATE_FORMAT))
                             if 'data' in event_data and 'active_devices' in event_data['data']:
@@ -1462,7 +1466,7 @@ class MeterTimer(Thread):
             iot_payload = json.loads(message.payload)
             #FIXME: {"last_metered_minute":1518336745.555320,"last_minute_metered":9,"last_sample_value":0,"uptime":79320.530861}
             event_processor_message = dict()
-            event_processor_message['timestamp'] = datetime.utcfromtimestamp(iot_payload['last_metered_minute']).replace(tzinfo=pytz.utc)
+            event_processor_message['timestamp'] = iot_payload['last_metered_minute']
             event_processor_message['data'] = dict()
             event_processor_message['data']['active_devices'] = list()
             event_processor_message['data']['active_devices'].append({
