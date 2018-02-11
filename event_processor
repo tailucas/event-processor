@@ -1438,8 +1438,6 @@ class CallbackUrlDiscovery(Thread):
 
 class MeterTimer(Thread):
 
-    processor = None
-
     def __init__(self):
         super(MeterTimer, self).__init__(name=self.__class__.__name__)
         self.daemon = True
