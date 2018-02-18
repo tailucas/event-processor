@@ -1512,7 +1512,7 @@ if __name__ == "__main__":
     event_processor = EventProcessor()
     origin_nanny = OriginNanny()
     # meter timer
-    meter_timer = MeterTimer()
+    # meter_timer = MeterTimer()
     # set up subscribers
     subscription_sources = config.get('app', 'subscription_sources').split(',')
     for source in subscription_sources:
@@ -1536,8 +1536,8 @@ if __name__ == "__main__":
     threads_tracked.add(event_processor.getName())
     sqs_listener.start()
     threads_tracked.add(sqs_listener.getName())
-    meter_timer.start()
-    threads_tracked.add(meter_timer.getName())
+    #meter_timer.start()
+    #threads_tracked.add(meter_timer.getName())
     # set up signal handlers
     signal_handler = SignalHandler()
     # start threads
