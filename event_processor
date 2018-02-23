@@ -1158,11 +1158,12 @@ class EventLog(Thread):
         # extract the event data from the result set
         event_log = list()
         for event in event_data:
+            timestamp = event['timestamp']
             event_log.append((
                 int(timestamp),
                 event['input_device'],
                 event['output_device'],
-                make_timestamp(event['timestamp']).astimezone(tz=tz.tzlocal()).strftime('%c')
+                make_timestamp(timestamp).astimezone(tz=tz.tzlocal()).strftime('%c')
             ))
         # reorder based on the timestamp
         return sorted(event_log, key=itemgetter(0, 1, 2), reverse=True)
