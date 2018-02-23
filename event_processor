@@ -1163,7 +1163,7 @@ class EventLog(Thread):
                 int(timestamp),
                 event['input_device'],
                 event['output_device'],
-                make_timestamp(timestamp).astimezone(tz=tz.tzlocal()).strftime('%c')
+                make_timestamp(float(timestamp)).astimezone(tz=tz.tzlocal()).strftime('%c')
             ))
         # reorder based on the timestamp
         return sorted(event_log, key=itemgetter(0, 1, 2), reverse=True)
