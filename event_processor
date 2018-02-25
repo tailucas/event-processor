@@ -139,7 +139,7 @@ def index():
     if len(awol_inputs) > 0:
         flash(message='{} devices are unavailable right now.'.format(len(awol_inputs)), category='danger')
     #TODO: factor into better reload mechanism
-    event_processor._input_config, event_processor._input_config_table = event_processor.__setup_config_table(
+    event_processor._input_config, event_processor._input_config_table = event_processor._load_config_table(
         table_name=config.get('config', 'input_config_table'))
     for device_key, device_config in event_processor.input_config.items():
         if device_key in awol_inputs:
@@ -785,7 +785,7 @@ class EventProcessor(Thread):
         else:
             log.warn('{} is not configured or linked to any output: {}'.format(active_device_key, active_device))
 
-    def __setup_config_table(self, table_name, primary_key='device_key'):
+    def _load_config_table(self, table_name, primary_key='device_key'):
         log.info("Loading Dynamo table '{}'...".format(table_name))
         member_table = Table(
             table_name=table_name,
@@ -822,12 +822,12 @@ class EventProcessor(Thread):
             aws_secret_access_key=config.get('aws', 'aws_secret_access_key'))
         self.metric_namespace = '{}:{}'.format(config.get('metric', 'namespace'), APP)
         # load configuration data
-        self._general_config, self._general_config_table = self.__setup_config_table(
+        self._general_config, self._general_config_table = self._load_config_table(
             table_name=config.get('config', 'general_config_table'),
             primary_key='config_key')
-        self._input_config, self._input_config_table = self.__setup_config_table(
+        self._input_config, self._input_config_table = self._load_config_table(
             table_name=config.get('config', 'input_config_table'))
-        self._output_config, self._output_config_table = self.__setup_config_table(
+        self._output_config, self._output_config_table = self._load_config_table(
             table_name=config.get('config', 'output_config_table'))
         # connect to event origins
         for origin, ip in self._origin_ips.items():
