@@ -138,6 +138,9 @@ def index():
     awol_inputs = event_processor.awol_inputs
     if len(awol_inputs) > 0:
         flash(message='{} devices are unavailable right now.'.format(len(awol_inputs)), category='danger')
+    #TODO: factor into better reload mechanism
+    event_processor._input_config, event_processor._input_config_table = event_processor.__setup_config_table(
+        table_name=config.get('config', 'input_config_table'))
     for device_key, device_config in event_processor.input_config.items():
         if device_key in awol_inputs:
             awol_input_labels.add(device_config['device_label'])
