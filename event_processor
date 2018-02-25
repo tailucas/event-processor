@@ -276,9 +276,11 @@ def show_metrics():
     if device_config['type'] != 'Meter':
         flash('{} is not a meter.'.format(device_key), category='danger')
         return redirect(url_for('index'))
+    metric_namespace = 'automation'
+    #TODO: get all meter metrics by dimension
     meter_metric = event_processor._metrics.list_metrics(
-        metric_name=device_key,
-        namespace=event_processor.metric_namespace)
+        metric_name=device_config['device_label'] + ' Metered',
+        namespace=metric_namespace)
     if len(meter_metric) > 0:
         end_time = datetime.now().replace(tzinfo=tz.tzlocal())
         for stat_period, stat_interval, time_delta in [
@@ -293,7 +295,7 @@ def show_metrics():
                 period=stat_period,
                 statistics='Sum')
             log.info('Meter stats for {}::{} for period {}: {}'.format(
-                event_processor.metric_namespace,
+                metric_namespace,
                 device_key,
                 stat_period,
                 len(meter_stats)))
