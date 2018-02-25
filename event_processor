@@ -984,44 +984,6 @@ class EventProcessor(Thread):
                                     if active_device_key not in self._input_config:
                                         log.warn("Input device '{}' is not configured, ignoring.".format(active_device_key))
                                         continue
-                                    active_device_config = self._input_config[active_device_key]
-                                    # update meter if necessary
-                                    if 'type' in active_device and 'meter' in active_device['type'].lower():
-                                        meter_update = int(active_device['sample_value'])
-                                        # metric dimensions
-                                        metric_dimensions = dict()
-                                        metric_dimensions['device_type'] = 'meter'
-                                        if 'device_label' in active_device:
-                                            metric_dimensions['device_label'] = active_device['device_label']
-                                        # show this as a metric
-                                        self._metrics.put_metric_data(
-                                            namespace=self.metric_namespace,
-                                            name=active_device_key,
-                                            value=meter_update,
-                                            dimensions=metric_dimensions,
-                                            timestamp=timestamp,
-                                            unit='Count')
-                                        cur_value = 0
-                                        if 'meter_value' in active_device_config:
-                                            cur_value = active_device_config['meter_value']
-                                        elif 'meter_reset_value' in active_device_config:
-                                            cur_value = active_device_config['meter_reset_value']
-                                        if 'meter_mode' in active_device_config:
-                                            if active_device_config['meter_mode'] == 'incrementing':
-                                                cur_value += meter_update
-                                            elif active_device_config['meter_mode'] == 'decrementing':
-                                                cur_value -= meter_update
-                                        self.flash_info = False
-                                        event_processor.input_config = (
-                                            active_device_key,
-                                            {'meter_value': cur_value}
-                                        )
-                                        # TODO: units
-                                        event_detail = "({:.1f} units)".format(int(cur_value) / 1000.0)
-                                        if 'event_detail' in active_device:
-                                            event_detail = "{} {}".format(active_device['event_detail'], event_detail)
-                                        active_device['event_detail'] = event_detail
-                                        self.flash_info = True
                                     # message stale?
                                     message_age = make_timestamp() - timestamp
                                     if message_age > timedelta(seconds=self._max_message_validity_seconds):
@@ -1032,21 +994,10 @@ class EventProcessor(Thread):
                                             message_age.seconds,
                                             self._max_message_validity_seconds))
                                         continue
+                                    active_device_config = self._input_config[active_device_key]
                                     # input disabled?
                                     if 'device_disabled' in active_device_config:
                                         continue
-                                    # only consider a meter active if the value is out of bounds
-                                    if 'type' in active_device and 'meter' in active_device['type'].lower():
-                                        meter_value = active_device_config['meter_value']
-                                        out_of_range = False
-                                        if 'meter_low_limit' in active_device_config:
-                                            if meter_value < active_device_config['meter_low_limit']:
-                                                out_of_range = True
-                                        if 'meter_high_limit' in active_device_config:
-                                            if meter_value > active_device_config['meter_high_limit']:
-                                                out_of_range = True
-                                        if not out_of_range:
-                                            continue
                                     # multi-trigger
                                     if 'multi_trigger' in active_device_config:
                                         if 'trigger_window' in active_device_config:
@@ -1517,8 +1468,6 @@ if __name__ == "__main__":
     event_log = EventLog()
     event_processor = EventProcessor()
     origin_nanny = OriginNanny()
-    # meter timer
-    # meter_timer = MeterTimer()
     # set up subscribers
     subscription_sources = config.get('app', 'subscription_sources').split(',')
     for source in subscription_sources:
@@ -1542,8 +1491,6 @@ if __name__ == "__main__":
     threads_tracked.add(event_processor.getName())
     sqs_listener.start()
     threads_tracked.add(sqs_listener.getName())
-    #meter_timer.start()
-    #threads_tracked.add(meter_timer.getName())
     # set up signal handlers
     signal_handler = SignalHandler()
     # start threads
