@@ -651,6 +651,9 @@ class EventProcessor(Thread):
             (self.inputs, self._input_origin, self._inputs_by_origin, self._awol_inputs, 'inputs'),
             (self.outputs, self._output_origin, self._outputs_by_origin, self._awol_outputs, 'outputs')
         ]:
+            # next if only input or output
+            if io not in device_info:
+                continue
             for device in device_info[io]:
                 try:
                     devices_updated += self._update_device(
