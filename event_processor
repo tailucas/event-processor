@@ -103,14 +103,15 @@ def is_list(value):
 
 def make_timestamp(timestamp=None, make_string=False):
     if timestamp is None:
-        timestamp = datetime.utcnow().replace(tzinfo=pytz.utc)
+        timestamp = datetime.utcnow()
     elif isinstance(timestamp, float):
-        timestamp = datetime.utcfromtimestamp(timestamp).replace(tzinfo=pytz.utc)
+        timestamp = datetime.utcfromtimestamp(timestamp)
     elif isinstance(timestamp, basestring):
         timestamp = dateutil.parser.parse(timestamp)
     if make_string:
         return timestamp.strftime(DATE_FORMAT)
-    return timestamp
+    # not naive datetime
+    return timestamp.replace(tzinfo=pytz.utc)
 
 
 def make_payload(timestamp=None, data=None):
@@ -301,7 +302,7 @@ def show_metrics():
                 if 'meter_reading_unit_factor' in device_config:
                     meter_reading_unit_factor = device_config['device_config']
                 stat_interval.append((
-                        meter_stat['Timestamp'].astimezone(tz=tz.tzlocal()).isoformat(),
+                        make_timestamp(meter_stat['Timestamp']).astimezone(tz=tz.tzlocal()).isoformat(),
                         meter_stat['Sum'] / float(meter_reading_unit_factor)
                     ))
     return render_template('metrics.html',
