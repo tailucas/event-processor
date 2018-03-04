@@ -305,9 +305,12 @@ def show_metrics():
                         make_timestamp(meter_stat['Timestamp']).astimezone(tz=tz.tzlocal()).isoformat(),
                         meter_stat['Sum'] / float(meter_reading_unit_factor)
                     ))
+    unit_name = 'Units'
+    if 'meter_reading_unit' in device_config:
+        unit_name = device_config['meter_reading_unit']
     return render_template('metrics.html',
                            metric_title=device_config['device_label'],
-                           metric_legend='Units',
+                           metric_legend=unit_name,
                            meter_history_day=sorted(meter_history_day),
                            meter_history_day_title='1-minute sum',
                            meter_history_week=sorted(meter_history_week),
