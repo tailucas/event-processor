@@ -1014,7 +1014,7 @@ class EventProcessor(Thread):
                                         meter_reading_unit_precision = 0
                                         if 'meter_reading_unit_precision' in active_device_config:
                                             meter_reading_unit_precision = active_device_config['meter_reading_unit_precision']
-                                        meter_reading = "{:."+meter_reading_unit_precision+"f}{}".format((int(meter_value) / float(meter_reading_unit_factor)), meter_reading_unit)
+                                        meter_reading = "{:."+str(meter_reading_unit_precision)+"f}{}".format((int(meter_value) / float(meter_reading_unit_factor)), meter_reading_unit)
                                         self.flash_info = False
                                         event_processor.input_config = (
                                             active_device_key,
