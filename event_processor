@@ -138,9 +138,6 @@ def index():
     awol_inputs = event_processor.awol_inputs
     if len(awol_inputs) > 0:
         flash(message='{} devices are unavailable right now.'.format(len(awol_inputs)), category='danger')
-    #TODO: factor into better reload mechanism
-    event_processor._input_config, event_processor._input_config_table = event_processor._load_config_table(
-        table_name=config.get('config', 'input_config_table'))
     for device_key, device_config in event_processor.input_config.items():
         if device_key in awol_inputs:
             awol_input_labels.add(device_config['device_label'])
@@ -856,18 +853,6 @@ class EventProcessor(Thread):
                 'device_label': 'Panic Button',
                 'type': 'Panic Button'
             })
-        #FIXME: special input for electricity meter
-        self._update_device(
-            input_outputs=self.inputs,
-            device_origin=self._input_origin,
-            origin_devices=self._inputs_by_origin,
-            event_origin=config.get('app', 'device_name'),
-            awol_devices=self._awol_inputs,
-            device={
-                'device_key': 'Electricity Meter (House)',
-                'device_label': 'Electricity Meter',
-                'type': 'meter'
-            })
         while True:
             try:
                 event = self.socket.recv_pyobj()
@@ -895,43 +880,40 @@ class EventProcessor(Thread):
                                 device_disable = False
                             elif 'disable' in event_data:
                                 device_disable = True
-                            # no action?
-                            if device_disable is None:
-                                log.warn('No valid action found in SQS message: {}'.format(event_data))
-                                continue
-                            # this is a fuzzy name that refers to either a group or specific device
-                            device_descriptions = None
-                            if 'device_description' in event_data:
-                                device_descriptions = event_data['device_description']
-                            if device_descriptions is None:
-                                log.warn('No valid device description found in SQS message: {}'.format(event_data))
-                                continue
-                            event_processor.flash_info = False
-                            for device_description in device_descriptions:
-                                for device_key, device_config in self._input_config.items():
-                                    device_name_match = False
-                                    device_name_test = device_config['device_label'].lower()
-                                    # custom skill
-                                    if device_name_test.startswith(device_description.lower()):
-                                        device_name_match = True
-                                    # smart home skill device ID
-                                    elif device_name_test.replace(' ','_').replace('(', '#').replace(')', '#') == device_description:
-                                        device_name_match = True
-                                    elif 'group_name' in device_config and device_config['group_name']:
-                                        device_name_test = device_config['group_name'].lower()
+                            if device_disable is not None:
+                                # this is a fuzzy name that refers to either a group or specific device
+                                device_descriptions = None
+                                if 'device_description' in event_data:
+                                    device_descriptions = event_data['device_description']
+                                if device_descriptions is None:
+                                    log.warn('No valid device description found in SQS message: {}'.format(event_data))
+                                    continue
+                                event_processor.flash_info = False
+                                for device_description in device_descriptions:
+                                    for device_key, device_config in self._input_config.items():
+                                        device_name_match = False
+                                        device_name_test = device_config['device_label'].lower()
+                                        # custom skill
                                         if device_name_test.startswith(device_description.lower()):
                                             device_name_match = True
+                                        # smart home skill device ID
                                         elif device_name_test.replace(' ','_').replace('(', '#').replace(')', '#') == device_description:
                                             device_name_match = True
-                                    if device_name_match:
-                                        # device matches our description
-                                        log.info('Updating device {} based on matching description {}; disable: {}'.format(device_key, device_description, device_disable))
-                                        event_processor.input_config = (
-                                            device_key,
-                                            {'device_disabled': device_disable}
-                                        )
-                            event_processor.flash_info = True
-                        elif 'data' in event_data:
+                                        elif 'group_name' in device_config and device_config['group_name']:
+                                            device_name_test = device_config['group_name'].lower()
+                                            if device_name_test.startswith(device_description.lower()):
+                                                device_name_match = True
+                                            elif device_name_test.replace(' ','_').replace('(', '#').replace(')', '#') == device_description:
+                                                device_name_match = True
+                                        if device_name_match:
+                                            # device matches our description
+                                            log.info('Updating device {} based on matching description {}; disable: {}'.format(device_key, device_description, device_disable))
+                                            event_processor.input_config = (
+                                                device_key,
+                                                {'device_disabled': device_disable}
+                                            )
+                                event_processor.flash_info = True
+                        if 'data' in event_data:
                             if 'stale_heartbeat' in event_data['data']:
                                 stale_heartbeat = event_data['data']['stale_heartbeat']
                                 device_status = "unknown"
@@ -994,10 +976,35 @@ class EventProcessor(Thread):
                                             message_age.seconds,
                                             self._max_message_validity_seconds))
                                         continue
+                                    # always process a fresh meter update
+                                    if 'type' in active_device and 'meter' in active_device['type'].lower():
+                                        meter_value = int(active_device['sample_value'])
+                                        self.flash_info = False
+                                        event_processor.input_config = (
+                                            active_device_key,
+                                            {'meter_value': meter_value}
+                                        )
+                                        # TODO: units
+                                        event_detail = "({:.1f} units)".format(int(meter_value) / 1000.0)
+                                        if 'event_detail' in active_device:
+                                            event_detail = "{} {}".format(active_device['event_detail'], event_detail)
+                                        active_device['event_detail'] = event_detail
+                                        self.flash_info = True
                                     active_device_config = self._input_config[active_device_key]
                                     # input disabled?
                                     if 'device_disabled' in active_device_config:
                                         continue
+                                    # only consider a meter active if the value is out of bounds
+                                    if 'type' in active_device and 'meter' in active_device['type'].lower():
+                                        out_of_range = False
+                                        if 'meter_low_limit' in active_device_config:
+                                            if meter_value < active_device_config['meter_low_limit']:
+                                                out_of_range = True
+                                        if 'meter_high_limit' in active_device_config:
+                                            if meter_value > active_device_config['meter_high_limit']:
+                                                out_of_range = True
+                                        if not out_of_range:
+                                            continue
                                     # multi-trigger
                                     if 'multi_trigger' in active_device_config:
                                         if 'trigger_window' in active_device_config:
