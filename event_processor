@@ -300,7 +300,7 @@ def show_metrics():
             for meter_stat in meter_stats:
                 meter_reading_unit_factor = 1
                 if 'meter_reading_unit_factor' in device_config:
-                    meter_reading_unit_factor = device_config['device_config']
+                    meter_reading_unit_factor = device_config['meter_reading_unit_factor']
                 stat_interval.append((
                         make_timestamp(meter_stat['Timestamp']).astimezone(tz=tz.tzlocal()).isoformat(),
                         meter_stat['Sum'] / float(meter_reading_unit_factor)
