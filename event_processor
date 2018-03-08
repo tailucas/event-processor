@@ -202,6 +202,12 @@ def index():
                 reset_value = meter_value
             # update both the in memory model and the stored configuration
             device_listing[device_key]['meter_value'] = reset_value
+
+            #TODO: implement
+            #event_processor.iot.connect()
+            #event_processor.iot.publish(config.get('iot', 'topic_pub_meter'), '{"message": "foo"}', 0)
+            #event_processor.iot.disconnect()
+
             event_processor.flash_info = False
             event_processor.input_config = (
                 device_key,
@@ -566,6 +572,19 @@ class EventProcessor(Thread):
         self.socket.bind(URL_WORKER_EVENT_PROCESSOR)
 
         self.event_log = zmq_context.socket(zmq.PUSH)
+
+        self.iot = AWSIoTMQTTClient(APP, useWebsocket=True)
+        self.iot.configureEndpoint(
+            config.get('iot', 'endpoint'),
+            443)
+        self.iot.configureIAMCredentials(
+            config.get('aws', 'aws_access_key_id'),
+            config.get('aws', 'aws_secret_access_key'))
+        self.iot.configureCredentials(config.get('iot', 'root_ca_path'))
+        self.iot.configureOfflinePublishQueueing(0)
+        self.iot.configureDrainingFrequency(2)
+        self.iot.configureConnectDisconnectTimeout(10)
+        self.iot.configureMQTTOperationTimeout(5)
 
     @property
     def general_config(self):
@@ -1438,60 +1457,6 @@ class CallbackUrlDiscovery(Thread):
             except Exception:
                 sleep(1)
 
-
-class MeterTimer(Thread):
-
-    def __init__(self):
-        super(MeterTimer, self).__init__(name=self.__class__.__name__)
-        self.daemon = True
-        self.iot = AWSIoTMQTTClient(APP, useWebsocket=True)
-        self.iot.configureEndpoint(
-            config.get('iot', 'endpoint'),
-            443)
-        self.iot.configureIAMCredentials(
-            config.get('aws', 'aws_access_key_id'),
-            config.get('aws', 'aws_secret_access_key'))
-        self.iot.configureCredentials(config.get('iot', 'root_ca_path'))
-        self.iot.configureOfflinePublishQueueing(0)
-        self.iot.configureDrainingFrequency(2)
-        self.iot.configureConnectDisconnectTimeout(10)
-        self.iot.configureMQTTOperationTimeout(5)
-
-    @staticmethod
-    def sub_callback(client, userdata, message):
-        processor = None
-        try:
-            iot_payload = json.loads(message.payload)
-            #FIXME: {"last_metered_minute":1518336745.555320,"last_minute_metered":9,"last_sample_value":0,"uptime":79320.530861}
-            event_processor_message = dict()
-            event_processor_message['timestamp'] = iot_payload['last_metered_minute']
-            event_processor_message['data'] = dict()
-            event_processor_message['data']['active_devices'] = list()
-            event_processor_message['data']['active_devices'].append({
-                'device_key': 'Electricity Meter (House)',
-                'device_label': 'Electricity Meter',
-                'type': 'meter',
-                'sample_value': iot_payload['last_minute_metered']
-            })
-            processor = zmq_context.socket(zmq.PUSH)
-            processor.connect(URL_WORKER_EVENT_PROCESSOR)
-            processor.send_pyobj({'iot': event_processor_message})
-        except Exception:
-            log.exception(threading.currentThread().name)
-        finally:
-            try:
-                if processor is not None:
-                    processor.close()
-            except:
-                log.exception(threading.currentThread().name)
-
-    def run(self):
-        self.iot.connect()
-        self.iot.subscribe(config.get('iot', 'topic_sub_meter'), 1, MeterTimer.sub_callback)
-        #FIXME: standardize
-        self.iot.publish(config.get('iot', 'topic_pub_meter'), '{"message": "foo"}', 0)
-        while True:
-            sleep(3600)
 
 if __name__ == "__main__":
     # DEBUG logging until startup complete
