@@ -1,6 +1,7 @@
 argparse
 AWSIoTPythonSDK
 boto
+blinker
 pathtools
 pylru
 python-dateutil
