@@ -7,6 +7,7 @@ python-dateutil
 python-magic
 pytz
 pyzmq
+raven
 requests
 resin-sdk
 simplejson
