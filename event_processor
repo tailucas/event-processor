@@ -1,11 +1,8 @@
 #!/usr/bin/python
 import dateutil.parser
-import hashlib
 import logging
 import logging.handlers
 
-import abc
-import collections
 import copy
 import os
 import pytz
@@ -23,25 +20,24 @@ from AWSIoTPythonSDK.MQTTLib import AWSIoTMQTTClient
 
 from boto import dynamodb2, sqs
 from boto.dynamodb2.table import Table
-from boto.dynamodb2.exceptions import ItemNotFound, JSONResponseError, DynamoDBError
+from boto.dynamodb2.exceptions import ItemNotFound
 from boto.ec2 import cloudwatch
 from ConfigParser import ConfigParser
 from datetime import datetime, timedelta
 from dateutil import tz
-from operator import itemgetter, attrgetter
+from operator import itemgetter
 from pprint import pprint
 from sets import Set
 from pylru import lrucache
-from Queue import Queue, Empty
 from requests.exceptions import ConnectionError
 from raven.contrib.flask import Sentry
 from resin.exceptions import RequestError
 from resin.models.device import Device
 from simplejson.scanner import JSONDecodeError
-from threading import Thread, Timer
+from threading import Thread
 from time import sleep
 from umsgpack import UnpackException
-from flask import Flask, g, flash, request, render_template, url_for, redirect, session, escape
+from flask import Flask, g, flash, request, render_template, url_for, redirect
 from flask_compress import Compress
 from zmq.error import ZMQError, ContextTerminated, Again
 
@@ -118,7 +114,7 @@ def make_timestamp(timestamp=None, make_string=False):
 
 
 def make_payload(timestamp=None, data=None):
-    payload = dict()
+    payload = {}
     payload['timestamp'] = make_timestamp(timestamp, True)
     if data is not None and len(data) > 0:
         payload['data'] = data
@@ -142,10 +138,10 @@ def internal_server_error():
 
 @rest_api.route('/', methods=['GET', 'POST'])
 def index():
-    meter_history = dict()
-    group_disabled = dict()
-    device_listing = dict()
-    input_labels = dict()
+    meter_history = {}
+    group_disabled = {}
+    device_listing = {}
+    input_labels = {}
     awol_input_labels = set()
     awol_inputs = event_processor.awol_inputs
     if len(awol_inputs) > 0:
@@ -158,11 +154,11 @@ def index():
         else:
             group_name = device_config['group_name']
             if group_name not in device_listing:
-                device_listing[group_name] = dict()
-                device_listing[group_name]['grouped_inputs'] = dict()
+                device_listing[group_name] = {}
+                device_listing[group_name]['grouped_inputs'] = {}
             device_listing[group_name]['grouped_inputs'][device_key] = device_config
             if group_name not in input_labels:
-                input_labels[group_name] = list()
+                input_labels[group_name] = []
             input_labels[group_name].append(device_config['device_label'])
             # manufacture a device label for the group
             device_listing[group_name]['device_label'] = group_name
@@ -282,10 +278,10 @@ def index():
 
 @rest_api.route('/metrics', methods=['GET', 'POST'])
 def show_metrics():
-    meter_history_day = list()
-    meter_history_week = list()
-    meter_history_month = list()
-    meter_history_year = list()
+    meter_history_day = []
+    meter_history_week = []
+    meter_history_month = []
+    meter_history_year = []
     device_key = request.args.get('meter')
     device_config = event_processor.input_config[device_key]
     if device_config['type'] != 'Meter':
@@ -340,7 +336,7 @@ def show_metrics():
 
 @rest_api.route('/event_log', methods=['GET', 'POST'])
 def event_log():
-    events = dict()
+    events = {}
     if request.method == 'GET':
         # TODO: configurable
         events = event_log.get_events(since_ts=int(
@@ -362,7 +358,7 @@ def input_config():
         device_key = request.form['device_key']
         try:
             customized = False
-            to_save = dict()
+            to_save = {}
             if 'group_name' in request.form:
                 group_name = request.form['group_name'].strip()
                 if len(group_name) > 0:
@@ -483,7 +479,7 @@ def output_config():
     device_key = None
     if request.method == 'POST':
         device_key = request.form['device_key']
-        to_save = dict()
+        to_save = {}
         device_params = request.form['device_params'].strip()
         if len(device_params) > 0:
             to_save['device_params'] = device_params
@@ -540,20 +536,20 @@ class EventProcessor(Thread):
         super(EventProcessor, self).__init__(name=self.__class__.__name__)
         self.daemon = True
 
-        self.inputs = dict()
-        self.outputs = dict()
+        self.inputs = {}
+        self.outputs = {}
 
-        self._input_trigger_history = dict()
-        self._input_active_history = dict()
+        self._input_trigger_history = {}
+        self._input_active_history = {}
 
-        self._origin_ips = dict()
-        self._origin_connections = dict()
+        self._origin_ips = {}
+        self._origin_connections = {}
 
-        self._input_origin = dict()
-        self._output_origin = dict()
+        self._input_origin = {}
+        self._output_origin = {}
 
-        self._inputs_by_origin = dict()
-        self._outputs_by_origin = dict()
+        self._inputs_by_origin = {}
+        self._outputs_by_origin = {}
 
         self._awol_inputs = set()
         self._awol_outputs = set()
@@ -604,7 +600,7 @@ class EventProcessor(Thread):
     @general_config.setter
     def general_config(self, config_update):
         config_key, updated_config = config_update
-        self._general_config = dict()
+        self._general_config = {}
 
     @property
     def input_config(self):
@@ -656,7 +652,7 @@ class EventProcessor(Thread):
     def _update_config(device_key, devices, device_configs, updates, table_member, primary_key, flash_info=True):
         device_label = devices[device_key]['device_label']
         # try to get the existing device config, or create a new mapping
-        device_config = dict()
+        device_config = {}
         try:
             device_config = device_configs[device_key]
         except KeyError:
@@ -680,8 +676,8 @@ class EventProcessor(Thread):
                 saved = table_item.partial_save()
             except ItemNotFound:
                 log.debug("Item '{}' not found in '{}'. Creating new.".format(primary_key, table_name))
-                put_args = dict()
-                put_args['data'] = dict()
+                put_args = {}
+                put_args['data'] = {}
                 put_args['data'].update(primary_key)
                 put_args['data'].update(updates)
                 saved = table_member.put_item(**put_args)
@@ -760,7 +756,7 @@ class EventProcessor(Thread):
             output_device_keys = self._input_config[active_device_key]['linked_outputs']
             log.debug('{} {} => {}'.format(event_origin, active_device_key, output_device_keys))
             for output_device_key in output_device_keys:
-                output_device_activation = dict()
+                output_device_activation = {}
                 if output_device_key not in self.outputs:
                     log.warn('{} is linked to an unknown output {}'.format(active_device_key,
                                                                            output_device_key))
@@ -773,7 +769,7 @@ class EventProcessor(Thread):
                 # put the event information into the LRU
                 self._device_event_lru[active_device_key] = timestamp
                 # build up the device activation history
-                activation_history = list()
+                activation_history = []
                 for device_key, activation_time in self._device_event_lru.items():
                     # filter out the device being activated
                     if device_key == active_device_key:
@@ -847,10 +843,10 @@ class EventProcessor(Thread):
             table_name=table_name,
             connection=self._ddb_storage)
         log.info("Reading table '{}'...".format(table_name))
-        member = dict()
+        member = {}
         for result in member_table.scan():
             device_key = None
-            member_config = dict()
+            member_config = {}
             for key, value in result.items():
                 if key == primary_key:
                     device_key = value
@@ -1185,7 +1181,7 @@ class EventLog(Thread):
     def get_events(self, since_ts):
         event_data = self._event_log_table.scan(timestamp__gte=since_ts)
         # extract the event data from the result set
-        event_log = list()
+        event_log = []
         for event in event_data:
             timestamp = event['timestamp']
             event_log.append((
@@ -1219,8 +1215,8 @@ class EventLog(Thread):
                 timestamp = event['timestamp']
                 # work around Python's brain-dead date handling
                 unix_timestamp = int((timestamp.replace(tzinfo=None) - datetime(1970, 1, 1)).total_seconds())
-                put_args = dict()
-                put_args['data'] = dict()
+                put_args = {}
+                put_args['data'] = {}
                 put_args['data'].update({
                     # pad some millis for the actual insertion time to avoid key conflicts
                     'timestamp': float('{}.{}'.format(unix_timestamp, datetime.now().microsecond)),
@@ -1383,7 +1379,7 @@ class OriginNanny(Thread):
 
         self.processor = zmq_context.socket(zmq.PUSH)
 
-        self.origin_subscriber = dict()
+        self.origin_subscriber = {}
         self._max_heartbeat_delay = int(config.get('app', 'max_heartbeat_delay_seconds'))
         # set the Resin.io API key as expected by the resin-python-sdk
         #FIXME: necessary anymore?
@@ -1400,7 +1396,7 @@ class OriginNanny(Thread):
             try:
                 resin_device = Device()
                 for origin, (ip, subscriber) in self.origin_subscriber.items():
-                    payload = dict()
+                    payload = {}
                     # when last was an event seen by this subscriber
                     last_message = subscriber.last_message
                     heartbeat_age = None
