@@ -584,9 +584,6 @@ class EventProcessor(Thread):
         self.iot.configureEndpoint(
             config.get('iot', 'endpoint'),
             443)
-        self.iot.configureIAMCredentials(
-            config.get('aws', 'aws_access_key_id'),
-            config.get('aws', 'aws_secret_access_key'))
         self.iot.configureCredentials(config.get('iot', 'root_ca_path'))
         self.iot.configureOfflinePublishQueueing(0)
         self.iot.configureDrainingFrequency(2)
@@ -861,26 +858,22 @@ class EventProcessor(Thread):
 
     def run(self):
         # set up local DB storage
-        self._db_storage = sqlite3.connect(database=config.get('db', 'tablespace_path'))
+        self._db_storage = sqlite3.connect(database=os.environ['TABLESPACE_PATH'])
         # connect to AWS services
         self._ddb_storage = dynamodb2.connect_to_region(
-            region_name=config.get('aws', 'region'),
-            aws_access_key_id=config.get('aws', 'aws_access_key_id'),
-            aws_secret_access_key=config.get('aws', 'aws_secret_access_key'))
+            region_name=config.get('aws', 'region'))
         # set up metrics
         self._metrics = cloudwatch.connect_to_region(
-            region_name=config.get('aws', 'region'),
-            aws_access_key_id=config.get('aws', 'aws_access_key_id'),
-            aws_secret_access_key=config.get('aws', 'aws_secret_access_key'))
-        self.metric_namespace = '{}:{}'.format(config.get('metric', 'namespace'), APP)
+            region_name=config.get('aws', 'region'))
+        self.metric_namespace = '{}:{}'.format(config.get('app', 'device_name'), APP)
         # load configuration data
         self._general_config, self._general_config_table = self._load_config_table(
-            table_name=config.get('config', 'general_config_table'),
+            table_name=os.environ['CONFIG_TABLE_GENERAL'],
             primary_key='config_key')
         self._input_config, self._input_config_table = self._load_config_table(
-            table_name=config.get('config', 'input_config_table'))
+            table_name=os.environ['CONFIG_TABLE_INPUT'])
         self._output_config, self._output_config_table = self._load_config_table(
-            table_name=config.get('config', 'output_config_table'))
+            table_name=os.environ['CONFIG_TABLE_OUTPUT'])
         # connect to event origins
         for origin, ip in self._origin_ips.items():
             connection_string = 'tcp://{}:{}'.format(ip, config.get('zmq', 'pushpull_port'))
@@ -1196,18 +1189,14 @@ class EventLog(Thread):
     def run(self):
         # connect to AWS services
         self._ddb_storage = dynamodb2.connect_to_region(
-            region_name=config.get('aws', 'region'),
-            aws_access_key_id=config.get('aws', 'aws_access_key_id'),
-            aws_secret_access_key=config.get('aws', 'aws_secret_access_key'))
+            region_name=config.get('aws', 'region'))
         self._event_log_table = Table(
             table_name='event_log',
             connection=self._ddb_storage)
         # set up metrics
         self._metrics = cloudwatch.connect_to_region(
-            region_name=config.get('aws', 'region'),
-            aws_access_key_id=config.get('aws', 'aws_access_key_id'),
-            aws_secret_access_key=config.get('aws', 'aws_secret_access_key'))
-        self.metric_namespace = '{}:{}'.format(config.get('metric', 'namespace'), APP)
+            region_name=config.get('aws', 'region'))
+        self.metric_namespace = '{}:{}'.format(config.get('app', 'device_name'), APP)
         while True:
             try:
                 event = self.socket.recv_pyobj()
@@ -1333,13 +1322,11 @@ class SQSListener(Thread):
         self._sqs_queue = None
 
     def run(self):
-        sqs_queue_name = config.get('sqs', 'queue')
+        sqs_queue_name = os.environ['SQS_QUEUE']
         log.info('Listening for control messages on SQS queue {}'.format(sqs_queue_name))
         # set up notifications
         self._sqs = sqs.connect_to_region(
-            region_name=config.get('aws', 'region'),
-            aws_access_key_id=config.get('aws', 'aws_access_key_id'),
-            aws_secret_access_key=config.get('aws', 'aws_secret_access_key'))
+            region_name=config.get('aws', 'region'))
         self._sqs_queue = self._sqs.get_queue(queue_name=sqs_queue_name)
         self.processor.connect(URL_WORKER_EVENT_PROCESSOR)
         while True:
@@ -1382,7 +1369,8 @@ class OriginNanny(Thread):
         self.origin_subscriber = {}
         self._max_heartbeat_delay = int(config.get('app', 'max_heartbeat_delay_seconds'))
         # set the Resin.io API key as expected by the resin-python-sdk
-        #FIXME: necessary anymore?
+        # Note that the stored RESIN_API_KEY could be overridden in config via entrypoint.sh
+        # configuration interpolation to favour key generated for this application.
         os.environ['RESIN_API_KEY'] = config.get('resin', 'api_key')
 
     def add_origin_subscriber(self, origin, ip, subscriber):
@@ -1524,7 +1512,7 @@ if __name__ == "__main__":
         # add Sentry
         sentry.init_app(rest_api)
         # start frontend
-        rest_api.secret_key = config.get('flask', 'session_secret_key')
+        rest_api.secret_key = os.environ['APP_FLASK_SECRET_KEY']
         rest_api.jinja_env.add_extension('jinja2.ext.loopcontrols')
         rest_api.jinja_env.filters.update({
             'is_list': is_list,
