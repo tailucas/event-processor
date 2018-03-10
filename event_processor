@@ -27,6 +27,7 @@ from datetime import datetime, timedelta
 from dateutil import tz
 from operator import itemgetter
 from pprint import pprint
+# noinspection PyDeprecation
 from sets import Set
 from pylru import lrucache
 from requests.exceptions import ConnectionError
@@ -51,6 +52,7 @@ DIR = os.path.abspath(os.path.dirname(__file__))
 pidfile = '/var/run/{}.pid'.format(APP)
 mypid = os.getpid()
 if os.path.isfile(pidfile):
+    pid = None
     try:
         pid = int(open(pidfile, 'r').read())
     except ValueError:
@@ -114,8 +116,7 @@ def make_timestamp(timestamp=None, make_string=False):
 
 
 def make_payload(timestamp=None, data=None):
-    payload = {}
-    payload['timestamp'] = make_timestamp(timestamp, True)
+    payload = {'timestamp': make_timestamp(timestamp, True)}
     if data is not None and len(data) > 0:
         payload['data'] = data
     log.debug(json.dumps(payload))
@@ -131,9 +132,9 @@ def debug():
 @rest_api.errorhandler(500)
 def internal_server_error():
     return render_template('error.html',
-        event_id=g.sentry_event_id,
-        public_dsn=sentry.client.get_public_dsn('https')
-    )
+                           event_id=g.sentry_event_id,
+                           public_dsn=sentry.client.get_public_dsn('https')
+                           )
 
 
 @rest_api.route('/', methods=['GET', 'POST'])
@@ -199,7 +200,7 @@ def index():
             if 'prompt_val' in request.form:
                 try:
                     reset_value = int(request.form['prompt_val'])
-                except:
+                except ValueError:
                     # oh well
                     pass
             if 'meter_reset_additive' in device_listing[device_key]:
@@ -210,10 +211,10 @@ def index():
             # update both the in memory model and the stored configuration
             device_listing[device_key]['meter_value'] = reset_value
 
-            #TODO: implement
-            #event_processor.iot.connect()
-            #event_processor.iot.publish(config.get('iot', 'topic_pub_meter'), '{"message": "foo"}', 0)
-            #event_processor.iot.disconnect()
+            # TODO: implement
+            # event_processor.iot.connect()
+            # event_processor.iot.publish(config.get('iot', 'topic_pub_meter'), '{"message": "foo"}', 0)
+            # event_processor.iot.disconnect()
 
             event_processor.flash_info = False
             event_processor.input_config = (
@@ -288,8 +289,8 @@ def show_metrics():
         flash('{} is not a meter.'.format(device_key), category='danger')
         return redirect(url_for('index'))
     metric_namespace = 'automation'
-    #TODO: get all meter metrics by dimension
-    meter_metric = event_processor._metrics.list_metrics(
+    # TODO: get all meter metrics by dimension
+    meter_metric = event_processor.metrics.list_metrics(
         metric_name=device_config['device_label'] + ' Metered',
         namespace=metric_namespace)
     if len(meter_metric) > 0:
@@ -315,9 +316,9 @@ def show_metrics():
                 if 'meter_reading_unit_factor' in device_config:
                     meter_reading_unit_factor = device_config['meter_reading_unit_factor']
                 stat_interval.append((
-                        make_timestamp(meter_stat['Timestamp']).astimezone(tz=tz.tzlocal()).isoformat(),
-                        meter_stat['Sum'] / float(meter_reading_unit_factor)
-                    ))
+                    make_timestamp(meter_stat['Timestamp']).astimezone(tz=tz.tzlocal()).isoformat(),
+                    meter_stat['Sum'] / float(meter_reading_unit_factor)
+                ))
     unit_name = 'Units'
     if 'meter_reading_unit' in device_config:
         unit_name = device_config['meter_reading_unit']
@@ -416,16 +417,18 @@ def input_config():
                 customized = True
             else:
                 to_save['meter_reading_unit'] = None
-            if request.form.get('meter_reading_unit_factor', None) and len(request.form['meter_reading_unit_factor']) > 0:
+            if request.form.get('meter_reading_unit_factor', None) and \
+                    len(request.form['meter_reading_unit_factor']) > 0:
                 meter_reading_unit_factor = int(request.form['meter_reading_unit_factor'])
-                if meter_reading_unit_factor >= 1 and (meter_reading_unit_factor % 10 == 0) and meter_reading_unit_factor <= 1000000000:
+                if 1 <= meter_reading_unit_factor <= 1000000000 and (meter_reading_unit_factor % 10 == 0):
                     to_save['meter_reading_unit_factor'] = meter_reading_unit_factor
                     customized = True
             else:
                 to_save['meter_reading_unit_factor'] = None
-            if request.form.get('meter_reading_unit_precision', None) and len(request.form['meter_reading_unit_precision']) > 0:
+            if request.form.get('meter_reading_unit_precision', None) and len(
+                    request.form['meter_reading_unit_precision']) > 0:
                 meter_reading_unit_precision = int(request.form['meter_reading_unit_precision'])
-                if meter_reading_unit_precision >= 1 and meter_reading_unit_precision <= 9:
+                if 1 <= meter_reading_unit_precision <= 9:
                     to_save['meter_reading_unit_precision'] = meter_reading_unit_precision
                     customized = True
             else:
@@ -436,8 +439,8 @@ def input_config():
                 to_save
             )
         except ValueError as e:
-            message = "Cannot update '{}'".format(event_processor.input_config[device_key]['device_label'])
-            flash(message='{}: {}'.format(message, e.message), category='danger')
+            exception_msg = "Cannot update '{}'".format(event_processor.input_config[device_key]['device_label'])
+            flash(message='{}: {}'.format(exception_msg, e.message), category='danger')
     return render_template('input_config.html',
                            inputs=event_processor.input_config,
                            last_saved_device_key=device_key,
@@ -494,6 +497,7 @@ def output_config():
                            last_saved_device_key=device_key)
 
 
+# noinspection PyUnusedLocal
 class SignalHandler:
 
     def __init__(self):
@@ -515,6 +519,7 @@ class SignalHandler:
         raise RuntimeWarning()
 
 
+# noinspection PyShadowingNames
 def thread_nanny(threads_tracked, signal_handler):
     while True:
         # kill the nanny now
@@ -525,8 +530,9 @@ def thread_nanny(threads_tracked, signal_handler):
             if thread_info.isAlive():
                 threads_alive.add(thread_info.getName())
         if len(threads_tracked - threads_alive) > 0:
-            message = 'A thread has died. Expected threads are [{}], missing is [{}].'.format(threads_tracked, threads_tracked - threads_alive)
-            log.error(message)
+            error_msg = 'A thread has died. Expected threads are [{}], ' \
+                        'missing is [{}].'.format(threads_tracked, threads_tracked - threads_alive)
+            log.error(error_msg)
         sleep(10)
 
 
@@ -566,7 +572,7 @@ class EventProcessor(Thread):
         self._output_config = None
         self._output_config_table = None
 
-        self._metrics = None
+        self.metrics = None
         self.metric_namespace = None
 
         self.flash_info = True
@@ -596,6 +602,7 @@ class EventProcessor(Thread):
 
     @general_config.setter
     def general_config(self, config_update):
+        # noinspection PyUnusedLocal
         config_key, updated_config = config_update
         self._general_config = {}
 
@@ -673,8 +680,7 @@ class EventProcessor(Thread):
                 saved = table_item.partial_save()
             except ItemNotFound:
                 log.debug("Item '{}' not found in '{}'. Creating new.".format(primary_key, table_name))
-                put_args = {}
-                put_args['data'] = {}
+                put_args = {'data': {}}
                 put_args['data'].update(primary_key)
                 put_args['data'].update(updates)
                 saved = table_member.put_item(**put_args)
@@ -690,9 +696,9 @@ class EventProcessor(Thread):
                 if flash_info:
                     flash("'{}' not updated.".format(device_label), category='warning')
         except Exception as e:
-            message = "Cannot update '{}'".format(device_label)
-            log.exception(message)
-            flash(message='{}: {}'.format(message, e.message), category='danger')
+            exception_message = "Cannot update '{}'".format(device_label)
+            log.exception(exception_message)
+            flash(message='{}: {}'.format(exception_message, e.message), category='danger')
 
     def _update_devices(self, event_origin, device_info):
         devices_updated = 0
@@ -776,10 +782,10 @@ class EventProcessor(Thread):
                     except KeyError:
                         del self._device_event_lru[device_key]
                         continue
-                    #TODO: make this configurable
-                    if (timestamp - activation_time).seconds > 5*60:
+                    # TODO: make this configurable
+                    if (timestamp - activation_time).seconds > 5 * 60:
                         continue
-                    #TODO: fix
+                    # TODO: fix
                     try:
                         input_device_label = input_device_config['device_label']
                     except KeyError:
@@ -856,6 +862,7 @@ class EventProcessor(Thread):
     def add_event_origin(self, origin, ip):
         self._origin_ips[origin] = ip
 
+    # noinspection PyBroadException
     def run(self):
         # set up local DB storage
         self._db_storage = sqlite3.connect(database=os.environ['TABLESPACE_PATH'])
@@ -863,7 +870,7 @@ class EventProcessor(Thread):
         self._ddb_storage = dynamodb2.connect_to_region(
             region_name=config.get('aws', 'region'))
         # set up metrics
-        self._metrics = cloudwatch.connect_to_region(
+        self.metrics = cloudwatch.connect_to_region(
             region_name=config.get('aws', 'region'))
         self.metric_namespace = '{}:{}'.format(config.get('app', 'device_name'), APP)
         # load configuration data
@@ -876,10 +883,10 @@ class EventProcessor(Thread):
             table_name=os.environ['CONFIG_TABLE_OUTPUT'])
         # connect to event origins
         for origin, ip in self._origin_ips.items():
-            connection_string = 'tcp://{}:{}'.format(ip, config.get('zmq', 'pushpull_port'))
-            log.info('Device events will be responded to via {} @ {}'.format(origin, connection_string))
+            origin_connection_string = 'tcp://{}:{}'.format(ip, config.get('zmq', 'pushpull_port'))
+            log.info('Device events will be responded to via {} @ {}'.format(origin, origin_connection_string))
             origin_push_socket = zmq_context.socket(zmq.PUSH)
-            origin_push_socket.connect(connection_string)
+            origin_push_socket.connect(origin_connection_string)
             self._origin_connections[origin] = origin_push_socket
         # event log
         self.event_log.connect(URL_WORKER_EVENT_LOG)
@@ -911,7 +918,6 @@ class EventProcessor(Thread):
                             log.warn('Ignoring non-dict event format from {}: {} ({})'.format(
                                 event_origin, event_data.__class__, event_data))
                             continue
-                        timestamp = None
                         if 'timestamp' in event_data:
                             timestamp = make_timestamp(event_data['timestamp'])
                         else:
@@ -945,17 +951,25 @@ class EventProcessor(Thread):
                                         if device_name_test.startswith(device_description.lower()):
                                             device_name_match = True
                                         # smart home skill device ID
-                                        elif device_name_test.replace(' ','_').replace('(', '#').replace(')', '#') == device_description:
+                                        elif device_name_test\
+                                                .replace(' ', '_')\
+                                                .replace('(', '#')\
+                                                .replace(')', '#') == device_description:
                                             device_name_match = True
                                         elif 'group_name' in device_config and device_config['group_name']:
                                             device_name_test = device_config['group_name'].lower()
                                             if device_name_test.startswith(device_description.lower()):
                                                 device_name_match = True
-                                            elif device_name_test.replace(' ','_').replace('(', '#').replace(')', '#') == device_description:
+                                            elif device_name_test\
+                                                    .replace(' ', '_')\
+                                                    .replace('(', '#')\
+                                                    .replace(')', '#') == device_description:
                                                 device_name_match = True
                                         if device_name_match:
                                             # device matches our description
-                                            log.info('Updating device {} based on matching description {}; disable: {}'.format(device_key, device_description, device_disable))
+                                            log.info(
+                                                'Updating device {} based on matching description {}; '
+                                                'disable: {}'.format(device_key, device_description, device_disable))
                                             event_processor.input_config = (
                                                 device_key,
                                                 {'device_disabled': device_disable}
@@ -967,12 +981,12 @@ class EventProcessor(Thread):
                                 device_status = "unknown"
                                 if 'device_status' in event_data['data']:
                                     device_status = event_data['data']['device_status']
-                                new_awol = 0
                                 # check if there are any inputs or outputs configured for this origin
                                 for devices, origin_devices, awol_devices in [
                                     (self.inputs, self._inputs_by_origin, self._awol_inputs),
                                     (self.outputs, self._outputs_by_origin, self._awol_outputs)
                                 ]:
+                                    new_awol = 0
                                     if event_origin in origin_devices and len(origin_devices[event_origin]) > 0:
                                         log.debug("'{}' last checked-in: {} in an '{}' state.".format(
                                             event_origin,
@@ -982,17 +996,19 @@ class EventProcessor(Thread):
                                             if device_key not in awol_devices:
                                                 awol_devices.add(device_key)
                                                 new_awol += 1
-                                if new_awol > 0:
-                                    log.warn("{} devices are unavailable because '{}' has gone AWOL ({} devices on {}).".format(
-                                        len(awol_devices),
-                                        event_origin,
-                                        new_awol,
-                                        event_origin
-                                    ))
+                                    if new_awol > 0:
+                                        log.warn(
+                                            "{} devices are unavailable because '{}' has gone AWOL "
+                                            "({} devices on {}).".format(
+                                                len(awol_devices),
+                                                event_origin,
+                                                new_awol,
+                                                event_origin
+                                            ))
                             if 'heartbeat_age' in event_data['data']:
                                 heartbeat_age = int(event_data['data']['heartbeat_age'])
                                 # show this as a metric
-                                self._metrics.put_metric_data(
+                                self.metrics.put_metric_data(
                                     namespace=self.metric_namespace,
                                     name='Heartbeat Age',
                                     value=heartbeat_age,
@@ -1012,13 +1028,14 @@ class EventProcessor(Thread):
                                     active_device_key = active_device['device_key']
                                     # input known?
                                     if active_device_key not in self._input_config:
-                                        log.warn("Input device '{}' is not configured, ignoring.".format(active_device_key))
+                                        log.warn(
+                                            "Input device '{}' is not configured, ignoring.".format(active_device_key))
                                         continue
                                     # message stale?
                                     message_age = make_timestamp() - timestamp
                                     if message_age > timedelta(seconds=self._max_message_validity_seconds):
-                                        log.warn('Skipping further processing of {} from {} due to '
-                                                 'message age {} exceeding {} seconds.'.format(
+                                        log.warn('Skipping further processing of {} from {} due to message age '
+                                                 '{} exceeding {} seconds.'.format(
                                             active_device_key,
                                             event_origin,
                                             message_age.seconds,
@@ -1033,17 +1050,20 @@ class EventProcessor(Thread):
                                             meter_reading_unit = ' ' + active_device_config['meter_reading_unit']
                                         meter_reading_unit_factor = 1
                                         if 'meter_reading_unit_factor' in active_device_config:
-                                            meter_reading_unit_factor = active_device_config['meter_reading_unit_factor']
+                                            meter_reading_unit_factor = active_device_config[
+                                                'meter_reading_unit_factor']
                                         meter_reading_unit_precision = 0
                                         if 'meter_reading_unit_precision' in active_device_config:
-                                            meter_reading_unit_precision = active_device_config['meter_reading_unit_precision']
-                                        number_format_string = "{:."+str(meter_reading_unit_precision)+"f}"
+                                            meter_reading_unit_precision = active_device_config[
+                                                'meter_reading_unit_precision']
+                                        number_format_string = "{:." + str(meter_reading_unit_precision) + "f}"
                                         self.flash_info = False
                                         event_processor.input_config = (
                                             active_device_key,
-                                            { 'meter_value': meter_value, 
-                                            'meter_reading': number_format_string.format(int(meter_value) / float(meter_reading_unit_factor)) + meter_reading_unit
-                                            })
+                                            {'meter_value': meter_value,
+                                             'meter_reading': number_format_string.format(int(meter_value) / float(
+                                                 meter_reading_unit_factor)) + meter_reading_unit
+                                             })
                                         self.flash_info = True
                                     # input disabled?
                                     if 'device_disabled' in active_device_config:
@@ -1090,8 +1110,10 @@ class EventProcessor(Thread):
                                         if active_device_key in self._input_config and 'activation_interval' in active_device_config:
                                             activation_interval = active_device_config['activation_interval']
                                         else:
-                                            activation_interval = int(config.get('config', 'default_activation_interval'))
-                                        input_last_active, last_event_detail = self._input_active_history[active_device_key]
+                                            activation_interval = int(
+                                                config.get('config', 'default_activation_interval'))
+                                        input_last_active, last_event_detail = self._input_active_history[
+                                            active_device_key]
                                         if last_event_detail == event_detail:
                                             last_activated = time.time() - input_last_active
                                             if last_activated < activation_interval:
@@ -1113,7 +1135,7 @@ class EventProcessor(Thread):
                                         device=active_device)
                                     log.debug('{} {}'.format(origin, active_device_key))
                                     # informational event?
-                                    #TODO: move to _process_device_event
+                                    # TODO: move to _process_device_event
                                     if 'info_notify' in active_device_config:
                                         # make a future date that is relative (after) now time.
                                         now = datetime.now().replace(tzinfo=tz.tzlocal())
@@ -1174,18 +1196,20 @@ class EventLog(Thread):
     def get_events(self, since_ts):
         event_data = self._event_log_table.scan(timestamp__gte=since_ts)
         # extract the event data from the result set
-        event_log = []
+        events = []
         for event in event_data:
             timestamp = event['timestamp']
-            event_log.append((
+            # noinspection PyTypeChecker
+            events.append((
                 int(timestamp),
                 event['input_device'],
                 event['output_device'],
                 make_timestamp(float(timestamp)).astimezone(tz=tz.tzlocal()).strftime('%c')
             ))
         # reorder based on the timestamp
-        return sorted(event_log, key=itemgetter(0, 1, 2), reverse=True)
+        return sorted(events, key=itemgetter(0, 1, 2), reverse=True)
 
+    # noinspection PyBroadException
     def run(self):
         # connect to AWS services
         self._ddb_storage = dynamodb2.connect_to_region(
@@ -1204,8 +1228,7 @@ class EventLog(Thread):
                 timestamp = event['timestamp']
                 # work around Python's brain-dead date handling
                 unix_timestamp = int((timestamp.replace(tzinfo=None) - datetime(1970, 1, 1)).total_seconds())
-                put_args = {}
-                put_args['data'] = {}
+                put_args = {'data': {}}
                 put_args['data'].update({
                     # pad some millis for the actual insertion time to avoid key conflicts
                     'timestamp': float('{}.{}'.format(unix_timestamp, datetime.now().microsecond)),
@@ -1251,8 +1274,9 @@ class SourceSubscriber(Thread):
         self._reconnected = False
         self.last_message = None
         # use half of the tolerated heartbeat value
-        self._zmq_poll_period = int(config.get('app', 'max_heartbeat_delay_seconds'))/2
+        self._zmq_poll_period = int(config.get('app', 'max_heartbeat_delay_seconds')) / 2
 
+    # noinspection PyBroadException
     def run(self):
         log.info('Subscribing to {} @ {}'.format(self._label, self._publisher_endpoint))
         self.subscriber.connect(self._publisher_endpoint)
@@ -1261,8 +1285,8 @@ class SourceSubscriber(Thread):
         while True:
             try:
                 # timeout in millis
-                zmq_events = self.subscriber.poll(timeout=self._zmq_poll_period*1000)
-                #TODO: remove nanny
+                zmq_events = self.subscriber.poll(timeout=self._zmq_poll_period * 1000)
+                # TODO: remove nanny
                 if zmq_events == 0:
                     # if a single message has been received ever
                     if self.last_message:
@@ -1321,6 +1345,7 @@ class SQSListener(Thread):
         self._sqs = None
         self._sqs_queue = None
 
+    # noinspection PyBroadException
     def run(self):
         sqs_queue_name = os.environ['SQS_QUEUE']
         log.info('Listening for control messages on SQS queue {}'.format(sqs_queue_name))
@@ -1343,7 +1368,7 @@ class SQSListener(Thread):
                 # done with the message, at any rate
                 self._sqs_queue.delete_message(sqs_message)
             except UnpackException:
-                log.exception('Cannot unpack message from {}.'.format(self._label))
+                log.exception('Cannot unpack message from SQS queue {}.'.format(self._sqs_queue))
                 continue
             except ContextTerminated:
                 self.processor.close()
@@ -1373,6 +1398,7 @@ class OriginNanny(Thread):
         # configuration interpolation to favour key generated for this application.
         os.environ['RESIN_API_KEY'] = config.get('resin', 'api_key')
 
+    # noinspection PyShadowingNames
     def add_origin_subscriber(self, origin, ip, subscriber):
         self.origin_subscriber[origin] = (ip, subscriber)
 
@@ -1383,18 +1409,19 @@ class OriginNanny(Thread):
         while True:
             try:
                 resin_device = Device()
-                for origin, (ip, subscriber) in self.origin_subscriber.items():
+                for origin, (ip, origin_subscriber) in self.origin_subscriber.items():
                     payload = {}
                     # when last was an event seen by this subscriber
-                    last_message = subscriber.last_message
+                    last_message = origin_subscriber.last_message
                     heartbeat_age = None
                     if last_message:
-                        heartbeat_age = time.time() - subscriber.last_message
+                        heartbeat_age = time.time() - origin_subscriber.last_message
                     if last_message is None or heartbeat_age > self._max_heartbeat_delay:
                         device_status = None
                         device_last_seen = None
                         if last_message:
-                            last_message = datetime.utcfromtimestamp(last_message).replace(tzinfo=pytz.utc).strftime(DATE_FORMAT)
+                            last_message = datetime.utcfromtimestamp(last_message).replace(tzinfo=pytz.utc).strftime(
+                                DATE_FORMAT)
                         else:
                             last_message = "never"
                         try:
@@ -1445,6 +1472,7 @@ class CallbackUrlDiscovery(Thread):
             config.get('ngrok', 'client_api_port'),
             config.get('ngrok', 'tunnel_name'))
 
+    # noinspection PyBroadException
     def run(self):
         while True:
             try:
