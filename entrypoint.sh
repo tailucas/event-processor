@@ -113,6 +113,10 @@ for iface in eth0 wlan0; do
 done
 # get the latest sources
 export SUB_SRC="$(python /app/resin --get-devices | grep -v "$ETH0_IP" | paste -d, -s)"
+# additional sources to subscribe to
+if [ -n "${SUB_SRC_ADD:-}" ]; then
+  export SUB_SRC="${SUB_SRC},${SUB_SRC_ADD}"
+fi
 # test cache
 export SUB_CACHE=/data/sub_src
 if [[ -z "${SUB_SRC// }" ]]; then
