@@ -83,7 +83,7 @@ if __name__ == "__main__":
         for d in devices:
             # work around Device.get_local_ip_address(uuid) eventual
             # consistency issues with the VPN addresses.
-            print('{}:{}'.format(d['name'], d['ip_address'].split()[0]))
+            print('{}:{}'.format(d['device_name'], d['ip_address'].split()[0]))
 
     if args.get_app_id or args.get_app_env:
         # resource ID is the application name for either of these functions
