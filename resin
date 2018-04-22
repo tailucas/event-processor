@@ -1,12 +1,13 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 import argparse
 import os
 
 from getpass import getpass
-from sys import stderr
+from sys import stderr, exit
 
 from resin.auth import Auth
 from resin.models.application import Application
+from resin.models.environment_variables import ServiceEnvVariable
 from resin.models.device import Device
 
 AUTH_TOKEN_VAR = 'AUTH_TOKEN_RESIN'
@@ -32,6 +33,8 @@ if __name__ == "__main__":
                         help='List devices as name:IP pairs for the named application.')
     app_group.add_argument('--get-app-id', action='store_true',
                         help='Get the Resin application ID for the named application.')
+    app_group.add_argument('--get-app-env', action='store_true',
+                        help='Get the environment variables for the named application.')
     app_group.add_argument('--get-device-ip', action='store_true',
                         help='Get the IP address for the named device.')
     app_group.add_argument('--get-device-name', action='store_true',
@@ -57,17 +60,17 @@ if __name__ == "__main__":
     # log some info about the device context
     device = Device()
     device_name = None
-    device_app_name = None
+    app_name = None
     if device_uuid:
         device_name = device.get_name(device_uuid)
-        device_app_name = device.get_application_name(device_uuid)
-        log("Device '{}' is running application '{}'".format(device_name, device_app_name))
+        app_name = device.get_application_name(device_uuid)
+        log("Device '{}' is running application '{}'".format(device_name, app_name))
 
     # application as the named resource
     application = Application()
     if args.get_api_key:
         log("Retrieving API key for application '{}'".format(args.resource_id))
-        print application.get_api_key(args.resource_id)
+        print(application.get_api_key(args.resource_id))
 
     if args.get_devices:
         devices = None
@@ -80,15 +83,29 @@ if __name__ == "__main__":
         for d in devices:
             # work around Device.get_local_ip_address(uuid) eventual
             # consistency issues with the VPN addresses.
-            print '{}:{}'.format(d['device_name'], d['ip_address'].split()[0])
+            print('{}:{}'.format(d['name'], d['ip_address'].split()[0]))
 
-    if args.get_app_id:
+    if args.get_app_id or args.get_app_env:
+        # resource ID is the application name for either of these functions
         if args.resource_id:
-            log("Retrieving ID for application '{}'".format(args.resource_id))
-            print application.get(args.resource_id)['id']
-        elif device_app_name:
-            log("Retrieving ID for application '{}'".format(device_app_name))
-            print application.get(device_app_name)['id']
+            app_name = args.resource_id
+        if not app_name:
+            log("No application specified.")
+            exit(1)
+        log("Retrieving ID for application '{}'".format(app_name))
+        app_id = application.get(app_name)['id']
+        if args.get_app_id:
+            print(app_id)
+
+    if args.get_app_env:
+        app_env = ServiceEnvVariable()
+        log("Retrieving environment variables for application ID '{}'".format(app_id))
+        env_vars = app_env.get_all(app_id)
+        env_var_map = {}
+        for env_var in env_vars:
+            env_var_map[env_var['name']] = env_var['value']
+        for env_var in sorted(env_var_map.keys()):
+            print('{}="{}"'.format(env_var, env_var_map[env_var]))
 
     if args.get_device_ip:
         if args.resource_id:
@@ -96,13 +113,13 @@ if __name__ == "__main__":
             devices = device.get_by_name(args.resource_id)
             if len(devices) > 1:
                 raise "'{}' ambiguous across applications.".format(args.resource_id)
-            print devices[0]['ip_address'].split()[0]
+            print(devices[0]['ip_address'].split()[0])
         elif device_uuid:
             log("Retrieving IP for device '{}'".format(device_name))
-            print device.get(device_uuid)['ip_address'].split()[0]
+            print(device.get(device_uuid)['ip_address'].split()[0])
 
     if args.get_device_name:
         if args.resource_id:
             log("Retrieving device name for UUID {}".format(args.resource_id))
-            print device.get_name(args.resource_id)
-        print device_name
+            print(device.get_name(args.resource_id))
+        print(device_name)

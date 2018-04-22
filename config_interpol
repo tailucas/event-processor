@@ -1,32 +1,14 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 import os
 import sys
 
-from ConfigParser import SafeConfigParser, InterpolationMissingOptionError, NoOptionError
-
-
-FAKE_SECTION = 'FAKESECTION'
-
-
-class FakeSecHead(object):
-    def __init__(self, fp):
-        self.fp = fp
-        self.sechead = '[{}]\n'.format(FAKE_SECTION)
-
-    def readline(self):
-        if self.sechead:
-            try:
-                return self.sechead
-            finally:
-                self.sechead = None
-        else:
-            return self.fp.readline()
+from configparser import ConfigParser, InterpolationMissingOptionError, NoOptionError
 
 
 def load_config(fp):
-    cfg = SafeConfigParser()
+    cfg = ConfigParser()
     cfg.optionxform = str
-    cfg.readfp(FakeSecHead(fp))
+    cfg.read_file(fp)
     return cfg
 
 
@@ -72,16 +54,9 @@ if __name__ == "__main__":
         err(e.message)
     except NoOptionError as e:
         section_name = "section: '{}'."
-        if section == FAKE_SECTION:
-            section_name = "default section."
         err("No option '{}' in {}".format(option, section_name), 2)
-    # now output, starting with the default section
-    if FAKE_SECTION in sections:
-        for option, value in sections[FAKE_SECTION].items():
-            print '{key}={value}'.format(key=option, value=value)
-        del sections[FAKE_SECTION]
     # now do each section
     for section in sections:
-        print '[{section}]'.format(section=section)
-        for option, value in sections[section].items():
-            print '{key}={value}'.format(key=option, value=value)
+        print('[{section}]'.format(section=section))
+        for option, value in list(sections[section].items()):
+            print('{key}={value}'.format(key=option, value=value))

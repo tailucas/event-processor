@@ -77,7 +77,7 @@ if [ -e "$HN_CACHE" ]; then
   fi
 fi
 # refresh the device name and bail unless cached
-export DEVICE_NAME="$(python /app/resin --get-device-name)" || [ -n "${DEVICE_NAME:-}" ]
+export DEVICE_NAME="$(python3 /app/resin --get-device-name)" || [ -n "${DEVICE_NAME:-}" ]
 echo "$DEVICE_NAME" > "$HN_CACHE"
 echo "$DEVICE_NAME" > /etc/hostname
 hostnamectl set-hostname "$DEVICE_NAME"
@@ -99,7 +99,7 @@ service rsyslog restart
 
 # log archival (no tee for secrets)
 if [ -d /var/awslogs/etc/ ]; then
-  cat /var/awslogs/etc/aws.conf | python /app/config_interpol /app/config/aws.conf > /var/awslogs/etc/aws.conf.new
+  cat /var/awslogs/etc/aws.conf | /app/config_interpol /app/config/aws.conf > /var/awslogs/etc/aws.conf.new
   mv /var/awslogs/etc/aws.conf /var/awslogs/etc/aws.conf.backup
   mv /var/awslogs/etc/aws.conf.new /var/awslogs/etc/aws.conf
 fi
@@ -112,7 +112,7 @@ for iface in eth0 wlan0; do
   fi
 done
 # get the latest sources
-export SUB_SRC="$(python /app/resin --get-devices | grep -v "$ETH0_IP" | paste -d, -s)"
+export SUB_SRC="$(python3 /app/resin --get-devices | grep -v "$ETH0_IP" | paste -d, -s)"
 # additional sources to subscribe to
 if [ -n "${SUB_SRC_ADD:-}" ]; then
   export SUB_SRC="${SUB_SRC},${SUB_SRC_ADD}"
@@ -128,7 +128,7 @@ unset SUB_CACHE
 # bail unless cached
 [[ -n "${SUB_SRC// }" ]]
 # application configuration (no tee for secrets)
-cat /app/config/app.conf | python /app/config_interpol > "/app/${APP_NAME}.conf"
+cat /app/config/app.conf | /app/config_interpol > "/app/${APP_NAME}.conf"
 unset ETH0_IP
 unset SUB_SRC
 
@@ -165,7 +165,7 @@ echo "export HISTFILE=/data/.bash_history" >> /etc/bash.bashrc
 # systemd configuration
 for systemdsvc in app ngrok; do
   if [ ! -e "/etc/systemd/system/${systemdsvc}.service" ]; then
-    cat "/app/config/systemd.${systemdsvc}.service" | python /app/config_interpol | tee "/etc/systemd/system/${systemdsvc}.service"
+    cat "/app/config/systemd.${systemdsvc}.service" | /app/config_interpol | tee "/etc/systemd/system/${systemdsvc}.service"
     chmod 664 "/etc/systemd/system/${systemdsvc}.service"
     systemctl daemon-reload
     systemctl enable "${systemdsvc}"

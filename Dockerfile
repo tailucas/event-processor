@@ -32,22 +32,21 @@ RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommend
     openssh-server \
     openssl \
     psmisc \
-    python-dbus \
-    python-pip \
-    python2.7 \
-    python2.7-dev \
+    python3-dbus \
+    python3 \
+    python3-dev \
+    python3-pip \
+    python3-venv \
     rsyslog \
     ssl-cert \
     strace \
     unzip \
     vim \
     wavemon \
-    wget \
-    # pip 8
-    && python /tmp/pipstrap.py
+    wget
 
 COPY ./config/requirements.txt /tmp/
-RUN pip install -r /tmp/requirements.txt
+RUN pip3 install -r /tmp/requirements.txt
 
 COPY . /app
 

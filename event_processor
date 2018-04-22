@@ -22,13 +22,12 @@ from boto import dynamodb2, sqs
 from boto.dynamodb2.table import Table
 from boto.dynamodb2.exceptions import ItemNotFound
 from boto.ec2 import cloudwatch
-from ConfigParser import ConfigParser
+from configparser import ConfigParser
 from datetime import datetime, timedelta
 from dateutil import tz
 from operator import itemgetter
 from pprint import pprint
 # noinspection PyDeprecation
-from sets import Set
 from pylru import lrucache
 from requests.exceptions import ConnectionError
 from raven.contrib.flask import Sentry
@@ -108,7 +107,7 @@ def make_timestamp(timestamp=None, make_string=False):
         timestamp = datetime.utcnow()
     elif isinstance(timestamp, float):
         timestamp = datetime.utcfromtimestamp(timestamp)
-    elif isinstance(timestamp, basestring):
+    elif isinstance(timestamp, str):
         timestamp = dateutil.parser.parse(timestamp)
     if make_string:
         return timestamp.strftime(DATE_FORMAT)
@@ -148,7 +147,7 @@ def index():
     awol_inputs = event_processor.awol_inputs
     if len(awol_inputs) > 0:
         flash(message='{} devices are unavailable right now.'.format(len(awol_inputs)), category='danger')
-    for device_key, device_config in event_processor.input_config.items():
+    for device_key, device_config in list(event_processor.input_config.items()):
         if device_key in awol_inputs:
             awol_input_labels.add(device_config['device_label'])
         if 'group_name' not in device_config:
@@ -261,7 +260,7 @@ def index():
                     disable = None
                     del device_listing[device_key]['device_disabled']
                 event_processor.flash_info = False
-                for grouped_device_key, grouped_device in device_listing[device_key]['grouped_inputs'].items():
+                for grouped_device_key, grouped_device in list(device_listing[device_key]['grouped_inputs'].items()):
                     grouped_device['device_disabled'] = disable
                     event_processor.input_config = (
                         grouped_device_key,
@@ -526,7 +525,7 @@ def thread_nanny(threads_tracked, signal_handler):
         # kill the nanny now
         if signal_handler.last_signal == signal.SIGTERM:
             break
-        threads_alive = Set()
+        threads_alive = set()
         for thread_info in threading.enumerate():
             if thread_info.isAlive():
                 threads_alive.add(thread_info.getName())
@@ -611,7 +610,7 @@ class EventProcessor(Thread):
     def input_config(self):
         devices = copy.deepcopy(self.inputs)
         devices_config = self._input_config
-        for device_key in devices.keys():
+        for device_key in list(devices.keys()):
             if device_key in devices_config:
                 devices[device_key].update(devices_config[device_key])
         return devices
@@ -632,7 +631,7 @@ class EventProcessor(Thread):
     def output_config(self):
         devices = copy.deepcopy(self.outputs)
         devices_config = self._output_config
-        for device_key in devices.keys():
+        for device_key in list(devices.keys()):
             if device_key in devices_config:
                 devices[device_key].update(devices_config[device_key])
         return devices
@@ -673,7 +672,7 @@ class EventProcessor(Thread):
             try:
                 log.debug("Item '{}' to be updated with '{}'".format(primary_key, updates))
                 table_item = table_member.get_item(**primary_key)
-                for key, value in updates.items():
+                for key, value in list(updates.items()):
                     if value:
                         table_item[key] = value
                     elif key in table_item:
@@ -688,7 +687,7 @@ class EventProcessor(Thread):
             if saved:
                 if flash_info:
                     flash("Updated '{}'".format(device_label))
-                for key, value in updates.items():
+                for key, value in list(updates.items()):
                     if value:
                         device_config[key] = value
                     elif key in device_config:
@@ -774,7 +773,7 @@ class EventProcessor(Thread):
                 self._device_event_lru[active_device_key] = timestamp
                 # build up the device activation history
                 activation_history = []
-                for device_key, activation_time in self._device_event_lru.items():
+                for device_key, activation_time in list(self._device_event_lru.items()):
                     # filter out the device being activated
                     if device_key == active_device_key:
                         continue
@@ -851,7 +850,7 @@ class EventProcessor(Thread):
         for result in member_table.scan():
             device_key = None
             member_config = {}
-            for key, value in result.items():
+            for key, value in list(result.items()):
                 if key == primary_key:
                     device_key = value
                 else:
@@ -883,7 +882,7 @@ class EventProcessor(Thread):
         self._output_config, self._output_config_table = self._load_config_table(
             table_name=os.environ['CONFIG_TABLE_OUTPUT'])
         # connect to event origins
-        for origin, ip in self._origin_ips.items():
+        for origin, ip in list(self._origin_ips.items()):
             origin_connection_string = 'tcp://{}:{}'.format(ip, config.get('zmq', 'pushpull_port'))
             log.info('Device events will be responded to via {} @ {}'.format(origin, origin_connection_string))
             origin_push_socket = zmq_context.socket(zmq.PUSH)
@@ -914,7 +913,7 @@ class EventProcessor(Thread):
                 event = self.socket.recv_pyobj()
                 log.debug(event)
                 if isinstance(event, dict):
-                    for event_origin, event_data in event.items():
+                    for event_origin, event_data in list(event.items()):
                         if not isinstance(event_data, dict):
                             log.warn('Ignoring non-dict event format from {}: {} ({})'.format(
                                 event_origin, event_data.__class__, event_data))
@@ -945,7 +944,7 @@ class EventProcessor(Thread):
                                     continue
                                 event_processor.flash_info = False
                                 for device_description in device_descriptions:
-                                    for device_key, device_config in self._input_config.items():
+                                    for device_key, device_config in list(self._input_config.items()):
                                         device_name_match = False
                                         device_name_test = device_config['device_label'].lower()
                                         # custom skill
@@ -1169,7 +1168,7 @@ class EventProcessor(Thread):
                                         active_device=active_device)
             except ContextTerminated:
                 self.socket.close()
-                for origin_push_socket in self._origin_connections.values():
+                for origin_push_socket in list(self._origin_connections.values()):
                     origin_push_socket.close()
                 self.event_log.close()
                 break
@@ -1410,7 +1409,7 @@ class OriginNanny(Thread):
         while True:
             try:
                 resin_device = Device()
-                for origin, (ip, origin_subscriber) in self.origin_subscriber.items():
+                for origin, (ip, origin_subscriber) in list(self.origin_subscriber.items()):
                     payload = {}
                     # when last was an event seen by this subscriber
                     last_message = origin_subscriber.last_message
@@ -1498,7 +1497,7 @@ if __name__ == "__main__":
         stream_handler = logging.StreamHandler(stream=sys.stdout)
         stream_handler.setFormatter(formatter)
         log.addHandler(stream_handler)
-    threads_tracked = Set()
+    threads_tracked = set()
     # bind listeners first
     event_log = EventLog()
     event_processor = EventProcessor()
