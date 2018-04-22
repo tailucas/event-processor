@@ -77,7 +77,7 @@ if [ -e "$HN_CACHE" ]; then
   fi
 fi
 # refresh the device name and bail unless cached
-export DEVICE_NAME="$(python3 /app/resin --get-device-name)" || [ -n "${DEVICE_NAME:-}" ]
+export DEVICE_NAME="$(/app/resin --get-device-name)" || [ -n "${DEVICE_NAME:-}" ]
 echo "$DEVICE_NAME" > "$HN_CACHE"
 echo "$DEVICE_NAME" > /etc/hostname
 hostnamectl set-hostname "$DEVICE_NAME"
@@ -112,7 +112,7 @@ for iface in eth0 wlan0; do
   fi
 done
 # get the latest sources
-export SUB_SRC="$(python3 /app/resin --get-devices | grep -v "$ETH0_IP" | paste -d, -s)"
+export SUB_SRC="$(/app/resin --get-devices | grep -v "$ETH0_IP" | paste -d, -s)"
 # additional sources to subscribe to
 if [ -n "${SUB_SRC_ADD:-}" ]; then
   export SUB_SRC="${SUB_SRC},${SUB_SRC_ADD}"
