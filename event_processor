@@ -1280,7 +1280,7 @@ class SourceSubscriber(Thread):
     def run(self):
         log.info('Subscribing to {} @ {}'.format(self._label, self._publisher_endpoint))
         self.subscriber.connect(self._publisher_endpoint)
-        self.subscriber.setsockopt(zmq.SUBSCRIBE, "")
+        self.subscriber.setsockopt(zmq.SUBSCRIBE, b'')
         self.processor.connect(URL_WORKER_EVENT_PROCESSOR)
         while True:
             try:
@@ -1300,7 +1300,7 @@ class SourceSubscriber(Thread):
                             log.exception(self.name)
                         self.subscriber = zmq_context.socket(zmq.SUB)
                         self.subscriber.connect(self._publisher_endpoint)
-                        self.subscriber.setsockopt(zmq.SUBSCRIBE, "")
+                        self.subscriber.setsockopt(zmq.SUBSCRIBE, b'')
                         self._reconnected = True
                     # nothing to do otherwise
                     continue
