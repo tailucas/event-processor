@@ -2,13 +2,18 @@
 import os
 import sys
 
+from collections import OrderedDict
 from configparser import ConfigParser, InterpolationMissingOptionError, NoOptionError
+
+
+FAKE_SECTION = 'FAKESECTION'
 
 
 def load_config(fp):
     cfg = ConfigParser()
     cfg.optionxform = str
-    cfg.read_file(fp)
+    # prepend with fake header
+    cfg.read_file(['[{}]\n'.format(FAKE_SECTION) + os.linesep] + fp.readlines())
     return cfg
 
 
@@ -23,13 +28,13 @@ if __name__ == "__main__":
         with open(sys.argv[1], 'r') as fp:
             overlay_config = load_config(fp)
     config = load_config(sys.stdin)
-    sections = dict()
+    sections = OrderedDict()
     try:
         for section in config.sections():
             # we don't use config.items() here to avoid emitting the defaults too
             for option in config.options(section=section):
                 value = None
-                if overlay_config and overlay_config.has_section(section):
+                if overlay_config and overlay_config.has_section(section) and overlay_config.has_option(section, option):
                     value = overlay_config.get(section=section, option=option, vars=os.environ)
                 if value is None:
                     value = config.get(section=section, option=option, vars=os.environ)
@@ -54,7 +59,14 @@ if __name__ == "__main__":
         err(e.message)
     except NoOptionError as e:
         section_name = "section: '{}'."
+        if section == FAKE_SECTION:
+            section_name = "default section."
         err("No option '{}' in {}".format(option, section_name), 2)
+    # now output, starting with the default section
+    if FAKE_SECTION in sections:
+        for option, value in list(sections[FAKE_SECTION].items()):
+            print('{key}={value}'.format(key=option, value=value))
+        del sections[FAKE_SECTION]
     # now do each section
     for section in sections:
         print('[{section}]'.format(section=section))
