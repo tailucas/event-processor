@@ -698,6 +698,7 @@ class EventProcessor(Thread):
         except Exception as e:
             exception_message = "Cannot update '{}'".format(device_label)
             log.exception(exception_message)
+            sentry.captureException()
             flash(message='{}: {}'.format(exception_message, e.message), category='danger')
 
     def _update_devices(self, event_origin, device_info):
@@ -1254,6 +1255,7 @@ class EventLog(Thread):
                 break
             except Exception:
                 log.exception(self.__class__.__name__)
+                sentry.captureException()
                 sleep(1)
                 continue
 
@@ -1482,6 +1484,8 @@ class CallbackUrlDiscovery(Thread):
                 log.info('External call-back URL is {}'.format(ngrok_tunnel_url))
                 break
             except Exception:
+                log.exception(self.__class__.__name__)
+                sentry.captureException()
                 sleep(1)
 
 
