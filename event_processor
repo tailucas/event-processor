@@ -26,7 +26,6 @@ from configparser import ConfigParser
 from datetime import datetime, timedelta
 from dateutil import tz
 from operator import itemgetter
-from pprint import pprint
 # noinspection PyDeprecation
 from pylru import lrucache
 from requests.exceptions import ConnectionError
@@ -41,9 +40,6 @@ from flask import Flask, g, flash, request, render_template, url_for, redirect
 from flask_compress import Compress
 from zmq.error import ZMQError, ContextTerminated, Again
 
-# unbuffered STDOUT for print
-sys.stdout = os.fdopen(sys.stdout.fileno(), 'wb', 0)
-sys.displayhook = pprint
 
 APP = os.path.basename(__file__)
 DIR = os.path.abspath(os.path.dirname(__file__))
