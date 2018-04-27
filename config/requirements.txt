@@ -6,6 +6,7 @@ pathtools
 pylru
 python-dateutil
 python-magic
+python-telegram-bot
 pytz
 pyzmq
 raven
