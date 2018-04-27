@@ -26,6 +26,7 @@ RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommend
     lsof \
     libffi-dev \
     libssl-dev \
+    libzmq3-dev \
     man-db \
     manpages \
     net-tools \
