@@ -536,7 +536,7 @@ def telegram_error_handler(bot, update, error):
     try:
         raise error
     except Exception:
-        log.exception(self.__class__.__name__)
+        log.exception('bot')
         sentry.captureException()
 
 
