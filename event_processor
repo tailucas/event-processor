@@ -507,17 +507,17 @@ def output_config():
 
 
 def telegram_bot_echo(bot, update, user_data):
-    log.info(f'Telegram Bot {bot} got message {update} from {user_data}')
+    log.info('Telegram Bot {} got message {} from {}'.format(str(bot), str(update), str(user_data)))
     bot.send_message(chat_id=update.message.chat_id, text=update.message.text)
 
 
 def telegram_bot_start(bot, update, args, user_data):
-    log.info(f'Telegram Bot {bot} got command {update} with {args} from {user_data}')
+    log.info('Telegram Bot {} got command {} with {} from {}'.format(str(bot), str(update), str(args), str(user_data)))
     bot.send_message(chat_id=update.message.chat_id, text="I'm a bot, please talk to me!")
 
 
 def telegram_bot_line(bot, update, user_data):
-    log.info(f'Telegram Bot {bot} got inline {update} from {user_data}')
+    log.info('Telegram Bot {} got inline {} from {}'.format(str(bot), str(update), str(user_data)))
     query = update.inline_query.query
     if not query:
         return
