@@ -15,4 +15,4 @@ simplejson
 tzupdate
 u-msgpack-python
 Flask
-flask-compress
+Flask-Compress

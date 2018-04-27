@@ -436,7 +436,7 @@ def input_config():
             )
         except ValueError as e:
             exception_msg = "Cannot update '{}'".format(event_processor.input_config[device_key]['device_label'])
-            flash(message='{}: {}'.format(exception_msg, e.message), category='danger')
+            flash(message='{}: {}'.format(exception_msg, str(e)), category='danger')
     return render_template('input_config.html',
                            inputs=event_processor.input_config,
                            last_saved_device_key=device_key,
@@ -502,7 +502,7 @@ class SignalHandler:
         signal.signal(signal.SIGHUP, self.hup)
 
     def hup(self, signum, frame):
-        log.warn('Signal {} received.'.format(signum))
+        log.warning('Signal {} received.'.format(signum))
         self.last_signal = signum
         if log.getEffectiveLevel() == logging.INFO:
             log.setLevel(logging.DEBUG)
@@ -510,7 +510,7 @@ class SignalHandler:
             log.setLevel(logging.INFO)
 
     def terminate(self, signum, frame):
-        log.warn('Signal {} received.'.format(signum))
+        log.warning('Signal {} received.'.format(signum))
         self.last_signal = signum
         raise RuntimeWarning()
 
@@ -695,7 +695,7 @@ class EventProcessor(Thread):
             exception_message = "Cannot update '{}'".format(device_label)
             log.exception(exception_message)
             sentry.captureException()
-            flash(message='{}: {}'.format(exception_message, e.message), category='danger')
+            flash(message='{}: {}'.format(exception_message, str(e)), category='danger')
 
     def _update_devices(self, event_origin, device_info):
         devices_updated = 0
@@ -758,13 +758,13 @@ class EventProcessor(Thread):
             for output_device_key in output_device_keys:
                 output_device_activation = {}
                 if output_device_key not in self.outputs:
-                    log.warn('{} is linked to an unknown output {}'.format(active_device_key,
-                                                                           output_device_key))
+                    log.warning('{} is linked to an unknown output {}'.format(active_device_key,
+                                                                              output_device_key))
                     continue
                 if output_device_key not in self._output_origin:
-                    log.warn('{} {} => {} but nowhere to route the response.'.format(event_origin,
-                                                                                     active_device_key,
-                                                                                     output_device_key))
+                    log.warning('{} {} => {} but nowhere to route the response.'.format(event_origin,
+                                                                                        active_device_key,
+                                                                                        output_device_key))
                     continue
                 # put the event information into the LRU
                 self._device_event_lru[active_device_key] = timestamp
@@ -786,7 +786,7 @@ class EventProcessor(Thread):
                     try:
                         input_device_label = input_device_config['device_label']
                     except KeyError:
-                        log.warn('No label for device {}'.format(active_device_key))
+                        log.warning('No label for device {}'.format(active_device_key))
                         input_device_label = active_device_key
                     # list of tuples
                     activation_history.append((
@@ -835,7 +835,7 @@ class EventProcessor(Thread):
                     'output_device': output_device_label,
                 })
         else:
-            log.warn('{} is not configured or linked to any output: {}'.format(active_device_key, active_device))
+            log.warning('{} is not configured or linked to any output: {}'.format(active_device_key, active_device))
 
     def _load_config_table(self, table_name, primary_key='device_key'):
         log.info("Loading Dynamo table '{}'...".format(table_name))
@@ -912,7 +912,7 @@ class EventProcessor(Thread):
                 if isinstance(event, dict):
                     for event_origin, event_data in list(event.items()):
                         if not isinstance(event_data, dict):
-                            log.warn('Ignoring non-dict event format from {}: {} ({})'.format(
+                            log.warning('Ignoring non-dict event format from {}: {} ({})'.format(
                                 event_origin, event_data.__class__, event_data))
                             continue
                         if 'timestamp' in event_data:
@@ -922,7 +922,7 @@ class EventProcessor(Thread):
                             log_msg = "Message from {} does not include a 'timestamp' so it can't be filtered if it " \
                                       "is stale. Using {}.".format(event_origin, timestamp.strftime(DATE_FORMAT))
                             if 'data' in event_data and 'active_devices' in event_data['data']:
-                                log.warn(log_msg)
+                                log.warning(log_msg)
                             else:
                                 log.debug(log_msg)
                         if 'sqs' in event_origin:
@@ -937,7 +937,7 @@ class EventProcessor(Thread):
                                 if 'device_description' in event_data:
                                     device_descriptions = event_data['device_description']
                                 if device_descriptions is None:
-                                    log.warn('No valid device description found in SQS message: {}'.format(event_data))
+                                    log.warning('No valid device description found in SQS message: {}'.format(event_data))
                                     continue
                                 event_processor.flash_info = False
                                 for device_description in device_descriptions:
@@ -994,7 +994,7 @@ class EventProcessor(Thread):
                                                 awol_devices.add(device_key)
                                                 new_awol += 1
                                     if new_awol > 0:
-                                        log.warn(
+                                        log.warning(
                                             "{} devices are unavailable because '{}' has gone AWOL "
                                             "({} devices on {}).".format(
                                                 len(awol_devices),
@@ -1025,13 +1025,13 @@ class EventProcessor(Thread):
                                     active_device_key = active_device['device_key']
                                     # input known?
                                     if active_device_key not in self._input_config:
-                                        log.warn(
+                                        log.warning(
                                             "Input device '{}' is not configured, ignoring.".format(active_device_key))
                                         continue
                                     # message stale?
                                     message_age = make_timestamp() - timestamp
                                     if message_age > timedelta(seconds=self._max_message_validity_seconds):
-                                        log.warn('Skipping further processing of {} from {} due to message age '
+                                        log.warning('Skipping further processing of {} from {} due to message age '
                                                  '{} exceeding {} seconds.'.format(
                                             active_device_key,
                                             event_origin,
@@ -1234,7 +1234,7 @@ class EventLog(Thread):
                 })
                 saved = self._event_log_table.put_item(**put_args)
                 if not saved:
-                    log.warn('Unable to save event log entry: {}'.format(event))
+                    log.warning('Unable to save event log entry: {}'.format(event))
                     continue
                 # show this as a metric
                 self._metrics.put_metric_data(
@@ -1306,7 +1306,7 @@ class SourceSubscriber(Thread):
                     publisher_event = umsgpack.unpackb(
                         self.subscriber.recv(zmq.NOBLOCK))
                 except Again as e:
-                    log.debug('{}: {}'.format(self.name, e.message))
+                    log.debug('{}: {}'.format(self.name, str(e)))
                     continue
                 # output how long since the last message
                 if self.last_message and self._reconnected:
@@ -1433,7 +1433,7 @@ class OriginNanny(Thread):
 
                         except (RequestError, ConnectionError) as e:
                             log.debug("Unable to fetch device information for Resin device '{}': {}".format(origin,
-                                                                                                            e.message))
+                                                                                                            str(e)))
                         log_message = "'{}' last activity was {}.".format(origin, last_message)
                         if device_last_seen is None:
                             device_last_seen = "unknown"
@@ -1493,7 +1493,7 @@ if __name__ == "__main__":
     syslog_handler.setFormatter(formatter)
     log.addHandler(syslog_handler)
     if sys.stdout.isatty():
-        log.warn("Using console logging because there is a tty.")
+        log.warning("Using console logging because there is a tty.")
         stream_handler = logging.StreamHandler(stream=sys.stdout)
         stream_handler.setFormatter(formatter)
         log.addHandler(stream_handler)
