@@ -506,18 +506,36 @@ def output_config():
                            last_saved_device_key=device_key)
 
 
-def telegram_bot_echo(bot, update, user_data):
-    log.info('Telegram Bot {} got message {} from {}'.format(str(bot), str(update), str(user_data)))
+def telegram_bot_echo(bot, update):
+    authorized_users = config.get('telegram', 'authorized_users').split(',')
+    user_id = update['_effective_user']['id']
+    if str(user_id) not in authorized_users:
+        log.warning('Unexpected message from {}: {}'.format(user_id, update))
+        return
+
+    log.info('Telegram Bot {} got message {}.'.format(str(bot), str(update)))
     bot.send_message(chat_id=update.message.chat_id, text=update.message.text)
 
 
-def telegram_bot_start(bot, update, args, user_data):
-    log.info('Telegram Bot {} got command {} with {} from {}'.format(str(bot), str(update), str(args), str(user_data)))
+def telegram_bot_start(bot, update, args):
+    authorized_users = config.get('telegram', 'authorized_users').split(',')
+    user_id = update['_effective_user']['id']
+    if str(user_id) not in authorized_users:
+        log.warning('Unexpected message from {}: {} (args: {})'.format(user_id, update, args))
+        return
+
+    log.info('Telegram Bot {} got command {} with {}.'.format(str(bot), str(update), str(args)))
     bot.send_message(chat_id=update.message.chat_id, text="I'm a bot, please talk to me!")
 
 
-def telegram_bot_line(bot, update, user_data):
-    log.info('Telegram Bot {} got inline {} from {}'.format(str(bot), str(update), str(user_data)))
+def telegram_bot_line(bot, update):
+    authorized_users = config.get('telegram', 'authorized_users').split(',')
+    user_id = update['_effective_user']['id']
+    if str(user_id) not in authorized_users:
+        log.warning('Unexpected message from {}: {}'.format(user_id, update))
+        return
+
+    log.info('Telegram Bot {} got inline {}.'.format(str(bot), str(update)))
     query = update.inline_query.query
     if not query:
         return
@@ -1580,14 +1598,11 @@ if __name__ == "__main__":
     telegram_updater = TelegramUpdater(token=config.get('telegram', 'bot_api_token'))
     telegram_dispatcher = telegram_updater.dispatcher
     telegram_dispatcher.add_handler(TelegramMessageHandler(TelegramFilters.text,
-                                                           telegram_bot_echo,
-                                                           pass_user_data=True))
+                                                           telegram_bot_echo))
     telegram_dispatcher.add_handler(TelegramCommandHandler('start',
                                                            telegram_bot_start,
-                                                           pass_args=True,
-                                                           pass_user_data=True))
-    telegram_dispatcher.add_handler(TelegramInlineHandler(telegram_bot_line,
-                                                          pass_user_data=True))
+                                                           pass_args=True))
+    telegram_dispatcher.add_handler(TelegramInlineHandler(telegram_bot_line))
     telegram_dispatcher.add_error_handler(telegram_error_handler)
     telegram_updater.start_polling()
     # start threads
