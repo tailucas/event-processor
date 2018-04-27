@@ -513,7 +513,7 @@ def telegram_bot_echo(bot, update):
         log.warning('Unexpected message from {}: {}'.format(user_id, update))
         return
 
-    log.info('Telegram Bot {} got message {}.'.format(str(bot), str(update)))
+    log.info('Telegram Bot {} got message {}.'.format(bot['username'], json.dumps(update)))
     bot.send_message(chat_id=update.message.chat_id, text=update.message.text)
 
 
@@ -524,7 +524,7 @@ def telegram_bot_start(bot, update, args):
         log.warning('Unexpected message from {}: {} (args: {})'.format(user_id, update, args))
         return
 
-    log.info('Telegram Bot {} got command {} with {}.'.format(str(bot), str(update), str(args)))
+    log.info('Telegram Bot {} got command {} with args {}.'.format(bot['username'], json.dumps(update), json.dumps(args)))
     bot.send_message(chat_id=update.message.chat_id, text="I'm a bot, please talk to me!")
 
 
@@ -535,7 +535,7 @@ def telegram_bot_line(bot, update):
         log.warning('Unexpected message from {}: {}'.format(user_id, update))
         return
 
-    log.info('Telegram Bot {} got inline {}.'.format(str(bot), str(update)))
+    log.info('Telegram Bot {} got inline query {}.'.format(bot['username'], update['inline_query']['query']))
     query = update.inline_query.query
     if not query:
         return
