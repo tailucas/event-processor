@@ -95,6 +95,7 @@ Compress(rest_api)
 
 URL_WORKER_EVENT_PROCESSOR = 'inproc://event-processor'
 URL_WORKER_EVENT_LOG = 'inproc://event-log'
+URL_WORKER_TELEGRAM_BOT = 'inproc://telegram-bot'
 zmq_context = zmq.Context()
 zmq_context.setsockopt(zmq.LINGER, 0)
 
@@ -512,7 +513,9 @@ def telegram_bot_echo(bot, update):
         log.warning('Unauthorized message {}'.format(str(update)))
         return
 
-    log.info('Telegram Bot {} got message {}.'.format(bot.username, update.message.text))
+    log.info('Telegram Bot {} got message {} (chat ID: {}).'.format(bot.username,
+                                                                    update.message.text,
+                                                                    update.message.chat_id))
     bot.send_message(chat_id=update.message.chat_id, text=update.message.text)
 
 
@@ -522,7 +525,10 @@ def telegram_bot_start(bot, update, args):
         log.warning('Unauthorized message {}'.format(str(update)))
         return
 
-    log.info('Telegram Bot {} got command {} with args {}.'.format(bot.username, update.message.text, str(args)))
+    log.info('Telegram Bot {} got command {} with args {} (chat ID: {}).'.format(bot.username,
+                                                                                 update.message.text,
+                                                                                 str(args),
+                                                                                 update.message.chat_id))
     bot.send_message(chat_id=update.message.chat_id, text="I'm a bot, please talk to me!")
 
 
@@ -532,7 +538,9 @@ def telegram_bot_line(bot, update):
         log.warning('Unauthorized message {}'.format(str(update)))
         return
 
-    log.info('Telegram Bot {} got inline query {}.'.format(bot.username, update.inline_query.query))
+    log.info('Telegram Bot {} got inline query {}.'.format(bot.username,
+                                                           update.inline_query.query,
+                                                           update.message.chat_id))
     query = update.inline_query.query
     if not query:
         return
@@ -643,6 +651,8 @@ class EventProcessor(Thread):
         self.socket.bind(URL_WORKER_EVENT_PROCESSOR)
 
         self.event_log = zmq_context.socket(zmq.PUSH)
+
+        self.bot = zmq_context.socket(zmq.PUSH)
 
         self.iot = AWSIoTMQTTClient(APP, useWebsocket=True)
         self.iot.configureEndpoint(
@@ -949,6 +959,8 @@ class EventProcessor(Thread):
             self._origin_connections[origin] = origin_push_socket
         # event log
         self.event_log.connect(URL_WORKER_EVENT_LOG)
+        # bot
+        self.bot.connect(URL_WORKER_TELEGRAM_BOT)
         # informational notifications
         # TODO: move to UI configuration
         self.notify_not_before_time = make_timestamp(config.get('info_notify', 'not_before_time'))
@@ -1318,6 +1330,37 @@ class EventLog(Thread):
                 continue
 
 
+class TBot(Thread):
+
+    def __init__(self):
+        super(TBot, self).__init__(name=self.__class__.__name__)
+        self.daemon = True
+        self.bot = None
+        self.socket = zmq_context.socket(zmq.PULL)
+        self.socket.bind(URL_WORKER_TELEGRAM_BOT)
+
+    # noinspection PyBroadException
+    def run(self):
+        # connect to Telegram
+        self.bot = TelegramBot(token=config.get('telegram', 'bot_api_token'))
+        log.info('Telegram Bot awakened: {}'.format(str(telegram_bot)))
+        while True:
+            try:
+                event = self.socket.recv_pyobj()
+                log.debug(event)
+                timestamp = event['timestamp']
+
+                #self.bot.send_message()
+            except ContextTerminated:
+                self.socket.close()
+                break
+            except Exception:
+                log.exception(self.__class__.__name__)
+                sentry.captureException()
+                sleep(1)
+                continue
+
+
 class SourceSubscriber(Thread):
 
     def __init__(self, label, publisher_endpoint):
@@ -1564,6 +1607,7 @@ if __name__ == "__main__":
     event_log = EventLog()
     event_processor = EventProcessor()
     origin_nanny = OriginNanny()
+    telegram_bot = TBot()
     # set up subscribers
     subscription_sources = config.get('app', 'subscription_sources').split(',')
     for source in subscription_sources:
@@ -1582,16 +1626,17 @@ if __name__ == "__main__":
     sqs_listener = SQSListener()
     # start the event processor
     event_log.start()
+    threads_tracked.add(event_log.getName())
     event_processor.start()
     origin_nanny.start()
     threads_tracked.add(event_processor.getName())
     sqs_listener.start()
     threads_tracked.add(sqs_listener.getName())
+    telegram_bot.start()
+    threads_tracked.add(telegram_bot.getName())
     # set up signal handlers
     signal_handler = SignalHandler()
     # start Telegram integration
-    telegram_bot = TelegramBot(token=config.get('telegram', 'bot_api_token'))
-    log.info('Using Telegram Bot: {}'.format(str(telegram_bot)))
     telegram_updater = TelegramUpdater(token=config.get('telegram', 'bot_api_token'))
     telegram_dispatcher = telegram_updater.dispatcher
     telegram_dispatcher.add_handler(TelegramMessageHandler(TelegramFilters.text,
