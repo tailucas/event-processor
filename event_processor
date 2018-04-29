@@ -765,16 +765,32 @@ class EventProcessor(Thread):
         try:
             table_name = table_member.table_name
             log.debug("Updating table '{}'...".format(table_name))
+            saved = False
             try:
                 log.debug("Item '{}' to be updated with '{}'".format(primary_key, updates))
+                # why no partial_update boto3?
+                ddb_set_expression = []
+                ddb_remove_expression = []
+                attribute_values = {}
+                val_counter = 0
                 for key, value in list(updates.items()):
-                    # TODO: batch update?
+                    val_counter += 1
+                    attribute_holder = ':{}'.format('val'+str(val_counter))
+                    if value:
+                        ddb_set_expression.append('{}.{} = {}'.format(table_name, key, attribute_holder))
+                        attribute_values[attribute_holder] = value
+                    else:
+                        ddb_remove_expression.append(':{}'.format(key))
+                ddb_expression = ''
+                if len(ddb_set_expression) > 0:
+                    ddb_expression = 'SET {}'.format(', '.join(ddb_set_expression))
+                if len(ddb_remove_expression) > 0:
+                    ddb_expression += ' REMOVE {}'.format(', '.join(ddb_remove_expression))
+                if len(ddb_expression) > 0:
                     saved = table_member.update_item(
                         Key=primary_key,
-                        UpdateExpression="set {}.{} = :p".format(table_name, key),
-                        ExpressionAttributeValues={
-                            ':p': value,
-                        },
+                        UpdateExpression=ddb_expression,
+                        ExpressionAttributeValues=attribute_values,
                         ReturnValues="UPDATED_NEW"
                     )
             except ClientError:
@@ -784,6 +800,7 @@ class EventProcessor(Thread):
                 put_args['Item'].update(updates)
                 saved = table_member.put_item(**put_args)
             if saved:
+                log.debug('Updated {} with {}'.format(table_name, str(saved)))
                 if flash_info:
                     flash("Updated '{}'".format(device_label))
                 for key, value in list(updates.items()):
@@ -1451,10 +1468,10 @@ class TBot(Thread):
                             name_number = recipient.split(';')
                             log.info("SMS {} ({}) '{}'".format(name_number[0], name_number[1], notification_message))
                             try:
-                                resp = self.sns.publish(PhoneNumber=recipient, Message=notification_message)
+                                resp = self.sns.publish(PhoneNumber=name_number[1], Message=notification_message)
                                 log.info('SMS sent: {}'.format(str(resp)))
                             except Exception:
-                                log.exception('Cannot send SMS {}: {}'.format(recipient, notification_message))
+                                log.exception('Cannot send SMS {}: {}'.format(name_number[1], notification_message))
                     else:
                         log.error('No viable method to send notification for event: {}'.format(notification_message))
             except ContextTerminated:
