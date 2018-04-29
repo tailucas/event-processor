@@ -23,6 +23,7 @@ from botocore.exceptions import ClientError
 from configparser import ConfigParser
 from datetime import datetime, timedelta
 from dateutil import tz
+from decimal import Decimal
 from operator import itemgetter
 # noinspection PyDeprecation
 from pylru import lrucache
@@ -31,6 +32,7 @@ from raven.contrib.flask import Sentry
 from resin.exceptions import RequestError
 from resin.models.device import Device
 from simplejson.scanner import JSONDecodeError
+from socket import gaierror
 from telegram import Bot as TelegramBot, \
     InlineQueryResultArticle, InputTextMessageContent
 from telegram.error import TelegramError, \
@@ -936,10 +938,11 @@ class EventProcessor(Thread):
                     'output_device': output_device_label,
                 })
                 # let the bot know
-                self.bot.send_pyobj({
-                    'timestamp': timestamp,
-                    'data': activation_command
-                })
+                if output_device_activation['type'].lower() == 'sms':
+                    self.bot.send_pyobj({
+                        'timestamp': timestamp,
+                        'data': activation_command
+                    })
         else:
             log.warning('{} is not configured or linked to any output: {}'.format(active_device_key, active_device))
 
@@ -1337,7 +1340,7 @@ class EventLog(Thread):
                 put_args = {'Item': {}}
                 put_args['Item'].update({
                     # pad some millis for the actual insertion time to avoid key conflicts
-                    'timestamp': float('{}.{}'.format(unix_timestamp, datetime.now().microsecond)),
+                    'timestamp': Decimal('{}.{}'.format(unix_timestamp, datetime.now().microsecond)),
                     'input_device': event['input_device'],
                     'output_device': event['output_device'],
                 })
@@ -1570,6 +1573,9 @@ class SQSListener(Thread):
                         log.exception('Unstructured SQS message: {}'.format(message_body))
                     # Let the queue know that the message is processed
                     sqs_message.delete()
+            except gaierror:
+                log.exception()
+                continue
             except UnpackException:
                 log.exception('Cannot unpack message from SQS queue {}.'.format(self._sqs_queue))
                 continue
@@ -1683,7 +1689,12 @@ class CallbackUrlDiscovery(Thread):
             try:
                 # sudo update
                 global ngrok_tunnel_url
-                ngrok_tunnel_url = requests.get(self._discover_url).json()['public_url']
+                try:
+                    ngrok_tunnel_url = requests.get(self._discover_url).json()['public_url']
+                except KeyError:
+                    log.exception('Attempting to discover ngrok tunnel URL...')
+                    sleep(1)
+                    continue
                 log.info('External call-back URL is {}'.format(ngrok_tunnel_url))
                 # let the bot know
                 self.bot.connect(URL_WORKER_TELEGRAM_BOT)
