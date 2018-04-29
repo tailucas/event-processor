@@ -948,7 +948,8 @@ class EventProcessor(Thread):
         member_table = self._ddb_storage.Table(table_name)
         log.info("Reading table '{}'...".format(table_name))
         member = {}
-        for result in member_table.scan():
+        scan_response = member_table.scan()
+        for result in scan_response['Items']:
             device_key = None
             member_config = {}
             for key, value in list(result.items()):
@@ -968,7 +969,7 @@ class EventProcessor(Thread):
         # set up local DB storage
         self._db_storage = sqlite3.connect(database=os.environ['TABLESPACE_PATH'])
         # connect to AWS services
-        self._ddb_storage = boto3.client('dynamodb')
+        self._ddb_storage = boto3.resource('dynamodb')
         # set up metrics
         self.metrics = boto3.client('cloudwatch')
         self.metric_namespace = '{}:{}'.format(config.get('app', 'device_name'), APP)
