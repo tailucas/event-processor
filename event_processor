@@ -799,6 +799,12 @@ class EventProcessor(Thread):
                         attribute_values = None
                     if len(attribute_names) == 0:
                         attribute_names = None
+                    ddb_expression = ddb_expression.lstrip()
+                    log.info('DEBUG: Updating {} ({}) with {} using {} and {}.'.format(table_name,
+                                                                                       primary_key,
+                                                                                       ddb_expression,
+                                                                                       attribute_names,
+                                                                                       attribute_values))
                     saved = table_member.update_item(
                         Key=primary_key,
                         UpdateExpression=ddb_expression.lstrip(),
@@ -807,7 +813,7 @@ class EventProcessor(Thread):
                         ReturnValues="UPDATED_NEW"
                     )
             except Exception:
-                raise
+                log.exception('DEBUG')
             #FIXME: use the right exception
             #except ClientError:
             #    log.debug("Item '{}' not found in '{}'. Creating new.".format(primary_key, table_name))
