@@ -1419,30 +1419,41 @@ class TBot(Thread):
             try:
                 event = self.socket.recv_pyobj()
                 log.debug(event)
-                timestamp = parse_datetime(value=event['timestamp'], as_tz=tz.tzlocal())
-                event_data = event['data']
-                notification_message = self.build_message(timestamp=timestamp, event_data=event_data)
+                if 'timestamp' in event:
+                    timestamp = parse_datetime(value=event['timestamp'], as_tz=tz.tzlocal())
+                else:
+                    timestamp = make_timestamp().astimezone(tz=tz.tzlocal())
+                event_data = None
+                if 'data' in event:
+                    event_data = event['data']
+                    notification_message = self.build_message(timestamp=timestamp, event_data=event_data)
+                elif 'message' in event:
+                    notification_message = event['message']
+                else:
+                    raise RuntimeError('No usable message information for notification for event: {}'.format(str(event)))
                 try:
                     log.debug("Bot says to {}: '{}'".format(str(self.chat_id), notification_message))
                     self.bot.send_message(chat_id=self.chat_id, text=notification_message)
                 except TimedOut:
-                    log.warning('Timeout using Bot. Fallback back to SMS.')
-                    # rebuild the message for SMS
-                    notification_message = self.build_message(timestamp=timestamp,
-                                                              event_data=event_data,
-                                                              build_sms=True)
-                    if 'device_params' not in event_data['trigger_output']:
-                        raise RuntimeError('Cannot send SMS because no parameters are configured.')
-                    recipients = event_data['trigger_output']['device_params'].strip().split(',')
-                    for recipient in recipients:
-                        name_number = recipient.split(';')
-                        log.info("SMS {} ({}) '{}'".format(name_number[0], name_number[1], notification_message))
-                        try:
-                            resp = self.sns.publish(PhoneNumber=recipient, Message=message)
-                            log.info('SMS sent: {}'.format(str(resp)))
-                        except Exception:
-                            log.exception('Cannot send SMS {}: {}'.format(recipient, message))
-
+                    if event_data:
+                        log.warning('Timeout using Bot. Fallback back to SMS.')
+                        # rebuild the message for SMS
+                        notification_message = self.build_message(timestamp=timestamp,
+                                                                  event_data=event_data,
+                                                                  build_sms=True)
+                        if 'device_params' not in event_data['trigger_output']:
+                            raise RuntimeError('Cannot send SMS because no parameters are configured.')
+                        recipients = event_data['trigger_output']['device_params'].strip().split(',')
+                        for recipient in recipients:
+                            name_number = recipient.split(';')
+                            log.info("SMS {} ({}) '{}'".format(name_number[0], name_number[1], notification_message))
+                            try:
+                                resp = self.sns.publish(PhoneNumber=recipient, Message=message)
+                                log.info('SMS sent: {}'.format(str(resp)))
+                            except Exception:
+                                log.exception('Cannot send SMS {}: {}'.format(recipient, message))
+                    else:
+                        log.error('No viable method to send notification for event: {}'.format(str(event)))
             except ContextTerminated:
                 self.socket.close()
                 break
