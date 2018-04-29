@@ -3,6 +3,7 @@ import dateutil.parser
 import logging
 import logging.handlers
 
+import boto3
 import copy
 import os
 import pytz
@@ -18,10 +19,7 @@ import zmq
 
 from AWSIoTPythonSDK.MQTTLib import AWSIoTMQTTClient
 
-from boto import dynamodb2, sqs
-from boto.dynamodb2.table import Table
-from boto.dynamodb2.exceptions import ItemNotFound
-from boto.ec2 import cloudwatch
+from botocore.exceptions import ClientError
 from configparser import ConfigParser
 from datetime import datetime, timedelta
 from dateutil import tz
@@ -46,6 +44,7 @@ from telegram.ext import Updater as TelegramUpdater, \
     MessageHandler as TelegramMessageHandler, \
     Filters as TelegramFilters, \
     InlineQueryHandler as TelegramInlineHandler
+from telegram.utils.request import TimedOut
 from threading import Thread
 from time import sleep
 from umsgpack import UnpackException
@@ -123,6 +122,33 @@ def make_timestamp(timestamp=None, make_string=False):
         return timestamp.strftime(DATE_FORMAT)
     # not naive datetime
     return timestamp.replace(tzinfo=pytz.utc)
+
+
+def parse_datetime(value=None, as_tz=pytz.utc):
+    timestamp = datetime.utcnow().replace(tzinfo=as_tz)
+    if value is None:
+        return timestamp
+    if isinstance(value, str):
+        try:
+            timestamp = dateutil.parser.parse(value)
+            log.debug('Parsed timestamp is {}'.format(timestamp))
+        except ValueError:
+            log.exception("Cannot parse date-like string {}. Defaulting to '{}'.".format(value, timestamp))
+    elif isinstance(value, datetime):
+        timestamp = value
+    else:
+        raise RuntimeError("Unknown date/time type: '{}'".format(value))
+    # ensure that some timezone information is present
+    if timestamp.tzinfo is None:
+        local_tz = tz.tzlocal()
+        log.debug('{}: setting to local time {}'.format(timestamp, local_tz))
+        # we use the default specific to the physical locality of the devices
+        timestamp = timestamp.replace(tzinfo=local_tz)
+    if timestamp.tzinfo != as_tz:
+        # now adjust to requested TZ
+        log.debug('{}: setting to {} from {}'.format(timestamp, as_tz, timestamp.tzinfo))
+        timestamp = timestamp.astimezone(tz=as_tz)
+    return timestamp
 
 
 def make_payload(timestamp=None, data=None):
@@ -739,18 +765,21 @@ class EventProcessor(Thread):
             log.debug("Updating table '{}'...".format(table_name))
             try:
                 log.debug("Item '{}' to be updated with '{}'".format(primary_key, updates))
-                table_item = table_member.get_item(**primary_key)
                 for key, value in list(updates.items()):
-                    if value:
-                        table_item[key] = value
-                    elif key in table_item:
-                        del table_item[key]
-                saved = table_item.partial_save()
-            except ItemNotFound:
+                    # TODO: batch update?
+                    saved = table_member.update_item(
+                        Key=primary_key,
+                        UpdateExpression="set {}.{} = :p".format(table_name, key),
+                        ExpressionAttributeValues={
+                            ':p': value,
+                        },
+                        ReturnValues="UPDATED_NEW"
+                    )
+            except ClientError:
                 log.debug("Item '{}' not found in '{}'. Creating new.".format(primary_key, table_name))
-                put_args = {'data': {}}
-                put_args['data'].update(primary_key)
-                put_args['data'].update(updates)
+                put_args = {'Item': {}}
+                put_args['Item'].update(primary_key)
+                put_args['Item'].update(updates)
                 saved = table_member.put_item(**put_args)
             if saved:
                 if flash_info:
@@ -906,37 +935,17 @@ class EventProcessor(Thread):
                     'input_device': input_device_label,
                     'output_device': output_device_label,
                 })
-                # inform the bot if the event is an SMS type
-                output_type = output_device_activation['type']
-                if output_type.lower() == 'sms':
-                    device_label = active_device['device_label']
-                    event_detail = ""
-                    if 'event_detail' in active_device:
-                        event_detail = ' {}'.format(active_device['event_detail'])
-                    # include a timestamp in this SMS message
-                    notification_message = '{}{} ({}:{})'.format(
-                        device_label,
-                        event_detail,
-                        timestamp.hour,
-                        str(timestamp.minute).zfill(2))
-                    # add in some trigger history for context
-                    if 'trigger_history' in activation_command:
-                        for history_device_label, trigger_secs_ago in activation_command['trigger_history']:
-                            history_info = "\n{}s ago: {}".format(trigger_secs_ago, history_device_label)
-                            if len(notification_message) + len(history_info) >= 160:
-                                break
-                            notification_message += history_info
-                    self.bot.send_pyobj({
-                        'message': notification_message,
-                    })
+                # let the bot know
+                self.bot.send_pyobj({
+                    'timestamp': timestamp,
+                    'data': activation_command
+                })
         else:
             log.warning('{} is not configured or linked to any output: {}'.format(active_device_key, active_device))
 
     def _load_config_table(self, table_name, primary_key='device_key'):
         log.info("Loading Dynamo table '{}'...".format(table_name))
-        member_table = Table(
-            table_name=table_name,
-            connection=self._ddb_storage)
+        member_table = self._ddb_storage.Table(table_name)
         log.info("Reading table '{}'...".format(table_name))
         member = {}
         for result in member_table.scan():
@@ -959,11 +968,9 @@ class EventProcessor(Thread):
         # set up local DB storage
         self._db_storage = sqlite3.connect(database=os.environ['TABLESPACE_PATH'])
         # connect to AWS services
-        self._ddb_storage = dynamodb2.connect_to_region(
-            region_name=config.get('aws', 'region'))
+        self._ddb_storage = boto3.client('dynamodb')
         # set up metrics
-        self.metrics = cloudwatch.connect_to_region(
-            region_name=config.get('aws', 'region'))
+        self.metrics = boto3.client('cloudwatch')
         self.metric_namespace = '{}:{}'.format(config.get('app', 'device_name'), APP)
         # load configuration data
         self._general_config, self._general_config_table = self._load_config_table(
@@ -1103,14 +1110,22 @@ class EventProcessor(Thread):
                                 heartbeat_age = int(event_data['data']['heartbeat_age'])
                                 # show this as a metric
                                 self.metrics.put_metric_data(
-                                    namespace=self.metric_namespace,
-                                    name='Heartbeat Age',
-                                    value=heartbeat_age,
-                                    dimensions={
-                                        'Device': event_origin,
-                                    },
-                                    timestamp=timestamp,
-                                    unit='Seconds')
+                                    Namespace=self.metric_namespace,
+                                    MetricData=[
+                                        {
+                                            'MetricName': 'Heartbeat Age',
+                                            'Value': heartbeat_age,
+                                            'Dimensions': [
+                                                {
+                                                    'Name': 'Device',
+                                                    'Value': event_origin
+                                                },
+                                            ],
+                                            'Timestamp': timestamp,
+                                            'Unit': 'Seconds'
+                                        },
+                                    ]
+                                )
                             if 'device_info' in event_data['data']:
                                 devices_updated = self._update_devices(
                                     event_origin=event_origin,
@@ -1306,14 +1321,10 @@ class EventLog(Thread):
     # noinspection PyBroadException
     def run(self):
         # connect to AWS services
-        self._ddb_storage = dynamodb2.connect_to_region(
-            region_name=config.get('aws', 'region'))
-        self._event_log_table = Table(
-            table_name='event_log',
-            connection=self._ddb_storage)
+        self._ddb_storage = boto3.resource('dynamodb')
+        self._event_log_table = self._ddb_storage.Table('event_log')
         # set up metrics
-        self._metrics = cloudwatch.connect_to_region(
-            region_name=config.get('aws', 'region'))
+        self._metrics = boto3.client('cloudwatch')
         self.metric_namespace = '{}:{}'.format(config.get('app', 'device_name'), APP)
         while True:
             try:
@@ -1322,8 +1333,8 @@ class EventLog(Thread):
                 timestamp = event['timestamp']
                 # work around Python's brain-dead date handling
                 unix_timestamp = int((timestamp.replace(tzinfo=None) - datetime(1970, 1, 1)).total_seconds())
-                put_args = {'data': {}}
-                put_args['data'].update({
+                put_args = {'Item': {}}
+                put_args['Item'].update({
                     # pad some millis for the actual insertion time to avoid key conflicts
                     'timestamp': float('{}.{}'.format(unix_timestamp, datetime.now().microsecond)),
                     'input_device': event['input_device'],
@@ -1335,14 +1346,22 @@ class EventLog(Thread):
                     continue
                 # show this as a metric
                 self._metrics.put_metric_data(
-                    namespace=self.metric_namespace,
-                    name='Device Event',
-                    value=1,
-                    dimensions={
-                        'Device': config.get('app', 'device_name'),
-                    },
-                    timestamp=timestamp,
-                    unit='Count')
+                    Namespace=self.metric_namespace,
+                    MetricData=[
+                        {
+                            'MetricName': 'Device Event',
+                            'Value': 1,
+                            'Dimensions': [
+                                {
+                                    'Name': 'Device',
+                                    'Value': config.get('app', 'device_name')
+                                },
+                            ],
+                            'Timestamp': timestamp,
+                            'Unit': 'Count'
+                        },
+                    ]
+                )
             except ContextTerminated:
                 self.socket.close()
                 break
@@ -1360,8 +1379,36 @@ class TBot(Thread):
         self.daemon = True
         self.bot = None
         self.chat_id = config.getint('telegram', 'chat_room_id')
+
         self.socket = zmq_context.socket(zmq.PULL)
         self.socket.bind(URL_WORKER_TELEGRAM_BOT)
+
+        self.sns = boto3.cient('sns')
+
+    def build_message(self, timestamp, event_data, build_sms=False):
+        device_label = event_data['input_context']['device_label']
+        event_detail = ""
+        if 'event_detail' in event_data['input_context']:
+            event_detail = ' {}'.format(event_data['input_context']['event_detail'])
+        # include a timestamp in this SMS message
+        notification_message = '{}{} ({}:{})'.format(
+            device_label,
+            event_detail,
+            timestamp.hour,
+            str(timestamp.minute).zfill(2))
+        footer = ''
+        # add in the callback URL
+        if build_sms and 'callback_url' in event_data:
+            footer = "\n{}".format(event_data['callback_url'])
+        # add in some trigger history for context
+        if 'trigger_history' in event_data:
+            for history_device_label, trigger_secs_ago in event_data['trigger_history']:
+                history_info = "\n{}s ago: {}".format(trigger_secs_ago, history_device_label)
+                if len(notification_message) + len(history_info) + len(footer) >= 160:
+                    break
+                notification_message += history_info
+        notification_message += footer
+        return notification_message
 
     # noinspection PyBroadException
     def run(self):
@@ -1372,7 +1419,30 @@ class TBot(Thread):
             try:
                 event = self.socket.recv_pyobj()
                 log.debug(event)
-                self.bot.send_message(chat_id=self.chat_id, text=event['message'])
+                timestamp = parse_datetime(value=event['timestamp'], as_tz=tz.tzlocal())
+                event_data = event['data']
+                notification_message = self.build_message(timestamp=timestamp, event_data=event_data)
+                try:
+                    log.debug("Bot says to {}: '{}'".format(str(self.chat_id), notification_message))
+                    self.bot.send_message(chat_id=self.chat_id, text=notification_message)
+                except TimedOut:
+                    log.warning('Timeout using Bot. Fallback back to SMS.')
+                    # rebuild the message for SMS
+                    notification_message = self.build_message(timestamp=timestamp,
+                                                              event_data=event_data,
+                                                              build_sms=True)
+                    if 'device_params' not in event_data['trigger_output']:
+                        raise RuntimeError('Cannot send SMS because no parameters are configured.')
+                    recipients = event_data['trigger_output']['device_params'].strip().split(',')
+                    for recipient in recipients:
+                        name_number = recipient.split(';')
+                        log.info("SMS {} ({}) '{}'".format(name_number[0], name_number[1], notification_message))
+                        try:
+                            resp = self.sns.publish(PhoneNumber=recipient, Message=message)
+                            log.info('SMS sent: {}'.format(str(resp)))
+                        except Exception:
+                            log.exception('Cannot send SMS {}: {}'.format(recipient, message))
+
             except ContextTerminated:
                 self.socket.close()
                 break
@@ -1475,23 +1545,20 @@ class SQSListener(Thread):
         sqs_queue_name = os.environ['SQS_QUEUE']
         log.info('Listening for control messages on SQS queue {}'.format(sqs_queue_name))
         # set up notifications
-        self._sqs = sqs.connect_to_region(
-            region_name=config.get('aws', 'region'))
-        self._sqs_queue = self._sqs.get_queue(queue_name=sqs_queue_name)
+        self._sqs = boto3.resource('sqs')
+        self._sqs_queue = self._sqs.get_queue_by_name(QueueName=sqs_queue_name)
         self.processor.connect(URL_WORKER_EVENT_PROCESSOR)
         while True:
             try:
-                sqs_message = self._sqs_queue.read(wait_time_seconds=20)
-                if sqs_message is None:
-                    continue
-                # forward for further processing
-                message_body = sqs_message.get_body()
-                try:
-                    self.processor.send_pyobj({'sqs': json.loads(message_body)})
-                except JSONDecodeError:
-                    log.exception('Unstructured SQS message: {}'.format(message_body))
-                # done with the message, at any rate
-                self._sqs_queue.delete_message(sqs_message)
+                for sqs_message in self._sqs_queue.receive_messages(WaitTimeSeconds=20):
+                    # forward for further processing
+                    message_body = sqs_message.body
+                    try:
+                        self.processor.send_pyobj({'sqs': json.loads(message_body)})
+                    except JSONDecodeError:
+                        log.exception('Unstructured SQS message: {}'.format(message_body))
+                    # Let the queue know that the message is processed
+                        sqs_message.delete()
             except UnpackException:
                 log.exception('Cannot unpack message from SQS queue {}.'.format(self._sqs_queue))
                 continue
