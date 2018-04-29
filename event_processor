@@ -1415,7 +1415,6 @@ class TBot(Thread):
     def run(self):
         # connect to Telegram
         self.bot = TelegramBot(token=config.get('telegram', 'bot_api_token'))
-        log.info('Telegram Bot awakened: {}'.format(str(telegram_bot)))
         while True:
             try:
                 event = self.socket.recv_pyobj()
@@ -1436,8 +1435,8 @@ class TBot(Thread):
                     log.debug("Bot says to {}: '{}'".format(str(self.chat_id), notification_message))
                     self.bot.send_message(chat_id=self.chat_id, text=notification_message)
                 except TimedOut:
+                    log.warning('Timeout using Bot. Fallback back to SMS.')
                     if event_data:
-                        log.warning('Timeout using Bot. Fallback back to SMS.')
                         # rebuild the message for SMS
                         notification_message = self.build_message(timestamp=timestamp,
                                                                   event_data=event_data,
@@ -1449,12 +1448,12 @@ class TBot(Thread):
                             name_number = recipient.split(';')
                             log.info("SMS {} ({}) '{}'".format(name_number[0], name_number[1], notification_message))
                             try:
-                                resp = self.sns.publish(PhoneNumber=recipient, Message=message)
+                                resp = self.sns.publish(PhoneNumber=recipient, Message=notification_message)
                                 log.info('SMS sent: {}'.format(str(resp)))
                             except Exception:
-                                log.exception('Cannot send SMS {}: {}'.format(recipient, message))
+                                log.exception('Cannot send SMS {}: {}'.format(recipient, notification_message))
                     else:
-                        log.error('No viable method to send notification for event: {}'.format(str(event)))
+                        log.error('No viable method to send notification for event: {}'.format(notification_message))
             except ContextTerminated:
                 self.socket.close()
                 break
