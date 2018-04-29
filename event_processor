@@ -1570,7 +1570,7 @@ class SQSListener(Thread):
                     except JSONDecodeError:
                         log.exception('Unstructured SQS message: {}'.format(message_body))
                     # Let the queue know that the message is processed
-                        sqs_message.delete()
+                    sqs_message.delete()
             except UnpackException:
                 log.exception('Cannot unpack message from SQS queue {}.'.format(self._sqs_queue))
                 continue
