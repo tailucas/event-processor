@@ -906,6 +906,29 @@ class EventProcessor(Thread):
                     'input_device': input_device_label,
                     'output_device': output_device_label,
                 })
+                # inform the bot if the event is an SMS type
+                output_type = output_device_activation['type']
+                if output_type.lower() == 'sms':
+                    device_label = active_device['device_label']
+                    event_detail = ""
+                    if 'event_detail' in active_device:
+                        event_detail = ' {}'.format(active_device['event_detail'])
+                    # include a timestamp in this SMS message
+                    notification_message = '{}{} ({}:{})'.format(
+                        device_label,
+                        event_detail,
+                        timestamp.hour,
+                        str(timestamp.minute).zfill(2))
+                    # add in some trigger history for context
+                    if 'trigger_history' in activation_command:
+                        for history_device_label, trigger_secs_ago in activation_command['trigger_history']:
+                            history_info = "\n{}s ago: {}".format(trigger_secs_ago, history_device_label)
+                            if len(notification_message) + len(history_info) >= 160:
+                                break
+                            notification_message += history_info
+                    self.bot.send_pyobj({
+                        'message': notification_message,
+                    })
         else:
             log.warning('{} is not configured or linked to any output: {}'.format(active_device_key, active_device))
 
