@@ -242,24 +242,19 @@ def index():
                     # oh well
                     pass
             if 'meter_reset_additive' in device_listing[device_key]:
+                iot_message = {'adjust_register': reset_value}
                 meter_value = device_listing[device_key]['meter_value']
                 meter_value += reset_value
                 # override the reset value
                 reset_value = meter_value
-            # update both the in memory model and the stored configuration
+            else:
+                iot_message = {'set_register': reset_value}
+            # update the in memory model
             device_listing[device_key]['meter_value'] = reset_value
-
-            # TODO: implement
-            # event_processor.iot.connect()
-            # event_processor.iot.publish(config.get('iot', 'topic_pub_meter'), '{"message": "foo"}', 0)
-            # event_processor.iot.disconnect()
-
-            event_processor.flash_info = False
-            event_processor.input_config = (
-                device_key,
-                {'meter_value': reset_value}
-            )
-            event_processor.flash_info = True
+            # send IoT message
+            event_processor.iot.connect()
+            event_processor.iot.publish(config.get('iot', 'topic_pub_meter'), iot_message, 0)
+            event_processor.iot.disconnect()
         elif 'meter_history' in request.form:
             scheme = None
             if 'X-Forwarded-Proto' in request.headers:
@@ -323,7 +318,7 @@ def show_metrics():
     meter_history_year = []
     device_key = request.args.get('meter')
     device_config = event_processor.input_config[device_key]
-    if device_config['type'] != 'Meter':
+    if device_config['type'] != 'meter':
         flash('{} is not a meter.'.format(device_key), category='danger')
         return redirect(url_for('index'))
     metric_namespace = 'automation'
