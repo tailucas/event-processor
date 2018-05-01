@@ -789,29 +789,30 @@ class EventProcessor(Thread):
                         val_counter += 1
                     else:
                         ddb_remove_expression.append(':{}'.format(key))
-                ddb_expression = ''
+                ddb_set = ''
+                ddb_remove = ''
                 if len(ddb_set_expression) > 0:
-                    ddb_expression = 'SET {}'.format(', '.join(ddb_set_expression))
+                    ddb_set = 'SET {}'.format(', '.join(ddb_set_expression))
                 if len(ddb_remove_expression) > 0:
-                    ddb_expression += ' REMOVE {}'.format(', '.join(ddb_remove_expression))
-                if len(ddb_expression) > 0:
-                    if len(attribute_values) == 0:
-                        attribute_values = None
-                    if len(attribute_names) == 0:
-                        attribute_names = None
-                    ddb_expression = ddb_expression.lstrip()
-                    log.info('DEBUG: Updating {} ({}) with {} using {} and {}.'.format(table_name,
-                                                                                       primary_key,
-                                                                                       ddb_expression,
-                                                                                       attribute_names,
-                                                                                       attribute_values))
-                    saved = table_member.update_item(
-                        Key=primary_key,
-                        UpdateExpression=ddb_expression.lstrip(),
-                        ExpressionAttributeValues=attribute_values,
-                        ExpressionAttributeNames=attribute_names,
-                        ReturnValues="UPDATED_NEW"
-                    )
+                    ddb_remove = 'REMOVE {}'.format(', '.join(ddb_remove_expression))
+                if len(attribute_values) == 0:
+                    attribute_values = None
+                if len(attribute_names) == 0:
+                    attribute_names = None
+                for ddb_expression in (ddb_set, ddb_remove):
+                    if len(ddb_expression) > 0:
+                        log.info('DEBUG: Updating {} ({}) with {} using {} and {}.'.format(table_name,
+                                                                                           primary_key,
+                                                                                           ddb_expression,
+                                                                                           attribute_names,
+                                                                                           attribute_values))
+                        saved = table_member.update_item(
+                            Key=primary_key,
+                            UpdateExpression=ddb_expression,
+                            ExpressionAttributeValues=attribute_values,
+                            ExpressionAttributeNames=attribute_names,
+                            ReturnValues="UPDATED_NEW"
+                        )
             except Exception:
                 log.exception('DEBUG')
             #FIXME: use the right exception
