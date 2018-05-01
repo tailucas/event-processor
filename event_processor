@@ -1209,10 +1209,14 @@ class EventProcessor(Thread):
                                             meter_reading_unit_precision = active_device_config[
                                                 'meter_reading_unit_precision']
                                         number_format_string = "{:." + str(meter_reading_unit_precision) + "f}"
+                                        meter_reading = number_format_string.format(int(meter_value) / float(
+                                            meter_reading_unit_factor)) + meter_reading_unit
                                         # update but do not persist
                                         #FIXME: do this
-                                        log.info('DEBUG: meter device to update with {}: {}'.format(number_format_string,
-                                                                                                    json.dumps(active_device_config)))
+                                        log.debug('DEBUG: meter device {} to update with {}: {}'.format(
+                                            active_device_key,
+                                            meter_reading,
+                                            json.dumps(active_device_config)))
                                         #self.flash_info = False
                                         #event_processor.input_config = (
                                         #    active_device_key,
