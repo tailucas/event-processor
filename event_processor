@@ -19,7 +19,7 @@ import zmq
 
 from AWSIoTPythonSDK.MQTTLib import AWSIoTMQTTClient
 
-from botocore.exceptions import ClientError
+from boto3.dynamodb.conditions import Attr
 from configparser import ConfigParser
 from datetime import datetime, timedelta
 from dateutil import tz
@@ -1343,7 +1343,7 @@ class EventLog(Thread):
         self.socket.bind(URL_WORKER_EVENT_LOG)
 
     def get_events(self, since_ts):
-        event_data = self._event_log_table.scan(timestamp__gte=since_ts)
+        event_data = self._event_log_table.scan(FilterExpression=Attr('timestamp').gte(since_ts))
         # extract the event data from the result set
         events = []
         for event in event_data:
