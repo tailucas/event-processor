@@ -253,7 +253,7 @@ def index():
             device_listing[device_key]['meter_value'] = reset_value
             # send IoT message
             event_processor.iot.connect()
-            event_processor.iot.publish(config.get('iot', 'topic_pub_meter'), iot_message, 0)
+            event_processor.iot.publish(config.get('iot', 'topic_pub_meter'), json.dumps(iot_message), 0)
             event_processor.iot.disconnect()
         elif 'meter_history' in request.form:
             scheme = None
@@ -324,9 +324,10 @@ def show_metrics():
     metric_namespace = 'automation'
     # TODO: get all meter metrics by dimension
     meter_metric = event_processor.metrics.list_metrics(
-        metric_name=device_config['device_label'] + ' Metered',
-        namespace=metric_namespace)
+        MetricName=device_config['device_label'] + ' Metered',
+        Namespace=metric_namespace)
     if len(meter_metric) > 0:
+        log.info('DEBUG: meter_metric response is {}'.format(str(meter_metric)))
         end_time = make_timestamp()
         for stat_period, stat_interval, time_delta in [
             (60, meter_history_day, timedelta(days=1)),
@@ -334,11 +335,11 @@ def show_metrics():
             (86400, meter_history_month, timedelta(days=31)),
             (604800, meter_history_year, timedelta(days=365))
         ]:
-            meter_stats = meter_metric[0].query(
-                start_time=end_time - time_delta,
-                end_time=end_time,
-                period=stat_period,
-                statistics='Sum')
+            meter_stats = meter_metric[0].get_statistics(
+                StartTime=end_time - time_delta,
+                EndTime=end_time,
+                Period=stat_period,
+                Statistics='Sum')
             log.info('Meter stats for {}::{} for period {}: {}'.format(
                 metric_namespace,
                 device_key,
