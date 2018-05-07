@@ -1433,7 +1433,7 @@ class TBot(Thread):
 
         self.sns = boto3.client('sns')
 
-    def build_message(self, timestamp, event_data, build_sms=False):
+    def build_message(self, timestamp, event_data, max_length=160, build_sms=False):
         device_label = event_data['input_context']['device_label']
         event_detail = ""
         if 'event_detail' in event_data['input_context']:
@@ -1452,7 +1452,7 @@ class TBot(Thread):
         if 'trigger_history' in event_data:
             for history_device_label, trigger_secs_ago in event_data['trigger_history']:
                 history_info = "\n{}s ago: {}".format(trigger_secs_ago, history_device_label)
-                if len(notification_message) + len(history_info) + len(footer) >= 160:
+                if len(notification_message) + len(history_info) + len(footer) >= max_length:
                     break
                 notification_message += history_info
         notification_message += footer
@@ -1471,16 +1471,26 @@ class TBot(Thread):
                 else:
                     timestamp = make_timestamp().astimezone(tz=tz.tzlocal())
                 event_data = None
-                if 'data' in event:
-                    event_data = event['data']
-                    notification_message = self.build_message(timestamp=timestamp, event_data=event_data)
-                elif 'message' in event:
+                # build the message
+                if 'message' in event:
                     notification_message = event['message']
-                else:
-                    raise RuntimeError('No usable message information for notification for event: {}'.format(str(event)))
+                elif 'data' in event:
+                    event_data = event['data']
+                    notification_message = self.build_message(timestamp=timestamp,
+                                                              event_data=event_data,
+                                                              max_length=200)
+                # send the message
                 try:
-                    log.debug("Bot says to {}: '{}'".format(str(self.chat_id), notification_message))
-                    self.bot.send_message(chat_id=self.chat_id, text=notification_message)
+                    if 'image' in event:
+                        log.debug("Bot sends image to {} with caption '{}'".format(str(self.chat_id),
+                                                                                   notification_message))
+                        self.bot.send_photo(chat_id=self.chat_id,
+                                            photo=event['image'],
+                                            caption=notification_message)
+                    else:
+                        log.debug("Bot says to {}: '{}'".format(str(self.chat_id), notification_message))
+                        self.bot.send_message(chat_id=self.chat_id,
+                                              text=notification_message)
                 except TimedOut:
                     log.warning('Timeout using Bot. Fallback back to SMS.')
                     if event_data:
