@@ -1474,6 +1474,7 @@ class TBot(Thread):
                     timestamp = make_timestamp().astimezone(tz=tz.tzlocal())
                 event_data = None
                 # build the message
+                image_data = None
                 if 'message' in event:
                     notification_message = event['message']
                 elif 'data' in event:
@@ -1481,9 +1482,12 @@ class TBot(Thread):
                     notification_message = self.build_message(timestamp=timestamp,
                                                               event_data=event_data,
                                                               max_length=200)
+                    if 'image' in event_data:
+                        image_data = BytesIO(event['image'])
+
                 # send the message
                 try:
-                    if 'image' in event_data:
+                    if image_data:
                         log.debug("Bot sends image to {} with caption '{}'".format(str(self.chat_id),
                                                                                    notification_message))
                         self.bot.send_photo(chat_id=self.chat_id,
