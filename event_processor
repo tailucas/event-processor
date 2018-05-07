@@ -1047,6 +1047,18 @@ class EventProcessor(Thread):
                 'device_label': 'Panic Button',
                 'type': 'Panic Button'
             })
+        # set up special output for SMS (text notifications)
+        self._update_device(
+            input_outputs=self.outputs,
+            device_origin=self._output_origin,
+            origin_devices=self._outputs_by_origin,
+            event_origin=config.get('app', 'device_name'),
+            awol_devices=self._awol_outputs,
+            device={
+                'device_key': 'SMS',
+                'device_label': 'SMS',
+                'type': 'SMS'
+            })
         while True:
             try:
                 event = self.socket.recv_pyobj()
