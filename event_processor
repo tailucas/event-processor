@@ -24,6 +24,7 @@ from configparser import ConfigParser
 from datetime import datetime, timedelta
 from dateutil import tz
 from decimal import Decimal
+from io import BytesIO
 from operator import itemgetter
 # noinspection PyDeprecation
 from pylru import lrucache
@@ -1465,7 +1466,8 @@ class TBot(Thread):
         while True:
             try:
                 event = self.socket.recv_pyobj()
-                log.debug(event)
+                #TODO: fix me for small payloads
+                #log.debug(event)
                 if 'timestamp' in event:
                     timestamp = parse_datetime(value=event['timestamp'], as_tz=tz.tzlocal())
                 else:
@@ -1481,11 +1483,11 @@ class TBot(Thread):
                                                               max_length=200)
                 # send the message
                 try:
-                    if 'image' in event:
+                    if 'image' in event_data:
                         log.debug("Bot sends image to {} with caption '{}'".format(str(self.chat_id),
                                                                                    notification_message))
                         self.bot.send_photo(chat_id=self.chat_id,
-                                            photo=event['image'],
+                                            photo=BytesIO(event['image']),
                                             caption=notification_message)
                     else:
                         log.debug("Bot says to {}: '{}'".format(str(self.chat_id), notification_message))
