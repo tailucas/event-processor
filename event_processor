@@ -955,9 +955,17 @@ class EventProcessor(Thread):
                         self._input_config[active_device_key]['activation_interval']
                     )
                 # dispatch the event
-                self._origin_connections[event_destination].send(make_payload(
-                    timestamp=timestamp,
-                    data=activation_command))
+                if event_destination in self._origin_connections:
+                    self._origin_connections[event_destination].send(make_payload(
+                        timestamp=timestamp,
+                        data=activation_command))
+                elif event_destination == config.get('app', 'device_name'):
+                    #TODO: route this properly
+                    log.warning('Not dispatching event to self: {}'.format(activation_command))
+                else:
+                    log.warning('{} {} => {} but nowhere to route the response.'.format(event_origin,
+                                                                                        active_device_key,
+                                                                                        output_device_key))
                 # add an entry into the event log
                 try:
                     input_device_label = self._input_config[active_device_key]['device_label']
