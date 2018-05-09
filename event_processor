@@ -1494,8 +1494,8 @@ class TBot(Thread):
                     notification_message = self.build_message(timestamp=timestamp,
                                                               event_data=event_data,
                                                               max_length=200)
-                    if 'image' in event_data:
-                        image_data = BytesIO(event['image'])
+                    if 'image' in event_data['input_context']:
+                        image_data = BytesIO(event_data['input_context']['image'])
 
                 # send the message
                 try:
