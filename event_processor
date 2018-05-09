@@ -587,6 +587,8 @@ def telegram_bot_line(bot, update):
 def telegram_error_handler(bot, update, error):
     try:
         raise error
+    except NetworkError as e:
+        log.warning('Problem with {} network {}: {}'.format(bot, update, e.message))
     except TelegramError as e:
         log.warning('Problem with {} processing {}: {}'.format(bot, update, e.message))
     except Exception:
