@@ -324,6 +324,7 @@ def show_metrics():
         return redirect(url_for('index'))
     metric_namespace = 'automation'
     # TODO: get all meter metrics by dimension
+    metric_name = device_config['device_label'] + ' Metered'
     end_time = make_timestamp()
     for stat_period, stat_interval, time_delta in [
         (60, meter_history_day, timedelta(days=1)),
@@ -333,14 +334,20 @@ def show_metrics():
     ]:
         meter_stats = event_processor.metrics.get_metric_statistics(
             Namespace=metric_namespace,
-            MetricName=device_config['device_label'] + ' Metered',
+            MetricName=metric_name,
+            Dimensions=[
+                {
+                    'Name': 'device_type',
+                    'Value': device_config['type']
+                },
+            ],
             StartTime=end_time - time_delta,
             EndTime=end_time,
             Period=stat_period,
             Statistics=['Sum'])['Datapoints']
         log.info('Meter stats for {}::{} for period {}: {}'.format(
             metric_namespace,
-            device_key,
+            metric_name,
             stat_period,
             len(meter_stats)))
         for meter_stat in meter_stats:
