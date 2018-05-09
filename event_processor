@@ -583,6 +583,8 @@ def telegram_bot_line(bot, update):
 def telegram_error_handler(bot, update, error):
     try:
         raise error
+    except TelegramError as e:
+        log.warning('Problem with {} processing {}: {}'.format(bot, update, e.message))
     except Exception:
         log.exception('bot')
         sentry.captureException()
