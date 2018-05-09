@@ -956,6 +956,15 @@ class EventProcessor(Thread):
                     activation_command['trigger_duration'] = int(
                         self._input_config[active_device_key]['activation_interval']
                     )
+                # let the bot know first
+                if output_device_activation['type'].lower() == 'sms':
+                    self.bot.send_pyobj({
+                        'timestamp': timestamp,
+                        'data': activation_command
+                    })
+                # strip out image data that is no longer needed
+                if 'image' in active_device:
+                    del active_device['image']
                 # dispatch the event
                 if event_destination in self._origin_connections:
                     self._origin_connections[event_destination].send(make_payload(
@@ -984,12 +993,6 @@ class EventProcessor(Thread):
                     'input_device': input_device_label,
                     'output_device': output_device_label,
                 })
-                # let the bot know
-                if output_device_activation['type'].lower() == 'sms':
-                    self.bot.send_pyobj({
-                        'timestamp': timestamp,
-                        'data': activation_command
-                    })
         else:
             log.warning('{} is not configured or linked to any output: {}'.format(active_device_key, active_device))
 
@@ -1503,7 +1506,7 @@ class TBot(Thread):
                         log.debug("Bot sends image to {} with caption '{}'".format(str(self.chat_id),
                                                                                    notification_message))
                         self.bot.send_photo(chat_id=self.chat_id,
-                                            photo=BytesIO(event['image']),
+                                            photo=image_data,
                                             caption=notification_message)
                     else:
                         log.debug("Bot says to {}: '{}'".format(str(self.chat_id), notification_message))
