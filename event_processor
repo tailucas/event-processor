@@ -963,7 +963,9 @@ class EventProcessor(Thread):
                         data=activation_command))
                 elif event_destination == config.get('app', 'device_name'):
                     #TODO: route this properly
-                    log.warning('Not dispatching event to self: {}'.format(activation_command))
+                    log.warning('Not dispatching event to self: {} {} => {}.'.format(event_origin,
+                                                                                     active_device_key,
+                                                                                     output_device_key))
                 else:
                     log.warning('{} {} => {} but nowhere to route the response.'.format(event_origin,
                                                                                         active_device_key,
