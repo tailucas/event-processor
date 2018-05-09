@@ -337,7 +337,7 @@ def show_metrics():
             StartTime=end_time - time_delta,
             EndTime=end_time,
             Period=stat_period,
-            Statistics='Sum')
+            Statistics=['Sum'])['Datapoints']
         log.info('Meter stats for {}::{} for period {}: {}'.format(
             metric_namespace,
             device_key,
