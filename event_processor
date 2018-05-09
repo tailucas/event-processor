@@ -324,36 +324,33 @@ def show_metrics():
         return redirect(url_for('index'))
     metric_namespace = 'automation'
     # TODO: get all meter metrics by dimension
-    meter_metric = event_processor.metrics.list_metrics(
-        MetricName=device_config['device_label'] + ' Metered',
-        Namespace=metric_namespace)
-    if len(meter_metric) > 0:
-        log.info('DEBUG: meter_metric response is {}'.format(str(meter_metric)))
-        end_time = make_timestamp()
-        for stat_period, stat_interval, time_delta in [
-            (60, meter_history_day, timedelta(days=1)),
-            (3600, meter_history_week, timedelta(days=7)),
-            (86400, meter_history_month, timedelta(days=31)),
-            (604800, meter_history_year, timedelta(days=365))
-        ]:
-            meter_stats = meter_metric[0].get_statistics(
-                StartTime=end_time - time_delta,
-                EndTime=end_time,
-                Period=stat_period,
-                Statistics='Sum')
-            log.info('Meter stats for {}::{} for period {}: {}'.format(
-                metric_namespace,
-                device_key,
-                stat_period,
-                len(meter_stats)))
-            for meter_stat in meter_stats:
-                meter_reading_unit_factor = 1
-                if 'meter_reading_unit_factor' in device_config:
-                    meter_reading_unit_factor = device_config['meter_reading_unit_factor']
-                stat_interval.append((
-                    make_timestamp(meter_stat['Timestamp']).astimezone(tz=tz.tzlocal()).isoformat(),
-                    meter_stat['Sum'] / float(meter_reading_unit_factor)
-                ))
+    end_time = make_timestamp()
+    for stat_period, stat_interval, time_delta in [
+        (60, meter_history_day, timedelta(days=1)),
+        (3600, meter_history_week, timedelta(days=7)),
+        (86400, meter_history_month, timedelta(days=31)),
+        (604800, meter_history_year, timedelta(days=365))
+    ]:
+        meter_stats = event_processor.metrics.get_metric_statistics(
+            Namespace=metric_namespace,
+            MetricName=device_config['device_label'] + ' Metered',
+            StartTime=end_time - time_delta,
+            EndTime=end_time,
+            Period=stat_period,
+            Statistics='Sum')
+        log.info('Meter stats for {}::{} for period {}: {}'.format(
+            metric_namespace,
+            device_key,
+            stat_period,
+            len(meter_stats)))
+        for meter_stat in meter_stats:
+            meter_reading_unit_factor = 1
+            if 'meter_reading_unit_factor' in device_config:
+                meter_reading_unit_factor = device_config['meter_reading_unit_factor']
+            stat_interval.append((
+                make_timestamp(meter_stat['Timestamp']).astimezone(tz=tz.tzlocal()).isoformat(),
+                meter_stat['Sum'] / float(meter_reading_unit_factor)
+            ))
     unit_name = 'Units'
     if 'meter_reading_unit' in device_config:
         unit_name = device_config['meter_reading_unit']
