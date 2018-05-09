@@ -1376,7 +1376,7 @@ class EventLog(Thread):
         event_data = self._event_log_table.scan(FilterExpression=Attr('timestamp').gte(since_ts))
         # extract the event data from the result set
         events = []
-        for event in event_data:
+        for event in event_data['Items']:
             timestamp = event['timestamp']
             # noinspection PyTypeChecker
             events.append((
