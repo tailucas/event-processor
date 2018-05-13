@@ -117,7 +117,7 @@ def is_list(value):
 def make_timestamp(timestamp=None, make_string=False):
     if timestamp is None:
         timestamp = datetime.utcnow()
-    elif isinstance(timestamp, float):
+    elif isinstance(timestamp, float) or isinstance(timestamp, int):
         timestamp = datetime.utcfromtimestamp(timestamp)
     elif isinstance(timestamp, str):
         timestamp = dateutil.parser.parse(timestamp)
