@@ -1206,6 +1206,9 @@ class EventProcessor(Thread):
                                     log.info('{} advertised {} new devices.'.format(event_origin, devices_updated))
                             if 'active_devices' in event_data['data']:
                                 for active_device in event_data['data']['active_devices']:
+                                    # patch in top-level data, if any
+                                    if 'storage_url' in event_data['data']:
+                                        active_device['storage_url'] = event_data['data']['storage_url']
                                     active_device_key = active_device['device_key']
                                     # input known?
                                     if active_device_key not in self._input_config:
@@ -1470,6 +1473,8 @@ class TBot(Thread):
         # add in the callback URL
         if build_sms and 'callback_url' in event_data:
             footer = "\n{}".format(event_data['callback_url'])
+        if not build_sms and 'storage_url' in event_data['input_context']:
+            notification_message = '[{}]({})'.format(notification_message, event_data['input_context']['storage_url'])
         # add in some trigger history for context
         if 'trigger_history' in event_data:
             for history_device_label, trigger_secs_ago in event_data['trigger_history']:
@@ -1513,11 +1518,13 @@ class TBot(Thread):
                                                                                    notification_message))
                         self.bot.send_photo(chat_id=self.chat_id,
                                             photo=image_data,
-                                            caption=notification_message)
+                                            caption=notification_message,
+                                            parse_mode='Markdown')
                     else:
                         log.debug("Bot says to {}: '{}'".format(str(self.chat_id), notification_message))
                         self.bot.send_message(chat_id=self.chat_id,
-                                              text=notification_message)
+                                              text=notification_message,
+                                              parse_mode='Markdown')
                 except TimedOut:
                     log.warning('Timeout using Bot. Fallback back to SMS.')
                     if event_data:
