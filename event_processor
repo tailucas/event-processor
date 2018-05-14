@@ -1787,7 +1787,7 @@ class CallbackUrlDiscovery(Thread):
                 # let the bot know
                 self.bot.connect(URL_WORKER_TELEGRAM_BOT)
                 self.bot.send_pyobj({
-                    'message': 'New dashboard endpoint is: {}'.format(ngrok_tunnel_url),
+                    'message': '[Dashboard Updated]({})'.format(ngrok_tunnel_url),
                 })
                 break
             except Exception:
