@@ -1152,6 +1152,7 @@ class EventProcessor(Thread):
                                     log.warning('No valid device description found in SQS message: {}'.format(event_data))
                                     continue
                                 event_processor.flash_info = False
+                                devices_updated = 0
                                 for device_description in device_descriptions:
                                     for device_key, device_config in list(self._input_config.items()):
                                         device_name_match = False
@@ -1183,6 +1184,14 @@ class EventProcessor(Thread):
                                                 device_key,
                                                 {'device_disabled': device_disable}
                                             )
+                                            devices_updated += 1
+                                if devices_updated > 0:
+                                    state_change = 'Enabled'
+                                    if device_disable is True:
+                                        state_change = 'Disabled'
+                                    self.bot.send_pyobj({
+                                        'message': '{} {} devices.'.format(state_change, devices_updated),
+                                    })
                                 event_processor.flash_info = True
                                 # skip further processing because of enable/disable
                                 continue
