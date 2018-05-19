@@ -3,7 +3,7 @@
 {% block body %}
 <ul class="list-group">
   {% for input_device_key, input_device in inputs|dictsort %}
-  {% if input_device['type'] == 'Panic Button' %}{% continue %}{% endif %}
+  {% if input_device['type'] in ['Panic Button', 'Dash Button'] %}{% continue %}{% endif %}
   {% with strike_thru = input_device_key in awol_inputs %}
   <a class="list-group-item{% if not input_device['device_disabled'] %} active{% endif %}">{% if 'grouped_inputs' in input_device %}<span class="badge">{{ input_device['grouped_inputs']|count }}</span>{% endif %}
     <form class="form-horizontal" role="form" method='POST'>

@@ -1069,6 +1069,18 @@ class EventProcessor(Thread):
                 'device_label': 'Panic Button',
                 'type': 'Panic Button'
             })
+        # set up the special input for the dash button
+        self._update_device(
+            input_outputs=self.inputs,
+            device_origin=self._input_origin,
+            origin_devices=self._inputs_by_origin,
+            event_origin=config.get('app', 'device_name'),
+            awol_devices=self._awol_inputs,
+            device={
+                'device_key': 'App Dash Button',
+                'device_label': 'Dash Button',
+                'type': 'Dash Button'
+            })
         # set up special output for SMS (text notifications)
         self._update_device(
             input_outputs=self.outputs,
@@ -1148,6 +1160,22 @@ class EventProcessor(Thread):
                                                 {'device_disabled': device_disable}
                                             )
                                 event_processor.flash_info = True
+                            # dash button
+                            if 'dash_button' in event_data:
+                                log.info('Dash button: {}'.format(event_data['dash_button']))
+                                # splice in a new event
+                                event_data.update({
+                                    'data': {
+                                        'active_devices': [
+                                            {
+                                                'device_key': 'App Dash Button',
+                                                'device_label': 'Dash Button',
+                                                'type': 'Dash Button',
+                                                'dash_button': event_data['dash_button']
+                                            }
+                                        ]
+                                    }
+                                })
                         if 'data' in event_data:
                             if 'stale_heartbeat' in event_data['data']:
                                 stale_heartbeat = event_data['data']['stale_heartbeat']
