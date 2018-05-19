@@ -1162,7 +1162,7 @@ class EventProcessor(Thread):
                                 event_processor.flash_info = True
                             # dash button
                             if 'dash_button' in event_data:
-                                log.info('Dash button: {}'.format(event_data['dash_button']))
+                                log.info('Dash button event: {}'.format(event_data['dash_button']))
                                 # splice in a new event
                                 event_data.update({
                                     'data': {
