@@ -1119,6 +1119,25 @@ class EventProcessor(Thread):
                                 device_disable = False
                             elif 'disable' in event_data:
                                 device_disable = True
+                            # dash button
+                            if 'dash_button' in event_data:
+                                log.info('Dash button event: {}'.format(event_data['dash_button']))
+                                # splice in a new event
+                                event_data.update({
+                                    'data': {
+                                        'active_devices': [
+                                            {
+                                                'device_key': 'App Dash Button',
+                                                'device_label': 'Dash Button',
+                                                'type': 'Dash Button',
+                                                'dash_button': event_data['dash_button']
+                                            }
+                                        ]
+                                    }
+                                })
+                                # splice in device descriptions
+                                #TODO: configurable somehow
+                                event_data['device_description'] = ['House Security']
                             if device_disable is not None:
                                 # this is a fuzzy name that refers to either a group or specific device
                                 device_descriptions = None
@@ -1160,22 +1179,8 @@ class EventProcessor(Thread):
                                                 {'device_disabled': device_disable}
                                             )
                                 event_processor.flash_info = True
-                            # dash button
-                            if 'dash_button' in event_data:
-                                log.info('Dash button event: {}'.format(event_data['dash_button']))
-                                # splice in a new event
-                                event_data.update({
-                                    'data': {
-                                        'active_devices': [
-                                            {
-                                                'device_key': 'App Dash Button',
-                                                'device_label': 'Dash Button',
-                                                'type': 'Dash Button',
-                                                'dash_button': event_data['dash_button']
-                                            }
-                                        ]
-                                    }
-                                })
+                                # skip further processing because of enable/disable
+                                continue
                         if 'data' in event_data:
                             if 'stale_heartbeat' in event_data['data']:
                                 stale_heartbeat = event_data['data']['stale_heartbeat']
