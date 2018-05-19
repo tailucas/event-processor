@@ -888,10 +888,12 @@ class EventProcessor(Thread):
         if device_key not in device_origin:
             device_origin[device_key] = event_origin
         elif device_origin[device_key] != event_origin:
-            raise RuntimeError("Device with key '{}' is already present at '{}' "
-                               "but is also present at '{}' and is ignored.".format(device_key,
-                                                                                    device_origin[device_key],
-                                                                                    event_origin))
+            # validate device origin if not virtual
+            if 'virtual' not in device:
+                raise RuntimeError("Device with key '{}' is already present at '{}' "
+                                   "but is also present at '{}' and is ignored.".format(device_key,
+                                                                                        device_origin[device_key],
+                                                                                        event_origin))
         if device_key not in input_outputs:
             input_outputs[device_key] = device
             return 1
@@ -1067,7 +1069,8 @@ class EventProcessor(Thread):
             device={
                 'device_key': 'App Panic Button',
                 'device_label': 'Panic Button',
-                'type': 'Panic Button'
+                'type': 'Panic Button',
+                'virtual': True
             })
         # set up the special input for the dash button
         self._update_device(
@@ -1079,7 +1082,8 @@ class EventProcessor(Thread):
             device={
                 'device_key': 'App Dash Button',
                 'device_label': 'Dash Button',
-                'type': 'Dash Button'
+                'type': 'Dash Button',
+                'virtual': True
             })
         # set up special output for SMS (text notifications)
         self._update_device(
@@ -1091,7 +1095,8 @@ class EventProcessor(Thread):
             device={
                 'device_key': 'SMS',
                 'device_label': 'SMS',
-                'type': 'SMS'
+                'type': 'SMS',
+                'virtual': True
             })
         while True:
             try:
