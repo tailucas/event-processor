@@ -1186,7 +1186,8 @@ class EventProcessor(Thread):
                                     if device_disable is True:
                                         state_change = 'Disabled'
                                     self.bot.send_pyobj({
-                                        'message': '{} {} devices.'.format(state_change, devices_updated),
+                                        'message': '{} notifications for {} devices.'.format(state_change,
+                                                                                             devices_updated),
                                     })
                                 event_processor.flash_info = True
                                 # skip further processing because of enable/disable
