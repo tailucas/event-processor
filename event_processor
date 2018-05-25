@@ -561,7 +561,7 @@ def telegram_bot_start(bot, update, args):
     bot.send_message(chat_id=update.message.chat_id, text="I'm a bot, please talk to me!")
 
 
-def telegram_bot_line(bot, update):
+def telegram_bot_inline(bot, update):
     authorized_users = config.get('telegram', 'authorized_users').split(',')
     if str(update.effective_user.id) not in authorized_users:
         log.warning('Unauthorized message {}'.format(str(update)))
@@ -577,7 +577,7 @@ def telegram_bot_line(bot, update):
     results.append(
         InlineQueryResultArticle(
             id=query.upper(),
-            title='Status',
+            title='Caps',
             input_message_content=InputTextMessageContent(query.upper())
         )
     )
@@ -1896,7 +1896,7 @@ if __name__ == "__main__":
     telegram_dispatcher.add_handler(TelegramCommandHandler('start',
                                                            telegram_bot_start,
                                                            pass_args=True))
-    telegram_dispatcher.add_handler(TelegramInlineHandler(telegram_bot_line))
+    telegram_dispatcher.add_handler(TelegramInlineHandler(telegram_bot_inline))
     telegram_dispatcher.add_error_handler(telegram_error_handler)
     telegram_updater.start_polling()
     # start threads
