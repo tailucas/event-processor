@@ -577,8 +577,24 @@ def telegram_bot_line(bot, update):
     results.append(
         InlineQueryResultArticle(
             id=query.upper(),
-            title='Caps',
-            input_message_content=InputTextMessageContent(query.upper())
+            title='Status',
+            input_message_content=InputTextMessageContent(make_timestamp(timestamp=None, make_string=True))
+        )
+    )
+    arm_message = '`{}` inputs'.format(len(event_processor.inputs))
+    results.append(
+        InlineQueryResultArticle(
+            id=query.upper(),
+            title='Arm',
+            input_message_content=InputTextMessageContent(arm_message)
+        )
+    )
+    disarm_message = '`{}` outputs'.format(len(event_processor.output))
+    results.append(
+        InlineQueryResultArticle(
+            id=query.upper(),
+            title='Disarm',
+            input_message_content=InputTextMessageContent(disarm_message)
         )
     )
     bot.answer_inline_query(update.inline_query.id, results)
