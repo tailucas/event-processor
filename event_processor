@@ -1841,18 +1841,21 @@ class CallbackUrlDiscovery(Thread):
                     sleep(1)
                     continue
                 log.info('External call-back URL is {}'.format(ngrok_tunnel_url))
-                # let the bot know
-                self.bot.connect(URL_WORKER_TELEGRAM_BOT)
-                self.bot.send_pyobj({
-                    'message': '[Dashboard Updated]({})'.format(ngrok_tunnel_url),
-                })
                 break
             except Exception:
                 log.exception(self.__class__.__name__)
                 sentry.captureException()
                 sleep(1)
-            finally:
-                self.bot.close()
+        try:
+            # let the bot know
+            self.bot.connect(URL_WORKER_TELEGRAM_BOT)
+            self.bot.send_pyobj({
+                'message': '[Dashboard Updated]({})'.format(ngrok_tunnel_url),
+            })
+            self.bot.close()
+        except Exception:
+            log.exception(self.__class__.__name__)
+            sentry.captureException()
 
 
 if __name__ == "__main__":
