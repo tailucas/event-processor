@@ -1582,8 +1582,8 @@ class TBot(Thread):
                         self.bot.send_message(chat_id=self.chat_id,
                                               text=notification_message,
                                               parse_mode='Markdown')
-                except TimedOut:
-                    log.warning('Timeout using Bot. Fallback back to SMS.')
+                except (TimedOut, NetworkError):
+                    log.warning('Timeout or network problem using Bot. Fallback back to SMS.')
                     if event_data:
                         # rebuild the message for SMS
                         notification_message = self.build_message(timestamp=timestamp,
