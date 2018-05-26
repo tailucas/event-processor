@@ -570,9 +570,9 @@ def telegram_bot_inline(bot, update):
         log.warning('Unauthorized message {}'.format(str(update)))
         return
 
-    log.info('Telegram Bot {} got inline query {}.'.format(bot.username,
-                                                           update.inline_query.query,
-                                                           update.message.chat_id))
+    log.info('Telegram Bot {} got inline query {} (chat ID: {}).'.format(bot.username,
+                                                                         update.inline_query.query,
+                                                                         update.message.chat_id))
 
     query = update.inline_query.query
     results = [
@@ -593,7 +593,6 @@ def telegram_bot_inline(bot, update):
             input_message_content=InputTextMessageContent(
                 "_{}_".format(escape_markdown(query)),
                 parse_mode=ParseMode.MARKDOWN))]
-
     update.inline_query.answer(results)
 
 
