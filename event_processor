@@ -540,60 +540,74 @@ def output_config():
 
 
 def telegram_bot_echo(bot, update):
-    authorized_users = config.get('telegram', 'authorized_users').split(',')
-    if str(update.effective_user.id) not in authorized_users:
-        log.warning('Unauthorized message {}'.format(str(update)))
-        return
+    try:
+        authorized_users = config.get('telegram', 'authorized_users').split(',')
+        if str(update.effective_user.id) not in authorized_users:
+            log.warning('Unauthorized message {}'.format(str(update)))
+            return
 
-    log.info('Telegram Bot {} got message {} (chat ID: {}).'.format(bot.username,
-                                                                    update.message.text,
-                                                                    update.message.chat_id))
-    bot.send_message(chat_id=update.message.chat_id, text=update.message.text)
+        log.info('Telegram Bot {} got message {} (chat ID: {}).'.format(bot.username,
+                                                                        update.message.text,
+                                                                        update.message.chat_id))
+        bot.send_message(chat_id=update.message.chat_id, text=update.message.text)
+    except Exception:
+        log.exception('bot handler')
+        sentry.captureException()
 
 
 def telegram_bot_start(bot, update, args):
-    authorized_users = config.get('telegram', 'authorized_users').split(',')
-    if str(update.effective_user.id) not in authorized_users:
-        log.warning('Unauthorized message {}'.format(str(update)))
-        return
+    try:
+        authorized_users = config.get('telegram', 'authorized_users').split(',')
+        if str(update.effective_user.id) not in authorized_users:
+            log.warning('Unauthorized message {}'.format(str(update)))
+            return
 
-    log.info('Telegram Bot {} got command {} with args {} (chat ID: {}).'.format(bot.username,
-                                                                                 update.message.text,
-                                                                                 str(args),
-                                                                                 update.message.chat_id))
-    bot.send_message(chat_id=update.message.chat_id, text="I'm a bot, please talk to me!")
+        log.info('Telegram Bot {} got command {} with args {} (chat ID: {}).'.format(bot.username,
+                                                                                     update.message.text,
+                                                                                     str(args),
+                                                                                     update.message.chat_id))
+        bot.send_message(chat_id=update.message.chat_id, text="I'm a bot, please talk to me!")
+    except Exception:
+        log.exception('bot handler')
+        sentry.captureException()
 
 
 def telegram_bot_inline(bot, update):
-    authorized_users = config.get('telegram', 'authorized_users').split(',')
-    if str(update.effective_user.id) not in authorized_users:
-        log.warning('Unauthorized message {}'.format(str(update)))
-        return
+    try:
+        authorized_users = config.get('telegram', 'authorized_users').split(',')
+        if str(update.inline_query.from_user.id) not in authorized_users:
+            log.warning('Unauthorized message {}'.format(str(update)))
+            return
 
-    log.info('Telegram Bot {} got inline query {} (chat ID: {}).'.format(bot.username,
-                                                                         update.inline_query.query,
-                                                                         update.message.chat_id))
+        log.info('Telegram Bot {} got inline query {} from {} {} (location: {}).'.format(bot.username,
+                                                                                         update.inline_query.query,
+                                                                                         update.inline_query.from_user.first_name,
+                                                                                         update.inline_query.from_user.last_name,
+                                                                                         update.inline_query.location))
 
-    query = update.inline_query.query
-    results = [
-        InlineQueryResultArticle(
-            id=uuid4(),
-            title="Caps",
-            input_message_content=InputTextMessageContent(
-                query.upper())),
-        InlineQueryResultArticle(
-            id=uuid4(),
-            title="Bold",
-            input_message_content=InputTextMessageContent(
-                "*{}*".format(escape_markdown(query)),
-                parse_mode=ParseMode.MARKDOWN)),
-        InlineQueryResultArticle(
-            id=uuid4(),
-            title="Italic",
-            input_message_content=InputTextMessageContent(
-                "_{}_".format(escape_markdown(query)),
-                parse_mode=ParseMode.MARKDOWN))]
-    update.inline_query.answer(results)
+        query = update.inline_query.query
+        results = [
+            InlineQueryResultArticle(
+                id=uuid4(),
+                title="Caps",
+                input_message_content=InputTextMessageContent(
+                    query.upper())),
+            InlineQueryResultArticle(
+                id=uuid4(),
+                title="Bold",
+                input_message_content=InputTextMessageContent(
+                    "*{}*".format(escape_markdown(query)),
+                    parse_mode=ParseMode.MARKDOWN)),
+            InlineQueryResultArticle(
+                id=uuid4(),
+                title="Italic",
+                input_message_content=InputTextMessageContent(
+                    "_{}_".format(escape_markdown(query)),
+                    parse_mode=ParseMode.MARKDOWN))]
+        update.inline_query.answer(results)
+    except Exception:
+        log.exception('bot handler')
+        sentry.captureException()
 
 
 def telegram_error_handler(bot, update, error):
