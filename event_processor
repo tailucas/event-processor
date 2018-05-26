@@ -35,7 +35,8 @@ from resin.models.device import Device
 from simplejson.scanner import JSONDecodeError
 from socket import gaierror
 from telegram import Bot as TelegramBot, \
-    InlineQueryResultArticle, InputTextMessageContent
+    InlineQueryResultArticle, InputTextMessageContent, \
+    ParseMode
 from telegram.error import TelegramError, \
     Unauthorized, \
     BadRequest, \
@@ -47,10 +48,12 @@ from telegram.ext import Updater as TelegramUpdater, \
     MessageHandler as TelegramMessageHandler, \
     Filters as TelegramFilters, \
     InlineQueryHandler as TelegramInlineHandler
+from telegram.utils.helpers import escape_markdown
 from telegram.utils.request import TimedOut
 from threading import Thread
 from time import sleep
 from umsgpack import UnpackException
+from uuid import uuid4
 from flask import Flask, g, flash, request, render_template, url_for, redirect
 from flask_compress import Compress
 from zmq.error import ZMQError, ContextTerminated, Again
@@ -570,18 +573,28 @@ def telegram_bot_inline(bot, update):
     log.info('Telegram Bot {} got inline query {}.'.format(bot.username,
                                                            update.inline_query.query,
                                                            update.message.chat_id))
+
     query = update.inline_query.query
-    if not query:
-        return
-    results = list()
-    results.append(
+    results = [
         InlineQueryResultArticle(
-            id=query.upper(),
-            title='Caps',
-            input_message_content=InputTextMessageContent(query.upper())
-        )
-    )
-    bot.answer_inline_query(update.inline_query.id, results)
+            id=uuid4(),
+            title="Caps",
+            input_message_content=InputTextMessageContent(
+                query.upper())),
+        InlineQueryResultArticle(
+            id=uuid4(),
+            title="Bold",
+            input_message_content=InputTextMessageContent(
+                "*{}*".format(escape_markdown(query)),
+                parse_mode=ParseMode.MARKDOWN)),
+        InlineQueryResultArticle(
+            id=uuid4(),
+            title="Italic",
+            input_message_content=InputTextMessageContent(
+                "_{}_".format(escape_markdown(query)),
+                parse_mode=ParseMode.MARKDOWN))]
+
+    update.inline_query.answer(results)
 
 
 def telegram_error_handler(bot, update, error):
