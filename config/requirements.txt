@@ -1,5 +1,6 @@
 argparse
 AWSIoTPythonSDK
+beautifulsoup4
 boto3
 blinker
 pathtools

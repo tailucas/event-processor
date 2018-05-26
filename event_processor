@@ -20,6 +20,7 @@ import zmq
 from AWSIoTPythonSDK.MQTTLib import AWSIoTMQTTClient
 
 from boto3.dynamodb.conditions import Attr
+from bs4 import BeautifulSoup
 from configparser import ConfigParser
 from datetime import datetime, timedelta
 from dateutil import tz
@@ -549,7 +550,26 @@ def telegram_bot_echo(bot, update):
         log.info('Telegram Bot {} got message {} (chat ID: {}).'.format(bot.username,
                                                                         update.message.text,
                                                                         update.message.chat_id))
-        bot.send_message(chat_id=update.message.chat_id, text=update.message.text)
+
+        r = requests.get(config.get('gononda', 'search_url'), params={
+            'sort': int(config.get('gononda', 'sort')),
+            'filter': int(config.get('gononda', 'filter'))
+        })
+        soup = BeautifulSoup(r.text)
+        content = soup.find('div', {'class': 'blocktable'})
+        rows = content.find_all('tr')
+        if len(rows) > 0:
+            columns = rows[1].find_all('td')
+            show_title = columns[1].text
+            show_screen = columns[3].text
+            show_time = columns[0].text
+            show_synopsis = columns[5].text
+            bot_reply = 'Hot right now is `{}` on {} at {}: _{}_'.format(show_title, show_screen, show_time, show_synopsis)
+        else:
+            bot_reply = "I've got nothing for you right now."
+        bot.send_message(chat_id=update.message.chat_id,
+                         text=bot_reply,
+                         parse_mode='Markdown')
     except Exception:
         log.exception('bot handler')
         sentry.captureException()
