@@ -624,6 +624,8 @@ def telegram_bot_inline(bot, update):
                                                                                          update.inline_query.location))
 
         query = update.inline_query.query
+        if not query:
+            return
         results = [
             InlineQueryResultArticle(
                 id=uuid4(),
