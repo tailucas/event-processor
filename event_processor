@@ -54,6 +54,7 @@ from telegram.utils.request import TimedOut
 from threading import Thread
 from time import sleep
 from umsgpack import UnpackException
+from urllib.parse import urlparse
 from uuid import uuid4
 from flask import Flask, g, flash, request, render_template, url_for, redirect
 from flask_compress import Compress
@@ -110,6 +111,7 @@ interruptable_sleep = threading.Event()
 event_processor = None
 event_log = None
 ngrok_tunnel_url = None
+ngrok_tunnel_url_with_bauth = None
 
 sentry = Sentry()
 
@@ -548,34 +550,21 @@ def telegram_bot_echo(bot, update):
             return
 
         log.info('Telegram Bot {} got message {} (chat ID: {}).'.format(bot.username,
-                                                                        update.message.text,
-                                                                        update.message.chat_id))
+                                                                        update.effective_message.text,
+                                                                        update.effective_message.chat_id))
 
-        r = requests.get(config.get('gononda', 'search_url'), params={
-            'sort': int(config.get('gononda', 'sort')),
-            'filter': int(config.get('gononda', 'filter'))
-        })
-        soup = BeautifulSoup(r.text)
-        content = soup.find('div', {'class': 'blocktable'})
-        rows = content.find_all('tr')
-        if len(rows) > 0:
-            columns = rows[1].find_all('td')
-            show_title = columns[1].text
-            show_screen = columns[3].text
-            show_time = columns[0].text
-            show_synopsis = columns[5].text
-            bot_reply = 'Hot right now is `{}` on {} at {}: _{}_'.format(show_title, show_screen, show_time, show_synopsis)
-        else:
-            bot_reply = "I've got nothing for you right now."
-        bot.send_message(chat_id=update.message.chat_id,
-                         text=bot_reply,
+        group_info = bot.get_chat(chat_id=config.getint('telegram', 'chat_room_id'))
+        bot_response = "I am in the [{}]({}) group.".format(group_info.title, group_info.invite_link)
+        dashboard_link = '[Dashboard]({})'.format(ngrok_tunnel_url)
+        bot.send_message(chat_id=update.effective_message.chat_id,
+                         text=bot_response + "\n" + dashboard_link,
                          parse_mode='Markdown')
     except Exception:
         log.exception('bot handler')
         sentry.captureException()
 
 
-def telegram_bot_report(bot, update, args):
+def telegram_bot_cmd(bot, update, args):
     try:
         authorized_users = config.get('telegram', 'authorized_users').split(',')
         if str(update.effective_user.id) not in authorized_users:
@@ -583,28 +572,30 @@ def telegram_bot_report(bot, update, args):
             return
 
         log.info('Telegram Bot {} got command {} with args {} (chat ID: {}).'.format(bot.username,
-                                                                                     update.message.text,
+                                                                                     update.effective_message.text,
                                                                                      str(args),
-                                                                                     update.message.chat_id))
-        bot.send_message(chat_id=update.message.chat_id,
-                         text='[Dashboard]({})'.format(ngrok_tunnel_url),
+                                                                                     update.effective_message.chat_id))
+        bot.send_message(chat_id=update.effective_message.chat_id,
+                         text='[Dashboard]({})'.format(ngrok_tunnel_url_with_bauth),
                          parse_mode='Markdown')
-        processor = zmq_context.socket(zmq.PUSH)
-        processor.connect(URL_WORKER_EVENT_PROCESSOR)
-        processor.send_pyobj({
-            config.get('app', 'device_name'): {
-                'data': {
-                    'active_devices': [
-                        {
-                            'device_key': 'App Dash Button',
-                            'device_label': 'Dash Button',
-                            'type': 'Dash Button'
-                        }
-                    ]
+        # status update
+        if update.effective_message.text == '/report':
+            processor = zmq_context.socket(zmq.PUSH)
+            processor.connect(URL_WORKER_EVENT_PROCESSOR)
+            processor.send_pyobj({
+                config.get('app', 'device_name'): {
+                    'data': {
+                        'active_devices': [
+                            {
+                                'device_key': 'App Dash Button',
+                                'device_label': 'Dash Button',
+                                'type': 'Dash Button'
+                            }
+                        ]
+                    }
                 }
-            }
-        })
-        processor.close()
+            })
+            processor.close()
     except Exception:
         log.exception('bot handler')
         sentry.captureException()
@@ -1023,8 +1014,6 @@ class EventProcessor(Thread):
                     'input_context': active_device,
                     'trigger_history': activation_history,
                 }
-                if ngrok_tunnel_url:
-                    activation_command.update({'callback_url': ngrok_tunnel_url})
                 if 'activation_interval' in self._input_config[active_device_key]:
                     activation_command['trigger_duration'] = int(
                         self._input_config[active_device_key]['activation_interval']
@@ -1582,8 +1571,8 @@ class TBot(Thread):
             str(timestamp.minute).zfill(2))
         footer = ''
         # add in the callback URL
-        if build_sms and 'callback_url' in event_data:
-            footer = "\n{}".format(event_data['callback_url'])
+        if build_sms and ngrok_tunnel_url:
+            footer = "\n{}".format(ngrok_tunnel_url)
         if not build_sms and 'storage_url' in event_data['input_context']:
             notification_message = '[{}]({})'.format(notification_message, event_data['input_context']['storage_url'])
         # add in some trigger history for context
@@ -1614,6 +1603,8 @@ class TBot(Thread):
                 image_data = None
                 if 'message' in event:
                     notification_message = event['message']
+                    if 'add_tunnel_url' in event:
+                        notification_message = '[{}]({})'.format(notification_message, ngrok_tunnel_url_with_bauth)
                 elif 'data' in event:
                     event_data = event['data']
                     notification_message = self.build_message(timestamp=timestamp,
@@ -1901,10 +1892,19 @@ class CallbackUrlDiscovery(Thread):
                 sentry.captureException()
                 sleep(1)
         try:
+            purl = urlparse(ngrok_tunnel_url)
+            # decorate the URL with basic-auth details
+            global ngrok_tunnel_url_with_bauth
+            ngrok_tunnel_url_with_bauth = '{}://{}:{}@{}{}'.format(purl.scheme,
+                                                                   config.get('ngrok', 'auth_user'),
+                                                                   config.get('ngrok', 'auth_password'),
+                                                                   purl.netloc,
+                                                                   purl.path)
             # let the bot know
             self.bot.connect(URL_WORKER_TELEGRAM_BOT)
             self.bot.send_pyobj({
-                'message': '[Dashboard Updated]({})'.format(ngrok_tunnel_url),
+                'message': 'Dashboard Updated',
+                'add_tunnel_url': True
             })
             self.bot.close()
         except Exception:
@@ -1963,8 +1963,11 @@ if __name__ == "__main__":
     telegram_dispatcher = telegram_updater.dispatcher
     telegram_dispatcher.add_handler(TelegramMessageHandler(TelegramFilters.text,
                                                            telegram_bot_echo))
+    telegram_dispatcher.add_handler(TelegramCommandHandler('start',
+                                                           telegram_bot_cmd,
+                                                           pass_args=True))
     telegram_dispatcher.add_handler(TelegramCommandHandler('report',
-                                                           telegram_bot_report,
+                                                           telegram_bot_cmd,
                                                            pass_args=True))
     telegram_dispatcher.add_handler(TelegramInlineHandler(telegram_bot_inline))
     telegram_dispatcher.add_error_handler(telegram_error_handler)
