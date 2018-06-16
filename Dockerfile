@@ -36,6 +36,7 @@ RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommend
     python3 \
     python3-dev \
     python3-pip \
+    python3-setuptools \
     python3-venv \
     rsyslog \
     ssl-cert \
