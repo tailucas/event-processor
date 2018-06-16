@@ -46,6 +46,7 @@ RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommend
     wavemon \
     wget
 
+RUN pip3 install wheel
 COPY ./config/requirements.txt /tmp/
 RUN pip3 install -r /tmp/requirements.txt
 
