@@ -579,7 +579,7 @@ def telegram_bot_cmd(bot, update, args):
                          text='[Dashboard]({})'.format(ngrok_tunnel_url_with_bauth),
                          parse_mode='Markdown')
         # status update
-        if update.effective_message.text == '/report':
+        if update.effective_message.text.startswith('/report'):
             processor = zmq_context.socket(zmq.PUSH)
             processor.connect(URL_WORKER_EVENT_PROCESSOR)
             processor.send_pyobj({
