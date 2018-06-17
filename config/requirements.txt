@@ -12,7 +12,7 @@ pytz
 pyzmq
 raven
 requests
-resin-sdk
+resin-sdk==4.4.1
 simplejson
 tzupdate
 u-msgpack-python
