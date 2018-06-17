@@ -64,25 +64,10 @@ fi
 # set the timezone
 (tzupdate && cp -a /etc/localtime "$TZ_CACHE") || [ -e "$TZ_CACHE" ]
 
-# remote system logging
-HN_CACHE=/data/hostname
-if [ -e "$HN_CACHE" ]; then
-  DEVICE_NAME="$(cat "$HN_CACHE")"
-  # reject if there is a space
-  space_pattern=" |'"
-  if [[ $DEVICE_NAME =~ $space_pattern ]]; then
-    unset DEVICE_NAME
-  else
-    export DEVICE_NAME
-  fi
-fi
-# refresh the device name and bail unless cached
-export DEVICE_NAME="$(/app/resin --get-device-name)" || [ -n "${DEVICE_NAME:-}" ]
-echo "$DEVICE_NAME" > "$HN_CACHE"
-echo "$DEVICE_NAME" > /etc/hostname
-hostnamectl set-hostname "$DEVICE_NAME"
-# update hosts
-echo "127.0.1.1 ${DEVICE_NAME}" >> /etc/hosts
+# reset hostname
+echo "$RESIN_DEVICE_NAME_AT_INIT" > /etc/hostname
+hostnamectl set-hostname "$RESIN_DEVICE_NAME_AT_INIT"
+echo "127.0.1.1 ${RESIN_DEVICE_NAME_AT_INIT}" >> /etc/hosts
 
 cp /app/config/rsyslog.conf /etc/rsyslog.conf
 if [ -n "${RSYSLOG_SERVER:-}" ]; then
