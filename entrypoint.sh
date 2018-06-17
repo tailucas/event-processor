@@ -96,26 +96,9 @@ for iface in eth0 wlan0; do
     break
   fi
 done
-# get the latest sources
-export SUB_SRC="$(/app/resin --get-devices | grep -v "$ETH0_IP" | paste -d, -s)"
-# additional sources to subscribe to
-if [ -n "${SUB_SRC_ADD:-}" ]; then
-  export SUB_SRC="${SUB_SRC},${SUB_SRC_ADD}"
-fi
-# test cache
-export SUB_CACHE=/data/sub_src
-if [[ -z "${SUB_SRC// }" ]]; then
-  export SUB_SRC="$(cat "$SUB_CACHE")"
-else
-  echo "$SUB_SRC" > "$SUB_CACHE"
-fi
-unset SUB_CACHE
-# bail unless cached
-[[ -n "${SUB_SRC// }" ]]
 # application configuration (no tee for secrets)
 cat /app/config/app.conf | /app/config_interpol > "/app/${APP_NAME}.conf"
 unset ETH0_IP
-unset SUB_SRC
 
 # remove unnecessary kernel drivers
 rmmod w1_gpio||true
