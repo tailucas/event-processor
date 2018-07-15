@@ -90,8 +90,8 @@ if [ -d /var/awslogs/etc/ ]; then
 fi
 
 # configuration update
-for iface in eth0 wlan0; do
-  export ETH0_IP="$(/sbin/ifconfig ${iface} | grep 'inet addr' | awk '{ print $2 }' | cut -f2 -d ':')"
+for iface in wlan0 eth0; do
+  export ETH0_IP="$(/sbin/ifconfig ${iface} | grep 'inet' | awk '{ print $2 }' | cut -f2 -d ':')"
   if [ -n "$ETH0_IP" ]; then
     break
   fi
