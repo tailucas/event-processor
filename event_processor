@@ -2005,7 +2005,3 @@ if __name__ == "__main__":
     finally:
         log.info('Removing PID file {}'.format(pidfile))
         os.unlink(pidfile)
-
-    log.info('Exiting with code {}'.format(signal_handler.last_signal))
-    # exit using the signal, if any
-    sys.exit(signal_handler.last_signal)
