@@ -67,7 +67,7 @@ fi
 # reset hostname (in a way that works)
 # https://forums.resin.io/t/read-only-file-system-when-calling-setstatichostname-via-dbus/1578/10
 curl -X PATCH --header "Content-Type:application/json" \
-  --data '{"network": {"hostname": "${RESIN_DEVICE_NAME_AT_INIT}"}}' \
+  --data '{"network": {"hostname": "'${RESIN_DEVICE_NAME_AT_INIT}'"}}' \
   "$RESIN_SUPERVISOR_ADDRESS/v1/device/host-config?apikey=$RESIN_SUPERVISOR_API_KEY"
 echo "$RESIN_DEVICE_NAME_AT_INIT" > /etc/hostname
 echo "127.0.1.1 ${RESIN_DEVICE_NAME_AT_INIT}" >> /etc/hosts
