@@ -44,7 +44,9 @@ RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommend
     unzip \
     vim \
     wavemon \
-    wget
+    wget \
+    && pip3 install \
+        tzupdate
 
 # python3 default
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 1

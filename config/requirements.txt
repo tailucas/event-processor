@@ -14,7 +14,6 @@ raven
 requests
 resin-sdk
 simplejson
-tzupdate
 u-msgpack-python
 Flask
 Flask-Compress
