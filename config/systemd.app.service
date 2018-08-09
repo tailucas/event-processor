@@ -5,11 +5,11 @@ After=network.target syslog.service launch.service
 [Service]
 Type=simple
 PIDFile=/var/run/%(APP_NAME)s.pid
-ExecStart=/usr/bin/python3 /app/%(APP_NAME)s
+ExecStart=/opt/app/bin/python /opt/app/%(APP_NAME)s
 Restart=always
 User=%(APP_USER)s
 Group=%(APP_GROUP)s
-EnvironmentFile=/app/environment.env
+EnvironmentFile=/opt/app/environment.env
 
 [Install]
 WantedBy=multi-user.target

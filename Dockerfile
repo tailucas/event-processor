@@ -45,14 +45,16 @@ RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommend
     wavemon \
     wget
 
-RUN pip3 install wheel
-COPY ./config/requirements.txt /tmp/
-RUN pip3 install -r /tmp/requirements.txt
+# python3 default
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 1
 
-COPY . /app
+COPY . /opt/app
+
+# setup
+RUN /opt/app/app_setup.sh
 
 # ngrok
-RUN /app/ngrok_setup.sh
+RUN /opt/app/ngrok_setup.sh
 
 # Resin systemd
 COPY ./config/systemd.launch.service /etc/systemd/system/launch.service.d/app_override.conf
@@ -63,8 +65,8 @@ net.ipv6.conf.all.disable_ipv6 = 1' >> /etc/sysctl.conf
 
 # AWS IoT root CA
 # https://github.com/aws/aws-iot-device-sdk-python
-RUN wget -nv -O /app/iot_ca.pem https://www.symantec.com/content/en/us/enterprise/verisign/roots/VeriSign-Class%203-Public-Primary-Certification-Authority-G5.pem
+RUN wget -nv -O /opt/app/iot_ca.pem https://www.symantec.com/content/en/us/enterprise/verisign/roots/VeriSign-Class%203-Public-Primary-Certification-Authority-G5.pem
 
 # ssh, http, zmq, ngrok
 EXPOSE 22 5000 5556 5558 4040 8080
-CMD ["/app/entrypoint.sh"]
+CMD ["/opt/app/entrypoint.sh"]

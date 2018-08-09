@@ -20,15 +20,15 @@ service ssh reload
 
 # ngrok
 if [ -n "${NGROK_AUTH_TOKEN:-}" ]; then
-  ./app/ngrok authtoken  --config /app/ngrok.yml "${NGROK_AUTH_TOKEN}"
+  ./opt/app/ngrok authtoken  --config /opt/app/ngrok.yml "${NGROK_AUTH_TOKEN}"
 fi
-cat /app/config/ngrok_frontend.yml \
+cat /opt/app/config/ngrok_frontend.yml \
   | sed 's@APP_FLASK_HTTP_PORT@'"$APP_FLASK_HTTP_PORT"'@' \
   | sed 's@FRONTEND_USER@'"$FRONTEND_USER"'@' \
   | sed 's@FRONTEND_PASSWORD@'"$FRONTEND_PASSWORD"'@' \
   | sed 's@NGROK_CLIENT_API_PORT@'"$NGROK_CLIENT_API_PORT"'@' \
   | sed 's@NGROK_TUNNEL_NAME@'"$NGROK_TUNNEL_NAME"'@' \
-  > /app/ngrok_frontend.yml
+  > /opt/app/ngrok_frontend.yml
 
 # aws code commit
 if [ -n "${AWS_REPO_SSH_KEY_ID:-}" ]; then
@@ -72,7 +72,7 @@ curl -X PATCH --header "Content-Type:application/json" \
 echo "$RESIN_DEVICE_NAME_AT_INIT" > /etc/hostname
 echo "127.0.1.1 ${RESIN_DEVICE_NAME_AT_INIT}" >> /etc/hosts
 
-cp /app/config/rsyslog.conf /etc/rsyslog.conf
+cp /opt/app/config/rsyslog.conf /etc/rsyslog.conf
 if [ -n "${RSYSLOG_SERVER:-}" ]; then
   set +x
   if [ -n "${RSYSLOG_TOKEN:-}" ] && ! grep -q "$RSYSLOG_TOKEN" /etc/rsyslog.d/custom.conf; then
@@ -87,7 +87,7 @@ service rsyslog restart
 
 # log archival (no tee for secrets)
 if [ -d /var/awslogs/etc/ ]; then
-  cat /var/awslogs/etc/aws.conf | /app/config_interpol /app/config/aws.conf > /var/awslogs/etc/aws.conf.new
+  cat /var/awslogs/etc/aws.conf | /opt/app/config_interpol /opt/app/config/aws.conf > /var/awslogs/etc/aws.conf.new
   mv /var/awslogs/etc/aws.conf /var/awslogs/etc/aws.conf.backup
   mv /var/awslogs/etc/aws.conf.new /var/awslogs/etc/aws.conf
 fi
@@ -100,7 +100,7 @@ for iface in wlan0 eth0; do
   fi
 done
 # application configuration (no tee for secrets)
-cat /app/config/app.conf | /app/config_interpol > "/app/${APP_NAME}.conf"
+cat /opt/app/config/app.conf | /opt/app/config_interpol > "/opt/app/${APP_NAME}.conf"
 unset ETH0_IP
 
 # remove unnecessary kernel drivers
@@ -111,15 +111,15 @@ fi
 
 # Load app environment, overriding HOME and USER
 # https://www.freedesktop.org/software/systemd/man/systemd.exec.html
-cat /etc/docker.env | egrep -v "^HOME|^USER" > /app/environment.env
-echo "HOME=/data/" >> /app/environment.env
-echo "USER=${APP_USER}" >> /app/environment.env
+cat /etc/docker.env | egrep -v "^HOME|^USER" > /opt/app/environment.env
+echo "HOME=/data/" >> /opt/app/environment.env
+echo "USER=${APP_USER}" >> /opt/app/environment.env
 
 # so app user can make the noise
 adduser "${APP_USER}" audio
 
 # give the app user access to all its things
-chown -R "${APP_USER}:${APP_GROUP}" /app/
+chown -R "${APP_USER}:${APP_GROUP}" /opt/app/
 # non-volatile storage
 chown -R "${APP_USER}:${APP_GROUP}" /data/
 # logging
@@ -136,7 +136,7 @@ echo "export HISTFILE=/data/.bash_history" >> /etc/bash.bashrc
 # systemd configuration
 for systemdsvc in app ngrok; do
   if [ ! -e "/etc/systemd/system/${systemdsvc}.service" ]; then
-    cat "/app/config/systemd.${systemdsvc}.service" | /app/config_interpol | tee "/etc/systemd/system/${systemdsvc}.service"
+    cat "/opt/app/config/systemd.${systemdsvc}.service" | /opt/app/config_interpol | tee "/etc/systemd/system/${systemdsvc}.service"
     chmod 664 "/etc/systemd/system/${systemdsvc}.service"
     systemctl daemon-reload
     systemctl enable "${systemdsvc}"
