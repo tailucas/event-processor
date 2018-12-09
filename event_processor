@@ -62,8 +62,8 @@ from zmq.error import ZMQError, ContextTerminated, Again
 
 
 APP = os.path.basename(__file__)
-if os.system('systemctl status app') == 0:
-    print('{} is already running.'.format(APP))
+if sys.stdout.isatty() and os.system('systemctl status app') == 0:
+    print("{} is already running. Use 'systemctl stop app' to stop first.".format(APP))
     sys.exit(1)
 
 # set the working directory for libraries that assume this (such as PyDrive)
