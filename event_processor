@@ -62,30 +62,12 @@ from zmq.error import ZMQError, ContextTerminated, Again
 
 
 APP = os.path.basename(__file__)
-DIR = os.path.abspath(os.path.dirname(__file__))
-# PID file check
-pidfile = '/var/run/{}.pid'.format(APP)
-mypid = os.getpid()
-if os.path.isfile(pidfile):
-    pid = None
-    try:
-        pid = int(open(pidfile, 'r').read())
-    except ValueError:
-        print('{} contains no valid PID, updating with {}'.format(pidfile, mypid))
-    if pid is not None:
-        message = '{} exists for PID {}.'.format(pidfile, pid)
-        proc_path = '/proc/{}/cmdline'.format(pid)
-        # existing process?
-        if os.path.isfile(proc_path):
-            proc_info = open(proc_path, 'r').read()
-            # there is an existing process and may be this program
-            if proc_info is not None and 'python' in proc_info and APP in proc_info and mypid != pid:
-                print('{} is already running. {}'.format(APP, message))
-                sys.exit(1)
-# take control of PID file
-open(pidfile, 'w').write(str(mypid))
+if os.system('systemctl status app') == 0:
+    print('{} is already running.'.format(APP))
+    sys.exit(1)
 
 # set the working directory for libraries that assume this (such as PyDrive)
+DIR = os.path.abspath(os.path.dirname(__file__))
 os.chdir(DIR)
 log = logging.getLogger(APP)
 # do not propagate to console logging
@@ -2002,6 +1984,3 @@ if __name__ == "__main__":
         interruptable_sleep.set()
         telegram_updater.stop()
         zmq_context.term()
-    finally:
-        log.info('Removing PID file {}'.format(pidfile))
-        os.unlink(pidfile)
