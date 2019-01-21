@@ -111,6 +111,11 @@ if [ -n "${NO_WLAN:-}" ]; then
   rmmod brcmfmac brcmutil||true
 fi
 
+# https://github.com/balena-io-library/base-images/blob/b4fc5c21dd1e28c21e5661f65809c90ed7605fe6/examples/INITSYSTEM/systemd/systemd/entry.sh
+for var in $(compgen -e); do
+  printf '%q=%q\n' "$var" "${!var}"
+done > /etc/docker.env
+
 # Load app environment, overriding HOME and USER
 # https://www.freedesktop.org/software/systemd/man/systemd.exec.html
 cat /etc/docker.env | egrep -v "^HOME|^USER" > /opt/app/environment.env
