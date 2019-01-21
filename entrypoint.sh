@@ -138,6 +138,12 @@ chown "${APP_USER}" /var/log/
 # Bash history
 echo "export HISTFILE=/data/.bash_history" >> /etc/bash.bashrc
 
+# DEBUG
+ps auxf
+
+# To interact with systemd
+export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket
+
 # systemd configuration
 for systemdsvc in app ngrok; do
   if [ ! -e "/etc/systemd/system/${systemdsvc}.service" ]; then
@@ -151,4 +157,4 @@ for systemdsvc in app ngrok; do
   systemctl start "${systemdsvc}"&
 done
 sleep infinity &
-exec env DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket /sbin/init quiet systemd.show_status=0
+exec env /sbin/init quiet systemd.show_status=0
