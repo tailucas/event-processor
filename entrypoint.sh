@@ -150,4 +150,4 @@ done
 for systemdsvc in app ngrok; do
   systemctl start "${systemdsvc}"&
 done
-systemctl status
+exec env DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket /sbin/init quiet systemd.show_status=0
