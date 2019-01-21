@@ -150,3 +150,4 @@ done
 for systemdsvc in app ngrok; do
   systemctl start "${systemdsvc}"&
 done
+systemctl status
