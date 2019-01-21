@@ -156,5 +156,5 @@ done
 for systemdsvc in app ngrok; do
   systemctl start "${systemdsvc}"&
 done
-sleep infinity &
-exec env /sbin/init quiet systemd.show_status=0
+exec env /lib/systemd/systemd quiet systemd.show_status=0
+sleep infinity
