@@ -74,6 +74,4 @@ RUN wget -nv -O /opt/app/iot_ca.pem https://www.symantec.com/content/en/us/enter
 # ssh, http, zmq, ngrok
 EXPOSE 22 5000 5556 5558 4040 8080
 
-STOPSIGNAL 37
-VOLUME ["/sys/fs/cgroup"]
 CMD ["/opt/app/entrypoint.sh"]

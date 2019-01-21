@@ -138,9 +138,6 @@ chown "${APP_USER}" /var/log/
 # Bash history
 echo "export HISTFILE=/data/.bash_history" >> /etc/bash.bashrc
 
-# DEBUG
-ps auxf
-
 # To interact with systemd
 export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket
 
@@ -149,7 +146,7 @@ for systemdsvc in app ngrok; do
   if [ ! -e "/etc/systemd/system/${systemdsvc}.service" ]; then
     cat "/opt/app/config/systemd.${systemdsvc}.service" | /opt/app/config_interpol | tee "/etc/systemd/system/${systemdsvc}.service"
     chmod 664 "/etc/systemd/system/${systemdsvc}.service"
-    #systemctl daemon-reload
+    systemctl daemon-reload
     systemctl enable "${systemdsvc}"
   fi
 done
