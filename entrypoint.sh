@@ -143,10 +143,10 @@ for systemdsvc in app ngrok; do
   if [ ! -e "/etc/systemd/system/${systemdsvc}.service" ]; then
     cat "/opt/app/config/systemd.${systemdsvc}.service" | /opt/app/config_interpol | tee "/etc/systemd/system/${systemdsvc}.service"
     chmod 664 "/etc/systemd/system/${systemdsvc}.service"
-    /bin/systemctl daemon-reload
-    /bin/systemctl enable "${systemdsvc}"
+    systemctl daemon-reload
+    systemctl enable "${systemdsvc}"
   fi
 done
 for systemdsvc in app ngrok; do
-  /bin/systemctl start "${systemdsvc}"&
+  systemctl start "${systemdsvc}"&
 done
