@@ -83,8 +83,6 @@ net.ipv6.conf.all.disable_ipv6 = 1' >> /etc/sysctl.conf
 RUN wget -nv -O /opt/app/iot_ca.pem https://www.symantec.com/content/en/us/enterprise/verisign/roots/VeriSign-Class%203-Public-Primary-Certification-Authority-G5.pem
 
 STOPSIGNAL 37
-VOLUME ["/sys/fs/cgroup"]
-
 # ssh, http, zmq, ngrok
 EXPOSE 22 5000 5556 5558 4040 8080
 CMD ["/opt/app/entrypoint.sh"]
