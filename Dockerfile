@@ -1,4 +1,4 @@
-FROM resin/raspberrypi3-debian:stretch
+FROM balenalib/raspberrypi3-debian:stretch-run
 ENV INITSYSTEM on
 
 MAINTAINER db2inst1 <db2inst1@webafrica.org.za>
