@@ -61,19 +61,16 @@ RUN /opt/app/app_setup.sh
 # ngrok
 RUN /opt/app/ngrok_setup.sh
 
-# Resin systemd
-COPY ./config/systemd.launch.service /etc/systemd/system/launch.service.d/app_override.conf
-
+# systemd masks for containers
+# https://github.com/balena-io-library/base-images/blob/b4fc5c21dd1e28c21e5661f65809c90ed7605fe6/examples/INITSYSTEM/systemd/systemd/Dockerfile#L11-L22
 RUN systemctl mask \
     dev-hugepages.mount \
     sys-fs-fuse-connections.mount \
     sys-kernel-config.mount \
-
     display-manager.service \
     getty@.service \
     systemd-logind.service \
     systemd-remount-fs.service \
-
     getty.target \
     graphical.target
 
@@ -85,7 +82,9 @@ net.ipv6.conf.all.disable_ipv6 = 1' >> /etc/sysctl.conf
 # https://github.com/aws/aws-iot-device-sdk-python
 RUN wget -nv -O /opt/app/iot_ca.pem https://www.symantec.com/content/en/us/enterprise/verisign/roots/VeriSign-Class%203-Public-Primary-Certification-Authority-G5.pem
 
+STOPSIGNAL 37
+VOLUME ["/sys/fs/cgroup"]
+
 # ssh, http, zmq, ngrok
 EXPOSE 22 5000 5556 5558 4040 8080
-
 CMD ["/opt/app/entrypoint.sh"]

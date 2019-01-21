@@ -144,8 +144,6 @@ for systemdsvc in app ngrok; do
     cat "/opt/app/config/systemd.${systemdsvc}.service" | /opt/app/config_interpol | tee "/etc/systemd/system/${systemdsvc}.service"
     chmod 664 "/etc/systemd/system/${systemdsvc}.service"
     systemctl enable "${systemdsvc}"
-    # systemctl won't work
-    #ln -s /etc/systemd/system/app.service /etc/systemd/system/multi-user.target.wants/foo.service
   fi
 done
 
