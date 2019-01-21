@@ -1,6 +1,6 @@
 [Unit]
 Description=ngrok
-After=network.target syslog.service app.service
+After=network.target syslog.service
 
 [Service]
 Type=simple
