@@ -1,5 +1,6 @@
 FROM balenalib/raspberrypi3-debian:stretch-run
 ENV INITSYSTEM on
+ENV container docker
 
 MAINTAINER db2inst1 <db2inst1@webafrica.org.za>
 LABEL Description="event_processor" Vendor="db2inst1" Version="1.0"
@@ -62,6 +63,19 @@ RUN /opt/app/ngrok_setup.sh
 
 # Resin systemd
 COPY ./config/systemd.launch.service /etc/systemd/system/launch.service.d/app_override.conf
+
+RUN systemctl mask \
+    dev-hugepages.mount \
+    sys-fs-fuse-connections.mount \
+    sys-kernel-config.mount \
+
+    display-manager.service \
+    getty@.service \
+    systemd-logind.service \
+    systemd-remount-fs.service \
+
+    getty.target \
+    graphical.target
 
 # no ipv6
 RUN echo '\n\

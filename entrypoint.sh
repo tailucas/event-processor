@@ -151,6 +151,6 @@ for systemdsvc in app ngrok; do
   fi
 done
 
-sleep infinity &
+#sleep infinity &
 # replace the entrypoint with systemd init scope
 exec env /lib/systemd/systemd quiet systemd.show_status=0
