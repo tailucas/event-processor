@@ -672,6 +672,7 @@ def thread_nanny(threads_tracked, signal_handler):
             error_msg = 'A thread has died. Expected threads are [{}], ' \
                         'missing is [{}].'.format(threads_tracked, threads_tracked - threads_alive)
             log.error(error_msg)
+            os._exit(1)
         sleep(10)
 
 
@@ -1979,7 +1980,8 @@ if __name__ == "__main__":
             port=int(config.get('flask', 'http_port')),
             debug=config.get('flask', 'debug').lower() == 'true',
             use_reloader=False)
-    except(KeyboardInterrupt, RuntimeWarning):
+    except(KeyboardInterrupt, RuntimeWarning) as e:
+        log.info("Performing on-exit cleanup: {}".format(e.message))
         # bring any threads out of their Pythonic coma
         interruptable_sleep.set()
         telegram_updater.stop()
