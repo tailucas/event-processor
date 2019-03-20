@@ -1215,11 +1215,15 @@ class EventProcessor(Thread):
                                             log.info(
                                                 'Updating device {} based on matching description {}; '
                                                 'disable: {}'.format(device_key, device_description, device_disable))
-                                            event_processor.input_config = (
-                                                device_key,
-                                                {'device_disabled': device_disable}
-                                            )
-                                            devices_updated += 1
+                                            try:
+                                                event_processor.input_config = (
+                                                    device_key,
+                                                    {'device_disabled': device_disable}
+                                                )
+                                                devices_updated += 1
+                                            except KeyError:
+                                                log.exception('Problem with device {}: {}'.format(device_key,
+                                                                                                  str(event_data)))
                                 if devices_updated > 0:
                                     state_change = 'Enabled'
                                     if device_disable is True:
