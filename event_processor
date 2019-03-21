@@ -1887,13 +1887,6 @@ class CallbackUrlDiscovery(Thread):
                                                                    config.get('ngrok', 'auth_password'),
                                                                    purl.netloc,
                                                                    purl.path)
-            # let the bot know
-            self.bot.connect(URL_WORKER_TELEGRAM_BOT)
-            self.bot.send_pyobj({
-                'message': 'Dashboard Updated',
-                'add_tunnel_url': True
-            })
-            self.bot.close()
         except Exception:
             log.exception(self.__class__.__name__)
             sentry.captureException()
