@@ -1440,6 +1440,7 @@ class EventProcessor(Thread):
                 for origin_push_socket in list(self._origin_connections.values()):
                     origin_push_socket.close()
                 self.event_log.close()
+                self.bot.close()
                 break
             except Exception:
                 log.exception(self.__class__.__name__)
@@ -1858,8 +1859,6 @@ class CallbackUrlDiscovery(Thread):
             config.get('ngrok', 'client_api_port'),
             config.get('ngrok', 'tunnel_name'))
 
-        self.bot = zmq_context.socket(zmq.PUSH)
-
     # noinspection PyBroadException
     def run(self):
         while True:
@@ -1979,7 +1978,11 @@ if __name__ == "__main__":
             use_reloader=False)
     except(KeyboardInterrupt, RuntimeWarning) as e:
         log.info("Shutting down...")
+        func = request.environ.get('werkzeug.server.shutdown')
+        if func is None:
+            raise RuntimeError('Not running with the Werkzeug Server')
+        func()
+        telegram_updater.stop()
         # bring any threads out of their Pythonic coma
         interruptable_sleep.set()
-        telegram_updater.stop()
         zmq_context.term()
