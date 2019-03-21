@@ -1978,7 +1978,7 @@ if __name__ == "__main__":
             debug=config.get('flask', 'debug').lower() == 'true',
             use_reloader=False)
     except(KeyboardInterrupt, RuntimeWarning) as e:
-        log.info("Performing on-exit cleanup: {}".format(e.message))
+        log.info("Shutting down...")
         # bring any threads out of their Pythonic coma
         interruptable_sleep.set()
         telegram_updater.stop()
