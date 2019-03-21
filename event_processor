@@ -1436,11 +1436,16 @@ class EventProcessor(Thread):
                                         active_device_key=active_device_key,
                                         active_device=active_device)
             except ContextTerminated:
+                log.warning('ZMQ terminate: {}'.format(self.__class__.__name__))
                 self.socket.close()
+                log.warning('ZMQ terminated socket: {}'.format(self.__class__.__name__))
                 for origin_push_socket in list(self._origin_connections.values()):
                     origin_push_socket.close()
+                log.warning('ZMQ terminated origin push sockets: {}'.format(self.__class__.__name__))
                 self.event_log.close()
+                log.warning('ZMQ terminated event log: {}'.format(self.__class__.__name__))
                 self.bot.close()
+                log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
                 break
             except Exception:
                 log.exception(self.__class__.__name__)
@@ -1524,7 +1529,9 @@ class EventLog(Thread):
                     ]
                 )
             except ContextTerminated:
+                log.warning('ZMQ terminate: {}'.format(self.__class__.__name__))
                 self.socket.close()
+                log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
                 break
             except Exception:
                 log.exception(self.__class__.__name__)
@@ -1636,7 +1643,9 @@ class TBot(Thread):
                     else:
                         log.error('No viable method to send notification for event: {}'.format(notification_message))
             except ContextTerminated:
+                log.warning('ZMQ terminate: {}'.format(self.__class__.__name__))
                 self.socket.close()
+                log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
                 break
             except Exception:
                 log.exception(self.__class__.__name__)
@@ -1709,8 +1718,11 @@ class SourceSubscriber(Thread):
                 log.exception('Cannot unpack message from {}.'.format(self._label))
                 continue
             except ContextTerminated:
+                log.warning('ZMQ terminate: {}'.format(self.__class__.__name__))
                 self.subscriber.close()
+                log.warning('ZMQ terminated subscriber: {}'.format(self.__class__.__name__))
                 self.processor.close()
+                log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
                 break
             except ZMQError:
                 log.exception(self.name)
@@ -1758,7 +1770,9 @@ class SQSListener(Thread):
                 log.exception('Cannot unpack message from SQS queue {}.'.format(self._sqs_queue))
                 continue
             except ContextTerminated:
+                log.warning('ZMQ terminate: {}'.format(self.__class__.__name__))
                 self.processor.close()
+                log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
                 break
             except ZMQError:
                 log.exception(self.name)
@@ -1843,7 +1857,9 @@ class OriginNanny(Thread):
                     if len(payload) > 0:
                         self.processor.send_pyobj({origin: {'data': payload}})
             except ContextTerminated:
+                log.warning('ZMQ terminate: {}'.format(self.__class__.__name__))
                 self.processor.close()
+                log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
                 break
             # sleep here unless interrupted
             interruptable_sleep.wait(self._max_heartbeat_delay)
