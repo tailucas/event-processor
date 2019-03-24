@@ -58,6 +58,7 @@ from urllib.parse import urlparse
 from uuid import uuid4
 from flask import Flask, g, flash, request, render_template, url_for, redirect
 from flask_compress import Compress
+from werkzeug.serving import make_server
 from zmq.error import ZMQError, ContextTerminated, Again
 
 
@@ -1907,6 +1908,33 @@ class CallbackUrlDiscovery(Thread):
             sentry.captureException()
 
 
+class FlaskThread(Thread):
+
+    def __init__(self, app):
+        super(FlaskThread, self).__init__(name=self.__class__.__name__)
+        # add Sentry
+        sentry.init_app(app)
+        # start frontend
+        app.secret_key = os.environ['APP_FLASK_SECRET_KEY']
+        app.jinja_env.add_extension('jinja2.ext.loopcontrols')
+        app.jinja_env.filters.update({
+            'is_list': is_list,
+        })
+        #TODO: how to enable debug mode
+        self.srv = make_server(host='0.0.0.0',
+                               port=int(config.get('flask', 'http_port')),
+                               app=app,
+                               threaded=True)
+        self.ctx = app.app_context()
+        self.ctx.push()
+
+    def run(self):
+        self.srv.serve_forever()
+
+    def shutdown(self):
+        self.srv.shutdown()
+
+
 if __name__ == "__main__":
     # DEBUG logging until startup complete
     log.setLevel(logging.DEBUG)
@@ -1971,35 +1999,21 @@ if __name__ == "__main__":
     f = threading.Thread(name='nanny', target=thread_nanny, args=(threads_tracked, signal_handler,))
     f.setDaemon(True)
     f.start()
+    server = FlaskThread(rest_api)
+    server.start()
+    threads_tracked.add(server.getName())
     try:
         # startup completed
         # back to INFO logging
         log.setLevel(logging.INFO)
         # discover callback URL
         CallbackUrlDiscovery().start()
-        # add Sentry
-        sentry.init_app(rest_api)
-        # start frontend
-        rest_api.secret_key = os.environ['APP_FLASK_SECRET_KEY']
-        rest_api.jinja_env.add_extension('jinja2.ext.loopcontrols')
-        rest_api.jinja_env.filters.update({
-            'is_list': is_list,
-        })
-        rest_api.app_context().push()
-        rest_api.run(
-            threaded=True,
-            # listen on all interfaces
-            host='0.0.0.0',
-            port=int(config.get('flask', 'http_port')),
-            debug=config.get('flask', 'debug').lower() == 'true',
-            use_reloader=False)
+        while True:
+            interruptable_sleep.wait(60000)
     except(KeyboardInterrupt, RuntimeWarning) as e:
         log.info("Shutting down...")
-        func = request.environ.get('werkzeug.server.shutdown')
-        if func is None:
-            raise RuntimeError('Not running with the Werkzeug Server')
-        func()
-        telegram_updater.stop()
         # bring any threads out of their Pythonic coma
         interruptable_sleep.set()
+        server.shutdown()
+        telegram_updater.stop()
         zmq_context.term()
