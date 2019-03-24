@@ -1441,6 +1441,7 @@ class EventProcessor(Thread):
                 self.socket.close()
                 log.warning('ZMQ terminated socket: {}'.format(self.__class__.__name__))
                 for origin_push_socket in list(self._origin_connections.values()):
+                    log.warning('ZMQ terminate (origin push socket): {}'.format(origin_push_socket.__class__.__name__))
                     origin_push_socket.close()
                 log.warning('ZMQ terminated origin push sockets: {}'.format(self.__class__.__name__))
                 self.event_log.close()
@@ -1764,6 +1765,8 @@ class SQSListener(Thread):
                         log.exception('Unstructured SQS message: {}'.format(message_body))
                     # Let the queue know that the message is processed
                     sqs_message.delete()
+                # test for shutdown
+                self.processor.poll()
             except gaierror:
                 log.exception()
                 continue
@@ -1857,6 +1860,8 @@ class OriginNanny(Thread):
                     # send out either a stale alert or the heartbeat
                     if len(payload) > 0:
                         self.processor.send_pyobj({origin: {'data': payload}})
+                # test for shutdown
+                self.processor.poll()
             except ContextTerminated:
                 log.warning('ZMQ terminate: {}'.format(self.__class__.__name__))
                 self.processor.close()
@@ -1932,7 +1937,9 @@ class FlaskThread(Thread):
         self.srv.serve_forever()
 
     def shutdown(self):
+        log.warning('Flask server shutting down: {}'.format(self.__class__.__name__))
         self.srv.shutdown()
+        log.warning('Flask server shutdown complete: {}'.format(self.__class__.__name__))
 
 
 if __name__ == "__main__":
@@ -2009,7 +2016,7 @@ if __name__ == "__main__":
         # discover callback URL
         CallbackUrlDiscovery().start()
         while True:
-            interruptable_sleep.wait(60000)
+            interruptable_sleep.wait()
     except(KeyboardInterrupt, RuntimeWarning) as e:
         log.info("Shutting down...")
         # bring any threads out of their Pythonic coma
