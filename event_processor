@@ -1765,8 +1765,8 @@ class SQSListener(Thread):
                         log.exception('Unstructured SQS message: {}'.format(message_body))
                     # Let the queue know that the message is processed
                     sqs_message.delete()
-                # test for shutdown
-                self.processor.poll()
+                # test for ZMQ shutdown
+                self.processor.poll(timeout=0)
             except gaierror:
                 log.exception()
                 continue
@@ -1860,8 +1860,8 @@ class OriginNanny(Thread):
                     # send out either a stale alert or the heartbeat
                     if len(payload) > 0:
                         self.processor.send_pyobj({origin: {'data': payload}})
-                # test for shutdown
-                self.processor.poll()
+                # test for ZMQ shutdown
+                self.processor.poll(timeout=0)
             except ContextTerminated:
                 log.warning('ZMQ terminate: {}'.format(self.__class__.__name__))
                 self.processor.close()
