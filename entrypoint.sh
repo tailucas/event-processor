@@ -82,14 +82,26 @@ curl -X PATCH --header "Content-Type:application/json" \
 echo "$RESIN_DEVICE_NAME_AT_INIT" > /etc/hostname
 echo "127.0.1.1 ${RESIN_DEVICE_NAME_AT_INIT}" >> /etc/hosts
 
-cp /opt/app/config/rsyslog.conf /etc/rsyslog.conf
+# rsyslog server
 if [ -n "${RSYSLOG_SERVER:-}" ]; then
+  cat << EOF > /etc/rsyslog.d/custom.conf
+\$PreserveFQDN on
+\$ActionQueueFileName queue
+\$ActionQueueMaxDiskSpace 1g
+\$ActionQueueSaveOnShutdown on
+\$ActionQueueType LinkedList
+\$ActionResumeRetryCount -1
+*.* @${RSYSLOG_SERVER}${RSYSLOG_TEMPLATE:-}
+EOF
+fi
+# logentries
+if [ -n "${RSYSLOG_LOGENTRIES:-}" ]; then
   set +x
-  if [ -n "${RSYSLOG_TOKEN:-}" ] && ! grep -q "$RSYSLOG_TOKEN" /etc/rsyslog.d/custom.conf; then
-    echo "\$template LogentriesFormat,\"${RSYSLOG_TOKEN} %HOSTNAME% %syslogtag%%msg%\n\"" >> /etc/rsyslog.d/custom.conf
+  if [ -n "${RSYSLOG_LOGENTRIES_TOKEN:-}" ] && ! grep -q "$RSYSLOG_LOGENTRIES_TOKEN" /etc/rsyslog.d/logentries.conf; then
+    echo "\$template LogentriesFormat,\"${RSYSLOG_LOGENTRIES_TOKEN} %HOSTNAME% %syslogtag%%msg%\n\"" >> /etc/rsyslog.d/logentries.conf
     RSYSLOG_TEMPLATE=";LogentriesFormat"
   fi
-  echo "*.*          @@${RSYSLOG_SERVER}${RSYSLOG_TEMPLATE:-}" >> /etc/rsyslog.d/custom.conf
+  echo "*.*          @@${RSYSLOG_LOGENTRIES_SERVER}${RSYSLOG_TEMPLATE:-}" >> /etc/rsyslog.d/logentries.conf
   set -x
 fi
 # bounce rsyslog for the new data
