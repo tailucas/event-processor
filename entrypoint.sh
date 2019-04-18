@@ -82,7 +82,7 @@ curl -X PATCH --header "Content-Type:application/json" \
 echo "$RESIN_DEVICE_NAME_AT_INIT" > /etc/hostname
 echo "127.0.1.1 ${RESIN_DEVICE_NAME_AT_INIT}" >> /etc/hosts
 
-# rsyslog server
+# rsyslog
 if [ -n "${RSYSLOG_SERVER:-}" ]; then
   cat << EOF > /etc/rsyslog.d/custom.conf
 \$PreserveFQDN on
@@ -105,7 +105,9 @@ if [ -n "${RSYSLOG_LOGENTRIES:-}" ]; then
   set -x
 fi
 # bounce rsyslog for the new data
-service rsyslog restart
+if find /etc/rsyslog.d/ -mindepth 1 -print -quit 2>/dev/null | grep -q .; then
+  service rsyslog restart
+fi
 
 # log archival (no tee for secrets)
 if [ -d /var/awslogs/etc/ ]; then
