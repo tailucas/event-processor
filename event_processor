@@ -2019,8 +2019,8 @@ if __name__ == "__main__":
             interruptable_sleep.wait()
     except(KeyboardInterrupt, RuntimeWarning) as e:
         log.info("Shutting down...")
-        # bring any threads out of their Pythonic coma
-        interruptable_sleep.set()
         server.shutdown()
         telegram_updater.stop()
+        # bring any threads out of their Pythonic coma
+        interruptable_sleep.set()
         zmq_context.term()
