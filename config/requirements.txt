@@ -17,4 +17,3 @@ simplejson
 u-msgpack-python
 Flask
 Flask-Compress
-Flask-CORS
