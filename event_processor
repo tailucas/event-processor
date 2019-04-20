@@ -305,71 +305,12 @@ def index():
 def cloudwatch_widget():
     widget = request.args.get('widget')
     response = event_processor.metrics.get_metric_widget_image(MetricWidget=b64decode(widget).decode('utf-8'))
-    log.info('CloudWatch widget fetched {} bytes.'.format(len(response['MetricWidgetImage'])))
     return send_file(BytesIO(response['MetricWidgetImage']), mimetype='image/png', as_attachment=False)
 
 
 @rest_api.route('/metrics', methods=['GET', 'POST'])
 def show_metrics():
-    meter_history_day = []
-    meter_history_week = []
-    meter_history_month = []
-    meter_history_year = []
-    device_key = request.args.get('meter')
-    device_config = event_processor.input_config[device_key]
-    if device_config['type'] != 'meter':
-        flash('{} is not a meter.'.format(device_key), category='danger')
-        return redirect(url_for('index'))
-    metric_namespace = 'automation'
-    # TODO: get all meter metrics by dimension
-    metric_name = device_config['device_label'] + ' Metered'
-    end_time = make_timestamp()
-    for stat_period, stat_interval, time_delta in [
-        (60, meter_history_day, timedelta(days=1)),
-        (3600, meter_history_week, timedelta(days=7)),
-        (86400, meter_history_month, timedelta(days=31)),
-        (604800, meter_history_year, timedelta(days=365))
-    ]:
-        meter_stats = event_processor.metrics.get_metric_statistics(
-            Namespace=metric_namespace,
-            MetricName=metric_name,
-            Dimensions=[
-                {
-                    'Name': 'device_type',
-                    'Value': device_config['type']
-                },
-            ],
-            StartTime=end_time - time_delta,
-            EndTime=end_time,
-            Period=stat_period,
-            Statistics=['Sum'])['Datapoints']
-        log.info('Meter stats for {}::{} for period {}: {}'.format(
-            metric_namespace,
-            metric_name,
-            stat_period,
-            len(meter_stats)))
-        for meter_stat in meter_stats:
-            meter_reading_unit_factor = 1
-            if 'meter_reading_unit_factor' in device_config:
-                meter_reading_unit_factor = device_config['meter_reading_unit_factor']
-            stat_interval.append((
-                make_timestamp(meter_stat['Timestamp']).astimezone(tz=tz.tzlocal()).isoformat(),
-                meter_stat['Sum'] / float(meter_reading_unit_factor)
-            ))
-    unit_name = 'Units'
-    if 'meter_reading_unit' in device_config:
-        unit_name = device_config['meter_reading_unit']
-    return render_template('metrics.html',
-                           metric_title=device_config['device_label'],
-                           metric_legend=unit_name,
-                           meter_history_day=sorted(meter_history_day),
-                           meter_history_day_title='1-minute sum',
-                           meter_history_week=sorted(meter_history_week),
-                           meter_history_week_title='1-hour sum',
-                           meter_history_month=sorted(meter_history_month),
-                           meter_history_month_title='24-hour sum',
-                           meter_history_year=sorted(meter_history_year),
-                           meter_history_year_title='1-week sum')
+    return render_template('metrics.html')
 
 
 @rest_api.route('/event_log', methods=['GET', 'POST'])

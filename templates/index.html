@@ -12,7 +12,6 @@
         {% if 'meter_iot_topic' in input_device %}
         <button type="button" data-bb="prompt" data-prompt-val="{{ input_device['meter_reset_value'] }}" class="btn btn-warning" name="meter_reset" value="{{ input_device_key }}">Reset <span class="glyphicon glyphicon-scale"></span></button>
         {% endif %}
-      <button type="submit" class="btn btn-success" name="meter_history" value="{{ input_device_key }}">Stats <span class="glyphicon glyphicon-stats"></span></button>
       {% endif %}
     </form>
     {% for grouped_input_label in input_labels[input_device_key]|sort %}
