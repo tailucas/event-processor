@@ -305,6 +305,7 @@ def index():
 def cloudwatch_widget():
     widget = request.args.get('widget')
     response = event_processor.metrics.get_metric_widget_image(MetricWidget=b64decode(widget))
+    log.info('CloudWatch widget fetched {} bytes.'.format(len(response['MetricWidgetImage'])))
     return send_file(BytesIO(response['MetricWidgetImage']), mimetype='image/png', as_attachment=False)
 
 
