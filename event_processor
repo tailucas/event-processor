@@ -59,6 +59,7 @@ from urllib.parse import urlparse
 from uuid import uuid4
 from flask import Flask, g, flash, request, render_template, url_for, redirect, send_file
 from flask_compress import Compress
+from flask_cors import cross_origin
 from werkzeug.serving import make_server
 from zmq.error import ZMQError, ContextTerminated, Again
 
@@ -302,6 +303,7 @@ def index():
 
 
 @rest_api.route('/api/cloudwatch-widget')
+@cross_origin(origin='localhost')
 def cloudwatch_widget():
     widget = request.args.get('widget')
     response = event_processor.metrics.get_metric_widget_image(MetricWidget=b64decode(widget).decode('utf-8'))
