@@ -19,6 +19,7 @@ import zmq
 
 from AWSIoTPythonSDK.MQTTLib import AWSIoTMQTTClient
 
+from base64 import b64decode
 from boto3.dynamodb.conditions import Attr
 from bs4 import BeautifulSoup
 from configparser import ConfigParser
@@ -56,7 +57,7 @@ from time import sleep
 from umsgpack import UnpackException
 from urllib.parse import urlparse
 from uuid import uuid4
-from flask import Flask, g, flash, request, render_template, url_for, redirect
+from flask import Flask, g, flash, request, render_template, url_for, redirect, send_file
 from flask_compress import Compress
 from werkzeug.serving import make_server
 from zmq.error import ZMQError, ContextTerminated, Again
@@ -298,6 +299,13 @@ def index():
                            awol_inputs=awol_inputs,
                            awol_input_labels=awol_input_labels,
                            meter_history=meter_history)
+
+
+@rest_api.route('/api/cloudwatch-widget')
+def cloudwatch_widget():
+    widget = request.args.get('widget')
+    response = event_processor.metrics.get_metric_widget_image(MetricWidget=b64decode(widget))
+    return send_file(BytesIO(response['MetricWidgetImage']), mimetype='image/png', as_attachment=False)
 
 
 @rest_api.route('/metrics', methods=['GET', 'POST'])
