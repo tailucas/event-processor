@@ -246,6 +246,12 @@ def index():
             event_processor.iot.connect()
             event_processor.iot.publish(config.get('iot', 'topic_pub_meter'), json.dumps(iot_message), 0)
             event_processor.iot.disconnect()
+            event_processor.flash_info = False
+            event_processor.input_config = (
+                device_key,
+                {'meter_value': reset_value}
+            )
+            event_processor.flash_info = True
         elif 'meter_history' in request.form:
             scheme = None
             if 'X-Forwarded-Proto' in request.headers:
