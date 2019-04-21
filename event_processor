@@ -1000,7 +1000,6 @@ class EventProcessor(Thread):
     def _load_config_table(self, table_name, primary_key='device_key'):
         log.info("Loading Dynamo table '{}'...".format(table_name))
         member_table = self._ddb_storage.Table(table_name)
-        log.info("Reading table '{}'...".format(table_name))
         member = {}
         scan_response = member_table.scan()
         for result in scan_response['Items']:
@@ -1013,6 +1012,7 @@ class EventProcessor(Thread):
                     member_config.update([(key, value)])
             if device_key and len(member_config) > 0:
                 member[device_key] = member_config
+        log.info("Loaded {} items from table '{}'".format(len(scan_response['Items']), table_name))
         return member, member_table
 
     def add_event_origin(self, origin, ip):
