@@ -1822,8 +1822,9 @@ class OriginNanny(Thread):
                 self.processor.close()
                 log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
                 break
-            # sleep here unless interrupted
-            interruptable_sleep.wait(self._max_heartbeat_delay)
+            # sleep here unless interrupted, ensuring that we still get every heartbeat sent
+            # at intervals less than max_heartbeat_delay_seconds
+            interruptable_sleep.wait(self._max_heartbeat_delay / 2)
 
 
 class CallbackUrlDiscovery(Thread):
