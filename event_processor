@@ -20,6 +20,7 @@ import zmq
 from AWSIoTPythonSDK.MQTTLib import AWSIoTMQTTClient
 
 from base64 import b64decode, b64encode
+from botocore.exceptions import ConnectionError
 from boto3.dynamodb.conditions import Attr
 from bs4 import BeautifulSoup
 from configparser import ConfigParser
@@ -1722,8 +1723,9 @@ class SQSListener(Thread):
                     sqs_message.delete()
                 # test for ZMQ shutdown
                 self.processor.poll(timeout=0)
-            except gaierror:
+            except (gaierror, ConnectionError):
                 log.exception()
+                sleep(1)
                 continue
             except UnpackException:
                 log.exception('Cannot unpack message from SQS queue {}.'.format(self._sqs_queue))
