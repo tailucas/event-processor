@@ -1810,7 +1810,7 @@ class OriginNanny(Thread):
                             payload['device_status'] = device_status
                     # do this for each device irrespective of stale or not
                     if heartbeat_age:
-                        self._heartbeats.add(heartbeat_age)
+                        self._heartbeats.append(heartbeat_age)
                 # send out either a stale alert or the heartbeat
                 now = make_timestamp()
                 if now - last_report > timedelta(seconds=self._heartbeat_report_interval):
@@ -1818,6 +1818,7 @@ class OriginNanny(Thread):
                     if len(payload) > 0 or len(self._heartbeats) > 0:
                         # add in the maximum heartbeat observed
                         if len(self._heartbeats) > 0:
+                            log.debug("Aggregating {} heartbeats captured.".format(len(self._heartbeats)))
                             max_heartbeat = 0
                             for heartbeat in self._heartbeats:
                                 if heartbeat > max_heartbeat:
