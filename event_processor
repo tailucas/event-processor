@@ -242,6 +242,7 @@ def index():
             else:
                 iot_message = {'set_register': reset_value}
             # update the in memory model
+            #TODO: correctly update 'meter_reading'
             device_listing[device_key]['meter_value'] = reset_value
             # send IoT message
             event_processor.iot.connect()
