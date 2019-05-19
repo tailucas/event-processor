@@ -1642,21 +1642,19 @@ class SourceSubscriber(Thread):
                 zmq_events = self.subscriber.poll(timeout=self._zmq_poll_period * 1000)
                 # TODO: remove nanny
                 if zmq_events == 0:
-                    # if a single message has been received ever
-                    if self.last_message:
-                        log.info('{} reconnecting to {} after more than {} seconds of inactivity...'.format(
-                            self.name,
-                            self._publisher_endpoint,
-                            self._zmq_poll_period))
-                        try:
-                            self.subscriber.close()
-                        except ZMQError:
-                            log.exception(self.name)
-                        self.subscriber = zmq_context.socket(zmq.SUB)
-                        self.subscriber.connect(self._publisher_endpoint)
-                        self.subscriber.setsockopt(zmq.SUBSCRIBE, b'')
-                        self._reconnected = True
-                    # nothing to do otherwise
+                    log.info('{} reconnecting to {} after more than {} seconds of inactivity...'.format(
+                        self.name,
+                        self._publisher_endpoint,
+                        self._zmq_poll_period))
+                    try:
+                        self.subscriber.close()
+                    except ZMQError:
+                        log.exception(self.name)
+                    self.subscriber = zmq_context.socket(zmq.SUB)
+                    self.subscriber.connect(self._publisher_endpoint)
+                    self.subscriber.setsockopt(zmq.SUBSCRIBE, b'')
+                    self._reconnected = True
+                    # poll again
                     continue
                 try:
                     publisher_event = umsgpack.unpackb(
@@ -1938,6 +1936,7 @@ if __name__ == "__main__":
     event_log.start()
     threads_tracked.add(event_log.getName())
     event_processor.start()
+    threads_tracked.add(origin_nanny.getName())
     origin_nanny.start()
     threads_tracked.add(event_processor.getName())
     sqs_listener.start()
