@@ -1234,7 +1234,7 @@ class EventProcessor(Thread):
                                             'Dimensions': [
                                                 {
                                                     'Name': 'Device',
-                                                    'Value': event_origin
+                                                    'Value': config.get('app', 'device_name')
                                                 },
                                             ],
                                             'Timestamp': timestamp,
@@ -1752,11 +1752,14 @@ class OriginNanny(Thread):
         self.processor = zmq_context.socket(zmq.PUSH)
 
         self.origin_subscriber = {}
+        self._heartbeat_sample_interval = int(config.get('app', 'heartbeat_sample_interval_seconds'))
+        self._heartbeat_report_interval = int(config.get('app', 'heartbeat_report_interval_seconds'))
         self._max_heartbeat_delay = int(config.get('app', 'max_heartbeat_delay_seconds'))
         # set the Resin.io API key as expected by the resin-python-sdk
         # Note that the stored RESIN_API_KEY could be overridden in config via entrypoint.sh
         # configuration interpolation to favour key generated for this application.
         os.environ['RESIN_API_KEY'] = config.get('resin', 'api_key')
+        self._heartbeats = []
 
     # noinspection PyShadowingNames
     def add_origin_subscriber(self, origin, ip, subscriber):
@@ -1764,13 +1767,14 @@ class OriginNanny(Thread):
 
     def run(self):
         self.processor.connect(URL_WORKER_EVENT_PROCESSOR)
+        last_report = make_timestamp()
         # warm-up to wait for first volley of heartbeats
-        interruptable_sleep.wait(self._max_heartbeat_delay)
+        interruptable_sleep.wait(self._heartbeat_sample_interval)
         while True:
             try:
+                payload = {}
                 resin_device = Device()
                 for origin, (ip, origin_subscriber) in list(self.origin_subscriber.items()):
-                    payload = {}
                     # when last was an event seen by this subscriber
                     last_message = origin_subscriber.last_message
                     heartbeat_age = None
@@ -1811,9 +1815,20 @@ class OriginNanny(Thread):
                             payload['device_status'] = device_status
                     # do this for each device irrespective of stale or not
                     if heartbeat_age:
-                        payload['heartbeat_age'] = heartbeat_age
-                    # send out either a stale alert or the heartbeat
-                    if len(payload) > 0:
+                        self._heartbeats.add(heartbeat_age)
+                # send out either a stale alert or the heartbeat
+                now = make_timestamp()
+                if now - last_report > timedelta(seconds=self._heartbeat_report_interval):
+                    last_report = now
+                    if len(payload) > 0 or len(self._heartbeats) > 0:
+                        # add in the maximum heartbeat observed
+                        if len(self._heartbeats) > 0:
+                            max_heartbeat = 0
+                            for heartbeat in self._heartbeats:
+                                if heartbeat > max_heartbeat:
+                                    max_heartbeat = heartbeat
+                            self._heartbeats.clear()
+                            payload['heartbeat_age'] = heartbeat_age
                         self.processor.send_pyobj({origin: {'data': payload}})
                 # test for ZMQ shutdown
                 self.processor.poll(timeout=0)
@@ -1822,9 +1837,7 @@ class OriginNanny(Thread):
                 self.processor.close()
                 log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
                 break
-            # sleep here unless interrupted, ensuring that we still get every heartbeat sent
-            # at intervals less than max_heartbeat_delay_seconds
-            interruptable_sleep.wait(self._max_heartbeat_delay / 2)
+            interruptable_sleep.wait(self._heartbeat_sample_interval)
 
 
 class CallbackUrlDiscovery(Thread):
