@@ -1193,6 +1193,9 @@ class EventProcessor(Thread):
                                 device_status = "unknown"
                                 if 'device_status' in event_data['data']:
                                     device_status = event_data['data']['device_status']
+                                device_last_seen = "unknown"
+                                if 'device_last_seen' in event_data['data']:
+                                    device_last_seen = event_data['data']['device_last_seen']
                                 # check if there are any inputs or outputs configured for this origin
                                 for devices, origin_devices, awol_devices in [
                                     (self.inputs, self._inputs_by_origin, self._awol_inputs),
@@ -1210,15 +1213,18 @@ class EventProcessor(Thread):
                                                 new_awol += 1
                                     if new_awol > 0:
                                         log.warning(
-                                            "{} devices are unavailable because '{}' has gone AWOL "
-                                            "({} devices on {}).".format(
+                                            "{} devices are unavailable because '{}' has gone AWOL. "
+                                            "{} devices: {}. Last seen: {}, status: {}, last online: {}".format(
                                                 len(awol_devices),
                                                 event_origin,
                                                 new_awol,
-                                                event_origin
+                                                str(awol_devices),
+                                                stale_heartbeat,
+                                                device_status,
+                                                device_last_seen
                                             ))
-                            if 'heartbeat_age' in event_data['data']:
-                                heartbeat_age = int(event_data['data']['heartbeat_age'])
+                            if 'max_heartbeat_age' in event_data['data']:
+                                heartbeat_age = int(event_data['data']['max_heartbeat_age'])
                                 # show this as a metric
                                 self.metrics.put_metric_data(
                                     Namespace=self.metric_namespace,
@@ -1754,7 +1760,7 @@ class OriginNanny(Thread):
         # Note that the stored RESIN_API_KEY could be overridden in config via entrypoint.sh
         # configuration interpolation to favour key generated for this application.
         os.environ['RESIN_API_KEY'] = config.get('resin', 'api_key')
-        self._heartbeats = []
+        self._heartbeats = {}
 
     # noinspection PyShadowingNames
     def add_origin_subscriber(self, origin, ip, subscriber):
@@ -1762,14 +1768,24 @@ class OriginNanny(Thread):
 
     def run(self):
         self.processor.connect(URL_WORKER_EVENT_PROCESSOR)
-        last_report = make_timestamp()
         # warm-up to wait for first volley of heartbeats
         interruptable_sleep.wait(self._heartbeat_sample_interval)
+        last_report = make_timestamp()
+        heartbeat_due = False
+        max_heartbeat = -1
         while True:
             try:
+                # send out either a stale alert or the heartbeat
+                now = make_timestamp()
+                if now - last_report > timedelta(seconds=self._heartbeat_report_interval):
+                    last_report = now
+                    heartbeat_due = True
+                    max_heartbeat = -1
                 payload = {}
                 resin_device = Device()
                 for origin, (ip, origin_subscriber) in list(self.origin_subscriber.items()):
+                    if origin not in self._heartbeats:
+                        self._heartbeats[origin] = []
                     # when last was an event seen by this subscriber
                     last_message = origin_subscriber.last_message
                     heartbeat_age = None
@@ -1808,24 +1824,38 @@ class OriginNanny(Thread):
                         payload['stale_heartbeat'] = last_message
                         if device_status:
                             payload['device_status'] = device_status
+                        if device_last_seen:
+                            payload['device_last_seen'] = device_last_seen
                     # do this for each device irrespective of stale or not
+                    origin_heartbeat = self._heartbeats[origin]
                     if heartbeat_age:
-                        self._heartbeats.append(heartbeat_age)
-                # send out either a stale alert or the heartbeat
-                now = make_timestamp()
-                if now - last_report > timedelta(seconds=self._heartbeat_report_interval):
-                    last_report = now
-                    if len(payload) > 0 or len(self._heartbeats) > 0:
-                        # add in the maximum heartbeat observed
-                        if len(self._heartbeats) > 0:
-                            log.debug("Aggregating {} heartbeats captured.".format(len(self._heartbeats)))
-                            max_heartbeat = 0
-                            for heartbeat in self._heartbeats:
-                                if heartbeat > max_heartbeat:
-                                    max_heartbeat = heartbeat
-                            self._heartbeats.clear()
-                            payload['heartbeat_age'] = heartbeat_age
-                        self.processor.send_pyobj({origin: {'data': payload}})
+                        origin_heartbeat.append(heartbeat_age)
+                    # send out either a stale alert or the heartbeat
+                    if heartbeat_due:
+                        if len(payload) > 0 or len(origin_heartbeat) > 0:
+                            # add in the maximum heartbeat observed
+                            if len(origin_heartbeat) > 0:
+                                log.debug("Aggregating {} heartbeats captured from {}.".format(len(origin_heartbeat), origin))
+                                device_max_heartbeat = 0
+                                for heartbeat in origin_heartbeat:
+                                    if heartbeat > max_heartbeat:
+                                        max_heartbeat = heartbeat
+                                    if heartbeat > device_max_heartbeat:
+                                        device_max_heartbeat = heartbeat
+                                origin_heartbeat.clear()
+                                payload['heartbeat_age'] = device_max_heartbeat
+                                self.processor.send_pyobj({origin: {'data': payload}})
+                # send the maximum heartbeat
+                if heartbeat_due and max_heartbeat >= 0:
+                    self.processor.send_pyobj({
+                        config.get('app', 'device_name'): {
+                            'data': {
+                                'max_heartbeat_age': max_heartbeat
+                            }
+                        }
+                    })
+                    heartbeat_due = False
+                    max_heartbeat = -1
                 # test for ZMQ shutdown
                 self.processor.poll(timeout=0)
             except ContextTerminated:
