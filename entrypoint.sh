@@ -56,6 +56,10 @@ fi
 
 set -x
 
+# attempt to remove these kernel modules
+for module in "${REMOVE_KERNEL_MODULES:-}" do
+  rmmod $module || true
+done
 
 # Run user
 export APP_USER="${APP_USER:-app}"
