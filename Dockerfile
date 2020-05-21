@@ -81,7 +81,8 @@ net.ipv6.conf.all.disable_ipv6 = 1' >> /etc/sysctl.conf
 
 # AWS IoT root CA
 # https://github.com/aws/aws-iot-device-sdk-python
-RUN wget -nv -O /opt/app/iot_ca.pem https://www.symantec.com/content/en/us/enterprise/verisign/roots/VeriSign-Class%203-Public-Primary-Certification-Authority-G5.pem
+# https://docs.aws.amazon.com/iot/latest/developerguide/server-authentication.html
+RUN wget -nv -O /opt/app/iot_ca.pem https://www.amazontrust.com/repository/AmazonRootCA1.pem
 
 STOPSIGNAL 37
 # ssh, http, zmq, ngrok
