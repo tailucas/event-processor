@@ -39,7 +39,7 @@ from simplejson.scanner import JSONDecodeError
 from socket import gaierror
 from telegram import Bot as TelegramBot, \
     InlineQueryResultArticle, InputTextMessageContent, \
-    ParseMode
+    ParseMode, Update
 from telegram.error import TelegramError, \
     Unauthorized, \
     BadRequest, \
@@ -50,7 +50,8 @@ from telegram.ext import Updater as TelegramUpdater, \
     CommandHandler as TelegramCommandHandler, \
     MessageHandler as TelegramMessageHandler, \
     Filters as TelegramFilters, \
-    InlineQueryHandler as TelegramInlineHandler
+    InlineQueryHandler as TelegramInlineHandler, \
+    CallbackContext as TelegramCallbackContext
 from telegram.utils.helpers import escape_markdown
 from telegram.utils.request import TimedOut
 from threading import Thread
@@ -476,21 +477,21 @@ def output_config():
                            last_saved_device_key=device_key)
 
 
-def telegram_bot_echo(bot, update):
+def telegram_bot_echo(update: Update, context: TelegramCallbackContext):
     try:
         authorized_users = config.get('telegram', 'authorized_users').split(',')
         if str(update.effective_user.id) not in authorized_users:
             log.warning('Unauthorized message {}'.format(str(update)))
             return
 
-        log.info('Telegram Bot {} got message {} (chat ID: {}).'.format(bot.username,
+        log.info('Telegram Bot {} got message {} (chat ID: {}).'.format(context.bot.username,
                                                                         update.effective_message.text,
                                                                         update.effective_message.chat_id))
 
-        group_info = bot.get_chat(chat_id=config.getint('telegram', 'chat_room_id'))
+        group_info = context.bot.get_chat(chat_id=config.getint('telegram', 'chat_room_id'))
         bot_response = "I am in the [{}]({}) group.".format(group_info.title, group_info.invite_link)
         dashboard_link = '[Dashboard]({})'.format(ngrok_tunnel_url)
-        bot.send_message(chat_id=update.effective_message.chat_id,
+        context.bot.send_message(chat_id=update.effective_message.chat_id,
                          text=bot_response + "\n" + dashboard_link,
                          parse_mode='Markdown')
     except Exception:
@@ -498,20 +499,20 @@ def telegram_bot_echo(bot, update):
         sentry.captureException()
 
 
-def telegram_bot_cmd(bot, update, args):
+def telegram_bot_cmd(update: Update, context: TelegramCallbackContext):
     try:
         authorized_users = config.get('telegram', 'authorized_users').split(',')
         if str(update.effective_user.id) not in authorized_users:
             log.warning('Unauthorized message {}'.format(str(update)))
             return
 
-        log.info('Telegram Bot {} got command {} with args {} (chat ID: {}).'.format(bot.username,
+        log.info('Telegram Bot {} got command {} with args {} (chat ID: {}).'.format(context.bot.username,
                                                                                      update.effective_message.text,
-                                                                                     str(args),
+                                                                                     str(context.args),
                                                                                      update.effective_message.chat_id))
-        bot.send_message(chat_id=update.effective_message.chat_id,
-                         text='[Dashboard]({})'.format(ngrok_tunnel_url_with_bauth),
-                         parse_mode='Markdown')
+        context.bot.send_message(chat_id=update.effective_message.chat_id,
+                        text='[Dashboard]({})'.format(ngrok_tunnel_url_with_bauth),
+                        parse_mode='Markdown')
         # status update
         if update.effective_message.text.startswith('/report'):
             processor = zmq_context.socket(zmq.PUSH)
@@ -535,14 +536,14 @@ def telegram_bot_cmd(bot, update, args):
         sentry.captureException()
 
 
-def telegram_bot_inline(bot, update):
+def telegram_bot_inline(update: Update, context: TelegramCallbackContext):
     try:
         authorized_users = config.get('telegram', 'authorized_users').split(',')
         if str(update.inline_query.from_user.id) not in authorized_users:
             log.warning('Unauthorized message {}'.format(str(update)))
             return
 
-        log.info('Telegram Bot {} got inline query {} from {} {} (location: {}).'.format(bot.username,
+        log.info('Telegram Bot {} got inline query {} from {} {} (location: {}).'.format(context.bot.username,
                                                                                          update.inline_query.query,
                                                                                          update.inline_query.from_user.first_name,
                                                                                          update.inline_query.from_user.last_name,
@@ -576,13 +577,13 @@ def telegram_bot_inline(bot, update):
         sentry.captureException()
 
 
-def telegram_error_handler(bot, update, error):
+def telegram_error_handler(update: Update, context: TelegramCallbackContext):
     try:
-        raise error
+        raise context.error
     except NetworkError as e:
-        log.warning('Problem with {} network {}: {}'.format(bot, update, e.message))
+        log.warning('Problem with {} network {}: {}'.format(context.bot, update, e.message))
     except TelegramError as e:
-        log.warning('Problem with {} processing {}: {}'.format(bot, update, e.message))
+        log.warning('Problem with {} processing {}: {}'.format(context.bot, update, e.message))
     except Exception:
         log.exception('bot')
         sentry.captureException()
@@ -1985,7 +1986,7 @@ if __name__ == "__main__":
     # set up signal handlers
     signal_handler = SignalHandler()
     # start Telegram integration
-    telegram_updater = TelegramUpdater(token=config.get('telegram', 'bot_api_token'))
+    telegram_updater = TelegramUpdater(token=config.get('telegram', 'bot_api_token'), use_context=True)
     telegram_dispatcher = telegram_updater.dispatcher
     telegram_dispatcher.add_handler(TelegramMessageHandler(TelegramFilters.text,
                                                            telegram_bot_echo))
