@@ -1988,8 +1988,6 @@ if __name__ == "__main__":
     # start Telegram integration
     telegram_updater = TelegramUpdater(token=config.get('telegram', 'bot_api_token'), use_context=True)
     telegram_dispatcher = telegram_updater.dispatcher
-    telegram_dispatcher.add_handler(TelegramMessageHandler(TelegramFilters.text,
-                                                           telegram_bot_echo))
     telegram_dispatcher.add_handler(TelegramCommandHandler('start',
                                                            telegram_bot_cmd,
                                                            pass_args=True))
@@ -1997,6 +1995,8 @@ if __name__ == "__main__":
                                                            telegram_bot_cmd,
                                                            pass_args=True))
     telegram_dispatcher.add_handler(TelegramInlineHandler(telegram_bot_inline))
+    telegram_dispatcher.add_handler(TelegramMessageHandler(TelegramFilters.text,
+                                                            telegram_bot_echo))
     telegram_dispatcher.add_error_handler(telegram_error_handler)
     telegram_updater.start_polling()
     # start threads
