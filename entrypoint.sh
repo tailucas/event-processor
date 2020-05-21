@@ -57,7 +57,7 @@ fi
 set -x
 
 # attempt to remove these kernel modules
-for module in "${REMOVE_KERNEL_MODULES:-}" do
+for module in "${REMOVE_KERNEL_MODULES:-}"; do
   rmmod $module || true
 done
 
