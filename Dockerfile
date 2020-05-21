@@ -5,33 +5,15 @@ ENV container docker
 MAINTAINER db2inst1 <db2inst1@webafrica.org.za>
 LABEL Description="event_processor" Vendor="db2inst1" Version="1.0"
 
-# http://unix.stackexchange.com/questions/339132/reinstall-man-pages-fix-man
-RUN rm -f /etc/dpkg/dpkg.cfg.d/01_nodoc /etc/dpkg/dpkg.cfg.d/docker
 RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommends \
-    alsa-utils \
-    apt-utils \
     ca-certificates \
     cron \
-    cpp \
-    curl \
     dbus \
-    g++ \
-    gcc \
-    git \
     html-xml-utils \
     htop \
-    ifupdown \
-    less \
     lsof \
-    libffi-dev \
-    libssl-dev \
-    libzmq3-dev \
-    man-db \
-    manpages \
-    net-tools \
     openssh-server \
-    openssl \
-    psmisc \
+    python3-certifi \
     python3-dbus \
     python3 \
     python3-dev \
@@ -39,16 +21,15 @@ RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommend
     python3-setuptools \
     python3-venv \
     rsyslog \
-    ssl-cert \
     strace \
     systemd \
     tree \
     unzip \
     vim \
-    wavemon \
     wget \
     && pip3 install \
-        tzupdate
+        tzupdate \
+    && rm -rf /var/lib/apt/lists/*
 
 # python3 default
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 1
