@@ -131,12 +131,6 @@ done
 cat /opt/app/config/app.conf | /opt/app/config_interpol > "/opt/app/${APP_NAME}.conf"
 unset ETH0_IP
 
-# remove unnecessary kernel drivers
-rmmod w1_gpio||true
-if [ -n "${NO_WLAN:-}" ]; then
-  rmmod brcmfmac brcmutil||true
-fi
-
 # Load app environment, overriding HOME and USER
 # https://www.freedesktop.org/software/systemd/man/systemd.exec.html
 cat /etc/docker.env | egrep -v "^HOME|^USER" > /opt/app/environment.env
