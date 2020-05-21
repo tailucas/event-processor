@@ -141,6 +141,7 @@ echo "USER=${APP_USER}" >> /opt/app/environment.env
 
 # so app user can make the noise
 adduser "${APP_USER}" audio
+chown "${APP_USER}:${APP_GROUP}" /opt/app/*
 # non-volatile storage
 chown -R "${APP_USER}:${APP_GROUP}" /data/
 # logging
