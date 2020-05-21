@@ -2,7 +2,7 @@
 set -e
 set -o pipefail
 
-pyvenv --system-site-packages /opt/app/
+python -m venv --system-site-packages /opt/app/
 . /opt/app/bin/activate
 # work around wheel stupidity
 pip3 install wheel
