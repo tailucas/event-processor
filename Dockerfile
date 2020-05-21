@@ -72,7 +72,8 @@ RUN systemctl mask \
     systemd-logind.service \
     systemd-remount-fs.service \
     getty.target \
-    graphical.target
+    graphical.target \
+    kmod-static-nodes.service
 
 # no ipv6
 RUN echo '\n\

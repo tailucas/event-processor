@@ -162,4 +162,4 @@ for systemdsvc in app ngrok; do
 done
 
 # replace this entrypoint with systemd init scope
-exec env DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket /lib/systemd/systemd quiet systemd.show_status=0
+exec env DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket SYSTEMD_LOG_LEVEL=info /sbin/init quiet systemd.show_status=0
