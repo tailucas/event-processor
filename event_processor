@@ -64,6 +64,19 @@ from flask_compress import Compress
 from werkzeug.serving import make_server
 from zmq.error import ZMQError, ContextTerminated, Again
 
+import botocore
+import os.path
+from botoflow import activity, \
+    activities, \
+    execute, \
+    return_, \
+    workflow_starter, \
+    WorkflowDefinition, \
+    ThreadedWorkflowExecutor, \
+    ThreadedActivityExecutor
+from botoflow.workers.workflow_worker import WorkflowWorker
+from botoflow.workers.activity_worker import ActivityWorker
+from botoflow.constants import MINUTES
 
 APP = os.path.basename(__file__)
 if sys.stdout.isatty() and os.system('systemctl status app') == 0:
@@ -152,6 +165,31 @@ def make_payload(timestamp=None, data=None):
         payload['data'] = data
     log.debug(json.dumps(payload))
     return umsgpack.packb(payload)
+
+
+@activities(schedule_to_start_timeout=1*MINUTES,
+            start_to_close_timeout=1*MINUTES)
+class HelloWorldActivities(object):
+
+    @activity('1.0')
+    def get_name(self):
+        return APP
+
+    @activity('1.0')
+    def print_greeting(self, name):
+        message = "Hello {}!".format(name)
+        log.info(message)
+        return message
+
+
+class HelloWorldWorkflow(WorkflowDefinition):
+
+    @execute(version='1.0', execution_start_to_close_timeout=1*MINUTES)
+    def hello_world(self):
+        name = yield HelloWorldActivities.get_name()
+        response = yield HelloWorldActivities.print_greeting(name)
+        return_(response)
+
 
 
 @rest_api.route('/logging')
@@ -1950,7 +1988,31 @@ if __name__ == "__main__":
         stream_handler = logging.StreamHandler(stream=sys.stdout)
         stream_handler.setFormatter(formatter)
         log.addHandler(stream_handler)
+    # track all threads
     threads_tracked = set()
+    # connect to SWF
+    boto_session = botocore.session.Session(profile=config.get('botoflow', 'profile'))
+    swf_region = config.get('botoflow', 'region')
+    swf_domain = config.get('botoflow', 'domain')
+    swf_decider = ThreadedWorkflowExecutor(WorkflowWorker(boto_session,
+                                             swf_region,
+                                             swf_domain,
+                                             APP,
+                                             HelloWorldWorkflow))
+    swf_worker = ThreadedActivityExecutor(ActivityWorker(boto_session,
+                                            swf_region,
+                                            swf_domain,
+                                            APP,
+                                            HelloWorldActivities()))
+    swf_decider.start()
+    swf_worker.start()
+    with workflow_starter(boto_session,
+                          swf_region,
+                          swf_domain,
+                          APP):
+        response = HelloWorldWorkflow.hello_world()
+        log.info("Response from workflow is {}".format(response))
+    # start application
     # bind listeners first
     event_log = EventLog()
     event_processor = EventProcessor()
@@ -2015,9 +2077,20 @@ if __name__ == "__main__":
         while True:
             interruptable_sleep.wait()
     except(KeyboardInterrupt, RuntimeWarning) as e:
-        log.info("Shutting down...")
+        message = "Shutting down {}..."
+        log.info(message.format('SWF activity worker'))
+        swf_worker.stop()
+        swf_worker.join()
+        log.info(message.format('SWF workflow worker'))
+        swf_decider.stop()
+        swf_decider.join()
+        log.info(message.format('Web server'))
         server.shutdown()
+        log.info(message.format('Telegram bot'))
         telegram_updater.stop()
+        log.info(message.format('Application threads'))
         # bring any threads out of their Pythonic coma
         interruptable_sleep.set()
+        log.info(message.format('ZMQ context'))
         zmq_context.term()
+        log.info('Shutdown complete.')

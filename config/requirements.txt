@@ -2,6 +2,7 @@ argparse
 AWSIoTPythonSDK
 beautifulsoup4
 boto3
+botoflow
 blinker
 pathtools
 pylru
