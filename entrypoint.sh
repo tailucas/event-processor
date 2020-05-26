@@ -113,13 +113,6 @@ if find /etc/rsyslog.d/ -mindepth 1 -print -quit 2>/dev/null | grep -q .; then
   service rsyslog restart
 fi
 
-# log archival (no tee for secrets)
-if [ -d /var/awslogs/etc/ ]; then
-  cat /var/awslogs/etc/aws.conf | /opt/app/config_interpol /opt/app/config/aws.conf > /var/awslogs/etc/aws.conf.new
-  mv /var/awslogs/etc/aws.conf /var/awslogs/etc/aws.conf.backup
-  mv /var/awslogs/etc/aws.conf.new /var/awslogs/etc/aws.conf
-fi
-
 # configuration update
 for iface in wlan0 eth0; do
   export ETH0_IP="$(/sbin/ifconfig ${iface} | grep 'inet' | awk '{ print $2 }' | cut -f2 -d ':')"
@@ -144,6 +137,18 @@ chown "${APP_USER}:${APP_GROUP}" /opt/app/*
 chown -R "${APP_USER}:${APP_GROUP}" /data/
 # logging
 chown "${APP_USER}" /var/log/
+# home
+mkdir -p "/home/${APP_USER}/.aws/"
+chown -R "${APP_USER}:${APP_GROUP}" "/home/${APP_USER}/"
+
+# AWS configuration (no tee for secrets)
+cat /opt/app/config/aws.conf | /opt/app/config_interpol > "/home/${APP_USER}/.aws/config"
+# log archival (no tee for secrets)
+if [ -d /var/awslogs/etc/ ]; then
+  cat /var/awslogs/etc/aws.conf | /opt/app/config_interpol /opt/app/config/aws.conf > /var/awslogs/etc/aws.conf.new
+  mv /var/awslogs/etc/aws.conf /var/awslogs/etc/aws.conf.backup
+  mv /var/awslogs/etc/aws.conf.new /var/awslogs/etc/aws.conf
+fi
 
 # Bash history
 echo "export HISTFILE=/data/.bash_history" >> /etc/bash.bashrc
