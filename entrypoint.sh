@@ -140,9 +140,10 @@ chown "${APP_USER}" /var/log/
 # home
 mkdir -p "/home/${APP_USER}/.aws/"
 chown -R "${APP_USER}:${APP_GROUP}" "/home/${APP_USER}/"
-
 # AWS configuration (no tee for secrets)
-cat /opt/app/config/aws.conf | /opt/app/config_interpol > "/home/${APP_USER}/.aws/config"
+cat /opt/app/config/aws-config | /opt/app/config_interpol > "/home/${APP_USER}/.aws/config"
+cat /opt/app/config/aws-credentials | /opt/app/config_interpol > "/home/${APP_USER}/.aws/credentials"
+
 # log archival (no tee for secrets)
 if [ -d /var/awslogs/etc/ ]; then
   cat /var/awslogs/etc/aws.conf | /opt/app/config_interpol /opt/app/config/aws.conf > /var/awslogs/etc/aws.conf.new

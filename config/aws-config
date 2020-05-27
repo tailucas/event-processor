@@ -1,0 +1,6 @@
+[default]
+region = %(AWS_DEFAULT_REGION)s
+
+[profile swf]
+region = %(AWS_SWF_REGION)s
+
