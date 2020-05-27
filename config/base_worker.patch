@@ -1,0 +1,11 @@
+--- base_worker.py	2020-05-27 22:58:09.994767373 +0200
++++ base_worker2.py	2020-05-27 22:58:55.154681096 +0200
+@@ -55,6 +55,8 @@
+             self.task_list)
+
+     def _fix_endpoint(self):
++        # FIXME: AttributeError: 'Endpoint' object has no attribute 'timeout'
++        return
+         timeout = self.client._endpoint.timeout
+
+         # newer versions of botocore create a timeout tuple of the form (connect_timeout, read_timeout)

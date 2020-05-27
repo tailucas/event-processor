@@ -2011,7 +2011,7 @@ if __name__ == "__main__":
                           swf_domain,
                           APP):
         response = HelloWorldWorkflow.hello_world()
-        log.info("Response from workflow is {}".format(response))
+        log.info("Response from workflow is {}".format(response.result()))
     # start application
     # bind listeners first
     event_log = EventLog()
