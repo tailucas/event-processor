@@ -77,6 +77,8 @@ from botoflow import activity, \
 from botoflow.workers.workflow_worker import WorkflowWorker
 from botoflow.workers.activity_worker import ActivityWorker
 from botoflow.constants import MINUTES
+from botoflow.exceptions import ActivityTaskFailedError, \
+    WorkflowFailedError
 
 APP = os.path.basename(__file__)
 if sys.stdout.isatty() and os.system('systemctl status app') == 0:
@@ -175,19 +177,19 @@ class HelloWorldActivities(object):
     def get_name(self):
         return APP
 
-    @activity('1.0')
-    def print_greeting(self, name):
-        message = "Hello {}!".format(name)
+    @activity('1.1')
+    def print_greeting(self, greeting, name):
+        message = "{} {}!".format(greeting, name)
         log.info(message)
         return message
 
 
 class HelloWorldWorkflow(WorkflowDefinition):
 
-    @execute(version='1.0', execution_start_to_close_timeout=1*MINUTES)
-    def hello_world(self):
+    @execute(version='1.1', execution_start_to_close_timeout=1*MINUTES)
+    def hello_world(self, greeting):
         name = yield HelloWorldActivities.get_name()
-        response = yield HelloWorldActivities.print_greeting(name)
+        response = yield HelloWorldActivities.print_greeting(greeting, name)
         return_(response)
 
 
@@ -2009,9 +2011,14 @@ if __name__ == "__main__":
     with workflow_starter(boto_session,
                           swf_region,
                           swf_domain,
-                          APP):
-        response = HelloWorldWorkflow.hello_world()
-        log.info("Response from workflow is {}".format(response))
+                          APP) as starter:
+        workflow_instance = HelloWorldWorkflow.hello_world("Greetings")
+        log.info("Workflow is {}".format(workflow_instance))
+    try:
+        execution_result = starter.wait_for_completion(workflow_instance, 1)
+        log.info("Execution result is {}".format(execution_result))
+    except WorkflowFailedError as err:
+        log.exception(err)
     # start application
     # bind listeners first
     event_log = EventLog()
