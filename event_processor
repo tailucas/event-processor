@@ -5,6 +5,7 @@ import logging.handlers
 
 import boto3
 import copy
+import inspect
 import os
 import pytz
 import requests
@@ -74,6 +75,7 @@ from botoflow import activity, \
     WorkflowDefinition, \
     ThreadedWorkflowExecutor, \
     ThreadedActivityExecutor
+from botoflow.options import activity_options
 from botoflow.workers.workflow_worker import WorkflowWorker
 from botoflow.workers.activity_worker import ActivityWorker
 from botoflow.constants import MINUTES
@@ -168,6 +170,16 @@ def make_payload(timestamp=None, data=None):
     log.debug(json.dumps(payload))
     return umsgpack.packb(payload)
 
+@activities(schedule_to_start_timeout=1*MINUTES,
+            start_to_close_timeout=1*MINUTES)
+class TTSActivity(object):
+
+    @activity('1.0')
+    def say(self, message):
+        pass
+
+    def stop(self):
+        pass
 
 @activities(schedule_to_start_timeout=1*MINUTES,
             start_to_close_timeout=1*MINUTES)
@@ -189,6 +201,8 @@ class HelloWorldWorkflow(WorkflowDefinition):
     @execute(version='1.1', execution_start_to_close_timeout=1*MINUTES)
     def hello_world(self, greeting):
         name = yield HelloWorldActivities.get_name()
+        with activity_options(task_list='notifier'):
+            yield TTSActivity.say("Testing {}".format(name))
         response = yield HelloWorldActivities.print_greeting(greeting, name)
         return_(response)
 
