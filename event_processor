@@ -178,8 +178,6 @@ class TTSActivity(object):
     def say(self, message):
         pass
 
-    def stop(self):
-        pass
 
 @activities(schedule_to_start_timeout=1*MINUTES,
             start_to_close_timeout=1*MINUTES)
