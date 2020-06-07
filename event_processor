@@ -116,6 +116,10 @@ event_log = None
 ngrok_tunnel_url = None
 ngrok_tunnel_url_with_bauth = None
 
+boto_session = None
+swf_region = None
+swf_domain = None
+
 sentry = Sentry()
 
 
