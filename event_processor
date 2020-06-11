@@ -80,7 +80,7 @@ from botoflow.workers.workflow_worker import WorkflowWorker
 from botoflow.workers.activity_worker import ActivityWorker
 from botoflow.constants import MINUTES
 from botoflow.exceptions import ActivityTaskFailedError, \
-    WorkflowFailedError
+    WorkflowFailedError, WorkflowTimedOutError
 
 APP = os.path.basename(__file__)
 if sys.stdout.isatty() and os.system('systemctl status app') == 0:
@@ -2033,7 +2033,7 @@ if __name__ == "__main__":
     try:
         execution_result = starter.wait_for_completion(workflow_instance, 1)
         log.info("Execution result is {}".format(execution_result))
-    except WorkflowFailedError as err:
+    except (WorkflowTimedOutError, WorkflowFailedError) as err:
         log.exception(err)
     # start application
     # bind listeners first
