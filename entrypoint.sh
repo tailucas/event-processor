@@ -146,7 +146,7 @@ cat /opt/app/config/aws-credentials | /opt/app/config_interpol > "/home/${APP_US
 # patch botoflow to work-around
 # AttributeError: 'Endpoint' object has no attribute 'timeout'
 PY_BASE_WORKER="$(find /opt/app/ -name base_worker.py)"
-patch -u "$PY_BASE_WORKER" -i /opt/app/config/base_worker.patch
+patch -f -u "$PY_BASE_WORKER" -i /opt/app/config/base_worker.patch || true
 
 # log archival (no tee for secrets)
 if [ -d /var/awslogs/etc/ ]; then
