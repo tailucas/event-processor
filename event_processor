@@ -38,6 +38,7 @@ from resin.exceptions import RequestError
 from resin.models.device import Device
 from simplejson.scanner import JSONDecodeError
 from socket import gaierror
+from traceback import StackSummary
 from telegram import Bot as TelegramBot, \
     InlineQueryResultArticle, InputTextMessageContent, \
     ParseMode, Update
@@ -681,8 +682,9 @@ def thread_nanny(threads_tracked, signal_handler):
             error_msg = 'A thread has died. Expected threads are [{}], ' \
                         'missing is [{}].'.format(threads_tracked, threads_tracked - threads_alive)
             log.fatal(error_msg)
-            os._exit(1)
-        sleep(10)
+            interruptable_sleep.set()
+        else:
+            sleep(10)
 
 
 class EventProcessor(Thread):
@@ -1994,6 +1996,11 @@ class FlaskThread(Thread):
         log.warning('Flask server shutdown complete: {}'.format(self.__class__.__name__))
 
 
+def swf_exception_handler(err: Exception, tb_list: StackSummary):
+    log.fatal('SWF processing exception: {} {}'.format(err, tb_list.format()))
+    interruptable_sleep.set()
+
+
 if __name__ == "__main__":
     # DEBUG logging until startup complete
     log.setLevel(logging.DEBUG)
@@ -2017,12 +2024,14 @@ if __name__ == "__main__":
                                              swf_domain,
                                              APP,
                                              HelloWorldWorkflow))
+    swf_decider._worker.unhandled_exception_handler = swf_exception_handler
+    swf_decider.start()
     swf_worker = ThreadedActivityExecutor(ActivityWorker(boto_session,
                                             swf_region,
                                             swf_domain,
                                             APP,
                                             HelloWorldActivities()))
-    swf_decider.start()
+    swf_worker._worker.unhandled_exception_handler = swf_exception_handler
     swf_worker.start()
     with workflow_starter(boto_session,
                           swf_region,
@@ -2097,8 +2106,8 @@ if __name__ == "__main__":
         log.setLevel(logging.INFO)
         # discover callback URL
         CallbackUrlDiscovery().start()
-        while True:
-            interruptable_sleep.wait()
+        # hang around until something goes wrong
+        interruptable_sleep.wait()
     except(KeyboardInterrupt, RuntimeWarning) as e:
         message = "Shutting down {}..."
         log.info(message.format('SWF activity worker'))
