@@ -120,6 +120,10 @@ ngrok_tunnel_url_with_bauth = None
 boto_session = None
 swf_region = None
 swf_domain = None
+swf_app_bluetooth = None
+swf_app_ioboard = None
+swf_app_snapshot = None
+swf_app_tts = None
 
 sentry = Sentry()
 
@@ -175,12 +179,40 @@ def make_payload(timestamp=None, data=None):
     log.debug(json.dumps(payload))
     return umsgpack.packb(payload)
 
+
+@activities(schedule_to_start_timeout=1*MINUTES,
+            start_to_close_timeout=1*MINUTES)
+class BluetoothActivity(object):
+
+    @activity('1.1')
+    def l2ping(self, owner_device_list):
+        pass
+
+
+@activities(schedule_to_start_timeout=1*MINUTES,
+            start_to_close_timeout=1*MINUTES)
+class IOBoardActivity(object):
+
+    @activity('1.1')
+    def trigger_output(self, device_key, delay):
+        pass
+
+
 @activities(schedule_to_start_timeout=1*MINUTES,
             start_to_close_timeout=1*MINUTES)
 class TTSActivity(object):
 
     @activity('1.0')
     def say(self, message):
+        pass
+
+
+@activities(schedule_to_start_timeout=1*MINUTES,
+            start_to_close_timeout=1*MINUTES)
+class SnapshotActivity(object):
+
+    @activity('1.0')
+    def snapshot_camera(self, device_key, camera_command):
         pass
 
 
@@ -2019,6 +2051,10 @@ if __name__ == "__main__":
     boto_session = botocore.session.Session(profile=config.get('botoflow', 'profile'))
     swf_region = config.get('botoflow', 'region')
     swf_domain = config.get('botoflow', 'domain')
+    swf_app_bluetooth = config.get('swf_tasklist', 'bluetooth')
+    swf_app_ioboard = config.get('swf_tasklist', 'ioboard')
+    swf_app_snapshot = config.get('swf_tasklist', 'snapshot')
+    swf_app_tts = config.get('swf_tasklist', 'tts')
     swf_decider = ThreadedWorkflowExecutor(WorkflowWorker(boto_session,
                                              swf_region,
                                              swf_domain,
