@@ -184,8 +184,8 @@ def make_payload(timestamp=None, data=None):
             start_to_close_timeout=1*MINUTES)
 class BluetoothActivity(object):
 
-    @activity('1.1')
-    def l2ping(self, owner_device_list):
+    @activity('1.0')
+    def ping_bluetooth(self, owner_device_list):
         pass
 
 
