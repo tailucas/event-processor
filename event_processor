@@ -104,6 +104,11 @@ DATE_FORMAT = '%Y-%m-%dT%H:%M:%S.%f%z'
 rest_api = Flask(APP)
 Compress(rest_api)
 
+OUTPUT_TYPE_BLUETOOTH = 'bluetooth'
+OUTPUT_TYPE_SWITCH = 'ioboard'
+OUTPUT_TYPE_SNAPSHOT = 'snapshot'
+OUTPUT_TYPE_TTS = 'tts'
+
 URL_WORKER_EVENT_PROCESSOR = 'inproc://event-processor'
 URL_WORKER_EVENT_LOG = 'inproc://event-log'
 URL_WORKER_TELEGRAM_BOT = 'inproc://telegram-bot'
@@ -755,6 +760,8 @@ class EventProcessor(Thread):
         self._output_config = None
         self._output_config_table = None
 
+        self._output_types = None
+
         self.metrics = None
         self.metric_namespace = None
 
@@ -1139,6 +1146,12 @@ class EventProcessor(Thread):
         self.notify_not_after_time = make_timestamp(config.get('info_notify', 'not_after_time'))
         # message validity
         self._max_message_validity_seconds = int(config.get('app', 'max_message_validity_seconds'))
+        # output types
+        self._output_types = dict()
+        self._output_types[OUTPUT_TYPE_BLUETOOTH] = config.get('output_types', OUTPUT_TYPE_BLUETOOTH)
+        self._output_types[OUTPUT_TYPE_SWITCH] = config.get('output_types', OUTPUT_TYPE_SWITCH)
+        self._output_types[OUTPUT_TYPE_SNAPSHOT] = config.get('output_types', OUTPUT_TYPE_SNAPSHOT)
+        self._output_types[OUTPUT_TYPE_TTS] = config.get('output_types', OUTPUT_TYPE_TTS)
         # set up the special input for the panic button
         self._update_device(
             input_outputs=self.inputs,
@@ -2051,10 +2064,10 @@ if __name__ == "__main__":
     boto_session = botocore.session.Session(profile=config.get('botoflow', 'profile'))
     swf_region = config.get('botoflow', 'region')
     swf_domain = config.get('botoflow', 'domain')
-    swf_app_bluetooth = config.get('swf_tasklist', 'bluetooth')
-    swf_app_ioboard = config.get('swf_tasklist', 'ioboard')
-    swf_app_snapshot = config.get('swf_tasklist', 'snapshot')
-    swf_app_tts = config.get('swf_tasklist', 'tts')
+    swf_app_bluetooth = config.get('swf_tasklist', OUTPUT_TYPE_BLUETOOTH)
+    swf_app_ioboard = config.get('swf_tasklist', OUTPUT_TYPE_SWITCH)
+    swf_app_snapshot = config.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT)
+    swf_app_tts = config.get('swf_tasklist', OUTPUT_TYPE_TTS)
     swf_decider = ThreadedWorkflowExecutor(WorkflowWorker(boto_session,
                                              swf_region,
                                              swf_domain,
@@ -2078,8 +2091,8 @@ if __name__ == "__main__":
     try:
         execution_result = starter.wait_for_completion(workflow_instance, 1)
         log.info("Execution result is {}".format(execution_result))
-    except (WorkflowTimedOutError, WorkflowFailedError) as err:
-        log.exception(err)
+    except (WorkflowTimedOutError, WorkflowFailedError):
+        log.exception()
     # start application
     # bind listeners first
     event_log = EventLog()
