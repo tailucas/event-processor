@@ -223,6 +223,15 @@ class SnapshotActivity(object):
 
 @activities(schedule_to_start_timeout=1*MINUTES,
             start_to_close_timeout=1*MINUTES)
+class DeviceInfoActivity(object):
+
+    @activity('1.0')
+    def get_ip_address(self):
+        pass
+
+
+@activities(schedule_to_start_timeout=1*MINUTES,
+            start_to_close_timeout=1*MINUTES)
 class HelloWorldActivities(object):
 
     @activity('1.0')
@@ -1051,8 +1060,10 @@ class EventProcessor(Thread):
                     activation_command['trigger_duration'] = int(
                         self._input_config[active_device_key]['activation_interval']
                     )
+                # get the output type
+                output_device_type = output_device_activation['type'].lower()
                 # let the bot know first
-                if output_device_activation['type'].lower() == 'sms':
+                if output_device_type == 'sms':
                     self.bot.send_pyobj({
                         'timestamp': timestamp,
                         'data': activation_command
@@ -1060,7 +1071,27 @@ class EventProcessor(Thread):
                 # strip out image data that is no longer needed
                 if 'image' in active_device:
                     del active_device['image']
-                # dispatch the event
+                # dispatch the event, test SWF binding
+                if output_device_type in self._output_types:
+                    output_type = self._output_types[output_device_type]
+                    if output_type == OUTPUT_TYPE_BLUETOOTH:
+                        output_device_params = self._output_config[output_device_key]['device_params']
+                        with workflow_starter(boto_session, swf_region, swf_domain, swf_app_bluetooth) as starter:
+                            log.debug('Requesting Bluetooth ping using [{}]'.format(output_device_params))
+                            workflow_instance = BluetoothActivity.ping_bluetooth(output_device_params)
+                            log.info("Workflow is {}".format(workflow_instance))
+                        try:
+                            execution_result = starter.wait_for_completion(workflow_instance, 1)
+                            log.info("Execution result is {}".format(execution_result))
+                        except (WorkflowTimedOutError, WorkflowFailedError):
+                            log.exception()
+                    elif output_type == OUTPUT_TYPE_SNAPSHOT:
+                        pass
+                    elif output_type == OUTPUT_TYPE_SWITCH:
+                        pass
+                    elif output_type == OUTPUT_TYPE_TTS:
+                        pass
+                # FIXME: change to elif
                 if event_destination in self._origin_connections:
                     self._origin_connections[event_destination].send(make_payload(
                         timestamp=timestamp,
