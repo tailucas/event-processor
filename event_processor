@@ -231,7 +231,7 @@ class DeviceInfoActivity(object):
 
     @activity('1.0')
     def get_ip_address(self):
-        pass
+        return netifaces.gateways()['default'][netifaces.AF_INET][0]
 
 
 @activities(schedule_to_start_timeout=1*MINUTES,
