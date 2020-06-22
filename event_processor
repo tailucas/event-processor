@@ -6,6 +6,7 @@ import logging.handlers
 import boto3
 import copy
 import inspect
+import netifaces
 import os
 import pytz
 import requests
@@ -1072,12 +1073,15 @@ class EventProcessor(Thread):
                 if 'image' in active_device:
                     del active_device['image']
                 # dispatch the event, test SWF binding
+                log.info('DEBUG: Triggering event for output device type {}.'.format(output_device_type))
                 if output_device_type in self._output_types:
                     output_type = self._output_types[output_device_type]
+                    log.info('DEBUG: Lookup output type {}.'.format(output_type))
                     if output_type == OUTPUT_TYPE_BLUETOOTH:
                         output_device_params = self._output_config[output_device_key]['device_params']
+                        log.info('DEBUG: Using params {}.'.format(output_device_params))
                         with workflow_starter(boto_session, swf_region, swf_domain, swf_app_bluetooth) as starter:
-                            log.debug('Requesting Bluetooth ping using [{}]'.format(output_device_params))
+                            log.info('Requesting Bluetooth ping using [{}]'.format(output_device_params))
                             workflow_instance = BluetoothActivity.ping_bluetooth(output_device_params)
                             log.info("Workflow is {}".format(workflow_instance))
                         try:
