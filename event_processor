@@ -111,6 +111,7 @@ OUTPUT_TYPE_SNAPSHOT = 'snapshot'
 OUTPUT_TYPE_TTS = 'tts'
 
 URL_WORKER_EVENT_PROCESSOR = 'inproc://event-processor'
+URL_WORKER_SWF_ACTIVITY_WAITER = 'inproc://swf-activity-{}'
 URL_WORKER_EVENT_LOG = 'inproc://event-log'
 URL_WORKER_TELEGRAM_BOT = 'inproc://telegram-bot'
 zmq_context = zmq.Context()
@@ -130,6 +131,8 @@ swf_app_bluetooth = None
 swf_app_ioboard = None
 swf_app_snapshot = None
 swf_app_tts = None
+
+swf_zmq_waiter_bluetooth_url = None
 
 sentry = Sentry()
 
@@ -784,6 +787,8 @@ class EventProcessor(Thread):
         self.socket = zmq_context.socket(zmq.PULL)
         self.socket.bind(URL_WORKER_EVENT_PROCESSOR)
 
+        self.swf_zmq_waiter_bluetooth = zmq_context.socket(zmq.PUSH)
+
         self.event_log = zmq_context.socket(zmq.PUSH)
 
         self.bot = zmq_context.socket(zmq.PUSH)
@@ -1084,11 +1089,7 @@ class EventProcessor(Thread):
                             log.info('Requesting Bluetooth ping using [{}]'.format(output_device_params))
                             workflow_instance = BluetoothActivity.ping_bluetooth(output_device_params)
                             log.info("Workflow is {}".format(workflow_instance))
-                        try:
-                            execution_result = starter.wait_for_completion(workflow_instance, 1)
-                            log.info("Execution result is {}".format(execution_result))
-                        except (WorkflowTimedOutError, WorkflowFailedError):
-                            log.exception()
+                        self.swf_zmq_waiter_bluetooth.send_pyobj(workflow_instance)
                     elif output_type == OUTPUT_TYPE_SNAPSHOT:
                         pass
                     elif output_type == OUTPUT_TYPE_SWITCH:
@@ -1171,6 +1172,8 @@ class EventProcessor(Thread):
             origin_push_socket = zmq_context.socket(zmq.PUSH)
             origin_push_socket.connect(origin_connection_string)
             self._origin_connections[origin] = origin_push_socket
+        # swf waiters
+        self.swf_zmq_waiter_bluetooth.connect(swf_zmq_waiter_bluetooth_url)
         # event log
         self.event_log.connect(URL_WORKER_EVENT_LOG)
         # bot
@@ -2076,6 +2079,42 @@ class FlaskThread(Thread):
         log.warning('Flask server shutdown complete: {}'.format(self.__class__.__name__))
 
 
+class SWFActivityWaiter(Thread):
+
+    def __init__(self, output_type):
+        super(SWFActivityWaiter, self).__init__()
+        self.daemon = True
+        self._output_type = output_type
+        self._zmq_url = URL_WORKER_SWF_ACTIVITY_WAITER.format(output_type)
+        self.socket = zmq_context.socket(zmq.PULL)
+        self.socket.bind(self._zmq_url)
+
+    @property
+    def zmq_url(self):
+        return self._zmq_url
+
+    def run(self):
+        while True:
+            try:
+                workflow_instance = self.socket.recv_pyobj()
+                try:
+                    execution_result = starter.wait_for_completion(workflow_instance, 1)
+                    log.info("{} for {} execution result is {}".format(
+                        self.__class__.__name__,
+                        self._output_type,
+                        execution_result))
+                except (WorkflowTimedOutError, WorkflowFailedError):
+                    log.exception()
+            except ContextTerminated:
+                self.socket.close()
+                break
+            except Exception:
+                log.exception(self.__class__.__name__)
+                sentry.captureException()
+                sleep(1)
+                continue
+
+
 def swf_exception_handler(err: Exception, tb_list: StackSummary):
     log.fatal('SWF processing exception: {} {}'.format(err, tb_list.format()))
     interruptable_sleep.set()
@@ -2100,6 +2139,10 @@ if __name__ == "__main__":
     swf_region = config.get('botoflow', 'region')
     swf_domain = config.get('botoflow', 'domain')
     swf_app_bluetooth = config.get('swf_tasklist', OUTPUT_TYPE_BLUETOOTH)
+    bluetooth_activity_waiter = SWFActivityWaiter(output_type=OUTPUT_TYPE_BLUETOOTH)
+    bluetooth_activity_waiter.start()
+    threads_tracked.add(bluetooth_activity_waiter.getName())
+    swf_zmq_waiter_bluetooth_url = bluetooth_activity_waiter.zmq_url
     swf_app_ioboard = config.get('swf_tasklist', OUTPUT_TYPE_SWITCH)
     swf_app_snapshot = config.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT)
     swf_app_tts = config.get('swf_tasklist', OUTPUT_TYPE_TTS)
