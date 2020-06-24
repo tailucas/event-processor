@@ -2158,20 +2158,18 @@ if __name__ == "__main__":
     swf_app_ioboard = config.get('swf_tasklist', OUTPUT_TYPE_SWITCH)
     swf_app_snapshot = config.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT)
     swf_app_tts = config.get('swf_tasklist', OUTPUT_TYPE_TTS)
-    swf_workflow = [HelloWorldWorkflow, DeviceInfoWorkflow]
     swf_decider = ThreadedWorkflowExecutor(WorkflowWorker(boto_session,
                                              swf_region,
                                              swf_domain,
                                              APP,
-                                             swf_workflow))
+                                             HelloWorldWorkflow, DeviceInfoWorkflow))
     swf_decider._worker.unhandled_exception_handler = swf_exception_handler
     swf_decider.start()
-    swf_activity = [HelloWorldActivities(), DeviceInfoActivity()]
     swf_worker = ThreadedActivityExecutor(ActivityWorker(boto_session,
                                             swf_region,
                                             swf_domain,
                                             APP,
-                                            swf_activity))
+                                            HelloWorldActivities(), DeviceInfoActivity()))
     swf_worker._worker.unhandled_exception_handler = swf_exception_handler
     swf_worker.start()
     with workflow_starter(boto_session,
