@@ -2165,11 +2165,12 @@ if __name__ == "__main__":
                                              HelloWorldWorkflow))
     swf_decider._worker.unhandled_exception_handler = swf_exception_handler
     swf_decider.start()
+    swf_activity = [HelloWorldActivities(), DeviceInfoActivity()]
     swf_worker = ThreadedActivityExecutor(ActivityWorker(boto_session,
                                             swf_region,
                                             swf_domain,
                                             APP,
-                                            HelloWorldActivities()))
+                                            swf_activity))
     swf_worker._worker.unhandled_exception_handler = swf_exception_handler
     swf_worker.start()
     with workflow_starter(boto_session,
