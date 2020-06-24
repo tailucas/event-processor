@@ -234,6 +234,18 @@ class DeviceInfoActivity(object):
         return netifaces.gateways()['default'][netifaces.AF_INET][0]
 
 
+class DeviceInfoWorkflow(WorkflowDefinition):
+
+    @execute(version='1.0', execution_start_to_close_timeout=1*MINUTES)
+    def get_ip_addresses(self, apps):
+        app_ip_map = dict()
+        for app in apps:
+            with activity_options(task_list=app):
+                app_ip = yield DeviceInfoActivity.get_ip_address()
+                app_ip_map[app] = app_ip
+        return_(app_ip_map)
+
+
 @activities(schedule_to_start_timeout=1*MINUTES,
             start_to_close_timeout=1*MINUTES)
 class HelloWorldActivities(object):
@@ -2165,6 +2177,19 @@ if __name__ == "__main__":
                           swf_domain,
                           APP) as starter:
         workflow_instance = HelloWorldWorkflow.hello_world("Greetings")
+        log.info("Workflow is {}".format(workflow_instance))
+    try:
+        execution_result = starter.wait_for_completion(workflow_instance, 1)
+        log.info("Execution result is {}".format(execution_result))
+    except (WorkflowTimedOutError, WorkflowFailedError):
+        log.exception()
+    # determine IPs of available devices for ZMQ subscriptions
+    with workflow_starter(boto_session,
+                        swf_region,
+                        swf_domain,
+                        APP) as starter:
+        workflow_instance = DeviceInfoWorkflow.get_ip_addresses(
+            (swf_app_bluetooth, swf_app_ioboard, swf_app_snapshot, swf_app_tts))
         log.info("Workflow is {}".format(workflow_instance))
     try:
         execution_result = starter.wait_for_completion(workflow_instance, 1)
