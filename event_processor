@@ -240,6 +240,7 @@ class DeviceInfoWorkflow(WorkflowDefinition):
     def get_ip_addresses(self, apps):
         app_ip_map = dict()
         for app in apps:
+            log.info('DEBUG: getting IP for device {}'.format(app))
             with activity_options(task_list=app):
                 app_ip = yield DeviceInfoActivity.get_ip_address()
                 app_ip_map[app] = app_ip
