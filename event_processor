@@ -266,8 +266,10 @@ class DeviceWorkflow(WorkflowDefinition):
     def get_ip_addresses(self, apps):
         app_ip_map = dict()
         for app in apps:
+            log.info("DEBUG: Getting IP for {}".format(app))
             with activity_options(task_list=app):
                 app_ip = yield DeviceInfoActivity.get_ip_address()
+                log.info("DEBUG: IP for {} is {}".format(app, app_ip))
                 app_ip_map[app] = app_ip
         return_(app_ip_map)
 
@@ -2150,7 +2152,9 @@ class SWFActivityWaiter(Thread):
                 except (WorkflowTimedOutError, WorkflowFailedError):
                     log.exception(self.__class__.__name__)
             except ContextTerminated:
+                log.warning('ZMQ terminate: {}'.format(self.__class__.__name__))
                 self.socket.close()
+                log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
                 break
             except Exception:
                 log.exception(self.__class__.__name__)
