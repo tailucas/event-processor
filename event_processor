@@ -2206,7 +2206,7 @@ if __name__ == "__main__":
                                             swf_region,
                                             swf_domain,
                                             APP,
-                                            HelloWorldActivities(), DeviceInfoActivity()))
+                                            HelloWorldActivities()))
     swf_worker._worker.unhandled_exception_handler = swf_exception_handler
     swf_worker.start()
     with workflow_starter(boto_session,
@@ -2299,12 +2299,12 @@ if __name__ == "__main__":
         interruptable_sleep.wait()
     except(KeyboardInterrupt, RuntimeWarning) as e:
         message = "Shutting down {}..."
-        log.info(message.format('SWF activity worker'))
-        swf_worker.stop()
-        swf_worker.join()
         log.info(message.format('SWF workflow worker'))
         swf_decider.stop()
         swf_decider.join()
+        log.info(message.format('SWF activity worker'))
+        swf_worker.stop()
+        swf_worker.join()
         log.info(message.format('Web server'))
         server.shutdown()
         log.info(message.format('Telegram bot'))
