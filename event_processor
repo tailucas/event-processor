@@ -2301,10 +2301,8 @@ if __name__ == "__main__":
         message = "Shutting down {}..."
         log.info(message.format('SWF workflow worker'))
         swf_decider.stop()
-        swf_decider.join()
         log.info(message.format('SWF activity worker'))
         swf_worker.stop()
-        swf_worker.join()
         log.info(message.format('Web server'))
         server.shutdown()
         log.info(message.format('Telegram bot'))
@@ -2314,4 +2312,7 @@ if __name__ == "__main__":
         interruptable_sleep.set()
         log.info(message.format('ZMQ context'))
         zmq_context.term()
+        log.info(message.format('SWF workers'))
+        swf_decider.join()
+        swf_worker.join()
         log.info('Shutdown complete.')
