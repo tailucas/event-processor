@@ -762,7 +762,7 @@ class SignalHandler:
     def terminate(self, signum, frame):
         log.warning('Signal {} received.'.format(signum))
         self.last_signal = signum
-        raise RuntimeWarning()
+        interruptable_sleep.set()
 
 
 # noinspection PyShadowingNames
@@ -1603,7 +1603,9 @@ class EventProcessor(Thread):
                 self.event_log.close()
                 log.warning('ZMQ terminated event log: {}'.format(self.__class__.__name__))
                 self.bot.close()
-                log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
+                log.warning('ZMQ terminated telegram bot: {}'.format(self.__class__.__name__))
+                self.swf_zmq_waiter_bluetooth.close()
+                log.warning('ZMQ terminated SWF waiter: {}'.format(self.__class__.__name__))
                 break
             except Exception:
                 log.exception(self.__class__.__name__)
@@ -2308,6 +2310,7 @@ if __name__ == "__main__":
         CallbackUrlDiscovery().start()
         # hang around until something goes wrong
         interruptable_sleep.wait()
+        raise RuntimeWarning("Shutting down...")
     except(KeyboardInterrupt, RuntimeWarning) as e:
         message = "Shutting down {}..."
         log.info(message.format('SWF workflow worker'))
@@ -2323,7 +2326,4 @@ if __name__ == "__main__":
         interruptable_sleep.set()
         log.info(message.format('ZMQ context'))
         zmq_context.term()
-        log.info(message.format('SWF workers'))
-        swf_decider.join()
-        swf_worker.join()
         log.info('Shutdown complete.')
