@@ -1127,6 +1127,8 @@ class EventProcessor(Thread):
                 # dispatch the event, test SWF binding
                 if output_device_type in self._output_types:
                     log.info('DEBUG: Triggering event for output device type {}.'.format(output_device_type))
+                    log.info('DEBUG: Output config {}.'.format(self._output_config[output_device_key]))
+                    log.info('DEBUG: Activation command is {}'.format(activation_command))
                     output_device_params = self._output_config[output_device_key]['device_params']
                     log.info('DEBUG: Using params {}.'.format(output_device_params))
                     output_type = self._output_types[output_device_type]
