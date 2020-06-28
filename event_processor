@@ -771,7 +771,7 @@ class SignalHandler:
 # noinspection PyShadowingNames
 def thread_nanny(threads_tracked, signal_handler):
     global shutting_down
-    sleep_seconds = 10
+    sleep_seconds = 60
     while True:
         if signal_handler.last_signal == signal.SIGTERM:
             shutting_down = True
