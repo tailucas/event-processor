@@ -139,6 +139,8 @@ shutting_down = False
 
 sentry = Sentry()
 
+app_metrics = None
+
 
 def is_list(value):
     return isinstance(value, list)
@@ -190,6 +192,33 @@ def make_payload(timestamp=None, data=None):
         payload['data'] = data
     log.debug(json.dumps(payload))
     return umsgpack.packb(payload)
+
+
+def post_count_metric(metric_name, count=1):
+    try:
+        app_metrics.put_metric_data(
+            Namespace='automation',
+            MetricData=[
+                {
+                    'MetricName': metric_name,
+                    'Value': count,
+                    'Dimensions': [
+                        {
+                            'Name': 'Application',
+                            'Value': APP
+                        },
+                        {
+                            'Name': 'Device',
+                            'Value': config.get('app', 'device_name')
+                        },
+                    ],
+                    'Timestamp': make_timestamp(),
+                    'Unit': 'Count'
+                },
+            ]
+        )
+    except Exception:
+        log.exception('Problem posting metric [{}={}]'.format(metric_name, count))
 
 
 @activities(schedule_to_start_timeout=1*MINUTES,
@@ -791,11 +820,15 @@ def thread_nanny(threads_tracked, signal_handler):
                     for line in code:
                         log.debug(line)
         sleep(sleep_seconds)
-        if not shutting_down and len(threads_tracked - threads_alive) > 0:
-            error_msg = 'A thread has died. Expected threads are [{}], ' \
-                        'missing is [{}].'.format(threads_tracked, threads_tracked - threads_alive)
-            log.fatal(error_msg)
-            interruptable_sleep.set()
+        if not shutting_down:
+            if len(threads_tracked - threads_alive) > 0:
+                error_msg = 'A thread has died. Expected threads are [{}], ' \
+                            'missing is [{}].'.format(threads_tracked, threads_tracked - threads_alive)
+                log.fatal(error_msg)
+                post_count_metric('Fatals')
+                interruptable_sleep.set()
+            else:
+                post_count_metric('Fatals', 0)
 
 
 class EventProcessor(Thread):
@@ -2192,6 +2225,7 @@ class SWFActivityWaiter(Thread):
 
 def swf_exception_handler(err: Exception, tb_list: StackSummary):
     log.fatal('SWF processing exception: {} {}'.format(err, tb_list.format()))
+    post_count_metric('Fatals')
     interruptable_sleep.set()
 
 
@@ -2209,6 +2243,9 @@ if __name__ == "__main__":
         log.addHandler(stream_handler)
     # track all threads
     threads_tracked = set()
+    # set up application metrics
+    boto3_session = boto3.Session(profile_name='cpt')
+    app_metrics = boto3_session.client('cloudwatch')
     # connect to SWF
     boto_session = botocore.session.Session(profile=config.get('botoflow', 'profile'))
     swf_region = config.get('botoflow', 'region')
