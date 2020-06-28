@@ -827,7 +827,8 @@ def thread_nanny(threads_tracked, signal_handler):
                 log.fatal(error_msg)
                 post_count_metric('Fatals')
                 interruptable_sleep.set()
-            else:
+            elif datetime.now().minute % 5 == 0:
+                # zero every 5 minutes
                 post_count_metric('Fatals', 0)
 
 
@@ -2244,7 +2245,7 @@ if __name__ == "__main__":
     # track all threads
     threads_tracked = set()
     # set up application metrics
-    boto3_session = boto3.Session(profile_name='cpt')
+    boto3_session = boto3.Session(region_name='af-south-1', profile_name='cpt')
     app_metrics = boto3_session.client('cloudwatch')
     # connect to SWF
     boto_session = botocore.session.Session(profile=config.get('botoflow', 'profile'))
