@@ -1179,33 +1179,36 @@ class EventProcessor(Thread):
                 # dispatch the event, test SWF binding
                 if output_device_type in self._output_types:
                     output_type = self._output_types[output_device_type]
-                    log.info('DEBUG: Triggering event for {}, output type {}, output device type {}.'.format(
-                        output_device_key,
+                    log.info('DEBUG: Active device {}: {} with params {}.'.format(
+                        active_device,
                         output_type,
-                        output_device_type))
-                    # log.info('DEBUG: Output config {}.'.format(self._output_config[output_device_key]))
-                    # output_device_params = self._output_config[output_device_key]['device_params']
-                    # log.info('DEBUG: Using params {}.'.format(output_device_params))
-                    # log.info("Requesting '{}' using [{}]".format(output_type, output_device_params))
+                        output_device_activation))
                     workflow_instance = None
                     if output_type == OUTPUT_TYPE_BLUETOOTH:
-                        pass
-                        #FIXME: parameters
-                        #with workflow_starter(boto_session, swf_region, swf_domain, APP) as starter:
-                        #    workflow_instance = BluetoothWorkflow.execute(output_device_params)
-                        #self.swf_zmq_waiter_bluetooth.send_pyobj((starter, workflow_instance))
+                        with workflow_starter(boto_session, swf_region, swf_domain, APP) as starter:
+                            workflow_instance = BluetoothWorkflow.execute(
+                                self._output_config[output_device_key]['device_params'])
+                        log.info("{} workflow is {}".format(output_type, workflow_instance))
+                        self.swf_zmq_waiter_bluetooth.send_pyobj((starter, workflow_instance))
                     elif output_type == OUTPUT_TYPE_SNAPSHOT:
-                        pass
+                        camera_command = None
+                        if 'device_params' in output_device_activation:
+                            camera_command = output_device_activation['device_params']
+                        with workflow_starter(boto_session, swf_region, swf_domain, APP) as starter:
+                            workflow_instance = SnapshotWorkflow.execute(device_key, camera_command)
+                        log.info("{} workflow is {}".format(output_type, workflow_instance))
                     elif output_type == OUTPUT_TYPE_SWITCH:
                         pass
                     elif output_type == OUTPUT_TYPE_TTS:
-                        pass
-                        #FIXME: parameters
-                        #with workflow_starter(boto_session, swf_region, swf_domain, APP) as starter:
-                        #    workflow_instance = TTSWorkflow.execute(output_device_params)
-                    log.info("{} workflow is {}".format(output_type, workflow_instance))
-                # FIXME: elif
-                if event_destination in self._origin_connections:
+                        active_device_label = active_device['device_label']
+                        event_detail = ""
+                        if 'event_detail' in active_device:
+                            event_detail = ' {}'.format(active_device['event_detail'])
+                        notification_message = '{}{}'.format(active_device_label, event_detail)
+                        with workflow_starter(boto_session, swf_region, swf_domain, APP) as starter:
+                            workflow_instance = TTSWorkflow.execute(notification_message)
+                        log.info("{} workflow is {}".format(output_type, workflow_instance))
+                elif event_destination in self._origin_connections:
                     self._origin_connections[event_destination].send(make_payload(
                         timestamp=timestamp,
                         data=activation_command))
@@ -1294,10 +1297,10 @@ class EventProcessor(Thread):
         self._max_message_validity_seconds = int(config.get('app', 'max_message_validity_seconds'))
         # output types
         self._output_types = dict()
-        self._output_types[OUTPUT_TYPE_BLUETOOTH] = config.get('output_types', OUTPUT_TYPE_BLUETOOTH)
-        self._output_types[OUTPUT_TYPE_SWITCH] = config.get('output_types', OUTPUT_TYPE_SWITCH)
-        self._output_types[OUTPUT_TYPE_SNAPSHOT] = config.get('output_types', OUTPUT_TYPE_SNAPSHOT)
-        self._output_types[OUTPUT_TYPE_TTS] = config.get('output_types', OUTPUT_TYPE_TTS)
+        self._output_types[config.get('output_types', OUTPUT_TYPE_BLUETOOTH)] = OUTPUT_TYPE_BLUETOOTH
+        self._output_types[config.get('output_types', OUTPUT_TYPE_SWITCH)] = OUTPUT_TYPE_SWITCH
+        self._output_types[config.get('output_types', OUTPUT_TYPE_SNAPSHOT)] = OUTPUT_TYPE_SNAPSHOT
+        self._output_types[config.get('output_types', OUTPUT_TYPE_TTS)] = OUTPUT_TYPE_TTS
         # set up the special input for the panic button
         self._update_device(
             input_outputs=self.inputs,
