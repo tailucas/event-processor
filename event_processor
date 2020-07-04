@@ -1172,6 +1172,10 @@ class EventProcessor(Thread):
                 # strip out image data that is no longer needed
                 if 'image' in active_device:
                     del active_device['image']
+                log.info('DEBUG: Activation command for {} ({}) is {}'.format(
+                    output_device_key,
+                    output_device_type,
+                    activation_command))
                 # dispatch the event, test SWF binding
                 if output_device_type in self._output_types:
                     output_type = self._output_types[output_device_type]
@@ -1179,7 +1183,6 @@ class EventProcessor(Thread):
                         output_device_key,
                         output_type,
                         output_device_type))
-                    log.info('DEBUG: Activation command is {}'.format(activation_command))
                     # log.info('DEBUG: Output config {}.'.format(self._output_config[output_device_key]))
                     # output_device_params = self._output_config[output_device_key]['device_params']
                     # log.info('DEBUG: Using params {}.'.format(output_device_params))
