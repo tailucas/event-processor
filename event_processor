@@ -2269,7 +2269,12 @@ if __name__ == "__main__":
                                              swf_region,
                                              swf_domain,
                                              APP,
-                                             DeviceWorkflow, HelloWorldWorkflow))
+                                             HelloWorldWorkflow,
+                                             DeviceWorkflow,
+                                             BluetoothWorkflow,
+                                             TTSWorkflow,
+                                             IOBoardWorkflow,
+                                             SnapshotWorkflow))
     swf_decider._worker.unhandled_exception_handler = swf_exception_handler
     swf_decider.start()
     # activities run on devices hosting this application
