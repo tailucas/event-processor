@@ -253,7 +253,7 @@ class BluetoothActivity(object):
 
     @activity('1.0')
     def ping_bluetooth(self, owner_device_list):
-        pass
+        raise RuntimeError('{} not implemented on {}'.format(self.__class__.__name__, APP))
 
 
 @activities(schedule_to_start_timeout=1*MINUTES,
@@ -262,7 +262,7 @@ class IOBoardActivity(object):
 
     @activity('1.1')
     def trigger_output(self, device_key, delay):
-        pass
+        raise RuntimeError('{} not implemented on {}'.format(self.__class__.__name__, APP))
 
 
 @activities(schedule_to_start_timeout=1*MINUTES,
@@ -271,7 +271,7 @@ class TTSActivity(object):
 
     @activity('1.0')
     def say(self, message):
-        pass
+        raise RuntimeError('{} not implemented on {}'.format(self.__class__.__name__, APP))
 
 
 @activities(schedule_to_start_timeout=1*MINUTES,
@@ -280,7 +280,7 @@ class SnapshotActivity(object):
 
     @activity('1.0')
     def snapshot_camera(self, device_key, camera_command):
-        pass
+        raise RuntimeError('{} not implemented on {}'.format(self.__class__.__name__, APP))
 
 
 @activities(schedule_to_start_timeout=1*MINUTES,
@@ -289,7 +289,7 @@ class DeviceInfoActivity(object):
 
     @activity('1.0')
     def get_ip_address(self):
-        pass
+        raise RuntimeError('{} not implemented on {}'.format(self.__class__.__name__, APP))
 
 
 class DeviceWorkflow(WorkflowDefinition):
@@ -2282,7 +2282,8 @@ if __name__ == "__main__":
                                             swf_region,
                                             swf_domain,
                                             APP,
-                                            HelloWorldActivities()))
+                                            HelloWorldActivities(),
+                                            TTSActivity()))
     swf_worker._worker.unhandled_exception_handler = swf_exception_handler
     swf_worker.start()
     with workflow_starter(boto_session,
