@@ -133,6 +133,8 @@ swf_app_snapshot = None
 swf_app_tts = None
 
 shutting_down = False
+# threads to nanny
+threads_tracked = set()
 
 sentry = Sentry()
 
@@ -795,8 +797,10 @@ class SignalHandler:
 
 
 # noinspection PyShadowingNames
-def thread_nanny(threads_tracked, signal_handler):
+def thread_nanny():
     global shutting_down
+    global threads_tracked
+    signal_handler = SignalHandler()
     sleep_seconds = 60
     while True:
         if signal_handler.last_signal == signal.SIGTERM:
@@ -818,9 +822,10 @@ def thread_nanny(threads_tracked, signal_handler):
                         log.debug(line)
         sleep(sleep_seconds)
         if not shutting_down:
-            if len(threads_tracked - threads_alive) > 0:
+            thread_deficit = threads_tracked - threads_alive
+            if len(thread_deficit) > 0:
                 error_msg = 'A thread has died. Expected threads are [{}], ' \
-                            'missing is [{}].'.format(threads_tracked, threads_tracked - threads_alive)
+                            'missing is [{}].'.format(threads_tracked, thread_deficit)
                 log.fatal(error_msg)
                 post_count_metric('Fatals')
                 interruptable_sleep.set()
@@ -834,6 +839,8 @@ class EventProcessor(Thread):
     def __init__(self):
         super(EventProcessor, self).__init__(name=self.__class__.__name__)
         self.daemon = True
+        global threads_tracked
+        threads_tracked.add(self.name)
 
         self.inputs = {}
         self.outputs = {}
@@ -841,7 +848,6 @@ class EventProcessor(Thread):
         self._input_trigger_history = {}
         self._input_active_history = {}
 
-        self._origin_ips = {}
         self._origin_connections = {}
 
         self._input_origin = {}
@@ -1257,9 +1263,6 @@ class EventProcessor(Thread):
         log.info("Loaded {} items from table '{}'".format(len(scan_response['Items']), table_name))
         return member, member_table
 
-    def add_event_origin(self, origin, ip):
-        self._origin_ips[origin] = ip
-
     # noinspection PyBroadException
     def run(self):
         # set up local DB storage
@@ -1277,13 +1280,6 @@ class EventProcessor(Thread):
             table_name=os.environ['CONFIG_TABLE_INPUT'])
         self._output_config, self._output_config_table = self._load_config_table(
             table_name=os.environ['CONFIG_TABLE_OUTPUT'])
-        # connect to event origins
-        for origin, ip in list(self._origin_ips.items()):
-            origin_connection_string = 'tcp://{}:{}'.format(ip, config.get('zmq', 'pushpull_port'))
-            log.info('Device events will be responded to via {} @ {}'.format(origin, origin_connection_string))
-            origin_push_socket = zmq_context.socket(zmq.PUSH)
-            origin_push_socket.connect(origin_connection_string)
-            self._origin_connections[origin] = origin_push_socket
         # event log
         self.event_log.connect(URL_WORKER_EVENT_LOG)
         # bot
@@ -1356,6 +1352,15 @@ class EventProcessor(Thread):
                                 log.warning(log_msg)
                             else:
                                 log.debug(log_msg)
+                        if 'register_origin' in event_origin:
+                            # connect to event origins
+                            for origin, ip in list(event_origin['register_origin']):
+                                origin_connection_string = 'tcp://{}:{}'.format(ip, config.get('zmq', 'pushpull_port'))
+                                log.info('Registering event origin {} @ {}'.format(origin, origin_connection_string))
+                                origin_push_socket = zmq_context.socket(zmq.PUSH)
+                                origin_push_socket.connect(origin_connection_string)
+                                self._origin_connections[origin] = origin_push_socket
+                            continue
                         if 'sqs' in event_origin:
                             device_disable = None
                             if 'enable' in event_data:
@@ -1670,6 +1675,8 @@ class EventLog(Thread):
     def __init__(self):
         super(EventLog, self).__init__(name=self.__class__.__name__)
         self.daemon = True
+        global threads_tracked
+        threads_tracked.add(self.name)
 
         self._ddb_storage = None
         self._event_log_table = None
@@ -1756,6 +1763,9 @@ class TBot(Thread):
     def __init__(self):
         super(TBot, self).__init__(name=self.__class__.__name__)
         self.daemon = True
+        global threads_tracked
+        threads_tracked.add(self.name)
+
         self.bot = None
         self.chat_id = config.getint('telegram', 'chat_room_id')
 
@@ -1948,6 +1958,8 @@ class SQSListener(Thread):
     def __init__(self):
         super(SQSListener, self).__init__(name=self.__class__.__name__)
         self.daemon = True
+        global threads_tracked
+        threads_tracked.add(self.name)
 
         self.processor = zmq_context.socket(zmq.PUSH)
         self._sqs = None
@@ -2119,10 +2131,15 @@ class OriginNanny(Thread):
 
 
 class EventSourceDiscovery(Thread):
-    def __init__(self):
+    def __init__(self, static_sources):
         super(EventSourceDiscovery, self).__init__(name=self.__class__.__name__)
         self.daemon = True
+        global threads_tracked
+        threads_tracked.add(self.name)
+
         self.processor = zmq_context.socket(zmq.PUSH)
+        self._static_sources = static_sources
+        self._origin_nanny = OriginNanny()
 
     def register_source(self):
         # set up subscribers
@@ -2136,11 +2153,14 @@ class EventSourceDiscovery(Thread):
             threads_tracked.add(subscriber.getName())
             subscriber.start()
             # nanny the heartbeats
-            origin_nanny.add_origin_subscriber(origin=source_label, ip=source_ip, subscriber=subscriber)
+            self._origin_nanny.add_origin_subscriber(origin=source_label, ip=source_ip, subscriber=subscriber)
             # make sure that the event processor creates a PUSH socket for each output
             event_processor.add_event_origin(origin=source_label, ip=source_ip)
 
     def run(self):
+        global threads_tracked
+        self._origin_nanny.start()
+        threads_tracked.add(self._origin_nanny.getName())
         self.processor.connect(URL_WORKER_EVENT_PROCESSOR)
         while True:
             try:
@@ -2158,6 +2178,8 @@ class EventSourceDiscovery(Thread):
                 sentry.captureException()
                 sleep(1)
                 continue
+        # un-nanny and goodbye
+        threads_tracked.remove(self.getName())
 
 
 class CallbackUrlDiscovery(Thread):
@@ -2278,8 +2300,6 @@ if __name__ == "__main__":
         stream_handler = logging.StreamHandler(stream=sys.stdout)
         stream_handler.setFormatter(formatter)
         log.addHandler(stream_handler)
-    # track all threads
-    threads_tracked = set()
     # set up application metrics
     boto3_session = boto3.Session(region_name='af-south-1', profile_name='cpt')
     app_metrics = boto3_session.client('cloudwatch')
@@ -2336,41 +2356,20 @@ if __name__ == "__main__":
         log.info("Execution result is {}".format(execution_result))
     except (WorkflowTimedOutError, WorkflowFailedError) as err:
         log.exception(err)
-    # start application
     # bind listeners first
     event_log = EventLog()
     event_processor = EventProcessor()
-    origin_nanny = OriginNanny()
-    telegram_bot = TBot()
-    # set up subscribers
-    subscription_sources = config.get('app', 'subscription_sources').split(',')
-    for source in subscription_sources:
-        label_ip = source.split(':')
-        source_label = label_ip[0]
-        source_ip = label_ip[1]
-        connection_string = 'tcp://{}:{}'.format(source_ip, config.get('zmq', 'pubsub_port'))
-        subscriber = EventSourceSubscriber(label=source_label, publisher_endpoint=connection_string)
-        threads_tracked.add(subscriber.getName())
-        subscriber.start()
-        # nanny the heartbeats
-        origin_nanny.add_origin_subscriber(origin=source_label, ip=source_ip, subscriber=subscriber)
-        # make sure that the event processor creates a PUSH socket for each output
-        event_processor.add_event_origin(origin=source_label, ip=source_ip)
-    # notifications
+    # connect ZMQ IPC clients next
+    event_source_discovery = EventSourceDiscovery()
     sqs_listener = SQSListener()
-    # start the event processor
+    telegram_bot = TBot()
+    # start the binders
     event_log.start()
-    threads_tracked.add(event_log.getName())
     event_processor.start()
-    threads_tracked.add(event_processor.getName())
-    origin_nanny.start()
-    threads_tracked.add(origin_nanny.getName())
+    # start the connectors
+    event_source_discovery.start()
     sqs_listener.start()
-    threads_tracked.add(sqs_listener.getName())
     telegram_bot.start()
-    threads_tracked.add(telegram_bot.getName())
-    # set up signal handlers
-    signal_handler = SignalHandler()
     # start Telegram integration
     telegram_updater = TelegramUpdater(token=config.get('telegram', 'bot_api_token'), use_context=True)
     telegram_dispatcher = telegram_updater.dispatcher
@@ -2385,12 +2384,12 @@ if __name__ == "__main__":
                                                             telegram_bot_echo))
     telegram_dispatcher.add_error_handler(telegram_error_handler)
     telegram_updater.start_polling()
-    # start threads
-    f = threading.Thread(name='nanny', target=thread_nanny, args=(threads_tracked, signal_handler,))
+    # start the nanny
+    f = threading.Thread(name='nanny', target=thread_nanny)
     f.setDaemon(True)
     f.start()
     server = FlaskThread(rest_api)
-    # not tracked because this is used for Flask bootstrap
+    # not tracked by nanny because this is used for Flask bootstrap
     server.start()
     try:
         # startup completed
