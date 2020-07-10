@@ -82,7 +82,7 @@ from botoflow.options import activity_options
 from botoflow.workers.workflow_worker import WorkflowWorker
 from botoflow.workers.activity_worker import ActivityWorker
 from botoflow.constants import MINUTES
-from botoflow.exceptions import ActivityTaskFailedError, \
+from botoflow.exceptions import ActivityTaskFailedError, ActivityTaskTimedOutError, \
     WorkflowFailedError, WorkflowTimedOutError
 
 APP = os.path.basename(__file__)
@@ -298,7 +298,11 @@ class DeviceWorkflow(WorkflowDefinition):
         app_ip_map = dict()
         for app in apps:
             with activity_options(task_list=app):
-                app_ip = yield DeviceInfoActivity.get_ip_address()
+                app_ip = None
+                try:
+                    app_ip = yield DeviceInfoActivity.get_ip_address()
+                except ActivityTaskTimedOutError:
+                    pass
                 app_ip_map[app] = app_ip
         return_(app_ip_map)
 
@@ -2131,7 +2135,7 @@ class OriginNanny(Thread):
 
 
 class EventSourceDiscovery(Thread):
-    def __init__(self):
+    def __init__(self, boto_session, swf_region, swf_domain):
         super(EventSourceDiscovery, self).__init__(name=self.__class__.__name__)
         self.daemon = True
         global threads_tracked
@@ -2139,6 +2143,9 @@ class EventSourceDiscovery(Thread):
 
         self.processor = zmq_context.socket(zmq.PUSH)
         self._origin_nanny = OriginNanny()
+        self._boto_session = boto_session
+        self._swf_region = swf_region
+        self._swf_domain = swf_domain
 
     def register_source(self, source_label, source_ip):
         connection_string = 'tcp://{}:{}'.format(source_ip, config.get('zmq', 'pubsub_port'))
@@ -2164,6 +2171,19 @@ class EventSourceDiscovery(Thread):
         # now gather the remaining, SWF-discovered inputs
         while True:
             try:
+                # determine IPs of available devices for ZMQ subscriptions
+                with workflow_starter(self._boto_session,
+                                    self._swf_region,
+                                    self._swf_domain,
+                                    APP) as starter:
+                    workflow_instance = DeviceWorkflow.execute(
+                        (swf_app_bluetooth, swf_app_ioboard, swf_app_snapshot, swf_app_tts))
+                    log.info("Workflow is {}".format(workflow_instance))
+                try:
+                    execution_result = starter.wait_for_completion(workflow_instance, 1)
+                    log.info("Execution result is {}".format(execution_result))
+                except (WorkflowTimedOutError, WorkflowFailedError) as err:
+                    log.exception(err)
                 self.processor.send_pyobj({'register_origin':{}})
                 sleep(10)
                 break
@@ -2344,24 +2364,11 @@ if __name__ == "__main__":
         log.info("Execution result is {}".format(execution_result))
     except (WorkflowTimedOutError, WorkflowFailedError) as err:
         log.exception(err)
-    # determine IPs of available devices for ZMQ subscriptions
-    with workflow_starter(boto_session,
-                        swf_region,
-                        swf_domain,
-                        APP) as starter:
-        workflow_instance = DeviceWorkflow.execute(
-            (swf_app_bluetooth, swf_app_ioboard, swf_app_snapshot, swf_app_tts))
-        log.info("Workflow is {}".format(workflow_instance))
-    try:
-        execution_result = starter.wait_for_completion(workflow_instance, 1)
-        log.info("Execution result is {}".format(execution_result))
-    except (WorkflowTimedOutError, WorkflowFailedError) as err:
-        log.exception(err)
     # bind listeners first
     event_log = EventLog()
     event_processor = EventProcessor()
     # connect ZMQ IPC clients next
-    event_source_discovery = EventSourceDiscovery()
+    event_source_discovery = EventSourceDiscovery(boto_session, swf_region, swf_domain)
     sqs_listener = SQSListener()
     telegram_bot = TBot()
     # start the binders
