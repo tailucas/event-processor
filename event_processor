@@ -2131,39 +2131,40 @@ class OriginNanny(Thread):
 
 
 class EventSourceDiscovery(Thread):
-    def __init__(self, static_sources):
+    def __init__(self):
         super(EventSourceDiscovery, self).__init__(name=self.__class__.__name__)
         self.daemon = True
         global threads_tracked
         threads_tracked.add(self.name)
 
         self.processor = zmq_context.socket(zmq.PUSH)
-        self._static_sources = static_sources
         self._origin_nanny = OriginNanny()
 
-    def register_source(self):
-        # set up subscribers
-        subscription_sources = config.get('app', 'subscription_sources').split(',')
-        for source in subscription_sources:
-            label_ip = source.split(':')
-            source_label = label_ip[0]
-            source_ip = label_ip[1]
-            connection_string = 'tcp://{}:{}'.format(source_ip, config.get('zmq', 'pubsub_port'))
-            subscriber = EventSourceSubscriber(label=source_label, publisher_endpoint=connection_string)
-            threads_tracked.add(subscriber.getName())
-            subscriber.start()
-            # nanny the heartbeats
-            self._origin_nanny.add_origin_subscriber(origin=source_label, ip=source_ip, subscriber=subscriber)
-            # make sure that the event processor creates a PUSH socket for each output
-            event_processor.add_event_origin(origin=source_label, ip=source_ip)
+    def register_source(self, source_label, source_ip):
+        connection_string = 'tcp://{}:{}'.format(source_ip, config.get('zmq', 'pubsub_port'))
+        subscriber = EventSourceSubscriber(label=source_label, publisher_endpoint=connection_string)
+        threads_tracked.add(subscriber.getName())
+        subscriber.start()
+        # nanny the heartbeats
+        self._origin_nanny.add_origin_subscriber(origin=source_label, ip=source_ip, subscriber=subscriber)
+        # make sure that the event processor creates a PUSH socket for each output
+        event_processor.add_event_origin(origin=source_label, ip=source_ip)
 
     def run(self):
         global threads_tracked
         self._origin_nanny.start()
         threads_tracked.add(self._origin_nanny.getName())
         self.processor.connect(URL_WORKER_EVENT_PROCESSOR)
+        # start with static sources
+        for source in config.get('app', 'subscription_sources').split(','):
+            label_ip = source.split(':')
+            source_label = label_ip[0]
+            source_ip = label_ip[1]
+            register_source(source_label, source_ip)
+        # now gather the remaining, SWF-discovered inputs
         while True:
             try:
+                self.processor.send_pyobj({'register_origin':{}})
                 sleep(10)
                 break
             except ContextTerminated:
