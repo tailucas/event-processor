@@ -2184,9 +2184,12 @@ class EventSourceDiscovery(Thread):
                     log.info("Execution result is {}".format(execution_result))
                 except (WorkflowTimedOutError, WorkflowFailedError) as err:
                     log.exception(err)
-                self.processor.send_pyobj({'register_origin':{}})
-                sleep(10)
-                break
+                if None not in execution_result.values():
+                    self.processor.close()
+                    log.info('All event sources have been discovered and registered.')
+                    break
+                # self.processor.send_pyobj({'register_origin':{}})
+                sleep(300)
             except ContextTerminated:
                 self.processor.close()
                 log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
