@@ -1357,7 +1357,7 @@ class EventProcessor(Thread):
                                 log.debug(log_msg)
                         if 'register_origin' in event_origin:
                             # connect to event origins
-                            for origin, ip in list(event_origin['register_origin']):
+                            for origin, ip in list(event_origin['register_origin'].items()):
                                 origin_connection_string = 'tcp://{}:{}'.format(ip, config.get('zmq', 'pushpull_port'))
                                 log.info('Registering event origin {} @ {}'.format(origin, origin_connection_string))
                                 origin_push_socket = zmq_context.socket(zmq.PUSH)
