@@ -801,10 +801,9 @@ class SignalHandler:
 
 
 # noinspection PyShadowingNames
-def thread_nanny():
+def thread_nanny(signal_handler):
     global shutting_down
     global threads_tracked
-    signal_handler = SignalHandler()
     sleep_seconds = 60
     while True:
         if signal_handler.last_signal == signal.SIGTERM:
@@ -2395,8 +2394,10 @@ if __name__ == "__main__":
                                                             telegram_bot_echo))
     telegram_dispatcher.add_error_handler(telegram_error_handler)
     telegram_updater.start_polling()
+    # must be main thread
+    signal_handler = SignalHandler()
     # start the nanny
-    f = threading.Thread(name='nanny', target=thread_nanny)
+    f = threading.Thread(name='nanny', target=thread_nanny, args=(signal_handler,))
     f.setDaemon(True)
     f.start()
     server = FlaskThread(rest_api)
