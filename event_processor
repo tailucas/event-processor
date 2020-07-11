@@ -808,7 +808,7 @@ def thread_nanny(signal_handler):
             shutting_down = True
         threads_alive = set()
         for thread_info in threading.enumerate():
-            if thread_info.isAlive():
+            if thread_info.is_alive():
                 threads_alive.add(thread_info.getName())
                 if shutting_down and not thread_info.daemon:
                     # show detail about lingering non-daemon threads more often
@@ -821,18 +821,19 @@ def thread_nanny(signal_handler):
                             code.append("  %s" % (line.strip()))
                     for line in code:
                         log.debug(line)
-        sleep(sleep_seconds)
         if not shutting_down:
             thread_deficit = threads_tracked - threads_alive
             if len(thread_deficit) > 0:
                 error_msg = 'A thread has died. Expected threads are [{}], ' \
                             'missing is [{}].'.format(threads_tracked, thread_deficit)
                 log.fatal(error_msg)
-                post_count_metric('Fatals')
-                interruptable_sleep.set()
+                # FIXME: after debugging
+                #post_count_metric('Fatals')
+                #interruptable_sleep.set()
             elif datetime.now().minute % 5 == 0:
                 # zero every 5 minutes
                 post_count_metric('Fatals', 0)
+        sleep(sleep_seconds)
 
 
 class EventProcessor(Thread):
