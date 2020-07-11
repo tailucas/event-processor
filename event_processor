@@ -2145,8 +2145,12 @@ class EventSourceDiscovery(Thread):
         self._boto_session = boto_session
         self._swf_region = swf_region
         self._swf_domain = swf_domain
+        self._sources_registered = set()
 
     def register_source(self, source_label, source_ip):
+        if source_ip is None:
+            log.warning('Ignoring source {} with no address.'.format(source_label))
+            return
         connection_string = 'tcp://{}:{}'.format(source_ip, config.get('zmq', 'pubsub_port'))
         subscriber = EventSourceSubscriber(label=source_label, publisher_endpoint=connection_string)
         threads_tracked.add(subscriber.getName())
@@ -2154,10 +2158,12 @@ class EventSourceDiscovery(Thread):
         # nanny the heartbeats
         self._origin_nanny.add_origin_subscriber(origin=source_label, ip=source_ip, subscriber=subscriber)
         # make sure that the event processor creates a PUSH socket for each output
-        event_processor.add_event_origin(origin=source_label, ip=source_ip)
+        self.processor.send_pyobj({'register_origin': {source_label: source_ip}})
+        self._sources_registered.add(source_label)
 
     def run(self):
         global threads_tracked
+        sources_to_register = (swf_app_bluetooth, swf_app_ioboard, swf_app_snapshot, swf_app_tts)
         self._origin_nanny.start()
         threads_tracked.add(self._origin_nanny.getName())
         self.processor.connect(URL_WORKER_EVENT_PROCESSOR)
@@ -2166,7 +2172,7 @@ class EventSourceDiscovery(Thread):
             label_ip = source.split(':')
             source_label = label_ip[0]
             source_ip = label_ip[1]
-            register_source(source_label, source_ip)
+            self.register_source(source_label, source_ip)
         # now gather the remaining, SWF-discovered inputs
         while True:
             try:
@@ -2175,20 +2181,24 @@ class EventSourceDiscovery(Thread):
                                     self._swf_region,
                                     self._swf_domain,
                                     APP) as starter:
-                    workflow_instance = DeviceWorkflow.execute(
-                        (swf_app_bluetooth, swf_app_ioboard, swf_app_snapshot, swf_app_tts))
+                    workflow_instance = DeviceWorkflow.execute(sources_to_register)
                     log.info("Workflow is {}".format(workflow_instance))
                 try:
                     execution_result = starter.wait_for_completion(workflow_instance, 1)
                     log.info("Execution result is {}".format(execution_result))
                 except (WorkflowTimedOutError, WorkflowFailedError) as err:
                     log.exception(err)
-                if None not in execution_result.values():
-                    self.processor.close()
-                    log.info('All event sources have been discovered and registered.')
-                    break
-                # self.processor.send_pyobj({'register_origin':{}})
-                sleep(300)
+                if execution_result is not None:
+                    for source_label, source_ip in list(execution_result.items()):
+                        self.register_source(source_label, source_ip)
+                    if not set(sources_to_register) - self._sources_registered:
+                        log.info('All event sources {} have been discovered and registered.'.format(
+                            self._sources_registered))
+                        self.processor.close()
+                        break
+                log.warning('Waiting to retry on incomplete source registration: {}'.format(execution_result))
+                # try get more in a minute
+                sleep(60)
             except ContextTerminated:
                 self.processor.close()
                 log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
