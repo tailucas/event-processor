@@ -36,8 +36,6 @@ from operator import itemgetter
 from pylru import lrucache
 from requests.exceptions import ConnectionError
 from raven.contrib.flask import Sentry
-from resin.exceptions import RequestError
-from resin.models.device import Device
 from simplejson.scanner import JSONDecodeError
 from socket import gaierror
 from traceback import StackSummary
@@ -1355,16 +1353,16 @@ class EventProcessor(Thread):
                                 log.warning(log_msg)
                             else:
                                 log.debug(log_msg)
-                        if 'register_origin' in event_origin:
+                        if 'register_origin' == event_origin:
                             # connect to event origins
-                            for origin, ip in list(event_origin['register_origin'].items()):
+                            for origin, ip in list(event_data.items()):
                                 origin_connection_string = 'tcp://{}:{}'.format(ip, config.get('zmq', 'pushpull_port'))
                                 log.info('Registering event origin {} @ {}'.format(origin, origin_connection_string))
                                 origin_push_socket = zmq_context.socket(zmq.PUSH)
                                 origin_push_socket.connect(origin_connection_string)
                                 self._origin_connections[origin] = origin_push_socket
                             continue
-                        if 'sqs' in event_origin:
+                        if 'sqs' == event_origin:
                             device_disable = None
                             if 'enable' in event_data:
                                 device_disable = False
@@ -1453,9 +1451,6 @@ class EventProcessor(Thread):
                                 device_status = "unknown"
                                 if 'device_status' in event_data['data']:
                                     device_status = event_data['data']['device_status']
-                                device_last_seen = "unknown"
-                                if 'device_last_seen' in event_data['data']:
-                                    device_last_seen = event_data['data']['device_last_seen']
                                 # check if there are any inputs or outputs configured for this origin
                                 for devices, origin_devices, awol_devices in [
                                     (self.inputs, self._inputs_by_origin, self._awol_inputs),
@@ -1474,14 +1469,13 @@ class EventProcessor(Thread):
                                     if new_awol > 0:
                                         log.warning(
                                             "{} devices are unavailable because '{}' has gone AWOL. "
-                                            "{} devices: {}. Last seen: {}, status: {}, last online: {}".format(
+                                            "{} devices: {}. Last seen: {}, status: {}".format(
                                                 len(awol_devices),
                                                 event_origin,
                                                 new_awol,
                                                 str(awol_devices),
                                                 stale_heartbeat,
-                                                device_status,
-                                                device_last_seen
+                                                device_status
                                             ))
                             if 'max_heartbeat_age' in event_data['data']:
                                 heartbeat_age = int(event_data['data']['max_heartbeat_age'])
@@ -2023,10 +2017,6 @@ class OriginNanny(Thread):
         self._heartbeat_sample_interval = int(config.get('app', 'heartbeat_sample_interval_seconds'))
         self._heartbeat_report_interval = int(config.get('app', 'heartbeat_report_interval_seconds'))
         self._max_heartbeat_delay = int(config.get('app', 'max_heartbeat_delay_seconds'))
-        # set the Resin.io API key as expected by the resin-python-sdk
-        # Note that the stored RESIN_API_KEY could be overridden in config via entrypoint.sh
-        # configuration interpolation to favour key generated for this application.
-        os.environ['RESIN_API_KEY'] = config.get('resin', 'api_key')
         self._heartbeats = {}
 
     # noinspection PyShadowingNames
@@ -2049,7 +2039,6 @@ class OriginNanny(Thread):
                     heartbeat_due = True
                     max_heartbeat = -1
                 payload = {}
-                resin_device = Device()
                 for origin, (ip, origin_subscriber) in list(self.origin_subscriber.items()):
                     if origin not in self._heartbeats:
                         self._heartbeats[origin] = []
@@ -2060,39 +2049,20 @@ class OriginNanny(Thread):
                         heartbeat_age = time.time() - origin_subscriber.last_message
                     if last_message is None or heartbeat_age > self._max_heartbeat_delay:
                         device_status = None
-                        device_last_seen = None
                         if last_message:
                             last_message = datetime.utcfromtimestamp(last_message).replace(tzinfo=pytz.utc).strftime(
                                 DATE_FORMAT)
                         else:
                             last_message = "never"
-                        try:
-                            for d in resin_device.get_by_name(origin):
-                                device_ip = d['ip_address'].split()[0]
-                                # this matches the origin by name and IP
-                                if device_ip == ip:
-                                    device_status = d['status']
-                                    if 'last_seen_time' in d:
-                                        device_last_seen = d['last_seen_time']
-
-                        except (RequestError, ConnectionError) as e:
-                            log.debug("Unable to fetch device information for Resin device '{}': {}".format(origin,
-                                                                                                            str(e)))
                         log_message = "'{}' last activity was {}.".format(origin, last_message)
-                        if device_last_seen is None:
-                            device_last_seen = "unknown"
                         if device_status:
-                            log.debug("{} Device is {} (last seen: {})".format(log_message,
-                                                                               device_status,
-                                                                               device_last_seen))
+                            log.debug("{} Device is {}.".format(log_message, device_status))
                         else:
                             log.debug(log_message)
                         # used as an out-of-band trigger for something amiss
                         payload['stale_heartbeat'] = last_message
                         if device_status:
                             payload['device_status'] = device_status
-                        if device_last_seen:
-                            payload['device_last_seen'] = device_last_seen
                     # do this for each device irrespective of stale or not
                     origin_heartbeat = self._heartbeats[origin]
                     if heartbeat_age:
