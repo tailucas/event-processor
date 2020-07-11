@@ -2148,18 +2148,20 @@ class EventSourceDiscovery(Thread):
         self._sources_registered = set()
 
     def register_source(self, source_label, source_ip):
+        if source_label in self._sources_registered:
+            return None
         if source_ip is None:
             log.warning('Ignoring source {} with no address.'.format(source_label))
-            return
+            return None
         connection_string = 'tcp://{}:{}'.format(source_ip, config.get('zmq', 'pubsub_port'))
         subscriber = EventSourceSubscriber(label=source_label, publisher_endpoint=connection_string)
-        threads_tracked.add(subscriber.getName())
         subscriber.start()
         # nanny the heartbeats
         self._origin_nanny.add_origin_subscriber(origin=source_label, ip=source_ip, subscriber=subscriber)
         # make sure that the event processor creates a PUSH socket for each output
         self.processor.send_pyobj({'register_origin': {source_label: source_ip}})
         self._sources_registered.add(source_label)
+        return subscriber
 
     def run(self):
         global threads_tracked
@@ -2172,7 +2174,9 @@ class EventSourceDiscovery(Thread):
             label_ip = source.split(':')
             source_label = label_ip[0]
             source_ip = label_ip[1]
-            self.register_source(source_label, source_ip)
+            subscriber = self.register_source(source_label, source_ip)
+            if subscriber is not None:
+                threads_tracked.add(subscriber.getName())
         # now gather the remaining, SWF-discovered inputs
         while True:
             try:
@@ -2190,7 +2194,9 @@ class EventSourceDiscovery(Thread):
                     log.exception(err)
                 if execution_result is not None:
                     for source_label, source_ip in list(execution_result.items()):
-                        self.register_source(source_label, source_ip)
+                        subscriber = self.register_source(source_label, source_ip)
+                        if subscriber is not None:
+                            threads_tracked.add(subscriber.getName())
                     if not set(sources_to_register) - self._sources_registered:
                         log.info('All event sources {} have been discovered and registered.'.format(
                             self._sources_registered))
