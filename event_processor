@@ -222,11 +222,11 @@ def post_count_metric(metric_name, count=1):
             start_to_close_timeout=1*MINUTES)
 class HelloWorldActivities(object):
 
-    @activity('1.0')
+    @activity(version='1.0', start_to_close_timeout=5*SECONDS)
     def get_name(self):
         return APP
 
-    @activity('1.1')
+    @activity(version='1.1', start_to_close_timeout=5*SECONDS)
     def print_greeting(self, greeting, name):
         message = "{} {}!".format(greeting, name)
         log.info(message)
@@ -248,7 +248,7 @@ class HelloWorldWorkflow(WorkflowDefinition):
             start_to_close_timeout=1*MINUTES)
 class BluetoothActivity(object):
 
-    @activity('1.0')
+    @activity(version='1.0', start_to_close_timeout=20*SECONDS)
     def ping_bluetooth(self, owner_device_list):
         raise RuntimeError('{} not implemented on {}'.format(self.__class__.__name__, APP))
 
@@ -257,7 +257,7 @@ class BluetoothActivity(object):
             start_to_close_timeout=1*MINUTES)
 class IOBoardActivity(object):
 
-    @activity('1.1')
+    @activity(version='1.1', start_to_close_timeout=5*SECONDS)
     def trigger_output(self, device_key, delay):
         raise RuntimeError('{} not implemented on {}'.format(self.__class__.__name__, APP))
 
@@ -266,7 +266,7 @@ class IOBoardActivity(object):
             start_to_close_timeout=1*MINUTES)
 class TTSActivity(object):
 
-    @activity('1.0')
+    @activity(version='1.0', start_to_close_timeout=30*SECONDS)
     def say(self, message):
         raise RuntimeError('{} not implemented on {}'.format(self.__class__.__name__, APP))
 
@@ -275,16 +275,16 @@ class TTSActivity(object):
             start_to_close_timeout=1*MINUTES)
 class SnapshotActivity(object):
 
-    @activity('1.0')
+    @activity(version='1.0', start_to_close_timeout=30*SECONDS)
     def snapshot_camera(self, device_key, camera_command):
         raise RuntimeError('{} not implemented on {}'.format(self.__class__.__name__, APP))
 
 
-@activities(schedule_to_start_timeout=5*SECONDS,
-            start_to_close_timeout=5*SECONDS)
+@activities(schedule_to_start_timeout=1*MINUTES,
+            start_to_close_timeout=1*MINUTES)
 class DeviceInfoActivity(object):
 
-    @activity('1.1')
+    @activity(version='1.1', start_to_close_timeout=5*SECONDS)
     def get_ip_address(self):
         raise RuntimeError('{} not implemented on {}'.format(self.__class__.__name__, APP))
 
@@ -304,6 +304,7 @@ class DeviceWorkflow(WorkflowDefinition):
                 app_ip_map[app] = app_ip
         return_(app_ip_map)
 
+
 class SnapshotWorkflow(WorkflowDefinition):
 
     @execute(version='1.0', execution_start_to_close_timeout=1*MINUTES)
@@ -312,6 +313,7 @@ class SnapshotWorkflow(WorkflowDefinition):
         with activity_options(task_list=swf_app_snapshot):
             response = yield SnapshotActivity.snapshot_camera(device_key, camera_command)
         return_(response)
+
 
 class TTSWorkflow(WorkflowDefinition):
 
@@ -322,6 +324,7 @@ class TTSWorkflow(WorkflowDefinition):
             response = yield TTSActivity.say(message)
         return_(response)
 
+
 class IOBoardWorkflow(WorkflowDefinition):
 
     @execute(version='1.0', execution_start_to_close_timeout=1*MINUTES)
@@ -330,6 +333,7 @@ class IOBoardWorkflow(WorkflowDefinition):
         with activity_options(task_list=swf_app_ioboard):
             response = yield IOBoardActivity.trigger_output(device_key, delay)
         return_(response)
+
 
 class BluetoothWorkflow(WorkflowDefinition):
 
