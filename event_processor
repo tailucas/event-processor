@@ -2157,6 +2157,7 @@ class EventSourceDiscovery(Thread):
                                     APP) as starter:
                     workflow_instance = DeviceWorkflow.execute(sources_to_register)
                     log.info("Workflow is {}".format(workflow_instance))
+                execution_result = None
                 try:
                     execution_result = starter.wait_for_completion(workflow_instance, 1)
                     log.info("Execution result is {}".format(execution_result))
