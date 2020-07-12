@@ -2341,17 +2341,17 @@ if __name__ == "__main__":
                                             TTSActivity()))
     swf_worker._worker.unhandled_exception_handler = swf_exception_handler
     swf_worker.start()
-    with workflow_starter(boto_session,
-                          swf_region,
-                          swf_domain,
-                          APP) as starter:
-        workflow_instance = HelloWorldWorkflow.execute("Greetings")
-        log.info("Workflow is {}".format(workflow_instance))
-    try:
-        execution_result = starter.wait_for_completion(workflow_instance, 1)
-        log.info("Execution result is {}".format(execution_result))
-    except (WorkflowTimedOutError, WorkflowFailedError) as err:
-        log.exception(err)
+    #with workflow_starter(boto_session,
+    #                      swf_region,
+    #                      swf_domain,
+    #                      APP) as starter:
+    #    workflow_instance = HelloWorldWorkflow.execute("Greetings")
+    #    log.info("Workflow is {}".format(workflow_instance))
+    #try:
+    #    execution_result = starter.wait_for_completion(workflow_instance, 1)
+    #    log.info("Execution result is {}".format(execution_result))
+    #except (WorkflowTimedOutError, WorkflowFailedError) as err:
+    #    log.exception(err)
     # bind listeners first
     event_log = EventLog()
     event_processor = EventProcessor()
