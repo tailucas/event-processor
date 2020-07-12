@@ -20,8 +20,6 @@ import traceback
 import umsgpack
 import zmq
 
-from AWSIoTPythonSDK.MQTTLib import AWSIoTMQTTClient
-
 from base64 import b64decode, b64encode
 from botocore.exceptions import ConnectionError as bce
 from boto3.dynamodb.conditions import Attr
@@ -437,9 +435,8 @@ def index():
             #TODO: correctly update 'meter_reading'
             device_listing[device_key]['meter_value'] = reset_value
             # send IoT message
-            event_processor.iot.connect()
-            event_processor.iot.publish(config.get('iot', 'topic_pub_meter'), json.dumps(iot_message), 0)
-            event_processor.iot.disconnect()
+            #FIXME: replace with MQTT equivalent
+            # event_processor.iot.publish(config.get('iot', 'topic_pub_meter'), json.dumps(iot_message), 0)
         elif 'meter_history' in request.form:
             scheme = None
             if 'X-Forwarded-Proto' in request.headers:
@@ -893,16 +890,6 @@ class EventProcessor(Thread):
         self.event_log = zmq_context.socket(zmq.PUSH)
 
         self.bot = zmq_context.socket(zmq.PUSH)
-
-        self.iot = AWSIoTMQTTClient(APP, useWebsocket=True)
-        self.iot.configureEndpoint(
-            config.get('iot', 'endpoint'),
-            443)
-        self.iot.configureCredentials(config.get('iot', 'root_ca_path'))
-        self.iot.configureOfflinePublishQueueing(0)
-        self.iot.configureDrainingFrequency(2)
-        self.iot.configureConnectDisconnectTimeout(10)
-        self.iot.configureMQTTOperationTimeout(5)
 
     @property
     def general_config(self):

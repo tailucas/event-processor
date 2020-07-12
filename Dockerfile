@@ -61,11 +61,6 @@ RUN systemctl mask \
 RUN echo '\n\
 net.ipv6.conf.all.disable_ipv6 = 1' >> /etc/sysctl.conf
 
-# AWS IoT root CA
-# https://github.com/aws/aws-iot-device-sdk-python
-# https://docs.aws.amazon.com/iot/latest/developerguide/server-authentication.html
-RUN wget -nv -O /opt/app/iot_ca.pem https://www.amazontrust.com/repository/AmazonRootCA1.pem
-
 STOPSIGNAL 37
 # ssh, http, zmq, ngrok
 EXPOSE 22 5000 5556 5558 4040 8080
