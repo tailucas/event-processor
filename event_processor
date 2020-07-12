@@ -79,7 +79,7 @@ from botoflow import activity, \
 from botoflow.options import activity_options
 from botoflow.workers.workflow_worker import WorkflowWorker
 from botoflow.workers.activity_worker import ActivityWorker
-from botoflow.constants import MINUTES
+from botoflow.constants import SECONDS, MINUTES
 from botoflow.exceptions import ActivityTaskFailedError, ActivityTaskTimedOutError, \
     WorkflowFailedError, WorkflowTimedOutError
 
@@ -280,11 +280,11 @@ class SnapshotActivity(object):
         raise RuntimeError('{} not implemented on {}'.format(self.__class__.__name__, APP))
 
 
-@activities(schedule_to_start_timeout=1*MINUTES,
-            start_to_close_timeout=1*MINUTES)
+@activities(schedule_to_start_timeout=5*SECONDS,
+            start_to_close_timeout=5*SECONDS)
 class DeviceInfoActivity(object):
 
-    @activity('1.0')
+    @activity('1.1')
     def get_ip_address(self):
         raise RuntimeError('{} not implemented on {}'.format(self.__class__.__name__, APP))
 
