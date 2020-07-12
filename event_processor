@@ -827,9 +827,8 @@ def thread_nanny(signal_handler):
                 error_msg = 'A thread has died. Expected threads are [{}], ' \
                             'missing is [{}].'.format(threads_tracked, thread_deficit)
                 log.fatal(error_msg)
-                # FIXME: after debugging
-                #post_count_metric('Fatals')
-                #interruptable_sleep.set()
+                post_count_metric('Fatals')
+                interruptable_sleep.set()
             elif datetime.now().minute % 5 == 0:
                 # zero every 5 minutes
                 post_count_metric('Fatals', 0)
