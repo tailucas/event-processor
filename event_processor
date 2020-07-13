@@ -833,7 +833,7 @@ def thread_nanny(signal_handler):
             elif datetime.now().minute % 5 == 0:
                 # zero every 5 minutes
                 post_count_metric('Fatals', 0)
-        sleep(sleep_seconds)
+        interruptable_sleep.wait(sleep_seconds)
 
 
 class EventProcessor(Thread):
@@ -2126,6 +2126,7 @@ class EventSourceDiscovery(Thread):
 
     def run(self):
         global threads_tracked
+        global shutting_down
         sources_to_register = (swf_app_bluetooth, swf_app_ioboard, swf_app_snapshot, swf_app_tts)
         self._origin_nanny.start()
         threads_tracked.add(self._origin_nanny.getName())
@@ -2166,7 +2167,9 @@ class EventSourceDiscovery(Thread):
                         break
                 log.warning('Waiting to retry on incomplete source registration: {}'.format(execution_result))
                 # try get more in a minute
-                sleep(60)
+                interruptable_sleep.wait(60)
+                if shutting_down:
+                    break
             except ContextTerminated:
                 self.processor.close()
                 log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
