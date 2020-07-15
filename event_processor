@@ -1605,7 +1605,7 @@ class EventProcessor(Thread):
                                         event_origin=event_origin,
                                         awol_devices=self._awol_inputs,
                                         device=active_device)
-                                    log.debug('{} {}'.format(origin, active_device_key))
+                                    log.info('DEBUG: {} {}'.format(event_origin, active_device_key))
                                     # informational event?
                                     # TODO: move to _process_device_event
                                     if 'info_notify' in active_device_config:
@@ -1634,7 +1634,7 @@ class EventProcessor(Thread):
                                                 defer_until))
                                             continue
                                     self._process_device_event(
-                                        event_origin=origin,
+                                        event_origin=event_origin,
                                         timestamp=timestamp,
                                         active_device_key=active_device_key,
                                         active_device=active_device)
@@ -2278,6 +2278,8 @@ class SWFActivityWaiter(Thread):
                 execution_result = self._workflow_starter.wait_for_completion(self._workflow_instance, 1)
             except (WorkflowTimedOutError, WorkflowFailedError):
                 log.exception(self._name)
+            if execution_result is not None:
+                self.socket.send_pyobj(execution_result)
         except Exception:
             log.exception(self._name)
             sentry.captureException()
