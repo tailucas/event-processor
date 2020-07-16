@@ -2279,7 +2279,7 @@ class SWFActivityWaiter(Thread):
             except (WorkflowTimedOutError, WorkflowFailedError):
                 log.exception(self._name)
             if execution_result is not None:
-                self.socket.send_pyobj(execution_result)
+                self.socket.send_pyobj({swf_app_bluetooth: execution_result})
         except Exception:
             log.exception(self._name)
             sentry.captureException()
