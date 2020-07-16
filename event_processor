@@ -120,11 +120,6 @@ event_log = None
 ngrok_tunnel_url = None
 ngrok_tunnel_url_with_bauth = None
 
-swf_app_bluetooth = None
-swf_app_ioboard = None
-swf_app_snapshot = None
-swf_app_tts = None
-
 shutting_down = False
 # threads to nanny
 threads_tracked = set()
@@ -305,7 +300,7 @@ class SnapshotWorkflow(WorkflowDefinition):
     @execute(version='1.0', execution_start_to_close_timeout=1*MINUTES)
     def execute(self, device_key, camera_command):
         response = None
-        with activity_options(task_list=swf_app_snapshot):
+        with activity_options(task_list=config.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT)):
             response = yield SnapshotActivity.snapshot_camera(device_key, camera_command)
         return_(response)
 
@@ -315,7 +310,7 @@ class TTSWorkflow(WorkflowDefinition):
     @execute(version='1.0', execution_start_to_close_timeout=1*MINUTES)
     def execute(self, message):
         response = None
-        with activity_options(task_list=swf_app_tts):
+        with activity_options(task_list=config.get('swf_tasklist', OUTPUT_TYPE_TTS)):
             response = yield TTSActivity.say(message)
         return_(response)
 
@@ -325,7 +320,7 @@ class IOBoardWorkflow(WorkflowDefinition):
     @execute(version='1.0', execution_start_to_close_timeout=1*MINUTES)
     def execute(self, device_key, delay):
         response = None
-        with activity_options(task_list=swf_app_ioboard):
+        with activity_options(task_list=config.get('swf_tasklist', OUTPUT_TYPE_SWITCH)):
             response = yield IOBoardActivity.trigger_output(device_key, delay)
         return_(response)
 
@@ -335,7 +330,7 @@ class BluetoothWorkflow(WorkflowDefinition):
     @execute(version='1.0', execution_start_to_close_timeout=1*MINUTES)
     def execute(self, owner_device_list):
         response = None
-        with activity_options(task_list=swf_app_bluetooth):
+        with activity_options(task_list=config.get('swf_tasklist', OUTPUT_TYPE_BLUETOOTH)):
             response = yield BluetoothActivity.ping_bluetooth(owner_device_list)
         return_(response)
 
@@ -838,7 +833,7 @@ def thread_nanny(signal_handler):
 
 class EventProcessor(Thread):
 
-    def __init__(self, boto_session, swf_region, swf_domain):
+    def __init__(self, origin_nanny, boto_session, swf_region, swf_domain):
         super(EventProcessor, self).__init__(name=self.__class__.__name__)
         self.daemon = True
         global threads_tracked
@@ -887,6 +882,8 @@ class EventProcessor(Thread):
         self._max_message_validity_seconds = None
 
         self._device_event_lru = lrucache(100)
+
+        self._origin_nanny = origin_nanny
 
         self.socket = zmq_context.socket(zmq.PULL)
         self.socket.bind(URL_WORKER_EVENT_PROCESSOR)
@@ -1190,6 +1187,7 @@ class EventProcessor(Thread):
                                 self._output_config[output_device_key]['device_params'])
                         log.info("{} workflow is {}".format(output_type, workflow_instance))
                         SWFActivityWaiter(
+                            event_source=config.get('swf_tasklist', OUTPUT_TYPE_BLUETOOTH),
                             output_type=OUTPUT_TYPE_BLUETOOTH,
                             workflow_starter=starter,
                             workflow_instance=workflow_instance).start()
@@ -1261,6 +1259,7 @@ class EventProcessor(Thread):
 
     # noinspection PyBroadException
     def run(self):
+        global threads_tracked
         # set up local DB storage
         self._db_storage = sqlite3.connect(database=os.environ['TABLESPACE_PATH'])
         # connect to AWS services
@@ -1351,6 +1350,13 @@ class EventProcessor(Thread):
                         if 'register_origin' == event_origin:
                             # connect to event origins
                             for origin, ip in list(event_data.items()):
+                                connection_string = 'tcp://{}:{}'.format(ip, config.get('zmq', 'pubsub_port'))
+                                subscriber = EventSourceSubscriber(label=origin, publisher_endpoint=connection_string)
+                                subscriber.start()
+                                threads_tracked.add(subscriber.getName())
+                                # nanny the heartbeats
+                                self._origin_nanny.add_origin_subscriber(origin=origin, ip=ip, subscriber=subscriber)
+
                                 origin_connection_string = 'tcp://{}:{}'.format(ip, config.get('zmq', 'pushpull_port'))
                                 log.info('Registering event origin {} @ {}'.format(origin, origin_connection_string))
                                 origin_push_socket = zmq_context.socket(zmq.PUSH)
@@ -2005,6 +2011,8 @@ class OriginNanny(Thread):
     def __init__(self):
         super(OriginNanny, self).__init__(name=self.__class__.__name__)
         self.daemon = True
+        global threads_tracked
+        threads_tracked.add(self.name)
 
         self.processor = zmq_context.socket(zmq.PUSH)
 
@@ -2106,7 +2114,6 @@ class EventSourceDiscovery(Thread):
         threads_tracked.add(self.name)
 
         self.processor = zmq_context.socket(zmq.PUSH)
-        self._origin_nanny = OriginNanny()
         self._boto_session = boto_session
         self._swf_region = swf_region
         self._swf_domain = swf_domain
@@ -2114,35 +2121,29 @@ class EventSourceDiscovery(Thread):
 
     def register_source(self, source_label, source_ip):
         if source_label in self._sources_registered:
-            return None
+            return
         if source_ip is None:
             log.warning('Ignoring source {} with no address.'.format(source_label))
-            return None
-        connection_string = 'tcp://{}:{}'.format(source_ip, config.get('zmq', 'pubsub_port'))
-        subscriber = EventSourceSubscriber(label=source_label, publisher_endpoint=connection_string)
-        subscriber.start()
-        # nanny the heartbeats
-        self._origin_nanny.add_origin_subscriber(origin=source_label, ip=source_ip, subscriber=subscriber)
+            return
         # make sure that the event processor creates a PUSH socket for each output
         self.processor.send_pyobj({'register_origin': {source_label: source_ip}})
         self._sources_registered.add(source_label)
-        return subscriber
 
     def run(self):
         global threads_tracked
         global shutting_down
-        sources_to_register = (swf_app_bluetooth, swf_app_ioboard, swf_app_snapshot, swf_app_tts)
-        self._origin_nanny.start()
-        threads_tracked.add(self._origin_nanny.getName())
+        sources_to_register = (
+            config.get('swf_tasklist', OUTPUT_TYPE_BLUETOOTH),
+            config.get('swf_tasklist', OUTPUT_TYPE_SWITCH),
+            config.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT),
+            config.get('swf_tasklist', OUTPUT_TYPE_TTS))
         self.processor.connect(URL_WORKER_EVENT_PROCESSOR)
         # start with static sources
         for source in config.get('app', 'subscription_sources').split(','):
             label_ip = source.split(':')
             source_label = label_ip[0]
             source_ip = label_ip[1]
-            subscriber = self.register_source(source_label, source_ip)
-            if subscriber is not None:
-                threads_tracked.add(subscriber.getName())
+            self.register_source(source_label, source_ip)
         # now gather the remaining, SWF-discovered inputs
         while True:
             try:
@@ -2161,9 +2162,7 @@ class EventSourceDiscovery(Thread):
                     log.exception(err)
                 if execution_result is not None:
                     for source_label, source_ip in list(execution_result.items()):
-                        subscriber = self.register_source(source_label, source_ip)
-                        if subscriber is not None:
-                            threads_tracked.add(subscriber.getName())
+                        self.register_source(source_label, source_ip)
                     if not set(sources_to_register) - self._sources_registered:
                         log.info('All event sources {} have been discovered and registered.'.format(
                             self._sources_registered))
@@ -2264,9 +2263,10 @@ class FlaskThread(Thread):
 
 class SWFActivityWaiter(Thread):
 
-    def __init__(self, output_type, workflow_starter, workflow_instance):
+    def __init__(self, event_source, output_type, workflow_starter, workflow_instance):
         super(SWFActivityWaiter, self).__init__(name=self.__class__.__name__)
         self.daemon = True
+        self._event_source = event_source
         self._output_type = output_type
         self._workflow_starter = workflow_starter
         self._workflow_instance = workflow_instance
@@ -2284,7 +2284,7 @@ class SWFActivityWaiter(Thread):
             except (WorkflowTimedOutError, WorkflowFailedError):
                 log.exception(self._name)
             if execution_result is not None:
-                self.socket.send_pyobj({swf_app_bluetooth: execution_result})
+                self.socket.send_pyobj({self._event_source: execution_result})
         except Exception:
             log.exception(self._name)
             sentry.captureException()
@@ -2318,10 +2318,6 @@ if __name__ == "__main__":
     boto_session = botocore.session.Session(profile=config.get('botoflow', 'profile'))
     swf_region = config.get('botoflow', 'region')
     swf_domain = config.get('botoflow', 'domain')
-    swf_app_bluetooth = config.get('swf_tasklist', OUTPUT_TYPE_BLUETOOTH)
-    swf_app_ioboard = config.get('swf_tasklist', OUTPUT_TYPE_SWITCH)
-    swf_app_snapshot = config.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT)
-    swf_app_tts = config.get('swf_tasklist', OUTPUT_TYPE_TTS)
     swf_decider = ThreadedWorkflowExecutor(WorkflowWorker(boto_session,
                                              swf_region,
                                              swf_domain,
@@ -2356,7 +2352,8 @@ if __name__ == "__main__":
     #    log.exception(err)
     # bind listeners first
     event_log = EventLog()
-    event_processor = EventProcessor(boto_session, swf_region, swf_domain)
+    origin_nanny = OriginNanny()
+    event_processor = EventProcessor(origin_nanny, boto_session, swf_region, swf_domain)
     # connect ZMQ IPC clients next
     event_source_discovery = EventSourceDiscovery(boto_session, swf_region, swf_domain)
     sqs_listener = SQSListener()
@@ -2365,6 +2362,7 @@ if __name__ == "__main__":
     event_log.start()
     event_processor.start()
     # start the connectors
+    origin_nanny.start()
     event_source_discovery.start()
     sqs_listener.start()
     telegram_bot.start()
