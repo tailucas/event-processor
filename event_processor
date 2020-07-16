@@ -120,9 +120,6 @@ event_log = None
 ngrok_tunnel_url = None
 ngrok_tunnel_url_with_bauth = None
 
-boto_session = None
-swf_region = None
-swf_domain = None
 swf_app_bluetooth = None
 swf_app_ioboard = None
 swf_app_snapshot = None
@@ -508,6 +505,7 @@ def event_log():
     events = {}
     if request.method == 'GET':
         # TODO: configurable
+        global event_log
         events = event_log.get_events(since_ts=int(
             (datetime.utcnow() - timedelta(hours=24)).strftime('%s')
         ))
@@ -838,11 +836,15 @@ def thread_nanny(signal_handler):
 
 class EventProcessor(Thread):
 
-    def __init__(self):
+    def __init__(self, boto_session, swf_region, swf_domain):
         super(EventProcessor, self).__init__(name=self.__class__.__name__)
         self.daemon = True
         global threads_tracked
         threads_tracked.add(self.name)
+
+        self._boto_session = boto_session
+        self._swf_region = swf_region
+        self._swf_domain = swf_domain
 
         self.inputs = {}
         self.outputs = {}
@@ -1181,7 +1183,7 @@ class EventProcessor(Thread):
                         output_device_activation))
                     workflow_instance = None
                     if output_type == OUTPUT_TYPE_BLUETOOTH:
-                        with workflow_starter(boto_session, swf_region, swf_domain, APP) as starter:
+                        with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, APP) as starter:
                             workflow_instance = BluetoothWorkflow.execute(
                                 self._output_config[output_device_key]['device_params'])
                         log.info("{} workflow is {}".format(output_type, workflow_instance))
@@ -1193,7 +1195,7 @@ class EventProcessor(Thread):
                         camera_command = None
                         if 'device_params' in output_device_activation:
                             camera_command = output_device_activation['device_params']
-                        with workflow_starter(boto_session, swf_region, swf_domain, APP) as starter:
+                        with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, APP) as starter:
                             workflow_instance = SnapshotWorkflow.execute(device_key, camera_command)
                         log.info("{} workflow is {}".format(output_type, workflow_instance))
                     elif output_type == OUTPUT_TYPE_SWITCH:
@@ -1204,7 +1206,7 @@ class EventProcessor(Thread):
                         if 'event_detail' in active_device:
                             event_detail = ' {}'.format(active_device['event_detail'])
                         notification_message = '{}{}'.format(active_device_label, event_detail)
-                        with workflow_starter(boto_session, swf_region, swf_domain, APP) as starter:
+                        with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, APP) as starter:
                             workflow_instance = TTSWorkflow.execute(notification_message)
                         log.info("{} workflow is {}".format(output_type, workflow_instance))
                 elif event_destination in self._origin_connections:
@@ -2351,7 +2353,7 @@ if __name__ == "__main__":
     #    log.exception(err)
     # bind listeners first
     event_log = EventLog()
-    event_processor = EventProcessor()
+    event_processor = EventProcessor(boto_session, swf_region, swf_domain)
     # connect ZMQ IPC clients next
     event_source_discovery = EventSourceDiscovery(boto_session, swf_region, swf_domain)
     sqs_listener = SQSListener()
