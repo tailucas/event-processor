@@ -832,6 +832,8 @@ def thread_nanny(signal_handler):
                 # zero every 5 minutes
                 post_count_metric('Fatals', 0)
         interruptable_sleep.wait(sleep_seconds)
+        # interrupt any other sleepers
+        interruptable_sleep.set()
 
 
 class EventProcessor(Thread):
@@ -2167,11 +2169,12 @@ class EventSourceDiscovery(Thread):
                             self._sources_registered))
                         self.processor.close()
                         break
-                log.warning('Waiting to retry on incomplete source registration: {}'.format(execution_result))
                 # try get more in a minute
                 interruptable_sleep.wait(60)
                 if shutting_down:
                     break
+                else:
+                    log.warning('Waiting to retry on incomplete source registration: {}'.format(execution_result))
             except ContextTerminated:
                 self.processor.close()
                 log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
