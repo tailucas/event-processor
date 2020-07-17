@@ -356,6 +356,7 @@ def index():
     device_listing = {}
     input_labels = {}
     awol_input_labels = set()
+    global event_processor
     awol_inputs = event_processor.awol_inputs
     if len(awol_inputs) > 0:
         flash(message='{} devices are unavailable right now.'.format(len(awol_inputs)), category='danger')
@@ -486,6 +487,7 @@ def index():
 
 @rest_api.route('/metrics', methods=['GET', 'POST'])
 def show_metrics():
+    global event_processor
     widgets = event_processor.general_config['cloudwatch_widgets']['config_value']
     images = []
     for widget in widgets:
@@ -515,6 +517,7 @@ def show_config():
 
 @rest_api.route('/input_config', methods=['GET', 'POST'])
 def input_config():
+    global event_processor
     device_key = None
     if request.method == 'POST':
         device_key = request.form['device_key']
@@ -611,6 +614,7 @@ def input_config():
 
 @rest_api.route('/input_link', methods=['GET', 'POST'])
 def input_link():
+    global event_processor
     device_key = None
     if request.method == 'POST':
         device_key = request.form['device_key']
@@ -625,6 +629,7 @@ def input_link():
 
 @rest_api.route('/output_link', methods=['GET', 'POST'])
 def output_link():
+    global event_processor
     device_key = None
     if request.method == 'POST':
         device_key = request.form['device_key']
@@ -640,6 +645,7 @@ def output_link():
 
 @rest_api.route('/output_config', methods=['GET', 'POST'])
 def output_config():
+    global event_processor
     device_key = None
     if request.method == 'POST':
         device_key = request.form['device_key']
@@ -659,6 +665,7 @@ def output_config():
 
 
 def telegram_bot_echo(update: Update, context: TelegramCallbackContext):
+    global ngrok_tunnel_url
     try:
         authorized_users = config.get('telegram', 'authorized_users').split(',')
         if str(update.effective_user.id) not in authorized_users:
@@ -681,6 +688,7 @@ def telegram_bot_echo(update: Update, context: TelegramCallbackContext):
 
 
 def telegram_bot_cmd(update: Update, context: TelegramCallbackContext):
+    global ngrok_tunnel_url_with_bauth
     try:
         authorized_users = config.get('telegram', 'authorized_users').split(',')
         if str(update.effective_user.id) not in authorized_users:
@@ -718,6 +726,7 @@ def telegram_bot_cmd(update: Update, context: TelegramCallbackContext):
 
 
 def telegram_bot_inline(update: Update, context: TelegramCallbackContext):
+    global ngrok_tunnel_url
     try:
         authorized_users = config.get('telegram', 'authorized_users').split(',')
         if str(update.inline_query.from_user.id) not in authorized_users:
@@ -1773,6 +1782,7 @@ class TBot(Thread):
         self.sns = boto3.client('sns')
 
     def build_message(self, timestamp, event_data, max_length=160, build_sms=False):
+        global ngrok_tunnel_url
         device_label = event_data['input_context']['device_label']
         event_detail = ""
         if 'event_detail' in event_data['input_context']:
@@ -1801,6 +1811,7 @@ class TBot(Thread):
 
     # noinspection PyBroadException
     def run(self):
+        global ngrok_tunnel_url_with_bauth
         # connect to Telegram
         self.bot = TelegramBot(token=config.get('telegram', 'bot_api_token'))
         while True:
