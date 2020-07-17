@@ -835,9 +835,10 @@ def thread_nanny(signal_handler):
             elif datetime.now().minute % 5 == 0:
                 # zero every 5 minutes
                 post_count_metric('Fatals', 0)
+        else:
+            # interrupt any other sleepers
+            interruptable_sleep.set()
         interruptable_sleep.wait(sleep_seconds)
-        # interrupt any other sleepers
-        interruptable_sleep.set()
 
 
 class EventProcessor(Thread):
