@@ -282,17 +282,14 @@ class DeviceInfoActivity(object):
 class DeviceWorkflow(WorkflowDefinition):
 
     @execute(version='1.1', execution_start_to_close_timeout=1*MINUTES)
-    def execute(self, apps):
-        app_ip_map = dict()
-        for app in apps:
-            with activity_options(task_list=app):
-                app_ip = None
-                try:
-                    app_ip = yield DeviceInfoActivity.get_ip_address()
-                except ActivityTaskTimedOutError:
-                    pass
-                app_ip_map[app] = app_ip
-        return_(app_ip_map)
+    def execute(self, app):
+        app_ip = None
+        with activity_options(task_list=app):
+            try:
+                app_ip = yield DeviceInfoActivity.get_ip_address()
+            except ActivityTaskTimedOutError:
+                pass
+        return_({app: app_ip})
 
 
 class SnapshotWorkflow(WorkflowDefinition):
@@ -2169,7 +2166,7 @@ class EventSourceDiscovery(Thread):
                                         self._swf_region,
                                         self._swf_domain,
                                         APP) as starter:
-                        workflow_instance = DeviceWorkflow.execute(sources_to_register)
+                        workflow_instance = DeviceWorkflow.execute(source_to_register)
                         log.info("Registration workflow for {} is {}".format(
                             source_to_register,
                             workflow_instance))
