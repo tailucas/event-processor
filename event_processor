@@ -132,7 +132,7 @@ app_metrics = None
 from pylib.datetime import is_list, make_timestamp, parse_datetime
 from pylib.data import make_payload
 from pylib.aws.metrics import post_count_metric
-from pylib.swf import SWFActivityWaiter, \
+from pylib.aws.swf import SWFActivityWaiter, \
     swf_exception_handler, \
     HelloWorldActivities, \
     HelloWorldWorkflow, \
@@ -146,7 +146,6 @@ from pylib.swf import SWFActivityWaiter, \
     TTSWorkflow, \
     IOBoardWorkflow, \
     BluetoothWorkflow
-from pylib.aws.swf import SWFActivityWaiter
 from pylib.process import SignalHandler
 from pylib.threads import thread_nanny
 
@@ -955,6 +954,7 @@ class EventProcessor(Thread):
                                 self._output_config[output_device_key]['device_params'])
                         log.info("{} workflow is {}".format(output_type, workflow_instance))
                         SWFActivityWaiter(
+                            zmq_context=zmq_context,
                             event_source=config.get('swf_tasklist', OUTPUT_TYPE_BLUETOOTH),
                             output_type=OUTPUT_TYPE_BLUETOOTH,
                             workflow_starter=starter,
@@ -1928,6 +1928,7 @@ class EventSourceDiscovery(Thread):
                             source_to_register,
                             workflow_instance))
                     SWFActivityWaiter(
+                        zmq_context=zmq_context,
                         event_source='register_origin',
                         output_type=source_to_register,
                         workflow_starter=starter,
@@ -2035,6 +2036,8 @@ if __name__ == "__main__":
         stream_handler = logging.StreamHandler(stream=sys.stdout)
         stream_handler.setFormatter(formatter)
         log.addHandler(stream_handler)
+    # Flask first for Sentry init
+    server = FlaskThread(rest_api)
     # set up application metrics
     boto3_session = boto3.Session(region_name='af-south-1', profile_name='cpt')
     app_metrics = boto3_session.client('cloudwatch')
@@ -2110,7 +2113,6 @@ if __name__ == "__main__":
     f = threading.Thread(name='nanny', target=thread_nanny, args=(signal_handler,))
     f.setDaemon(True)
     f.start()
-    server = FlaskThread(rest_api)
     # not tracked by nanny because this is used for Flask bootstrap
     server.start()
     try:
