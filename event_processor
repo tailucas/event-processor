@@ -114,7 +114,7 @@ URL_WORKER_TELEGRAM_BOT = 'inproc://telegram-bot'
 zmq_context = zmq.Context()
 zmq_context.setsockopt(zmq.LINGER, 0)
 
-interruptable_sleep = threading.Event()
+builtins.interruptable_sleep = threading.Event()
 
 event_processor = None
 event_log = None
