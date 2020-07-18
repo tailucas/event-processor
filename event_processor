@@ -3,6 +3,7 @@ import dateutil.parser
 import logging
 import logging.handlers
 
+import builtins
 import boto3
 import copy
 import inspect
@@ -89,7 +90,7 @@ if sys.stdout.isatty() and os.system('systemctl status app') == 0:
 # set the working directory for libraries that assume this (such as PyDrive)
 DIR = os.path.abspath(os.path.dirname(__file__))
 os.chdir(DIR)
-log = logging.getLogger(APP)
+builtins.log = logging.getLogger(APP)
 # do not propagate to console logging
 log.propagate = False
 
@@ -107,7 +108,7 @@ OUTPUT_TYPE_SWITCH = 'ioboard'
 OUTPUT_TYPE_SNAPSHOT = 'snapshot'
 OUTPUT_TYPE_TTS = 'tts'
 
-URL_WORKER_EVENT_PROCESSOR = 'inproc://event-processor'
+builtins.URL_WORKER_EVENT_PROCESSOR = 'inproc://event-processor'
 URL_WORKER_EVENT_LOG = 'inproc://event-log'
 URL_WORKER_TELEGRAM_BOT = 'inproc://telegram-bot'
 zmq_context = zmq.Context()
@@ -120,14 +121,12 @@ event_log = None
 ngrok_tunnel_url = None
 ngrok_tunnel_url_with_bauth = None
 
-shutting_down = False
+# global shutdown flag
+builtins.shutting_down = False
 # threads to nanny
-threads_tracked = set()
+builtins.threads_tracked = set()
 
-sentry = Sentry()
-
-app_metrics = None
-
+builtins.sentry = Sentry()
 
 from pylib.datetime import is_list, make_timestamp, parse_datetime
 from pylib.data import make_payload
@@ -2040,7 +2039,7 @@ if __name__ == "__main__":
     server = FlaskThread(rest_api)
     # set up application metrics
     boto3_session = boto3.Session(region_name='af-south-1', profile_name='cpt')
-    app_metrics = boto3_session.client('cloudwatch')
+    builtins.app_metrics = boto3_session.client('cloudwatch')
     # connect to SWF
     boto_session = botocore.session.Session(profile=config.get('botoflow', 'profile'))
     swf_region = config.get('botoflow', 'region')
