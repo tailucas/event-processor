@@ -129,207 +129,26 @@ sentry = Sentry()
 app_metrics = None
 
 
-def is_list(value):
-    return isinstance(value, list)
-
-
-def make_timestamp(timestamp=None, make_string=False):
-    if timestamp is None:
-        timestamp = datetime.utcnow()
-    elif isinstance(timestamp, float) or isinstance(timestamp, int):
-        timestamp = datetime.utcfromtimestamp(timestamp)
-    elif isinstance(timestamp, str):
-        timestamp = dateutil.parser.parse(timestamp)
-    if make_string:
-        return timestamp.strftime(DATE_FORMAT)
-    # not naive datetime
-    return timestamp.replace(tzinfo=pytz.utc)
-
-
-def parse_datetime(value=None, as_tz=pytz.utc):
-    timestamp = datetime.utcnow().replace(tzinfo=as_tz)
-    if value is None:
-        return timestamp
-    if isinstance(value, str):
-        try:
-            timestamp = dateutil.parser.parse(value)
-            log.debug('Parsed timestamp is {}'.format(timestamp))
-        except ValueError:
-            log.exception("Cannot parse date-like string {}. Defaulting to '{}'.".format(value, timestamp))
-    elif isinstance(value, datetime):
-        timestamp = value
-    else:
-        raise RuntimeError("Unknown date/time type: '{}'".format(value))
-    # ensure that some timezone information is present
-    if timestamp.tzinfo is None:
-        local_tz = tz.tzlocal()
-        log.debug('{}: setting to local time {}'.format(timestamp, local_tz))
-        # we use the default specific to the physical locality of the devices
-        timestamp = timestamp.replace(tzinfo=local_tz)
-    if timestamp.tzinfo != as_tz:
-        # now adjust to requested TZ
-        log.debug('{}: setting to {} from {}'.format(timestamp, as_tz, timestamp.tzinfo))
-        timestamp = timestamp.astimezone(tz=as_tz)
-    return timestamp
-
-
-def make_payload(timestamp=None, data=None):
-    payload = {'timestamp': make_timestamp(timestamp, True)}
-    if data is not None and len(data) > 0:
-        payload['data'] = data
-    log.debug(json.dumps(payload))
-    return umsgpack.packb(payload)
-
-
-def post_count_metric(metric_name, count=1):
-    try:
-        app_metrics.put_metric_data(
-            Namespace='automation',
-            MetricData=[
-                {
-                    'MetricName': metric_name,
-                    'Value': count,
-                    'Dimensions': [
-                        {
-                            'Name': 'Application',
-                            'Value': APP
-                        },
-                        {
-                            'Name': 'Device',
-                            'Value': config.get('app', 'device_name')
-                        },
-                    ],
-                    'Timestamp': make_timestamp(),
-                    'Unit': 'Count'
-                },
-            ]
-        )
-    except Exception:
-        log.exception('Problem posting metric [{}={}]'.format(metric_name, count))
-
-
-@activities(schedule_to_start_timeout=1*MINUTES,
-            start_to_close_timeout=1*MINUTES)
-class HelloWorldActivities(object):
-
-    @activity(version='1.0', start_to_close_timeout=5*SECONDS)
-    def get_name(self):
-        return APP
-
-    @activity(version='1.1', start_to_close_timeout=5*SECONDS)
-    def print_greeting(self, greeting, name):
-        message = "{} {}!".format(greeting, name)
-        log.info(message)
-        return message
-
-
-class HelloWorldWorkflow(WorkflowDefinition):
-
-    @execute(version='1.1', execution_start_to_close_timeout=1*MINUTES)
-    def execute(self, greeting):
-        name = yield HelloWorldActivities.get_name()
-        with activity_options(task_list='notifier'):
-            yield TTSActivity.say("Testing {}".format(name))
-        response = yield HelloWorldActivities.print_greeting(greeting, name)
-        return_(response)
-
-
-@activities(schedule_to_start_timeout=1*MINUTES,
-            start_to_close_timeout=1*MINUTES)
-class BluetoothActivity(object):
-
-    @activity(version='1.0', start_to_close_timeout=20*SECONDS)
-    def ping_bluetooth(self, owner_device_list):
-        raise RuntimeError('{} not implemented on {}'.format(self.__class__.__name__, APP))
-
-
-@activities(schedule_to_start_timeout=1*MINUTES,
-            start_to_close_timeout=1*MINUTES)
-class IOBoardActivity(object):
-
-    @activity(version='1.1', start_to_close_timeout=5*SECONDS)
-    def trigger_output(self, device_key, delay):
-        raise RuntimeError('{} not implemented on {}'.format(self.__class__.__name__, APP))
-
-
-@activities(schedule_to_start_timeout=1*MINUTES,
-            start_to_close_timeout=1*MINUTES)
-class TTSActivity(object):
-
-    @activity(version='1.0', start_to_close_timeout=30*SECONDS)
-    def say(self, message):
-        raise RuntimeError('{} not implemented on {}'.format(self.__class__.__name__, APP))
-
-
-@activities(schedule_to_start_timeout=1*MINUTES,
-            start_to_close_timeout=1*MINUTES)
-class SnapshotActivity(object):
-
-    @activity(version='1.0', start_to_close_timeout=30*SECONDS)
-    def snapshot_camera(self, device_key, camera_command):
-        raise RuntimeError('{} not implemented on {}'.format(self.__class__.__name__, APP))
-
-
-@activities(schedule_to_start_timeout=1*MINUTES,
-            start_to_close_timeout=1*MINUTES)
-class DeviceInfoActivity(object):
-
-    @activity(version='1.1', start_to_close_timeout=5*SECONDS)
-    def get_ip_address(self):
-        raise RuntimeError('{} not implemented on {}'.format(self.__class__.__name__, APP))
-
-
-class DeviceWorkflow(WorkflowDefinition):
-
-    @execute(version='1.1', execution_start_to_close_timeout=1*MINUTES)
-    def execute(self, app):
-        app_ip = None
-        with activity_options(task_list=app):
-            try:
-                app_ip = yield DeviceInfoActivity.get_ip_address()
-            except ActivityTaskTimedOutError:
-                pass
-        return_({app: app_ip})
-
-
-class SnapshotWorkflow(WorkflowDefinition):
-
-    @execute(version='1.0', execution_start_to_close_timeout=1*MINUTES)
-    def execute(self, device_key, camera_command):
-        response = None
-        with activity_options(task_list=config.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT)):
-            response = yield SnapshotActivity.snapshot_camera(device_key, camera_command)
-        return_(response)
-
-
-class TTSWorkflow(WorkflowDefinition):
-
-    @execute(version='1.0', execution_start_to_close_timeout=1*MINUTES)
-    def execute(self, message):
-        response = None
-        with activity_options(task_list=config.get('swf_tasklist', OUTPUT_TYPE_TTS)):
-            response = yield TTSActivity.say(message)
-        return_(response)
-
-
-class IOBoardWorkflow(WorkflowDefinition):
-
-    @execute(version='1.0', execution_start_to_close_timeout=1*MINUTES)
-    def execute(self, device_key, delay):
-        response = None
-        with activity_options(task_list=config.get('swf_tasklist', OUTPUT_TYPE_SWITCH)):
-            response = yield IOBoardActivity.trigger_output(device_key, delay)
-        return_(response)
-
-
-class BluetoothWorkflow(WorkflowDefinition):
-
-    @execute(version='1.0', execution_start_to_close_timeout=1*MINUTES)
-    def execute(self, owner_device_list):
-        response = None
-        with activity_options(task_list=config.get('swf_tasklist', OUTPUT_TYPE_BLUETOOTH)):
-            response = yield BluetoothActivity.ping_bluetooth(owner_device_list)
-        return_(response)
+from pylib.datetime import is_list, make_timestamp, parse_datetime
+from pylib.data import make_payload
+from pylib.aws.metrics import post_count_metric
+from pylib.swf import SWFActivityWaiter, \
+    swf_exception_handler, \
+    HelloWorldActivities, \
+    HelloWorldWorkflow, \
+    BluetoothActivity, \
+    IOBoardActivity, \
+    TTSActivity, \
+    SnapshotActivity, \
+    DeviceInfoActivity, \
+    DeviceWorkflow, \
+    SnapshotWorkflow, \
+    TTSWorkflow, \
+    IOBoardWorkflow, \
+    BluetoothWorkflow
+from pylib.aws.swf import SWFActivityWaiter
+from pylib.process import SignalHandler
+from pylib.threads import thread_nanny
 
 
 @rest_api.route('/logging')
@@ -774,68 +593,6 @@ def telegram_error_handler(update: Update, context: TelegramCallbackContext):
     except Exception:
         log.exception('bot')
         sentry.captureException()
-
-
-# noinspection PyUnusedLocal
-class SignalHandler:
-
-    def __init__(self):
-        self.last_signal = 0
-        signal.signal(signal.SIGTERM, self.terminate)
-        signal.signal(signal.SIGHUP, self.hup)
-
-    def hup(self, signum, frame):
-        log.warning('Signal {} received.'.format(signum))
-        self.last_signal = signum
-        if log.getEffectiveLevel() == logging.INFO:
-            log.setLevel(logging.DEBUG)
-        elif log.getEffectiveLevel() == logging.DEBUG:
-            log.setLevel(logging.INFO)
-
-    def terminate(self, signum, frame):
-        log.warning('Signal {} received.'.format(signum))
-        self.last_signal = signum
-        interruptable_sleep.set()
-
-
-# noinspection PyShadowingNames
-def thread_nanny(signal_handler):
-    global shutting_down
-    global threads_tracked
-    sleep_seconds = 60
-    while True:
-        if signal_handler.last_signal == signal.SIGTERM:
-            shutting_down = True
-        threads_alive = set()
-        for thread_info in threading.enumerate():
-            if thread_info.is_alive():
-                threads_alive.add(thread_info.getName())
-                if shutting_down and not thread_info.daemon:
-                    # show detail about lingering non-daemon threads more often
-                    sleep_seconds = 2
-                    code = []
-                    stack = sys._current_frames()[thread_info.ident]
-                    for filename, lineno, name, line in traceback.extract_stack(stack):
-                        code.append('File: "%s", line %d, in %s' % (filename, lineno, name))
-                        if line:
-                            code.append("  %s" % (line.strip()))
-                    for line in code:
-                        log.debug(line)
-        if not shutting_down:
-            thread_deficit = threads_tracked - threads_alive
-            if len(thread_deficit) > 0:
-                error_msg = 'A thread has died. Expected threads are [{}], ' \
-                            'missing is [{}].'.format(threads_tracked, thread_deficit)
-                log.fatal(error_msg)
-                post_count_metric('Fatals')
-                interruptable_sleep.set()
-            elif datetime.now().minute % 5 == 0:
-                # zero every 5 minutes
-                post_count_metric('Fatals', 0)
-        else:
-            # interrupt any other sleepers
-            interruptable_sleep.set()
-        interruptable_sleep.wait(sleep_seconds)
 
 
 class EventProcessor(Thread):
@@ -2264,47 +2021,6 @@ class FlaskThread(Thread):
         log.warning('Flask server shutting down: {}'.format(self.__class__.__name__))
         self.srv.shutdown()
         log.warning('Flask server shutdown complete: {}'.format(self.__class__.__name__))
-
-
-class SWFActivityWaiter(Thread):
-
-    def __init__(self, event_source, output_type, workflow_starter, workflow_instance):
-        super(SWFActivityWaiter, self).__init__(name=self.__class__.__name__)
-        self.daemon = True
-        self._event_source = event_source
-        self._output_type = output_type
-        self._workflow_starter = workflow_starter
-        self._workflow_instance = workflow_instance
-        self.socket = zmq_context.socket(zmq.PUSH)
-
-    def run(self):
-        if self._workflow_instance is None:
-            log.warning('No workflow instance for {} @ {}'.format(self._output_type, self._event_source))
-            return
-        execution_result = None
-        try:
-            self.socket.connect(URL_WORKER_EVENT_PROCESSOR)
-            try:
-                log.info("Awaiting {} execution result: {}".format(
-                    self._output_type,
-                    self._workflow_instance.workflow_execution))
-                execution_result = self._workflow_starter.wait_for_completion(self._workflow_instance, 1)
-            except (WorkflowTimedOutError, WorkflowFailedError):
-                log.exception(self._name)
-            if execution_result is not None:
-                self.socket.send_pyobj({self._event_source: execution_result})
-        except Exception:
-            log.exception(self._name)
-            sentry.captureException()
-        finally:
-            self.socket.close()
-        log.info('{} is done for {} with result {}'.format(self._name, self._output_type, execution_result))
-
-
-def swf_exception_handler(err: Exception, tb_list: StackSummary):
-    log.fatal('SWF processing exception: {} {}'.format(err, tb_list.format()))
-    post_count_metric('Fatals')
-    interruptable_sleep.set()
 
 
 if __name__ == "__main__":
