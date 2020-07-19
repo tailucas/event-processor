@@ -11,8 +11,8 @@ python-magic
 python-telegram-bot
 pytz
 pyzmq
-raven
 requests
+sentry-sdk[flask]
 simplejson
 u-msgpack-python
 Flask

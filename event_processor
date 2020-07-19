@@ -11,6 +11,7 @@ import netifaces
 import os
 import pytz
 import requests
+import sentry_sdk
 import signal
 import simplejson as json
 import sqlite3
@@ -34,7 +35,8 @@ from operator import itemgetter
 # noinspection PyDeprecation
 from pylru import lrucache
 from requests.exceptions import ConnectionError
-from raven.contrib.flask import Sentry
+from sentry_sdk import capture_exception, last_event_id
+from sentry_sdk.integrations.flask import FlaskIntegration
 from simplejson.scanner import JSONDecodeError
 from socket import gaierror
 from traceback import StackSummary
@@ -99,7 +101,10 @@ config.optionxform = str
 config.read([os.path.join(DIR, '{}.conf'.format(APP))])
 builtins.DEVICE_NAME = config.get('app', 'device_name')
 
-builtins.DATE_FORMAT = '%Y-%m-%dT%H:%M:%S.%f%z'
+sentry_sdk.init(
+    dsn=config.get('sentry', 'dsn'),
+    integrations=[FlaskIntegration()]
+)
 
 rest_api = Flask(APP)
 Compress(rest_api)
@@ -109,7 +114,7 @@ OUTPUT_TYPE_SWITCH = 'ioboard'
 OUTPUT_TYPE_SNAPSHOT = 'snapshot'
 OUTPUT_TYPE_TTS = 'tts'
 
-builtins.URL_WORKER_EVENT_PROCESSOR = 'inproc://event-processor'
+builtins.URL_WORKER_APP = 'inproc://app-worker'
 URL_WORKER_EVENT_LOG = 'inproc://event-log'
 URL_WORKER_TELEGRAM_BOT = 'inproc://telegram-bot'
 zmq_context = zmq.Context()
@@ -122,12 +127,10 @@ event_log = None
 ngrok_tunnel_url = None
 ngrok_tunnel_url_with_bauth = None
 
-# global shutdown flag
+# shutdown flag
 builtins.shutting_down = False
 # threads to nanny
 builtins.threads_tracked = set()
-
-builtins.sentry = Sentry()
 
 from pylib.datetime import is_list, make_timestamp, parse_datetime
 from pylib.data import make_payload
@@ -150,6 +153,11 @@ from pylib.process import SignalHandler
 from pylib.threads import thread_nanny
 
 
+@app.route('/debug-sentry')
+def trigger_error():
+    division_by_zero = 1 / 0
+
+
 @rest_api.route('/logging')
 def debug():
     log.setLevel(request.args.get('level'))
@@ -159,8 +167,8 @@ def debug():
 @rest_api.errorhandler(500)
 def internal_server_error():
     return render_template('error.html',
-                           event_id=g.sentry_event_id,
-                           public_dsn=sentry.client.get_public_dsn('https')
+                           sentry_event_id=last_event_id(),
+                           sentry_dsn=config.get('sentry', 'dsn')
                            )
 
 
@@ -204,7 +212,7 @@ def index():
         if 'panic_button' in request.form:
             log.info('Panic button pressed.')
             processor = zmq_context.socket(zmq.PUSH)
-            processor.connect(URL_WORKER_EVENT_PROCESSOR)
+            processor.connect(URL_WORKER_APP)
             processor.send_pyobj({
                 DEVICE_NAME: {
                     'data': {
@@ -499,7 +507,7 @@ def telegram_bot_echo(update: Update, context: TelegramCallbackContext):
                          parse_mode='Markdown')
     except Exception:
         log.exception('bot handler')
-        sentry.captureException()
+        capture_exception()
 
 
 def telegram_bot_cmd(update: Update, context: TelegramCallbackContext):
@@ -520,7 +528,7 @@ def telegram_bot_cmd(update: Update, context: TelegramCallbackContext):
         # status update
         if update.effective_message.text.startswith('/report'):
             processor = zmq_context.socket(zmq.PUSH)
-            processor.connect(URL_WORKER_EVENT_PROCESSOR)
+            processor.connect(URL_WORKER_APP)
             processor.send_pyobj({
                 DEVICE_NAME: {
                     'data': {
@@ -537,7 +545,7 @@ def telegram_bot_cmd(update: Update, context: TelegramCallbackContext):
             processor.close()
     except Exception:
         log.exception('bot handler')
-        sentry.captureException()
+        capture_exception()
 
 
 def telegram_bot_inline(update: Update, context: TelegramCallbackContext):
@@ -579,7 +587,7 @@ def telegram_bot_inline(update: Update, context: TelegramCallbackContext):
         update.inline_query.answer(results)
     except Exception:
         log.exception('bot handler')
-        sentry.captureException()
+        capture_exception()
 
 
 def telegram_error_handler(update: Update, context: TelegramCallbackContext):
@@ -591,7 +599,7 @@ def telegram_error_handler(update: Update, context: TelegramCallbackContext):
         log.warning('Problem with {} processing {}: {}'.format(context.bot, update, e.message))
     except Exception:
         log.exception('bot')
-        sentry.captureException()
+        capture_exception()
 
 
 class EventProcessor(Thread):
@@ -599,7 +607,6 @@ class EventProcessor(Thread):
     def __init__(self, origin_nanny, boto_session, swf_region, swf_domain):
         super(EventProcessor, self).__init__(name=self.__class__.__name__)
         self.daemon = True
-        global threads_tracked
         threads_tracked.add(self.name)
 
         self._boto_session = boto_session
@@ -649,7 +656,7 @@ class EventProcessor(Thread):
         self._origin_nanny = origin_nanny
 
         self.socket = zmq_context.socket(zmq.PULL)
-        self.socket.bind(URL_WORKER_EVENT_PROCESSOR)
+        self.socket.bind(URL_WORKER_APP)
 
         self.event_log = zmq_context.socket(zmq.PUSH)
 
@@ -802,7 +809,7 @@ class EventProcessor(Thread):
         except Exception as e:
             exception_message = "Cannot update '{}'".format(device_label)
             log.exception(exception_message)
-            sentry.captureException()
+            capture_exception()
             flash(message='{}: {}'.format(exception_message, str(e)), category='danger')
 
     def _update_devices(self, event_origin, device_info):
@@ -1027,7 +1034,6 @@ class EventProcessor(Thread):
 
     # noinspection PyBroadException
     def run(self):
-        global threads_tracked
         # set up local DB storage
         self._db_storage = sqlite3.connect(database=os.environ['TABLESPACE_PATH'])
         # connect to AWS services
@@ -1110,7 +1116,7 @@ class EventProcessor(Thread):
                         else:
                             timestamp = make_timestamp()
                             log_msg = "Message from {} does not include a 'timestamp' so it can't be filtered if it " \
-                                      "is stale. Using {}.".format(event_origin, timestamp.strftime(DATE_FORMAT))
+                                      "is stale. Using {}.".format(event_origin, timestamp.strftime(ISO_DATE_FORMAT))
                             if 'data' in event_data and 'active_devices' in event_data['data']:
                                 log.warning(log_msg)
                             else:
@@ -1431,7 +1437,7 @@ class EventProcessor(Thread):
                 break
             except Exception:
                 log.exception(self.__class__.__name__)
-                sentry.captureException()
+                capture_exception()
                 sleep(1)
                 continue
 
@@ -1441,7 +1447,6 @@ class EventLog(Thread):
     def __init__(self):
         super(EventLog, self).__init__(name=self.__class__.__name__)
         self.daemon = True
-        global threads_tracked
         threads_tracked.add(self.name)
 
         self._ddb_storage = None
@@ -1519,7 +1524,7 @@ class EventLog(Thread):
                 break
             except Exception:
                 log.exception(self.__class__.__name__)
-                sentry.captureException()
+                capture_exception()
                 sleep(1)
                 continue
 
@@ -1529,7 +1534,6 @@ class TBot(Thread):
     def __init__(self):
         super(TBot, self).__init__(name=self.__class__.__name__)
         self.daemon = True
-        global threads_tracked
         threads_tracked.add(self.name)
 
         self.bot = None
@@ -1638,7 +1642,7 @@ class TBot(Thread):
                 break
             except Exception:
                 log.exception(self.__class__.__name__)
-                sentry.captureException()
+                capture_exception()
                 sleep(1)
                 continue
 
@@ -1666,7 +1670,7 @@ class EventSourceSubscriber(Thread):
         log.info('Subscribing to {} @ {}'.format(self._label, self._publisher_endpoint))
         self.subscriber.connect(self._publisher_endpoint)
         self.subscriber.setsockopt(zmq.SUBSCRIBE, b'')
-        self.processor.connect(URL_WORKER_EVENT_PROCESSOR)
+        self.processor.connect(URL_WORKER_APP)
         while True:
             try:
                 # timeout in millis
@@ -1716,7 +1720,7 @@ class EventSourceSubscriber(Thread):
                 break
             except Exception:
                 log.exception(self.name)
-                sentry.captureException()
+                capture_exception()
                 sleep(1)
                 continue
 
@@ -1726,7 +1730,6 @@ class SQSListener(Thread):
     def __init__(self):
         super(SQSListener, self).__init__(name=self.__class__.__name__)
         self.daemon = True
-        global threads_tracked
         threads_tracked.add(self.name)
 
         self.processor = zmq_context.socket(zmq.PUSH)
@@ -1740,7 +1743,7 @@ class SQSListener(Thread):
         # set up notifications
         self._sqs = boto3.resource('sqs')
         self._sqs_queue = self._sqs.get_queue_by_name(QueueName=sqs_queue_name)
-        self.processor.connect(URL_WORKER_EVENT_PROCESSOR)
+        self.processor.connect(URL_WORKER_APP)
         while True:
             try:
                 for sqs_message in self._sqs_queue.receive_messages(WaitTimeSeconds=20):
@@ -1771,7 +1774,7 @@ class SQSListener(Thread):
                 break
             except Exception:
                 log.exception(self.name)
-                sentry.captureException()
+                capture_exception()
                 sleep(1)
                 continue
 
@@ -1781,7 +1784,6 @@ class OriginNanny(Thread):
     def __init__(self):
         super(OriginNanny, self).__init__(name=self.__class__.__name__)
         self.daemon = True
-        global threads_tracked
         threads_tracked.add(self.name)
 
         self.processor = zmq_context.socket(zmq.PUSH)
@@ -1797,7 +1799,7 @@ class OriginNanny(Thread):
         self.origin_subscriber[origin] = (ip, subscriber)
 
     def run(self):
-        self.processor.connect(URL_WORKER_EVENT_PROCESSOR)
+        self.processor.connect(URL_WORKER_APP)
         # warm-up to wait for first volley of heartbeats
         interruptable_sleep.wait(self._heartbeat_sample_interval)
         last_report = make_timestamp()
@@ -1824,7 +1826,7 @@ class OriginNanny(Thread):
                         device_status = None
                         if last_message:
                             last_message = datetime.utcfromtimestamp(last_message).replace(tzinfo=pytz.utc).strftime(
-                                DATE_FORMAT)
+                                ISO_DATE_FORMAT)
                         else:
                             last_message = "never"
                         log_message = "'{}' last activity was {}.".format(origin, last_message)
@@ -1880,7 +1882,6 @@ class EventSourceDiscovery(Thread):
     def __init__(self, boto_session, swf_region, swf_domain):
         super(EventSourceDiscovery, self).__init__(name=self.__class__.__name__)
         self.daemon = True
-        global threads_tracked
         threads_tracked.add(self.name)
 
         self.processor = zmq_context.socket(zmq.PUSH)
@@ -1889,15 +1890,13 @@ class EventSourceDiscovery(Thread):
         self._swf_domain = swf_domain
 
     def run(self):
-        global threads_tracked
-        global shutting_down
         sources_to_register = (
             config.get('swf_tasklist', OUTPUT_TYPE_BLUETOOTH),
             config.get('swf_tasklist', OUTPUT_TYPE_SWITCH),
             config.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT),
             config.get('swf_tasklist', OUTPUT_TYPE_TTS))
         try:
-            self.processor.connect(URL_WORKER_EVENT_PROCESSOR)
+            self.processor.connect(URL_WORKER_APP)
             # start with static sources
             for source in config.get('app', 'subscription_sources').split(','):
                 label_ip = source.split(':')
@@ -1946,7 +1945,7 @@ class EventSourceDiscovery(Thread):
                     log.warning('Waiting to retry on incomplete source registration: {}'.format(outstanding_registrations))
             except Exception:
                 log.exception(self.name)
-                sentry.captureException()
+                capture_exception()
                 sleep(1)
                 continue
         # un-nanny and goodbye
@@ -1979,7 +1978,7 @@ class CallbackUrlDiscovery(Thread):
                 break
             except Exception:
                 log.exception(self.__class__.__name__)
-                sentry.captureException()
+                capture_exception()
                 sleep(1)
         try:
             purl = urlparse(ngrok_tunnel_url)
@@ -1992,15 +1991,13 @@ class CallbackUrlDiscovery(Thread):
                                                                    purl.path)
         except Exception:
             log.exception(self.__class__.__name__)
-            sentry.captureException()
+            capture_exception()
 
 
 class FlaskThread(Thread):
 
     def __init__(self, app):
         super(FlaskThread, self).__init__(name=self.__class__.__name__)
-        # add Sentry
-        sentry.init_app(app)
         # start frontend
         app.secret_key = os.environ['APP_FLASK_SECRET_KEY']
         app.jinja_env.add_extension('jinja2.ext.loopcontrols')
@@ -2036,8 +2033,6 @@ if __name__ == "__main__":
         stream_handler = logging.StreamHandler(stream=sys.stdout)
         stream_handler.setFormatter(formatter)
         log.addHandler(stream_handler)
-    # Flask first for Sentry init
-    server = FlaskThread(rest_api)
     # set up application metrics
     boto3_session = boto3.Session(region_name='af-south-1', profile_name='cpt')
     builtins.app_metrics = boto3_session.client('cloudwatch')
@@ -2114,6 +2109,7 @@ if __name__ == "__main__":
     f.setDaemon(True)
     f.start()
     # not tracked by nanny because this is used for Flask bootstrap
+    server = FlaskThread(rest_api)
     server.start()
     try:
         # startup completed

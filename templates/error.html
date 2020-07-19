@@ -1,16 +1,13 @@
 {% extends "layout.html" %}
 {% set active_page = "show_error" %}
 {% block head %}
-    <!-- Sentry JS SDK 2.1.+ required -->
-    <script src="https://cdn.ravenjs.com/2.3.0/raven.min.js"></script>
+    <script src="https://browser.sentry-cdn.com/5.19.2/bundle.min.js" integrity="JpEWxJ7oLRn+baXBgcCKEv73uYWsgouzEResgJneOXvTjDZ+1crAXcNAKZoiL96Z" crossorigin="anonymous"></script>
 {% endblock %}
 {% block body %}
-    {% if event_id %}
+    {% if sentry_event_id %}
       <script>
-      Raven.showReportDialog({
-        eventId: '{{ event_id }}',
-        dsn: '{{ public_dsn }}'
-      });
+        Sentry.init({ dsn: '{{ sentry_dsn }}' });
+        Sentry.showReportDialog({ eventId: '{{ sentry_event_id }}' })
       </script>
     {% endif %}
 {% endblock %}
