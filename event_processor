@@ -82,7 +82,7 @@ from botoflow.constants import SECONDS, MINUTES
 from botoflow.exceptions import ActivityTaskFailedError, ActivityTaskTimedOutError, \
     WorkflowFailedError, WorkflowTimedOutError
 
-APP = os.path.basename(__file__)
+builtins.APP = os.path.basename(__file__)
 if sys.stdout.isatty() and os.system('systemctl status app') == 0:
     print("{} is already running. Use 'systemctl stop app' to stop first.".format(APP))
     sys.exit(1)
@@ -97,6 +97,7 @@ log.propagate = False
 config = ConfigParser()
 config.optionxform = str
 config.read([os.path.join(DIR, '{}.conf'.format(APP))])
+builtins.DEVICE_NAME = config.get('app', 'device_name')
 
 DATE_FORMAT = '%Y-%m-%dT%H:%M:%S.%f%z'
 
@@ -205,7 +206,7 @@ def index():
             processor = zmq_context.socket(zmq.PUSH)
             processor.connect(URL_WORKER_EVENT_PROCESSOR)
             processor.send_pyobj({
-                config.get('app', 'device_name'): {
+                DEVICE_NAME: {
                     'data': {
                         'active_devices': [
                             {
@@ -521,7 +522,7 @@ def telegram_bot_cmd(update: Update, context: TelegramCallbackContext):
             processor = zmq_context.socket(zmq.PUSH)
             processor.connect(URL_WORKER_EVENT_PROCESSOR)
             processor.send_pyobj({
-                config.get('app', 'device_name'): {
+                DEVICE_NAME: {
                     'data': {
                         'active_devices': [
                             {
@@ -980,7 +981,7 @@ class EventProcessor(Thread):
                     self._origin_connections[event_destination].send(make_payload(
                         timestamp=timestamp,
                         data=activation_command))
-                elif event_destination == config.get('app', 'device_name'):
+                elif event_destination == DEVICE_NAME:
                     #TODO: route this properly
                     log.warning('Not dispatching event to self: {} {} => {}.'.format(event_origin,
                                                                                      active_device_key,
@@ -1033,7 +1034,7 @@ class EventProcessor(Thread):
         self._ddb_storage = boto3.resource('dynamodb')
         # set up metrics
         self.metrics = boto3.client('cloudwatch')
-        self.metric_namespace = '{}:{}'.format(config.get('app', 'device_name'), APP)
+        self.metric_namespace = '{}:{}'.format(DEVICE_NAME, APP)
         # load configuration data
         self._general_config, self._general_config_table = self._load_config_table(
             table_name=os.environ['CONFIG_TABLE_GENERAL'],
@@ -1063,7 +1064,7 @@ class EventProcessor(Thread):
             input_outputs=self.inputs,
             device_origin=self._input_origin,
             origin_devices=self._inputs_by_origin,
-            event_origin=config.get('app', 'device_name'),
+            event_origin=DEVICE_NAME,
             awol_devices=self._awol_inputs,
             device={
                 'device_key': 'App Panic Button',
@@ -1075,7 +1076,7 @@ class EventProcessor(Thread):
             input_outputs=self.inputs,
             device_origin=self._input_origin,
             origin_devices=self._inputs_by_origin,
-            event_origin=config.get('app', 'device_name'),
+            event_origin=DEVICE_NAME,
             awol_devices=self._awol_inputs,
             device={
                 'device_key': 'App Dash Button',
@@ -1087,7 +1088,7 @@ class EventProcessor(Thread):
             input_outputs=self.outputs,
             device_origin=self._output_origin,
             origin_devices=self._outputs_by_origin,
-            event_origin=config.get('app', 'device_name'),
+            event_origin=DEVICE_NAME,
             awol_devices=self._awol_outputs,
             device={
                 'device_key': 'SMS',
@@ -1140,7 +1141,7 @@ class EventProcessor(Thread):
                             if 'dash_button' in event_data:
                                 log.info('Dash button event: {}'.format(event_data['dash_button']))
                                 # splice in a new event
-                                event_origin = config.get('app', 'device_name')
+                                event_origin = DEVICE_NAME
                                 event_data.update({
                                     'data': {
                                         'active_devices': [
@@ -1257,7 +1258,7 @@ class EventProcessor(Thread):
                                             'Dimensions': [
                                                 {
                                                     'Name': 'Device',
-                                                    'Value': config.get('app', 'device_name')
+                                                    'Value': DEVICE_NAME
                                                 },
                                             ],
                                             'Timestamp': timestamp,
@@ -1474,7 +1475,7 @@ class EventLog(Thread):
         self._event_log_table = self._ddb_storage.Table('event_log')
         # set up metrics
         self._metrics = boto3.client('cloudwatch')
-        self.metric_namespace = '{}:{}'.format(config.get('app', 'device_name'), APP)
+        self.metric_namespace = '{}:{}'.format(DEVICE_NAME, APP)
         while True:
             try:
                 event = self.socket.recv_pyobj()
@@ -1503,7 +1504,7 @@ class EventLog(Thread):
                             'Dimensions': [
                                 {
                                     'Name': 'Device',
-                                    'Value': config.get('app', 'device_name')
+                                    'Value': DEVICE_NAME
                                 },
                             ],
                             'Timestamp': timestamp,
@@ -1857,7 +1858,7 @@ class OriginNanny(Thread):
                 # send the maximum heartbeat
                 if heartbeat_due and max_heartbeat >= 0:
                     self.processor.send_pyobj({
-                        config.get('app', 'device_name'): {
+                        DEVICE_NAME: {
                             'data': {
                                 'max_heartbeat_age': max_heartbeat
                             }
