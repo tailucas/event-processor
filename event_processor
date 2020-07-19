@@ -99,7 +99,7 @@ config.optionxform = str
 config.read([os.path.join(DIR, '{}.conf'.format(APP))])
 builtins.DEVICE_NAME = config.get('app', 'device_name')
 
-DATE_FORMAT = '%Y-%m-%dT%H:%M:%S.%f%z'
+builtins.DATE_FORMAT = '%Y-%m-%dT%H:%M:%S.%f%z'
 
 rest_api = Flask(APP)
 Compress(rest_api)
