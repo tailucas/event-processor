@@ -153,7 +153,7 @@ from pylib.process import SignalHandler
 from pylib.threads import thread_nanny
 
 
-@app.route('/debug-sentry')
+@rest_api.route('/debug-sentry')
 def trigger_error():
     division_by_zero = 1 / 0
 
