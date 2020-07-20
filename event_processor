@@ -92,7 +92,7 @@ if sys.stdout.isatty() and os.system('systemctl status app') == 0:
 # set the working directory for libraries that assume this (such as PyDrive)
 DIR = os.path.abspath(os.path.dirname(__file__))
 os.chdir(DIR)
-builtins.log = logging.getLogger(APP)
+log = logging.getLogger(APP)
 # do not propagate to console logging
 log.propagate = False
 
