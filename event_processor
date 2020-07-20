@@ -165,11 +165,11 @@ def debug():
 
 
 @rest_api.errorhandler(500)
-def internal_server_error():
+def internal_server_error(e):
     return render_template('error.html',
                            sentry_event_id=last_event_id(),
                            sentry_dsn=config.get('sentry', 'dsn')
-                           )
+                           ), 500
 
 
 @rest_api.route('/', methods=['GET', 'POST'])
