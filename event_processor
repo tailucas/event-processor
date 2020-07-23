@@ -1928,6 +1928,7 @@ class EventSourceDiscovery(Thread):
                             source_to_register,
                             workflow_instance))
                     SWFActivityWaiter(
+                        zmq_ipc_url=URL_WORKER_APP,
                         zmq_context=zmq_context,
                         event_source='register_origin',
                         output_type=source_to_register,
