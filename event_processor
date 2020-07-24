@@ -84,27 +84,17 @@ from botoflow.constants import SECONDS, MINUTES
 from botoflow.exceptions import ActivityTaskFailedError, ActivityTaskTimedOutError, \
     WorkflowFailedError, WorkflowTimedOutError
 
-builtins.APP_NAME = os.path.basename(__file__)
-if sys.stdout.isatty() and os.system('systemctl status app') == 0:
-    print("{} is already running. Use 'systemctl stop app' to stop first.".format(APP_NAME))
-    sys.exit(1)
+import pylib
 
-# set the working directory for libraries that assume this (such as PyDrive)
-DIR = os.path.abspath(os.path.dirname(__file__))
-os.chdir(DIR)
-log = logging.getLogger(APP_NAME)
-# do not propagate to console logging
-log.propagate = False
-
-config = ConfigParser()
-config.optionxform = str
-config.read([os.path.join(DIR, '{}.conf'.format(APP_NAME))])
-builtins.DEVICE_NAME = config.get('app', 'device_name')
-
-sentry_sdk.init(
-    dsn=config.get('sentry', 'dsn'),
-    integrations=[FlaskIntegration()]
-)
+# application-specific workflows
+from pylib.aws.swf import \
+    HelloWorldActivities, \
+    HelloWorldWorkflow, \
+    DeviceWorkflow, \
+    SnapshotWorkflow, \
+    TTSWorkflow, \
+    IOBoardWorkflow, \
+    BluetoothWorkflow
 
 rest_api = Flask(APP_NAME)
 Compress(rest_api)
@@ -117,40 +107,11 @@ OUTPUT_TYPE_TTS = 'tts'
 URL_WORKER_APP = 'inproc://app-worker'
 URL_WORKER_EVENT_LOG = 'inproc://event-log'
 URL_WORKER_TELEGRAM_BOT = 'inproc://telegram-bot'
-zmq_context = zmq.Context()
-zmq_context.setsockopt(zmq.LINGER, 0)
 
 event_processor = None
 event_log = None
 ngrok_tunnel_url = None
 ngrok_tunnel_url_with_bauth = None
-
-# shutdown flag
-builtins.shutting_down = False
-# threads to interrupt
-builtins.interruptable_sleep = threading.Event()
-# threads to nanny
-builtins.threads_tracked = set()
-
-from pylib.datetime import is_list, make_timestamp, parse_datetime
-from pylib.data import make_payload
-from pylib.aws.metrics import post_count_metric
-from pylib.aws.swf import SWFActivityWaiter, \
-    swf_exception_handler, \
-    HelloWorldActivities, \
-    HelloWorldWorkflow, \
-    BluetoothActivity, \
-    IOBoardActivity, \
-    TTSActivity, \
-    SnapshotActivity, \
-    DeviceInfoActivity, \
-    DeviceWorkflow, \
-    SnapshotWorkflow, \
-    TTSWorkflow, \
-    IOBoardWorkflow, \
-    BluetoothWorkflow
-from pylib.process import SignalHandler
-from pylib.threads import thread_nanny
 
 
 @rest_api.route('/debug-sentry')
