@@ -84,6 +84,8 @@ from botoflow.constants import SECONDS, MINUTES
 from botoflow.exceptions import ActivityTaskFailedError, ActivityTaskTimedOutError, \
     WorkflowFailedError, WorkflowTimedOutError
 
+
+builtins.APP_NAME = os.path.basename(__file__)
 import pylib
 
 # application-specific workflows
