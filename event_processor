@@ -86,6 +86,7 @@ from botoflow.exceptions import ActivityTaskFailedError, ActivityTaskTimedOutErr
 
 
 builtins.APP_NAME = os.path.basename(__file__)
+builtins.SENTRY_EXTRAS = [FlaskIntegration()]
 import pylib
 
 # application-specific workflows
