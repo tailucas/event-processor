@@ -2016,8 +2016,7 @@ if __name__ == "__main__":
                                             swf_region,
                                             swf_domain,
                                             APP_NAME,
-                                            HelloWorldActivities(),
-                                            TTSActivity()))
+                                            HelloWorldActivities()))
     swf_worker._worker.unhandled_exception_handler = swf_exception_handler
     swf_worker.start()
     #with workflow_starter(boto_session,
