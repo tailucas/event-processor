@@ -89,8 +89,13 @@ builtins.APP_NAME = os.path.basename(__file__)
 builtins.SENTRY_EXTRAS = [FlaskIntegration()]
 import pylib
 
-# application-specific workflows
-from pylib.aws.swf import \
+from pylib.datetime import is_list, make_timestamp, parse_datetime
+from pylib.data import make_payload
+from pylib.aws.metrics import post_count_metric
+from pylib.aws.swf import SWFActivityWaiter, \
+    swf_exception_handler, \
+    DeviceInfoActivity, \
+    DeviceWorkflow, \
     HelloWorldActivities, \
     HelloWorldWorkflow, \
     DeviceWorkflow, \
@@ -98,6 +103,8 @@ from pylib.aws.swf import \
     TTSWorkflow, \
     IOBoardWorkflow, \
     BluetoothWorkflow
+from pylib.process import SignalHandler
+from pylib.threads import thread_nanny
 
 rest_api = Flask(APP_NAME)
 Compress(rest_api)
@@ -132,7 +139,7 @@ def debug():
 def internal_server_error(e):
     return render_template('error.html',
                            sentry_event_id=last_event_id(),
-                           sentry_dsn=config.get('sentry', 'dsn')
+                           sentry_dsn=APP_CONFIG.get('sentry', 'dsn')
                            ), 500
 
 
@@ -216,7 +223,7 @@ def index():
             device_listing[device_key]['meter_value'] = reset_value
             # send IoT message
             #FIXME: replace with MQTT equivalent
-            # event_processor.iot.publish(config.get('iot', 'topic_pub_meter'), json.dumps(iot_message), 0)
+            # event_processor.iot.publish(APP_CONFIG.get('iot', 'topic_pub_meter'), json.dumps(iot_message), 0)
         elif 'meter_history' in request.form:
             scheme = None
             if 'X-Forwarded-Proto' in request.headers:
@@ -395,8 +402,8 @@ def input_config():
     return render_template('input_config.html',
                            inputs=event_processor.input_config,
                            last_saved_device_key=device_key,
-                           default_trigger_window=int(config.get('config', 'default_trigger_window')),
-                           default_activation_interval=int(config.get('config', 'default_activation_interval')))
+                           default_trigger_window=int(APP_CONFIG.get('config', 'default_trigger_window')),
+                           default_activation_interval=int(APP_CONFIG.get('config', 'default_activation_interval')))
 
 
 @rest_api.route('/input_link', methods=['GET', 'POST'])
@@ -454,7 +461,7 @@ def output_config():
 def telegram_bot_echo(update: Update, context: TelegramCallbackContext):
     global ngrok_tunnel_url
     try:
-        authorized_users = config.get('telegram', 'authorized_users').split(',')
+        authorized_users = APP_CONFIG.get('telegram', 'authorized_users').split(',')
         if str(update.effective_user.id) not in authorized_users:
             log.warning('Unauthorized message {}'.format(str(update)))
             return
@@ -463,7 +470,7 @@ def telegram_bot_echo(update: Update, context: TelegramCallbackContext):
                                                                         update.effective_message.text,
                                                                         update.effective_message.chat_id))
 
-        group_info = context.bot.get_chat(chat_id=config.getint('telegram', 'chat_room_id'))
+        group_info = context.bot.get_chat(chat_id=APP_CONFIG.getint('telegram', 'chat_room_id'))
         bot_response = "I am in the [{}]({}) group.".format(group_info.title, group_info.invite_link)
         dashboard_link = '[Dashboard]({})'.format(ngrok_tunnel_url)
         context.bot.send_message(chat_id=update.effective_message.chat_id,
@@ -477,7 +484,7 @@ def telegram_bot_echo(update: Update, context: TelegramCallbackContext):
 def telegram_bot_cmd(update: Update, context: TelegramCallbackContext):
     global ngrok_tunnel_url_with_bauth
     try:
-        authorized_users = config.get('telegram', 'authorized_users').split(',')
+        authorized_users = APP_CONFIG.get('telegram', 'authorized_users').split(',')
         if str(update.effective_user.id) not in authorized_users:
             log.warning('Unauthorized message {}'.format(str(update)))
             return
@@ -515,7 +522,7 @@ def telegram_bot_cmd(update: Update, context: TelegramCallbackContext):
 def telegram_bot_inline(update: Update, context: TelegramCallbackContext):
     global ngrok_tunnel_url
     try:
-        authorized_users = config.get('telegram', 'authorized_users').split(',')
+        authorized_users = APP_CONFIG.get('telegram', 'authorized_users').split(',')
         if str(update.inline_query.from_user.id) not in authorized_users:
             log.warning('Unauthorized message {}'.format(str(update)))
             return
@@ -927,7 +934,7 @@ class EventProcessor(Thread):
                         SWFActivityWaiter(
                             zmq_ipc_url=URL_WORKER_APP,
                             zmq_context=zmq_context,
-                            event_source=config.get('swf_tasklist', OUTPUT_TYPE_BLUETOOTH),
+                            event_source=APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_BLUETOOTH),
                             output_type=OUTPUT_TYPE_BLUETOOTH,
                             workflow_starter=starter,
                             workflow_instance=workflow_instance).start()
@@ -1020,16 +1027,16 @@ class EventProcessor(Thread):
         self.bot.connect(URL_WORKER_TELEGRAM_BOT)
         # informational notifications
         # TODO: move to UI configuration
-        self.notify_not_before_time = make_timestamp(config.get('info_notify', 'not_before_time'))
-        self.notify_not_after_time = make_timestamp(config.get('info_notify', 'not_after_time'))
+        self.notify_not_before_time = make_timestamp(APP_CONFIG.get('info_notify', 'not_before_time'))
+        self.notify_not_after_time = make_timestamp(APP_CONFIG.get('info_notify', 'not_after_time'))
         # message validity
-        self._max_message_validity_seconds = int(config.get('app', 'max_message_validity_seconds'))
+        self._max_message_validity_seconds = int(APP_CONFIG.get('app', 'max_message_validity_seconds'))
         # output types
         self._output_types = dict()
-        self._output_types[config.get('output_types', OUTPUT_TYPE_BLUETOOTH)] = OUTPUT_TYPE_BLUETOOTH
-        self._output_types[config.get('output_types', OUTPUT_TYPE_SWITCH)] = OUTPUT_TYPE_SWITCH
-        self._output_types[config.get('output_types', OUTPUT_TYPE_SNAPSHOT)] = OUTPUT_TYPE_SNAPSHOT
-        self._output_types[config.get('output_types', OUTPUT_TYPE_TTS)] = OUTPUT_TYPE_TTS
+        self._output_types[APP_CONFIG.get('output_types', OUTPUT_TYPE_BLUETOOTH)] = OUTPUT_TYPE_BLUETOOTH
+        self._output_types[APP_CONFIG.get('output_types', OUTPUT_TYPE_SWITCH)] = OUTPUT_TYPE_SWITCH
+        self._output_types[APP_CONFIG.get('output_types', OUTPUT_TYPE_SNAPSHOT)] = OUTPUT_TYPE_SNAPSHOT
+        self._output_types[APP_CONFIG.get('output_types', OUTPUT_TYPE_TTS)] = OUTPUT_TYPE_TTS
         # set up the special input for the panic button
         self._update_device(
             input_outputs=self.inputs,
@@ -1089,14 +1096,14 @@ class EventProcessor(Thread):
                         if 'register_origin' == event_origin:
                             # connect to event origins
                             for origin, ip in list(event_data.items()):
-                                connection_string = 'tcp://{}:{}'.format(ip, config.get('zmq', 'pubsub_port'))
+                                connection_string = 'tcp://{}:{}'.format(ip, APP_CONFIG.get('zmq', 'pubsub_port'))
                                 subscriber = EventSourceSubscriber(label=origin, publisher_endpoint=connection_string)
                                 subscriber.start()
                                 threads_tracked.add(subscriber.getName())
                                 # nanny the heartbeats
                                 self._origin_nanny.add_origin_subscriber(origin=origin, ip=ip, subscriber=subscriber)
 
-                                origin_connection_string = 'tcp://{}:{}'.format(ip, config.get('zmq', 'pushpull_port'))
+                                origin_connection_string = 'tcp://{}:{}'.format(ip, APP_CONFIG.get('zmq', 'pushpull_port'))
                                 log.info('Registering event origin {} @ {}'.format(origin, origin_connection_string))
                                 origin_push_socket = zmq_context.socket(zmq.PUSH)
                                 origin_push_socket.connect(origin_connection_string)
@@ -1305,7 +1312,7 @@ class EventProcessor(Thread):
                                         if 'trigger_window' in active_device_config:
                                             trigger_window = active_device_config['trigger_window']
                                         else:
-                                            trigger_window = int(config.get('config', 'default_trigger_window'))
+                                            trigger_window = int(APP_CONFIG.get('config', 'default_trigger_window'))
                                         # if not in the trigger history, treat as never activated
                                         if active_device_key not in self._input_trigger_history:
                                             self._input_trigger_history[active_device_key] = time.time()
@@ -1332,7 +1339,7 @@ class EventProcessor(Thread):
                                             activation_interval = active_device_config['activation_interval']
                                         else:
                                             activation_interval = int(
-                                                config.get('config', 'default_activation_interval'))
+                                                APP_CONFIG.get('config', 'default_activation_interval'))
                                         input_last_active, last_event_detail = self._input_active_history[
                                             active_device_key]
                                         if last_event_detail == event_detail:
@@ -1502,7 +1509,7 @@ class TBot(Thread):
         threads_tracked.add(self.name)
 
         self.bot = None
-        self.chat_id = config.getint('telegram', 'chat_room_id')
+        self.chat_id = APP_CONFIG.getint('telegram', 'chat_room_id')
 
         self.socket = zmq_context.socket(zmq.PULL)
         self.socket.bind(URL_WORKER_TELEGRAM_BOT)
@@ -1541,7 +1548,7 @@ class TBot(Thread):
     def run(self):
         global ngrok_tunnel_url_with_bauth
         # connect to Telegram
-        self.bot = TelegramBot(token=config.get('telegram', 'bot_api_token'))
+        self.bot = TelegramBot(token=APP_CONFIG.get('telegram', 'bot_api_token'))
         while True:
             try:
                 event = self.socket.recv_pyobj()
@@ -1628,7 +1635,7 @@ class EventSourceSubscriber(Thread):
         self._reconnected = False
         self.last_message = None
         # use half of the tolerated heartbeat value
-        self._zmq_poll_period = int(config.get('app', 'max_heartbeat_delay_seconds')) / 2
+        self._zmq_poll_period = int(APP_CONFIG.get('app', 'max_heartbeat_delay_seconds')) / 2
 
     # noinspection PyBroadException
     def run(self):
@@ -1754,9 +1761,9 @@ class OriginNanny(Thread):
         self.processor = zmq_context.socket(zmq.PUSH)
 
         self.origin_subscriber = {}
-        self._heartbeat_sample_interval = int(config.get('app', 'heartbeat_sample_interval_seconds'))
-        self._heartbeat_report_interval = int(config.get('app', 'heartbeat_report_interval_seconds'))
-        self._max_heartbeat_delay = int(config.get('app', 'max_heartbeat_delay_seconds'))
+        self._heartbeat_sample_interval = int(APP_CONFIG.get('app', 'heartbeat_sample_interval_seconds'))
+        self._heartbeat_report_interval = int(APP_CONFIG.get('app', 'heartbeat_report_interval_seconds'))
+        self._max_heartbeat_delay = int(APP_CONFIG.get('app', 'max_heartbeat_delay_seconds'))
         self._heartbeats = {}
 
     # noinspection PyShadowingNames
@@ -1856,14 +1863,14 @@ class EventSourceDiscovery(Thread):
 
     def run(self):
         sources_to_register = (
-            config.get('swf_tasklist', OUTPUT_TYPE_BLUETOOTH),
-            config.get('swf_tasklist', OUTPUT_TYPE_SWITCH),
-            config.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT),
-            config.get('swf_tasklist', OUTPUT_TYPE_TTS))
+            APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_BLUETOOTH),
+            APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_SWITCH),
+            APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT),
+            APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_TTS))
         try:
             self.processor.connect(URL_WORKER_APP)
             # start with static sources
-            for source in config.get('app', 'subscription_sources').split(','):
+            for source in APP_CONFIG.get('app', 'subscription_sources').split(','):
                 label_ip = source.split(':')
                 source_label = label_ip[0]
                 source_ip = label_ip[1]
@@ -1925,8 +1932,8 @@ class CallbackUrlDiscovery(Thread):
         self.daemon = True
 
         self._discover_url = 'http://127.0.0.1:{}/api/tunnels/{}'.format(
-            config.get('ngrok', 'client_api_port'),
-            config.get('ngrok', 'tunnel_name'))
+            APP_CONFIG.get('ngrok', 'client_api_port'),
+            APP_CONFIG.get('ngrok', 'tunnel_name'))
 
     # noinspection PyBroadException
     def run(self):
@@ -1951,8 +1958,8 @@ class CallbackUrlDiscovery(Thread):
             # decorate the URL with basic-auth details
             global ngrok_tunnel_url_with_bauth
             ngrok_tunnel_url_with_bauth = '{}://{}:{}@{}{}'.format(purl.scheme,
-                                                                   config.get('ngrok', 'auth_user'),
-                                                                   config.get('ngrok', 'auth_password'),
+                                                                   APP_CONFIG.get('ngrok', 'auth_user'),
+                                                                   APP_CONFIG.get('ngrok', 'auth_password'),
                                                                    purl.netloc,
                                                                    purl.path)
         except Exception:
@@ -1972,7 +1979,7 @@ class FlaskThread(Thread):
         })
         #TODO: how to enable debug mode
         self.srv = make_server(host='0.0.0.0',
-                               port=int(config.get('flask', 'http_port')),
+                               port=int(APP_CONFIG.get('flask', 'http_port')),
                                app=app,
                                threaded=True)
         self.ctx = app.app_context()
@@ -1988,24 +1995,10 @@ class FlaskThread(Thread):
 
 
 if __name__ == "__main__":
-    # DEBUG logging until startup complete
-    log.setLevel(logging.DEBUG)
-    syslog_handler = logging.handlers.SysLogHandler(address='/dev/log')
-    formatter = logging.Formatter('%(name)s %(threadName)s [%(levelname)s] %(message)s')
-    syslog_handler.setFormatter(formatter)
-    log.addHandler(syslog_handler)
-    if sys.stdout.isatty():
-        log.warning("Using console logging because there is a tty.")
-        stream_handler = logging.StreamHandler(stream=sys.stdout)
-        stream_handler.setFormatter(formatter)
-        log.addHandler(stream_handler)
-    # set up application metrics
-    boto3_session = boto3.Session(region_name='af-south-1', profile_name='cpt')
-    builtins.app_metrics = boto3_session.client('cloudwatch')
     # connect to SWF
-    boto_session = botocore.session.Session(profile=config.get('botoflow', 'profile'))
-    swf_region = config.get('botoflow', 'region')
-    swf_domain = config.get('botoflow', 'domain')
+    boto_session = botocore.session.Session(profile=APP_CONFIG.get('botoflow', 'profile'))
+    swf_region = APP_CONFIG.get('botoflow', 'region')
+    swf_domain = APP_CONFIG.get('botoflow', 'domain')
     swf_decider = ThreadedWorkflowExecutor(WorkflowWorker(boto_session,
                                              swf_region,
                                              swf_domain,
@@ -2055,7 +2048,7 @@ if __name__ == "__main__":
     sqs_listener.start()
     telegram_bot.start()
     # start Telegram integration
-    telegram_updater = TelegramUpdater(token=config.get('telegram', 'bot_api_token'), use_context=True)
+    telegram_updater = TelegramUpdater(token=APP_CONFIG.get('telegram', 'bot_api_token'), use_context=True)
     telegram_dispatcher = telegram_updater.dispatcher
     telegram_dispatcher.add_handler(TelegramCommandHandler('start',
                                                            telegram_bot_cmd,
