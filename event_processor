@@ -1083,7 +1083,9 @@ class EventProcessor(Thread):
                                 event_origin, event_data.__class__, event_data))
                             continue
                         if 'timestamp' in event_data:
-                            timestamp = make_timestamp(event_data['timestamp'])
+                            str_timestamp = event_data['timestamp']
+                            log.debug('{} timestamp is {}'.format(event_origin, str_timestamp))
+                            timestamp = make_timestamp(str_timestamp)
                         else:
                             timestamp = make_timestamp()
                             log_msg = "Message from {} does not include a 'timestamp' so it can't be filtered if it " \
@@ -1777,6 +1779,8 @@ class OriginNanny(Thread):
         heartbeat_due = False
         max_heartbeat = -1
         while True:
+            if shutting_down:
+                break
             try:
                 # send out either a stale alert or the heartbeat
                 now = make_timestamp()
