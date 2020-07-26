@@ -1995,9 +1995,6 @@ class FlaskThread(Thread):
 
 if __name__ == "__main__":
     # connect to SWF
-    boto_session = botocore.session.Session(profile=APP_CONFIG.get('botoflow', 'profile'))
-    swf_region = APP_CONFIG.get('botoflow', 'region')
-    swf_domain = APP_CONFIG.get('botoflow', 'domain')
     swf_decider = ThreadedWorkflowExecutor(WorkflowWorker(boto_session,
                                              swf_region,
                                              swf_domain,
@@ -2018,17 +2015,6 @@ if __name__ == "__main__":
                                             HelloWorldActivities()))
     swf_worker._worker.unhandled_exception_handler = swf_exception_handler
     swf_worker.start()
-    #with workflow_starter(boto_session,
-    #                      swf_region,
-    #                      swf_domain,
-    #                      APP_NAME) as starter:
-    #    workflow_instance = HelloWorldWorkflow.execute("Greetings")
-    #    log.info("Workflow is {}".format(workflow_instance))
-    #try:
-    #    execution_result = starter.wait_for_completion(workflow_instance, 1)
-    #    log.info("Execution result is {}".format(execution_result))
-    #except (WorkflowTimedOutError, WorkflowFailedError) as err:
-    #    log.exception(err)
     # bind listeners first
     event_log = EventLog()
     origin_nanny = OriginNanny()
