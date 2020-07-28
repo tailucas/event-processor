@@ -32,6 +32,7 @@ from dateutil import tz
 from decimal import Decimal
 from io import BytesIO
 from operator import itemgetter
+from pathlib import Path
 # noinspection PyDeprecation
 from pylru import lrucache
 from requests.exceptions import ConnectionError
@@ -84,7 +85,7 @@ from botoflow.constants import SECONDS, MINUTES
 from botoflow.exceptions import ActivityTaskFailedError, ActivityTaskTimedOutError, \
     WorkflowFailedError, WorkflowTimedOutError
 
-builtins.APP_NAME = os.path.basename(__file__)
+builtins.APP_NAME = Path(__file__).stem
 builtins.SENTRY_EXTRAS = [FlaskIntegration()]
 import pylib
 
@@ -103,6 +104,7 @@ from pylib.aws.swf import SWFActivityWaiter, \
     IOBoardWorkflow, \
     BluetoothWorkflow
 from pylib.process import SignalHandler
+from pylib import threads
 from pylib.threads import thread_nanny
 
 rest_api = Flask(APP_NAME)
@@ -577,7 +579,7 @@ class EventProcessor(Thread):
     def __init__(self, origin_nanny, boto_session, swf_region, swf_domain):
         super(EventProcessor, self).__init__(name=self.__class__.__name__)
         self.daemon = True
-        threads_tracked.add(self.name)
+        threads.threads_tracked.add(self.name)
 
         self._boto_session = boto_session
         self._swf_region = swf_region
@@ -1100,7 +1102,7 @@ class EventProcessor(Thread):
                                 connection_string = 'tcp://{}:{}'.format(ip, APP_CONFIG.get('zmq', 'pubsub_port'))
                                 subscriber = EventSourceSubscriber(label=origin, publisher_endpoint=connection_string)
                                 subscriber.start()
-                                threads_tracked.add(subscriber.getName())
+                                threads.threads_tracked.add(subscriber.getName())
                                 # nanny the heartbeats
                                 self._origin_nanny.add_origin_subscriber(origin=origin, ip=ip, subscriber=subscriber)
 
@@ -1420,7 +1422,7 @@ class EventLog(Thread):
     def __init__(self):
         super(EventLog, self).__init__(name=self.__class__.__name__)
         self.daemon = True
-        threads_tracked.add(self.name)
+        threads.threads_tracked.add(self.name)
 
         self._ddb_storage = None
         self._event_log_table = None
@@ -1507,7 +1509,7 @@ class TBot(Thread):
     def __init__(self):
         super(TBot, self).__init__(name=self.__class__.__name__)
         self.daemon = True
-        threads_tracked.add(self.name)
+        threads.threads_tracked.add(self.name)
 
         self.bot = None
         self.chat_id = APP_CONFIG.getint('telegram', 'chat_room_id')
@@ -1703,7 +1705,7 @@ class SQSListener(Thread):
     def __init__(self):
         super(SQSListener, self).__init__(name=self.__class__.__name__)
         self.daemon = True
-        threads_tracked.add(self.name)
+        threads.threads_tracked.add(self.name)
 
         self.processor = zmq_context.socket(zmq.PUSH)
         self._sqs = None
@@ -1757,7 +1759,7 @@ class OriginNanny(Thread):
     def __init__(self):
         super(OriginNanny, self).__init__(name=self.__class__.__name__)
         self.daemon = True
-        threads_tracked.add(self.name)
+        threads.threads_tracked.add(self.name)
 
         self.processor = zmq_context.socket(zmq.PUSH)
 
@@ -1774,12 +1776,12 @@ class OriginNanny(Thread):
     def run(self):
         self.processor.connect(URL_WORKER_APP)
         # warm-up to wait for first volley of heartbeats
-        interruptable_sleep.wait(self._heartbeat_sample_interval)
+        threads.interruptable_sleep.wait(self._heartbeat_sample_interval)
         last_report = make_timestamp()
         heartbeat_due = False
         max_heartbeat = -1
         while True:
-            if shutting_down:
+            if threads.shutting_down:
                 break
             try:
                 # send out either a stale alert or the heartbeat
@@ -1850,14 +1852,14 @@ class OriginNanny(Thread):
                 self.processor.close()
                 log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
                 break
-            interruptable_sleep.wait(self._heartbeat_sample_interval)
+            threads.interruptable_sleep.wait(self._heartbeat_sample_interval)
 
 
 class EventSourceDiscovery(Thread):
     def __init__(self, boto_session, swf_region, swf_domain):
         super(EventSourceDiscovery, self).__init__(name=self.__class__.__name__)
         self.daemon = True
-        threads_tracked.add(self.name)
+        threads.threads_tracked.add(self.name)
 
         self.processor = zmq_context.socket(zmq.PUSH)
         self._boto_session = boto_session
@@ -1909,8 +1911,8 @@ class EventSourceDiscovery(Thread):
                         workflow_starter=starter,
                         workflow_instance=workflow_instance).start()
                 # try get more in a minute
-                interruptable_sleep.wait(60)
-                if shutting_down:
+                threads.interruptable_sleep.wait(60)
+                if threads.shutting_down:
                     break
                 outstanding_registrations = set(sources_to_register) - event_processor.origins
                 if not outstanding_registrations:
@@ -1925,7 +1927,7 @@ class EventSourceDiscovery(Thread):
                 sleep(1)
                 continue
         # un-nanny and goodbye
-        threads_tracked.remove(self.getName())
+        threads.threads_tracked.remove(self.getName())
 
 
 class CallbackUrlDiscovery(Thread):
@@ -2065,10 +2067,11 @@ if __name__ == "__main__":
         # discover callback URL
         CallbackUrlDiscovery().start()
         # hang around until something goes wrong
-        interruptable_sleep.wait()
+        threads.interruptable_sleep.wait()
         raise RuntimeWarning("Shutting down...")
     except(KeyboardInterrupt, RuntimeWarning) as e:
-        shutting_down = True
+        threads.shutting_down = True
+        threads.interruptable_sleep.set()
         message = "Shutting down {}..."
         log.info(message.format('SWF workflow worker'))
         swf_decider.stop()
@@ -2080,7 +2083,7 @@ if __name__ == "__main__":
         telegram_updater.stop()
         log.info(message.format('Application threads'))
         # bring any threads out of their Pythonic coma
-        interruptable_sleep.set()
+        threads.interruptable_sleep.set()
         log.info(message.format('ZMQ context'))
         zmq_context.term()
         log.info('Shutdown complete.')
