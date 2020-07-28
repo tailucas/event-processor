@@ -91,6 +91,10 @@ import pylib
 
 from pylib.datetime import is_list, make_timestamp, parse_datetime
 from pylib.data import make_payload
+from pylib.aws import boto_session, \
+    swf_region, \
+    swf_domain, \
+    app_metrics
 from pylib.aws.metrics import post_count_metric
 from pylib.aws.swf import SWFActivityWaiter, \
     swf_exception_handler, \
@@ -286,7 +290,7 @@ def show_metrics():
     widgets = event_processor.general_config['cloudwatch_widgets']['config_value']
     images = []
     for widget in widgets:
-        response = event_processor.metrics.get_metric_widget_image(MetricWidget=b64decode(widget).decode('utf-8'))
+        response = app_metrics.get_metric_widget_image(MetricWidget=b64decode(widget).decode('utf-8'))
         images.append(b64encode(response['MetricWidgetImage']).decode('ascii'))
     return render_template('metrics.html',
                            img_data=images)
@@ -615,9 +619,6 @@ class EventProcessor(Thread):
         self._output_config_table = None
 
         self._output_types = None
-
-        self.metrics = None
-        self.metric_namespace = None
 
         self.flash_info = True
 
@@ -1011,9 +1012,6 @@ class EventProcessor(Thread):
         self._db_storage = sqlite3.connect(database=os.environ['TABLESPACE_PATH'])
         # connect to AWS services
         self._ddb_storage = boto3.resource('dynamodb')
-        # set up metrics
-        self.metrics = boto3.client('cloudwatch')
-        self.metric_namespace = '{}:{}'.format(DEVICE_NAME, APP_NAME)
         # load configuration data
         self._general_config, self._general_config_table = self._load_config_table(
             table_name=os.environ['CONFIG_TABLE_GENERAL'],
@@ -1229,24 +1227,10 @@ class EventProcessor(Thread):
                                             ))
                             if 'max_heartbeat_age' in event_data['data']:
                                 heartbeat_age = int(event_data['data']['max_heartbeat_age'])
-                                # show this as a metric
-                                self.metrics.put_metric_data(
-                                    Namespace=self.metric_namespace,
-                                    MetricData=[
-                                        {
-                                            'MetricName': 'Heartbeat Age',
-                                            'Value': heartbeat_age,
-                                            'Dimensions': [
-                                                {
-                                                    'Name': 'Device',
-                                                    'Value': DEVICE_NAME
-                                                },
-                                            ],
-                                            'Timestamp': timestamp,
-                                            'Unit': 'Seconds'
-                                        },
-                                    ]
-                                )
+                                post_count_metric(
+                                    metric_name='Heartbeat Age',
+                                    count=heartbeat_age,
+                                    unit='Seconds')
                             if 'device_info' in event_data['data']:
                                 devices_updated = self._update_devices(
                                     event_origin=event_origin,
@@ -1426,8 +1410,6 @@ class EventLog(Thread):
 
         self._ddb_storage = None
         self._event_log_table = None
-        self._metrics = None
-        self.metric_namespace = None
 
         self.socket = zmq_context.socket(zmq.PULL)
         self.socket.bind(URL_WORKER_EVENT_LOG)
@@ -1453,9 +1435,6 @@ class EventLog(Thread):
         # connect to AWS services
         self._ddb_storage = boto3.resource('dynamodb')
         self._event_log_table = self._ddb_storage.Table('event_log')
-        # set up metrics
-        self._metrics = boto3.client('cloudwatch')
-        self.metric_namespace = '{}:{}'.format(DEVICE_NAME, APP_NAME)
         while True:
             try:
                 event = self.socket.recv_pyobj()
@@ -1474,24 +1453,7 @@ class EventLog(Thread):
                 if not saved:
                     log.warning('Unable to save event log entry: {}'.format(event))
                     continue
-                # show this as a metric
-                self._metrics.put_metric_data(
-                    Namespace=self.metric_namespace,
-                    MetricData=[
-                        {
-                            'MetricName': 'Device Event',
-                            'Value': 1,
-                            'Dimensions': [
-                                {
-                                    'Name': 'Device',
-                                    'Value': DEVICE_NAME
-                                },
-                            ],
-                            'Timestamp': timestamp,
-                            'Unit': 'Count'
-                        },
-                    ]
-                )
+                post_count_metric(metric_name='Device Event')
             except ContextTerminated:
                 log.warning('ZMQ terminate: {}'.format(self.__class__.__name__))
                 self.socket.close()
