@@ -2069,7 +2069,8 @@ if __name__ == "__main__":
         # hang around until something goes wrong
         threads.interruptable_sleep.wait()
         raise RuntimeWarning("Shutting down...")
-    except(KeyboardInterrupt, RuntimeWarning) as e:
+    except(KeyboardInterrupt, RuntimeWarning, ContextTerminated) as e:
+        log.warning(str(e))
         threads.shutting_down = True
         threads.interruptable_sleep.set()
         message = "Shutting down {}..."
