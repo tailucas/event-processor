@@ -1641,7 +1641,7 @@ class EventSourceSubscriber(Thread):
                 self.last_message = time.time()
                 self._reconnected = False
                 # do not info on heartbeats
-                if 'device_info' not in publisher_event:
+                if 'data' in publisher_event and 'device_info' not in publisher_event['data']:
                     log.info('Received {} bytes from subscription to {} at {}'.format(
                         len(publisher_data),
                         self._label,
