@@ -1628,8 +1628,8 @@ class EventSourceSubscriber(Thread):
                     # poll again
                     continue
                 try:
-                    publisher_event = umsgpack.unpackb(
-                        self.subscriber.recv(zmq.NOBLOCK))
+                    publisher_data = self.subscriber.recv(zmq.NOBLOCK)
+                    publisher_event = umsgpack.unpackb(publisher_data)
                 except Again as e:
                     log.debug('{}: {}'.format(self.name, str(e)))
                     continue
@@ -1640,6 +1640,12 @@ class EventSourceSubscriber(Thread):
                         time.time() - self.last_message))
                 self.last_message = time.time()
                 self._reconnected = False
+                # do not info on heartbeats
+                if 'device_info' not in publisher_event:
+                    log.info('Received {} bytes from subscription to {} at {}'.format(
+                        len(publisher_data),
+                        self._label,
+                        self._publisher_endpoint))
                 self.processor.send_pyobj({self._label: publisher_event})
             except UnpackException:
                 log.exception('Cannot unpack message from {}.'.format(self._label))
