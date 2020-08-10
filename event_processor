@@ -1103,11 +1103,17 @@ class EventProcessor(Thread):
                                 # nanny the heartbeats
                                 self._origin_nanny.add_origin_subscriber(origin=origin, ip=ip, subscriber=subscriber)
 
+                                # this origin may accept inbound messages over ZMQ
                                 origin_connection_string = 'tcp://{}:{}'.format(ip, APP_CONFIG.get('zmq', 'pushpull_port'))
                                 log.info('Registering event origin {} @ {}'.format(origin, origin_connection_string))
                                 origin_push_socket = zmq_context.socket(zmq.PUSH)
-                                origin_push_socket.connect(origin_connection_string)
-                                self._origin_connections[origin] = origin_push_socket
+                                try:
+                                    origin_push_socket.connect(origin_connection_string)
+                                    self._origin_connections[origin] = origin_push_socket
+                                except ZMQError:
+                                    log.exception('Failed permanently to connect to {} at {}'.format(
+                                        origin,
+                                        origin_connection_string))
                             continue
                         if 'sqs' == event_origin:
                             device_disable = None
