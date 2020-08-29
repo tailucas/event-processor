@@ -1921,9 +1921,9 @@ class CallbackUrlDiscovery(Thread):
                 global ngrok_tunnel_url
                 try:
                     ngrok_tunnel_url = requests.get(self._discover_url).json()['public_url']
-                except KeyError:
-                    log.exception('Attempting to discover ngrok tunnel URL...')
-                    sleep(1)
+                except KeyError as e:
+                    log.warning('Still attempting to discover ngrok tunnel URL ({})...'.format(repr(e)))
+                    sleep(10)
                     continue
                 log.info('External call-back URL is {}'.format(ngrok_tunnel_url))
                 break
