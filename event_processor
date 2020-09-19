@@ -23,7 +23,8 @@ import umsgpack
 import zmq
 
 from base64 import b64decode, b64encode
-from botocore.exceptions import EndpointConnectionError as bcce, \
+from botocore.exceptions import EndpointConnectionError as bcece, \
+    ConnectionClosedError as bccce, \
     ConnectionError as bce
 from boto3.dynamodb.conditions import Attr
 from bs4 import BeautifulSoup
@@ -1705,7 +1706,7 @@ class SQSListener(Thread):
                     sqs_message.delete()
                 # test for ZMQ shutdown
                 self.processor.poll(timeout=0)
-            except (gaierror, bce, bcce) as e:
+            except (gaierror, bce, bccce, bcece) as e:
                 log.warning(repr(e))
                 sleep(1)
                 continue
