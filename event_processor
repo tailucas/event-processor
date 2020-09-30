@@ -125,7 +125,7 @@ URL_WORKER_EVENT_LOG = 'inproc://event-log'
 URL_WORKER_TELEGRAM_BOT = 'inproc://telegram-bot'
 
 event_processor = None
-event_log = None
+event_logger = None
 ngrok_tunnel_url = None
 ngrok_tunnel_url_with_bauth = None
 
@@ -302,8 +302,8 @@ def event_log():
     events = {}
     if request.method == 'GET':
         # TODO: configurable
-        global event_log
-        events = event_log.get_events(since_ts=int(
+        global event_logger
+        events = event_logger.get_events(since_ts=int(
             (datetime.utcnow() - timedelta(hours=24)).strftime('%s')
         ))
     return render_template('event_log.html',
@@ -932,7 +932,7 @@ class EventProcessor(Thread):
                     if output_type == OUTPUT_TYPE_BLUETOOTH:
                         with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, APP_NAME) as starter:
                             workflow_instance = BluetoothWorkflow.execute(
-                                self._output_config[output_device_key]['device_params'])
+                                owner_device_list=self._output_config[output_device_key]['device_params'])
                         log.info("{} workflow is {}".format(output_type, workflow_instance))
                         SWFActivityWaiter(
                             zmq_ipc_url=URL_WORKER_APP,
@@ -946,7 +946,9 @@ class EventProcessor(Thread):
                         if 'device_params' in output_device_activation:
                             camera_command = output_device_activation['device_params']
                         with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, APP_NAME) as starter:
-                            workflow_instance = SnapshotWorkflow.execute(device_key, camera_command)
+                            workflow_instance = SnapshotWorkflow.execute(
+                                device_key=device_key,
+                                camera_command=camera_command)
                         log.info("{} workflow is {}".format(output_type, workflow_instance))
                     elif output_type == OUTPUT_TYPE_SWITCH:
                         pass
@@ -957,7 +959,7 @@ class EventProcessor(Thread):
                             event_detail = ' {}'.format(active_device['event_detail'])
                         notification_message = '{}{}'.format(active_device_label, event_detail)
                         with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, APP_NAME) as starter:
-                            workflow_instance = TTSWorkflow.execute(notification_message)
+                            workflow_instance = TTSWorkflow.execute(message=notification_message)
                         log.info("{} workflow is {}".format(output_type, workflow_instance))
                 elif event_destination in self._origin_connections:
                     self._origin_connections[event_destination].send(make_payload(
@@ -1873,7 +1875,7 @@ class EventSourceDiscovery(Thread):
                                         self._swf_region,
                                         self._swf_domain,
                                         APP_NAME) as starter:
-                        workflow_instance = DeviceWorkflow.execute(source_to_register)
+                        workflow_instance = DeviceWorkflow.execute(app=source_to_register)
                         log.info("Registration workflow for {} is {}".format(
                             source_to_register,
                             workflow_instance))
@@ -1996,7 +1998,7 @@ if __name__ == "__main__":
     swf_worker._worker.unhandled_exception_handler = swf_exception_handler
     swf_worker.start()
     # bind listeners first
-    event_log = EventLog()
+    event_logger = EventLog()
     origin_nanny = OriginNanny()
     event_processor = EventProcessor(origin_nanny, boto_session, swf_region, swf_domain)
     # connect ZMQ IPC clients next
@@ -2004,7 +2006,7 @@ if __name__ == "__main__":
     sqs_listener = SQSListener()
     telegram_bot = TBot()
     # start the binders
-    event_log.start()
+    event_logger.start()
     event_processor.start()
     # start the connectors
     origin_nanny.start()
