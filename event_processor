@@ -1708,6 +1708,12 @@ class SQSListener(Thread):
                     sqs_message.delete()
                 # test for ZMQ shutdown
                 self.processor.poll(timeout=0)
+                # test for application shutdown
+                if threads.shutting_down:
+                    log.warning('App terminate: {}'.format(self.__class__.__name__))
+                    self.processor.close()
+                    log.warning('App terminated: {}'.format(self.__class__.__name__))
+                    break
             except (gaierror, bce, bccce, bcece) as e:
                 log.warning(repr(e))
                 sleep(1)
@@ -1758,6 +1764,9 @@ class OriginNanny(Thread):
         max_heartbeat = -1
         while True:
             if threads.shutting_down:
+                log.warning('App terminate: {}'.format(self.__class__.__name__))
+                self.processor.close()
+                log.warning('App terminated: {}'.format(self.__class__.__name__))
                 break
             try:
                 # send out either a stale alert or the heartbeat
