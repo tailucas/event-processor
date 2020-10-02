@@ -930,14 +930,16 @@ class EventProcessor(Thread):
                         output_device_activation))
                     workflow_instance = None
                     if output_type == OUTPUT_TYPE_BLUETOOTH:
+                        swf_tasklist = APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_BLUETOOTH)
                         with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, APP_NAME) as starter:
                             workflow_instance = BluetoothWorkflow.execute(
+                                app=swf_tasklist,
                                 owner_device_list=self._output_config[output_device_key]['device_params'])
                         log.info("{} workflow is {}".format(output_type, workflow_instance))
                         SWFActivityWaiter(
                             zmq_ipc_url=URL_WORKER_APP,
                             zmq_context=zmq_context,
-                            event_source=APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_BLUETOOTH),
+                            event_source=swf_tasklist,
                             output_type=OUTPUT_TYPE_BLUETOOTH,
                             workflow_starter=starter,
                             workflow_instance=workflow_instance).start()
@@ -947,6 +949,7 @@ class EventProcessor(Thread):
                             camera_command = output_device_activation['device_params']
                         with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, APP_NAME) as starter:
                             workflow_instance = SnapshotWorkflow.execute(
+                                app=APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT),
                                 device_key=device_key,
                                 camera_command=camera_command)
                         log.info("{} workflow is {}".format(output_type, workflow_instance))
@@ -959,7 +962,9 @@ class EventProcessor(Thread):
                             event_detail = ' {}'.format(active_device['event_detail'])
                         notification_message = '{}{}'.format(active_device_label, event_detail)
                         with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, APP_NAME) as starter:
-                            workflow_instance = TTSWorkflow.execute(message=notification_message)
+                            workflow_instance = TTSWorkflow.execute(
+                                app=APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_TTS),
+                                message=notification_message)
                         log.info("{} workflow is {}".format(output_type, workflow_instance))
                 elif event_destination in self._origin_connections:
                     self._origin_connections[event_destination].send(make_payload(
