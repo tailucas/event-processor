@@ -1887,7 +1887,7 @@ class EventSourceDiscovery(Thread):
                                         self._swf_domain,
                                         APP_NAME) as starter:
                         workflow_instance = DeviceWorkflow.execute(app=source_to_register)
-                        log.info("Registration workflow for {} is {}".format(
+                        log.debug("Registration workflow for {} is {}".format(
                             source_to_register,
                             workflow_instance.workflow_execution))
                     SWFActivityWaiter(
