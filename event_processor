@@ -1654,7 +1654,7 @@ class EventSourceSubscriber(Thread):
                 self._reconnected = False
                 # do not info on heartbeats
                 if 'data' in publisher_event and 'device_info' not in publisher_event['data']:
-                    log.info('Received {} bytes from {}'.format(
+                    log.debug('Received {} bytes from {}'.format(
                         len(publisher_data),
                         self._publisher_endpoint))
                 self.processor.send_pyobj({self._label: publisher_event})
