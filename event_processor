@@ -282,7 +282,8 @@ def index():
                            input_labels=input_labels,
                            awol_inputs=awol_inputs,
                            awol_input_labels=awol_input_labels,
-                           meter_history=meter_history)
+                           meter_history=meter_history,
+                           server_context=DEVICE_NAME)
 
 
 @rest_api.route('/metrics', methods=['GET', 'POST'])
@@ -914,8 +915,13 @@ class EventProcessor(Thread):
                 # strip out image data that is no longer needed
                 if 'image' in active_device:
                     del active_device['image']
-                log.info('DEBUG: Activation command for {} ({} mapped in {}) is {}'.format(
+                try:
+                    output_device_label = self._output_config[output_device_key]['device_label']
+                except KeyError:
+                    output_device_label = output_device_key
+                log.info('DEBUG: Activation command for {} ({}) ({} mapped in {}) is {}'.format(
                     output_device_key,
+                    output_device_label,
                     output_device_type,
                     self._output_types,
                     activation_command))
@@ -942,14 +948,11 @@ class EventProcessor(Thread):
                             workflow_starter=starter,
                             workflow_instance=workflow_instance).start()
                     elif output_type == OUTPUT_TYPE_SNAPSHOT:
-                        camera_command = None
-                        if 'device_params' in output_device_activation:
-                            camera_command = output_device_activation['device_params']
                         with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, APP_NAME) as starter:
                             workflow_instance = SnapshotWorkflow.execute(
                                 app=APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT),
-                                device_key=device_key,
-                                camera_command=camera_command)
+                                device_key=output_device_key,
+                                device_label=output_device_label)
                         log.info("{} workflow is {}".format(output_type, workflow_instance.workflow_execution))
                     elif output_type == OUTPUT_TYPE_SWITCH:
                         pass
@@ -982,10 +985,6 @@ class EventProcessor(Thread):
                     input_device_label = self._input_config[active_device_key]['device_label']
                 except KeyError:
                     input_device_label = active_device_key
-                try:
-                    output_device_label = self._output_config[output_device_key]['device_label']
-                except KeyError:
-                    output_device_label = output_device_key
                 self.event_log.send_pyobj({
                     'timestamp': timestamp,
                     'input_device': input_device_label,
