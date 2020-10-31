@@ -171,7 +171,9 @@ done
 WIFI_USED=$(/sbin/ifconfig -s | cut -f1 -d ' ' | grep -s wlan || true)
 if [ -z "${WIFI_USED:-}" ]; then
   export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/host/run/dbus/system_bus_socket
+  nmcli device
   nmcli radio wifi off
+  nmcli device
 fi
 
 # replace this entrypoint with systemd init scope
