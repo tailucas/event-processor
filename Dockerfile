@@ -17,6 +17,7 @@ RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommend
     htop \
     lsof \
     libffi-dev \
+    network-manager \
     openssh-server \
     patch \
     python3-certifi \
@@ -61,7 +62,8 @@ RUN systemctl mask \
     systemd-remount-fs.service \
     getty.target \
     graphical.target \
-    kmod-static-nodes.service
+    kmod-static-nodes.service \
+    NetworkManager.service
 
 # no ipv6
 RUN echo '\n\
