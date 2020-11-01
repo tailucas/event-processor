@@ -1990,11 +1990,11 @@ class FlaskThread(Thread):
 
 
 if __name__ == "__main__":
+    log.setLevel(logging.INFO)
     # determine leadership
     leader_election = Leader()
     try:
         leader_election.yield_to_leader()
-        sleep(5)
         leader_election.surrender_leadership()
     except Exception as e:
         log.info('DEBUG: {}'.format(str(e)))
