@@ -108,6 +108,7 @@ from pylib.aws.swf import SWFActivityWaiter, \
     TTSWorkflow, \
     IOBoardWorkflow, \
     BluetoothWorkflow
+from pylib.leader import Leader
 from pylib.process import SignalHandler
 from pylib import threads
 from pylib.threads import thread_nanny
@@ -1986,6 +1987,12 @@ class FlaskThread(Thread):
 
 
 if __name__ == "__main__":
+    # determine leadership
+    leader_election = Leader()
+    try:
+        leader_election.yield_to_leader()
+    except Exception as e:
+        log.info('DEBUG: {}'.format(str(e)))
     # connect to SWF
     swf_decider = ThreadedWorkflowExecutor(WorkflowWorker(boto_session,
                                              swf_region,
