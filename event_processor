@@ -91,7 +91,10 @@ builtins.APP_NAME = Path(__file__).stem
 builtins.SENTRY_EXTRAS = [FlaskIntegration()]
 import pylib
 
-from pylib.datetime import is_list, make_timestamp, parse_datetime
+from pylib.datetime import is_list, \
+    make_timestamp, \
+    make_unix_timestamp, \
+    parse_datetime
 from pylib.data import make_payload
 from pylib.aws import boto_session, \
     swf_region, \
@@ -1452,7 +1455,7 @@ class EventLog(Thread):
                 log.debug(event)
                 timestamp = event['timestamp']
                 # work around Python's brain-dead date handling
-                unix_timestamp = int((timestamp.replace(tzinfo=None) - datetime(1970, 1, 1)).total_seconds())
+                unix_timestamp = make_unix_timestamp(timestamp)
                 put_args = {'Item': {}}
                 put_args['Item'].update({
                     # pad some millis for the actual insertion time to avoid key conflicts
@@ -1991,6 +1994,8 @@ if __name__ == "__main__":
     leader_election = Leader()
     try:
         leader_election.yield_to_leader()
+        sleep(5)
+        leader_election.surrender_leadership()
     except Exception as e:
         log.info('DEBUG: {}'.format(str(e)))
     # connect to SWF
