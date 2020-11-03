@@ -163,9 +163,11 @@ for systemdsvc in app ngrok; do
   if [ ! -e "/etc/systemd/system/${systemdsvc}.service" ]; then
     cat "/opt/app/config/systemd.${systemdsvc}.service" | /opt/app/config_interpol | tee "/etc/systemd/system/${systemdsvc}.service"
     chmod 664 "/etc/systemd/system/${systemdsvc}.service"
-    systemctl enable "${systemdsvc}"
   fi
 done
+systemctl enable app
+# do not enable ngrok just yet
+systemctl disable ngrok
 
 # quiet down brcmfmac loaded by supervisor
 WIFI_USED=$(/sbin/ifconfig -s | cut -f1 -d ' ' | grep -s wlan || true)

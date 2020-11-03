@@ -6,6 +6,7 @@ After=network.target syslog.service
 Type=simple
 ExecStart=/opt/app/ngrok start --config /opt/app/ngrok.yml --config /opt/app/ngrok_frontend.yml frontend
 Restart=always
+RestartSec=300
 User=%(APP_USER)s
 Group=%(APP_GROUP)s
 

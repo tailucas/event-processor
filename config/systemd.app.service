@@ -1,6 +1,6 @@
 [Unit]
 Description=%(APP_NAME)s
-After=network.target syslog.service ngrok.service
+After=network.target syslog.service
 
 [Service]
 Type=simple
