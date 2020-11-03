@@ -113,7 +113,8 @@ from pylib.aws.swf import SWFActivityWaiter, \
     BluetoothWorkflow
 from pylib.leader import Leader
 from pylib.process import SignalHandler, \
-    exec_cmd
+    exec_cmd, \
+    exec_cmd_log
 from pylib import threads
 from pylib.threads import thread_nanny
 
@@ -1996,12 +1997,8 @@ if __name__ == "__main__":
     leader_election = Leader()
     leader_election.yield_to_leader()
     # get ngrok going
-    go_ngrok = ['systemctl', 'enable', 'ngrok']
-    o,e,c = exec_cmd(go_ngrok)
-    log.info('{} (exit {}): {}{}'.format(go_ngrok, c, o, e))
-    go_ngrok = ['systemctl', 'start', 'ngrok']
-    o,e,c = exec_cmd(go_ngrok)
-    log.info('{} (exit {}): {}{}'.format(go_ngrok, c, o, e))
+    exec_cmd_log(['sudo', 'systemctl', 'enable', 'ngrok'])
+    exec_cmd_log(['sudo', 'systemctl', 'start', 'ngrok'])
     # elected leader, now stay leader
     leader_election.start()
     # connect to SWF
@@ -2093,4 +2090,6 @@ if __name__ == "__main__":
         zmq_context.term()
         log.info(message.format('leader election.'))
         leader_election.surrender_leadership()
+        log.info(message.format('ngrok tunnel'))
+        exec_cmd_log(['sudo', 'systemctl', 'stop', 'ngrok'])
         log.info('Shutdown complete.')

@@ -70,6 +70,10 @@ groupadd -f -r "${APP_GROUP}"
 # non-root users
 id -u "${APP_USER}" || useradd -r -g "${APP_GROUP}" "${APP_USER}"
 
+# sudoers
+cp /opt/app/config/sudoers /etc/sudoers.d/app
+chmod 0440 /etc/sudoers.d/app
+
 TZ_CACHE=/data/localtime
 # a valid symlink
 if [ -h "$TZ_CACHE" ] && [ -e "$TZ_CACHE" ]; then
