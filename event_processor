@@ -1996,10 +1996,10 @@ if __name__ == "__main__":
     leader_election = Leader()
     leader_election.yield_to_leader()
     # get ngrok going
-    go_ngrok = "systemctl enable ngrok"
+    go_ngrok = ['systemctl', 'enable', 'ngrok']
     o,e,c = exec_cmd(go_ngrok)
     log.info('{} (exit {}): {}{}'.format(go_ngrok, c, o, e))
-    go_ngrok = "systemctl start ngrok"
+    go_ngrok = ['systemctl', 'start', 'ngrok']
     o,e,c = exec_cmd(go_ngrok)
     log.info('{} (exit {}): {}{}'.format(go_ngrok, c, o, e))
     # elected leader, now stay leader
