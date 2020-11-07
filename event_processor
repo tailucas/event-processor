@@ -978,10 +978,6 @@ class EventProcessor(Thread):
                                 message=notification_message)
                     if workflow_instance is not None:
                         log.info("{} workflow is {}".format(output_type, workflow_instance.workflow_execution))
-                elif event_destination in self._origin_connections:
-                    self._origin_connections[event_destination].send(make_payload(
-                        timestamp=timestamp,
-                        data=activation_command))
                 elif event_destination == DEVICE_NAME:
                     #TODO: route this properly
                     log.warning('Not dispatching event to self: {} {} => {}.'.format(event_origin,
@@ -1119,18 +1115,8 @@ class EventProcessor(Thread):
                                 threads.threads_tracked.add(subscriber.getName())
                                 # nanny the heartbeats
                                 self._origin_nanny.add_origin_subscriber(origin=origin, ip=ip, subscriber=subscriber)
-
-                                # this origin may accept inbound messages over ZMQ
-                                origin_connection_string = 'tcp://{}:{}'.format(ip, APP_CONFIG.get('zmq', 'pushpull_port'))
-                                log.info('Registering event origin {} @ {}'.format(origin, origin_connection_string))
-                                origin_push_socket = zmq_context.socket(zmq.PUSH)
-                                try:
-                                    origin_push_socket.connect(origin_connection_string)
-                                    self._origin_connections[origin] = origin_push_socket
-                                except ZMQError:
-                                    log.exception('Failed permanently to connect to {} at {}'.format(
-                                        origin,
-                                        origin_connection_string))
+                                # keep track of the available event origins
+                                self._origin_connections[origin] = connection_string
                             continue
                         if 'sqs' == event_origin:
                             device_disable = None
@@ -1406,10 +1392,6 @@ class EventProcessor(Thread):
                 log.warning('ZMQ terminate: {}'.format(self.__class__.__name__))
                 self.socket.close()
                 log.warning('ZMQ terminated socket: {}'.format(self.__class__.__name__))
-                for origin_push_socket in list(self._origin_connections.values()):
-                    log.warning('ZMQ terminate (origin push socket): {}'.format(origin_push_socket.__class__.__name__))
-                    origin_push_socket.close()
-                log.warning('ZMQ terminated origin push sockets: {}'.format(self.__class__.__name__))
                 self.event_log.close()
                 log.warning('ZMQ terminated event log: {}'.format(self.__class__.__name__))
                 self.bot.close()
