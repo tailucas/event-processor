@@ -626,7 +626,7 @@ class EventProcessor(Thread):
         self._output_config = None
         self._output_config_table = None
 
-        self._output_types = None
+        self._output_type_handlers = None
 
         self.flash_info = True
 
@@ -906,10 +906,12 @@ class EventProcessor(Thread):
                     'input_context': active_device,
                     'trigger_history': activation_history,
                 }
+                trigger_duration = None
                 if 'activation_interval' in self._input_config[active_device_key]:
-                    activation_command['trigger_duration'] = int(
+                    trigger_duration = int(
                         self._input_config[active_device_key]['activation_interval']
                     )
+                    activation_command['trigger_duration'] = trigger_duration
                 # get the output type
                 output_device_type = output_device_activation['type'].lower()
                 # let the bot know first
@@ -929,11 +931,11 @@ class EventProcessor(Thread):
                     output_device_key,
                     output_device_label,
                     output_device_type,
-                    self._output_types,
+                    self._output_type_handlers,
                     activation_command))
                 # dispatch the event, test SWF binding
-                if output_device_type in self._output_types:
-                    output_type = self._output_types[output_device_type]
+                if output_device_type in self._output_type_handlers:
+                    output_type = self._output_type_handlers[output_device_type]
                     log.debug('Active device {}: {} with params {}.'.format(
                         active_device,
                         output_type,
@@ -945,7 +947,6 @@ class EventProcessor(Thread):
                             workflow_instance = BluetoothWorkflow.execute(
                                 app=swf_tasklist,
                                 owner_device_list=self._output_config[output_device_key]['device_params'])
-                        log.debug("{} workflow is {}".format(output_type, workflow_instance.workflow_execution))
                         SWFActivityWaiter(
                             zmq_ipc_url=URL_WORKER_APP,
                             zmq_context=zmq_context,
@@ -959,9 +960,12 @@ class EventProcessor(Thread):
                                 app=APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT),
                                 device_key=output_device_key,
                                 device_label=output_device_label)
-                        log.info("{} workflow is {}".format(output_type, workflow_instance.workflow_execution))
-                    elif output_type == OUTPUT_TYPE_SWITCH:
-                        pass
+                    elif output_type in OUTPUT_TYPE_SWITCH:
+                        with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, APP_NAME) as starter:
+                            workflow_instance = IOBoardWorkflow.execute(
+                                app=APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_SWITCH),
+                                device_key=output_device_key,
+                                duration=trigger_duration)
                     elif output_type == OUTPUT_TYPE_TTS:
                         active_device_label = active_device['device_label']
                         event_detail = ""
@@ -972,6 +976,7 @@ class EventProcessor(Thread):
                             workflow_instance = TTSWorkflow.execute(
                                 app=APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_TTS),
                                 message=notification_message)
+                    if workflow_instance is not None:
                         log.info("{} workflow is {}".format(output_type, workflow_instance.workflow_execution))
                 elif event_destination in self._origin_connections:
                     self._origin_connections[event_destination].send(make_payload(
@@ -1041,12 +1046,12 @@ class EventProcessor(Thread):
         self.notify_not_after_time = make_timestamp(APP_CONFIG.get('info_notify', 'not_after_time'))
         # message validity
         self._max_message_validity_seconds = int(APP_CONFIG.get('app', 'max_message_validity_seconds'))
-        # output types
-        self._output_types = dict()
-        self._output_types[APP_CONFIG.get('output_types', OUTPUT_TYPE_BLUETOOTH).lower()] = OUTPUT_TYPE_BLUETOOTH
-        self._output_types[APP_CONFIG.get('output_types', OUTPUT_TYPE_SWITCH).lower()] = OUTPUT_TYPE_SWITCH
-        self._output_types[APP_CONFIG.get('output_types', OUTPUT_TYPE_SNAPSHOT).lower()] = OUTPUT_TYPE_SNAPSHOT
-        self._output_types[APP_CONFIG.get('output_types', OUTPUT_TYPE_TTS).lower()] = OUTPUT_TYPE_TTS
+        # output type handlers
+        self._output_type_handlers = dict()
+        for output_type_handler in [OUTPUT_TYPE_BLUETOOTH, OUTPUT_TYPE_SWITCH, OUTPUT_TYPE_SNAPSHOT, OUTPUT_TYPE_TTS]:
+            output_types = APP_CONFIG.get('output_types', output_type_handler).lower().split(',')
+            for output_type in output_types:
+                self._output_type_handlers[output_type] = output_type_handler
         # set up the special input for the panic button
         self._update_device(
             input_outputs=self.inputs,
