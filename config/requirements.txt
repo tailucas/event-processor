@@ -4,6 +4,7 @@ boto3
 botoflow
 blinker
 netifaces
+paho-mqtt
 pathtools
 pylru
 python-dateutil
