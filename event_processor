@@ -291,13 +291,15 @@ def index():
                 event_processor.flash_info = True
         else:
             log.error('No action associated with this request: {}'.format(request.form))
+    render_timestamp = make_timestamp(timestamp=None, as_tz=tz.tzlocal(), make_string=True)
     return render_template('index.html',
                            inputs=device_listing,
                            input_labels=input_labels,
                            awol_inputs=awol_inputs,
                            awol_input_labels=awol_input_labels,
                            meter_history=meter_history,
-                           server_context=DEVICE_NAME)
+                           server_context=DEVICE_NAME,
+                           render_timestamp=render_timestamp)
 
 
 @rest_api.route('/metrics', methods=['GET', 'POST'])
