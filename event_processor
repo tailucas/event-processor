@@ -1627,7 +1627,7 @@ class MqttSubscriber(Thread):
         log.info('MQTT client has disconnected.')
 
     def on_message(self, client, userdata, msg):
-        log.info('{} received {} bytes.'.format(msg.topic, len(msg.payload)))
+        log.debug('{} received {} bytes.'.format(msg.topic, len(msg.payload)))
         msg_data = None
         try:
             msg_data = json.loads(msg.payload)
