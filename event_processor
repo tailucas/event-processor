@@ -69,6 +69,9 @@ from flask_compress import Compress
 from werkzeug.serving import make_server
 from zmq.error import ZMQError, ContextTerminated, Again
 
+import paho.mqtt.client as mqtt
+from paho.mqtt.client import MQTT_ERR_SUCCESS
+
 import botocore
 import os.path
 from botoflow import activity, \
@@ -1601,6 +1604,69 @@ class TBot(Thread):
                 continue
 
 
+class MqttSubscriber(Thread):
+
+    def __init__(self):
+        super(MqttSubscriber, self).__init__(name=self.__class__.__name__)
+        self.daemon = True
+        threads.threads_tracked.add(self.name)
+
+        self.processor = zmq_context.socket(zmq.PUSH) # pylint: disable=no-member
+        self._mqtt_client = None
+        self._mqtt_server_address = APP_CONFIG.get('mqtt', 'server_address')
+        self._mqtt_subscribe_topics = list()
+        # match Paho interface
+        for mqtt_source in APP_CONFIG.get('mqtt', 'subscription_sources').split(','):
+            self._mqtt_subscribe_topics.append((mqtt_source, 0))
+
+    def on_connect(self, client, userdata, flags, rc):
+        log.info('Connected to MQTT server. Subscribing to topics {}'.format(self._mqtt_subscribe_topics))
+        self._mqtt_client.subscribe(self._mqtt_subscribe_topics)
+
+    def on_disconnect(self, client, userdata, rc):
+        log.warn('MQTT client has disconnected.')
+
+    def on_message(self, client, userdata, msg):
+        log.info('{}: {}'.format(self.__class__.__name__, msg.payload))
+
+    # noinspection PyBroadException
+    def run(self):
+        log.info('Connecting to MQTT server {} and subscribing to topics {}'.format(
+            self._mqtt_server_address,
+            self._mqtt_subscribe_topics))
+        self._mqtt_client = mqtt.Client()
+        self._mqtt_client.on_connect = self.on_connect
+        self._mqtt_client.on_disconnect = self.on_disconnect
+        self._mqtt_client.on_message = self.on_message
+        self._mqtt_client.connect(self._mqtt_server_address)
+        self.processor.connect(URL_WORKER_APP)
+        while True:
+            try:
+                self._mqtt_client.loop()
+                # test for application shutdown
+                if threads.shutting_down:
+                    log.warning('App terminate: {}'.format(self.__class__.__name__))
+                    self._mqtt_client.disconnect()
+                    self.processor.close()
+                    log.warning('App terminated: {}'.format(self.__class__.__name__))
+                    break
+            except ContextTerminated:
+                log.warning('ZMQ terminate: {}'.format(self.__class__.__name__))
+                self._mqtt_client.disconnect()
+                self.processor.close()
+                log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
+                break
+            except ZMQError:
+                log.exception(self.name)
+                break
+            except Exception:
+                # consider mqttc.reinitialise()
+                log.exception(self.name)
+                capture_exception()
+                sleep(1)
+                continue
+
+
 class EventSourceSubscriber(Thread):
 
     def __init__(self, label, publisher_endpoint):
@@ -2031,6 +2097,7 @@ if __name__ == "__main__":
     event_processor = EventProcessor(origin_nanny, boto_session, swf_region, swf_domain)
     # connect ZMQ IPC clients next
     event_source_discovery = EventSourceDiscovery(boto_session, swf_region, swf_domain)
+    mqtt_subscriber = MqttSubscriber()
     sqs_listener = SQSListener()
     telegram_bot = TBot()
     # start the binders
@@ -2039,6 +2106,7 @@ if __name__ == "__main__":
     # start the connectors
     origin_nanny.start()
     event_source_discovery.start()
+    mqtt_subscriber.start()
     sqs_listener.start()
     telegram_bot.start()
     # start Telegram integration
