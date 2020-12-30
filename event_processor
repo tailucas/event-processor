@@ -1628,6 +1628,26 @@ class MqttSubscriber(Thread):
 
     def on_message(self, client, userdata, msg):
         log.info('{} received {} bytes.'.format(msg.topic, len(msg.payload)))
+        msg_data = None
+        try:
+            msg_data = json.loads(msg.payload)
+        except JSONDecodeError:
+            log.exception('Unstructured message: {}'.format(msg.payload))
+        device_id = msg_data['device_id']
+        input_location = msg_data['input_location']
+        if msg.topic.startswith('sensor'):
+            active_devices = list()
+            for msg_key in msg_data:
+                #FIXME: generalize
+                if msg_key.startswith('input_1') or msg_key.startswith('input_2') or msg_key.startswith('input_3'):
+                    input_label = msg_data[msg_key]['input_label']
+                    sample_value = msg_data[msg_key]['sample_value']
+                    input_active = msg_data[msg_key]['active']
+                    if input_active:
+                        active_devices.append(input_label)
+                        log.info('{}: {} {} ({})'.format(device_id, input_location, input_label, sample_value))
+        elif msg.topic.startswith('meter'):
+            log.info('{}: {} ({})'.format(device_id, input_location, msg_data['msg_data']))
 
     # noinspection PyBroadException
     def run(self):
