@@ -1620,20 +1620,18 @@ class MqttSubscriber(Thread):
             self._mqtt_subscribe_topics.append((mqtt_source, 0))
 
     def on_connect(self, client, userdata, flags, rc):
-        log.info('Connected to MQTT server. Subscribing to topics {}'.format(self._mqtt_subscribe_topics))
+        log.info('Subscribing to topics {}'.format(self._mqtt_subscribe_topics))
         self._mqtt_client.subscribe(self._mqtt_subscribe_topics)
 
     def on_disconnect(self, client, userdata, rc):
-        log.warn('MQTT client has disconnected.')
+        log.info('MQTT client has disconnected.')
 
     def on_message(self, client, userdata, msg):
-        log.info('{}: {}'.format(self.__class__.__name__, msg.payload))
+        log.info('{} received {} bytes.'.format(msg.topic, len(msg.payload)))
 
     # noinspection PyBroadException
     def run(self):
-        log.info('Connecting to MQTT server {} and subscribing to topics {}'.format(
-            self._mqtt_server_address,
-            self._mqtt_subscribe_topics))
+        log.info('Connecting to MQTT server {}...'.format(self._mqtt_server_address))
         self._mqtt_client = mqtt.Client()
         self._mqtt_client.on_connect = self.on_connect
         self._mqtt_client.on_disconnect = self.on_disconnect
