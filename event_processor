@@ -10,6 +10,7 @@ import inspect
 import netifaces
 import os
 import pytz
+import re
 import requests
 import sentry_sdk
 import signal
@@ -601,7 +602,7 @@ def telegram_error_handler(update: Update, context: TelegramCallbackContext):
 
 class EventProcessor(Thread):
 
-    def __init__(self, origin_nanny, boto_session, swf_region, swf_domain):
+    def __init__(self, origin_nanny, boto_session, swf_region, swf_domain, mqtt_subscriber):
         super(EventProcessor, self).__init__(name=self.__class__.__name__)
         self.daemon = True
         threads.threads_tracked.add(self.name)
@@ -655,6 +656,8 @@ class EventProcessor(Thread):
         self.event_log = zmq_context.socket(zmq.PUSH) # pylint: disable=no-member
 
         self.bot = zmq_context.socket(zmq.PUSH) # pylint: disable=no-member
+
+        self._mqtt_subscriber = mqtt_subscriber
 
     @property
     def origins(self):
@@ -1124,7 +1127,7 @@ class EventProcessor(Thread):
                                 log.warning(log_msg)
                             else:
                                 log.debug(log_msg)
-                        if 'register_origin' == event_origin:
+                        if 'register_zmq_origin' == event_origin:
                             # connect to event origins
                             for origin, ip in list(event_data.items()):
                                 connection_string = 'tcp://{}:{}'.format(ip, APP_CONFIG.get('zmq', 'pubsub_port'))
@@ -1135,6 +1138,17 @@ class EventProcessor(Thread):
                                 self._origin_nanny.add_origin_subscriber(origin=origin, ip=ip, subscriber=subscriber)
                                 # keep track of the available event origins
                                 self._origin_connections[origin] = connection_string
+                            continue
+                        if 'register_mqtt_origin' == event_origin:
+                            # connect to event origins
+                            for mqtt_topic, device_id in list(event_data.items()):
+                                subscriber = MqttEventSourceSubscriber(mqtt_topic=mqtt_topic, device_id=device_id)
+                                subscriber.start()
+                                threads.threads_tracked.add(subscriber.getName())
+                                # nanny the heartbeats
+                                self._origin_nanny.add_origin_subscriber(origin=mqtt_topic, ip=None, subscriber=subscriber)
+                                # keep the heartbeats up to date
+                                self._mqtt_subscriber.add_source_subscriber(topic=mqtt_topic, subscriber=subscriber)
                             continue
                         if 'sqs' == event_origin:
                             device_disable = None
@@ -1618,6 +1632,10 @@ class MqttSubscriber(Thread):
         # match Paho interface
         for mqtt_source in APP_CONFIG.get('mqtt', 'subscription_sources').split(','):
             self._mqtt_subscribe_topics.append((mqtt_source, 0))
+        self._source_subscribers = dict()
+
+    def add_source_subscriber(self, topic, subscriber):
+        self._source_subscribers[topic] = subscriber
 
     def on_connect(self, client, userdata, flags, rc):
         log.info('Subscribing to topics {}'.format(self._mqtt_subscribe_topics))
@@ -1635,18 +1653,41 @@ class MqttSubscriber(Thread):
             log.exception('Unstructured message: {}'.format(msg.payload))
         device_id = msg_data['device_id']
         input_location = msg_data['input_location']
+        # FIXME: create a canonical topic form
+        topic_base = '/'.join(msg.topic.split('/')[0:2])
+        # get the subscriber and update the timestamp
+        subscriber = self._source_subscribers[topic]
+        subscriber.last_message = time.time()
+        # unpack the message
         if msg.topic.startswith('sensor'):
+            device_inputs = list()
             active_devices = list()
             for msg_key in msg_data:
-                #FIXME: generalize
-                if msg_key.startswith('input_1') or msg_key.startswith('input_2') or msg_key.startswith('input_3'):
+                # look for inputs
+                if re.match("input_\d+", msg_key):
                     input_label = msg_data[msg_key]['input_label']
                     sample_value = msg_data[msg_key]['sample_value']
                     input_active = msg_data[msg_key]['active']
+                    device_description = {
+                        'type': input_label,
+                        'location': input_location,
+                        'device_key': '{} {}'.format(input_location, input_label)
+                    }
                     if input_active:
-                        active_devices.append(input_label)
                         log.info('{}: {} {} ({})'.format(device_id, input_location, input_label, sample_value))
+                        device_description['sample_value'] = sample_value
+                        active_devices.append(device_description)
+                    else:
+                        device_inputs.append(device_description)
+            self.processor.send_pyobj({
+                topic_base: {'data':
+                    {'device_info': {
+                        {'inputs': device_inputs},
+                        {'active_devices': active_devices}
+                    }
+                }}})
         elif msg.topic.startswith('meter'):
+            # FIXME: meter support (again)
             log.debug('{}: {} ({})'.format(device_id, input_location, msg_data['last_minute_metered']))
 
     # noinspection PyBroadException
@@ -1694,6 +1735,21 @@ class EventSourceSubscriber(Thread):
 
         self._label = label
         self.last_message = None
+
+    @property
+    def label(self):
+        return self._label
+
+
+class MqttEventSourceSubscriber(EventSourceSubscriber):
+
+    def __init__(self, mqtt_topic, device_id):
+        super(ZmqEventSourceSubscriber, self).__init__(mqtt_topic)
+        self._device_id = device_id
+
+    @property
+    def device_id(self):
+        return self._device_id
 
 
 class ZmqEventSourceSubscriber(EventSourceSubscriber):
@@ -1964,7 +2020,7 @@ class EventSourceDiscovery(Thread):
                 label_ip = source.split(':')
                 source_label = label_ip[0]
                 source_ip = label_ip[1]
-                self.processor.send_pyobj({'register_origin': {source_label: source_ip}})
+                self.processor.send_pyobj({'register_zmq_origin': {source_label: source_ip}})
             self.processor.close()
         except ContextTerminated:
             self.processor.close()
@@ -2015,7 +2071,7 @@ class EventSourceDiscovery(Thread):
             except Exception:
                 log.exception(self.name)
                 capture_exception()
-                sleep(1)
+                sleep(10)
                 continue
         # register MQTT inputs
         while True:
@@ -2034,9 +2090,13 @@ class EventSourceDiscovery(Thread):
                 sleep(10)
                 continue
             log.info('mDash returns {} devices.'.format(len(mdash_devices)))
+            self.processor.connect(URL_WORKER_APP)
             for device in mdash_devices:
                 device_id = device['id']
-                log.info('Retrieving mDash information for device {}'.format(device_id))
+                source_ip = None
+                if 'wifi' in device and 'sta_ip' in device['wifi']:
+                    source_ip = device['wifi']['sta_ip']
+                log.info('Retrieving mDash information for device {} (IP address: {})'.format(device_id, source_ip))
                 try:
                     # retrieve specific configuration item
                     mqtt_pub_topic = requests.post(
@@ -2050,11 +2110,13 @@ class EventSourceDiscovery(Thread):
                             "access_token": self._mdash_api_key
                         })
                     log.info('MQTT topic for {} is {}'.format(device_id, mqtt_pub_topic.text))
+                    self.processor.send_pyobj({'register_mqtt_origin': {mqtt_pub_topic.text: device_id}})
                 except Exception:
                     log.exception(self.__class__.__name__)
                     capture_exception()
                     sleep(10)
                     continue
+            self.processor.close()
 
         # un-nanny and goodbye
         threads.threads_tracked.remove(self.getName())
@@ -2163,10 +2225,10 @@ if __name__ == "__main__":
     # bind listeners first
     event_logger = EventLog()
     origin_nanny = OriginNanny()
-    event_processor = EventProcessor(origin_nanny, boto_session, swf_region, swf_domain)
+    mqtt_subscriber = MqttSubscriber()
+    event_processor = EventProcessor(origin_nanny, boto_session, swf_region, swf_domain, mqtt_subscriber)
     # connect ZMQ IPC clients next
     event_source_discovery = EventSourceDiscovery(boto_session, swf_region, swf_domain)
-    mqtt_subscriber = MqttSubscriber()
     sqs_listener = SQSListener()
     telegram_bot = TBot()
     # start the binders
