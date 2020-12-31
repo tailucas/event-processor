@@ -1127,7 +1127,7 @@ class EventProcessor(Thread):
                                 log.warning(log_msg)
                             else:
                                 log.debug(log_msg)
-                        if 'register_zmq_origin' == event_origin:
+                        if 'register_origin' == event_origin:
                             # connect to event origins
                             for origin, ip in list(event_data.items()):
                                 connection_string = 'tcp://{}:{}'.format(ip, APP_CONFIG.get('zmq', 'pubsub_port'))
@@ -1656,8 +1656,9 @@ class MqttSubscriber(Thread):
         # FIXME: create a canonical topic form
         topic_base = '/'.join(msg.topic.split('/')[0:2])
         # get the subscriber and update the timestamp
-        subscriber = self._source_subscribers[topic]
-        subscriber.last_message = time.time()
+        if topic_base in self._source_subscribers:
+            subscriber = self._source_subscribers[topic_base]
+            subscriber.last_message = time.time()
         # unpack the message
         if msg.topic.startswith('sensor'):
             device_inputs = list()
@@ -2020,7 +2021,7 @@ class EventSourceDiscovery(Thread):
                 label_ip = source.split(':')
                 source_label = label_ip[0]
                 source_ip = label_ip[1]
-                self.processor.send_pyobj({'register_zmq_origin': {source_label: source_ip}})
+                self.processor.send_pyobj({'register_origin': {source_label: source_ip}})
             self.processor.close()
         except ContextTerminated:
             self.processor.close()
