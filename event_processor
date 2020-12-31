@@ -1681,12 +1681,13 @@ class MqttSubscriber(Thread):
                     else:
                         device_inputs.append(device_description)
             self.processor.send_pyobj({
-                topic_base: {'data':
-                    {'device_info': {
-                        {'inputs': device_inputs},
-                        {'active_devices': active_devices}
+                topic_base: {
+                    'data': {
+                        'device_info': {'inputs': device_inputs},
+                        'active_devices': active_devices
                     }
-                }}})
+                }
+            })
         elif msg.topic.startswith('meter'):
             # FIXME: meter support (again)
             log.debug('{}: {} ({})'.format(device_id, input_location, msg_data['last_minute_metered']))
@@ -1745,7 +1746,7 @@ class EventSourceSubscriber(Thread):
 class MqttEventSourceSubscriber(EventSourceSubscriber):
 
     def __init__(self, mqtt_topic, device_id):
-        super(ZmqEventSourceSubscriber, self).__init__(mqtt_topic)
+        super(MqttEventSourceSubscriber, self).__init__(mqtt_topic)
         self._device_id = device_id
 
     @property
