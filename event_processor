@@ -2013,16 +2013,15 @@ class EventSourceDiscovery(Thread):
         self._app_config_mqtt_pub_topic = APP_CONFIG.get('mdash', 'app_config_mqtt_pub_topic')
 
     def run(self):
+        self.processor.connect(URL_WORKER_APP)
         # register ZMQ sources
         try:
-            self.processor.connect(URL_WORKER_APP)
             # start with static sources
             for source in APP_CONFIG.get('app', 'subscription_sources').split(','):
                 label_ip = source.split(':')
                 source_label = label_ip[0]
                 source_ip = label_ip[1]
                 self.processor.send_pyobj({'register_origin': {source_label: source_ip}})
-            self.processor.close()
         except ContextTerminated:
             self.processor.close()
             log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
@@ -2091,7 +2090,6 @@ class EventSourceDiscovery(Thread):
                 sleep(10)
                 continue
             log.info('mDash returns {} devices.'.format(len(mdash_devices)))
-            self.processor.connect(URL_WORKER_APP)
             for device in mdash_devices:
                 device_id = device['id']
                 source_ip = None
@@ -2112,12 +2110,21 @@ class EventSourceDiscovery(Thread):
                         })
                     log.info('MQTT topic for {} is {}'.format(device_id, mqtt_pub_topic.text))
                     self.processor.send_pyobj({'register_mqtt_origin': {mqtt_pub_topic.text: device_id}})
+                except ContextTerminated:
+                    self.processor.close()
+                    log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
+                    return
+                except ZMQError:
+                    log.exception(self.name)
+                    return
                 except Exception:
                     log.exception(self.__class__.__name__)
                     capture_exception()
                     sleep(10)
                     continue
-            self.processor.close()
+
+        # close the IPC socket
+        self.processor.close()
 
         # un-nanny and goodbye
         threads.threads_tracked.remove(self.getName())
