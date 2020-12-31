@@ -1647,7 +1647,7 @@ class MqttSubscriber(Thread):
                         active_devices.append(input_label)
                         log.info('{}: {} {} ({})'.format(device_id, input_location, input_label, sample_value))
         elif msg.topic.startswith('meter'):
-            log.info('{}: {} ({})'.format(device_id, input_location, msg_data['last_minute_metered']))
+            log.debug('{}: {} ({})'.format(device_id, input_location, msg_data['last_minute_metered']))
 
     # noinspection PyBroadException
     def run(self):
