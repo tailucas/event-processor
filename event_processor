@@ -1128,7 +1128,7 @@ class EventProcessor(Thread):
                             # connect to event origins
                             for origin, ip in list(event_data.items()):
                                 connection_string = 'tcp://{}:{}'.format(ip, APP_CONFIG.get('zmq', 'pubsub_port'))
-                                subscriber = EventSourceSubscriber(label=origin, publisher_endpoint=connection_string)
+                                subscriber = ZmqEventSourceSubscriber(label=origin, publisher_endpoint=connection_string)
                                 subscriber.start()
                                 threads.threads_tracked.add(subscriber.getName())
                                 # nanny the heartbeats
@@ -1687,19 +1687,25 @@ class MqttSubscriber(Thread):
 
 class EventSourceSubscriber(Thread):
 
-    def __init__(self, label, publisher_endpoint):
+    def __init__(self, label):
         super(EventSourceSubscriber, self).__init__()
         self.name = '{}::{}'.format(self.__class__.__name__, label)
         self.daemon = True
 
         self._label = label
+        self.last_message = None
+
+
+class ZmqEventSourceSubscriber(EventSourceSubscriber):
+
+    def __init__(self, label, publisher_endpoint):
+        super(ZmqEventSourceSubscriber, self).__init__(label)
         self._publisher_endpoint = publisher_endpoint
 
         self.subscriber = zmq_context.socket(zmq.SUB) # pylint: disable=no-member
         self.processor = zmq_context.socket(zmq.PUSH) # pylint: disable=no-member
 
         self._reconnected = False
-        self.last_message = None
         # use half of the tolerated heartbeat value
         self._zmq_poll_period = int(APP_CONFIG.get('app', 'max_heartbeat_delay_seconds')) / 2
 
@@ -2009,6 +2015,61 @@ class EventSourceDiscovery(Thread):
         threads.threads_tracked.remove(self.getName())
 
 
+class MqttTopicDiscovery(Thread):
+    def __init__(self):
+        super(MqttTopicDiscovery, self).__init__(name=self.__class__.__name__)
+        self.daemon = True
+        threads.threads_tracked.add(self.name)
+
+        #FIXME: complete
+        #self.processor = zmq_context.socket(zmq.PUSH) # pylint: disable=no-member
+
+        self._mdash_api_key = APP_CONFIG.get('mdash', 'api_key')
+        self._mdash_devices_url = APP_CONFIG.get('mdash', 'base_url')
+        self._app_config_mqtt_pub_topic = APP_CONFIG.get('mdash', 'app_config_mqtt_pub_topic')
+
+    def run(self):
+        # determine sources to register
+        mdash_devices = None
+        log.info('Requesting mDash device listing from {}'.format(self._mdash_devices_url))
+        try:
+            # get listing of all applications
+            mdash_devices = requests.get(
+                url=self._mdash_devices_url,
+                params={
+                    "access_token": self._mdash_api_key
+                }).json()
+        except Exception:
+            log.exception(self.__class__.__name__)
+            capture_exception()
+            return
+
+        log.info('mDash returns {} devices.'.format(len(mdash_devices)))
+        for device in mdash_devices:
+            device_id = device['id']
+            log.info('Retrieving mDash information for device {}'.format(device_id))
+            try:
+                # retrieve specific configuration item
+                mqtt_pub_topic = requests.post(
+                    url='{}/{}/rpc/Config.Get'.format(
+                        self._mdash_devices_url,
+                        device_id),
+                    data={
+                        'key': self._app_config_mqtt_pub_topic
+                    },
+                    params={
+                        "access_token": self._mdash_api_key
+                    })
+                log.info('MQTT topic for {} is {}'.format(device_id, mqtt_pub_topic.text))
+            except Exception:
+                log.exception(self.__class__.__name__)
+                capture_exception()
+                return
+
+        # un-nanny and goodbye
+        threads.threads_tracked.remove(self.getName())
+
+
 class CallbackUrlDiscovery(Thread):
 
     def __init__(self):
@@ -2115,6 +2176,8 @@ if __name__ == "__main__":
     event_processor = EventProcessor(origin_nanny, boto_session, swf_region, swf_domain)
     # connect ZMQ IPC clients next
     event_source_discovery = EventSourceDiscovery(boto_session, swf_region, swf_domain)
+    # discover MQTT topics from mDash
+    mqtt_topic_discovery = MqttTopicDiscovery()
     mqtt_subscriber = MqttSubscriber()
     sqs_listener = SQSListener()
     telegram_bot = TBot()
@@ -2124,6 +2187,7 @@ if __name__ == "__main__":
     # start the connectors
     origin_nanny.start()
     event_source_discovery.start()
+    mqtt_topic_discovery.start()
     mqtt_subscriber.start()
     sqs_listener.start()
     telegram_bot.start()
