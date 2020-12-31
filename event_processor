@@ -2093,10 +2093,7 @@ class EventSourceDiscovery(Thread):
             log.info('mDash returns {} devices.'.format(len(mdash_devices)))
             for device in mdash_devices:
                 device_id = device['id']
-                source_ip = None
-                if 'wifi' in device and 'sta_ip' in device['wifi']:
-                    source_ip = device['wifi']['sta_ip']
-                log.info('Retrieving mDash information for device {} (IP address: {})'.format(device_id, source_ip))
+                log.info('Retrieving mDash information for device {}'.format(device_id))
                 try:
                     # retrieve specific configuration item
                     mqtt_pub_topic = requests.post(
@@ -2123,6 +2120,8 @@ class EventSourceDiscovery(Thread):
                     capture_exception()
                     sleep(10)
                     continue
+            # important to stop
+            break
 
         # close the IPC socket
         self.processor.close()
