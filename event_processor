@@ -2054,7 +2054,7 @@ class MqttTopicDiscovery(Thread):
                     url='{}/{}/rpc/Config.Get'.format(
                         self._mdash_devices_url,
                         device_id),
-                    data={
+                    json={
                         'key': self._app_config_mqtt_pub_topic
                     },
                     params={
