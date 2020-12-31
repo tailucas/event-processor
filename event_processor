@@ -1143,8 +1143,6 @@ class EventProcessor(Thread):
                             # connect to event origins
                             for mqtt_topic, device_id in list(event_data.items()):
                                 subscriber = MqttEventSourceSubscriber(mqtt_topic=mqtt_topic, device_id=device_id)
-                                subscriber.start()
-                                threads.threads_tracked.add(subscriber.getName())
                                 # nanny the heartbeats
                                 self._origin_nanny.add_origin_subscriber(origin=mqtt_topic, ip=None, subscriber=subscriber)
                                 # keep the heartbeats up to date
@@ -1728,13 +1726,9 @@ class MqttSubscriber(Thread):
                 continue
 
 
-class EventSourceSubscriber(Thread):
+class EventSourceSubscriber(object):
 
     def __init__(self, label):
-        super(EventSourceSubscriber, self).__init__()
-        self.name = '{}::{}'.format(self.__class__.__name__, label)
-        self.daemon = True
-
         self._label = label
         self.last_message = None
 
@@ -1746,7 +1740,7 @@ class EventSourceSubscriber(Thread):
 class MqttEventSourceSubscriber(EventSourceSubscriber):
 
     def __init__(self, mqtt_topic, device_id):
-        super(MqttEventSourceSubscriber, self).__init__(mqtt_topic)
+        super(MqttEventSourceSubscriber, self).__init__(label=mqtt_topic)
         self._device_id = device_id
 
     @property
@@ -1754,10 +1748,14 @@ class MqttEventSourceSubscriber(EventSourceSubscriber):
         return self._device_id
 
 
-class ZmqEventSourceSubscriber(EventSourceSubscriber):
+class ZmqEventSourceSubscriber(EventSourceSubscriber, Thread):
 
     def __init__(self, label, publisher_endpoint):
-        super(ZmqEventSourceSubscriber, self).__init__(label)
+        EventSourceSubscriber.__init__(self, label=label)
+        Thread.__init__(self)
+        self.name = '{}::{}'.format(self.__class__.__name__, label)
+        self.daemon = True
+
         self._publisher_endpoint = publisher_endpoint
 
         self.subscriber = zmq_context.socket(zmq.SUB) # pylint: disable=no-member
