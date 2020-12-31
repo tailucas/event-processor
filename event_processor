@@ -1946,16 +1946,17 @@ class EventSourceDiscovery(Thread):
         threads.threads_tracked.add(self.name)
 
         self.processor = zmq_context.socket(zmq.PUSH) # pylint: disable=no-member
+
         self._boto_session = boto_session
         self._swf_region = swf_region
         self._swf_domain = swf_domain
 
+        self._mdash_api_key = APP_CONFIG.get('mdash', 'api_key')
+        self._mdash_devices_url = APP_CONFIG.get('mdash', 'base_url')
+        self._app_config_mqtt_pub_topic = APP_CONFIG.get('mdash', 'app_config_mqtt_pub_topic')
+
     def run(self):
-        sources_to_register = (
-            APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_BLUETOOTH),
-            APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_SWITCH),
-            APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT),
-            APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_TTS))
+        # register ZMQ sources
         try:
             self.processor.connect(URL_WORKER_APP)
             # start with static sources
@@ -1972,7 +1973,12 @@ class EventSourceDiscovery(Thread):
         except ZMQError:
             log.exception(self.name)
             return
-        # now gather the remaining, SWF-discovered inputs
+        # register SWF actions
+        sources_to_register = (
+            APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_BLUETOOTH),
+            APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_SWITCH),
+            APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT),
+            APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_TTS))
         while True:
             try:
                 outstanding_registrations = set(sources_to_register) - event_processor.origins
@@ -2011,60 +2017,44 @@ class EventSourceDiscovery(Thread):
                 capture_exception()
                 sleep(1)
                 continue
-        # un-nanny and goodbye
-        threads.threads_tracked.remove(self.getName())
-
-
-class MqttTopicDiscovery(Thread):
-    def __init__(self):
-        super(MqttTopicDiscovery, self).__init__(name=self.__class__.__name__)
-        self.daemon = True
-        threads.threads_tracked.add(self.name)
-
-        #FIXME: complete
-        #self.processor = zmq_context.socket(zmq.PUSH) # pylint: disable=no-member
-
-        self._mdash_api_key = APP_CONFIG.get('mdash', 'api_key')
-        self._mdash_devices_url = APP_CONFIG.get('mdash', 'base_url')
-        self._app_config_mqtt_pub_topic = APP_CONFIG.get('mdash', 'app_config_mqtt_pub_topic')
-
-    def run(self):
-        # determine sources to register
-        mdash_devices = None
-        log.info('Requesting mDash device listing from {}'.format(self._mdash_devices_url))
-        try:
-            # get listing of all applications
-            mdash_devices = requests.get(
-                url=self._mdash_devices_url,
-                params={
-                    "access_token": self._mdash_api_key
-                }).json()
-        except Exception:
-            log.exception(self.__class__.__name__)
-            capture_exception()
-            return
-
-        log.info('mDash returns {} devices.'.format(len(mdash_devices)))
-        for device in mdash_devices:
-            device_id = device['id']
-            log.info('Retrieving mDash information for device {}'.format(device_id))
+        # register MQTT inputs
+        while True:
+            mdash_devices = None
+            log.info('Requesting mDash device listing from {}'.format(self._mdash_devices_url))
             try:
-                # retrieve specific configuration item
-                mqtt_pub_topic = requests.post(
-                    url='{}/{}/rpc/Config.Get'.format(
-                        self._mdash_devices_url,
-                        device_id),
-                    json={
-                        'key': self._app_config_mqtt_pub_topic
-                    },
+                # get listing of all applications
+                mdash_devices = requests.get(
+                    url=self._mdash_devices_url,
                     params={
                         "access_token": self._mdash_api_key
-                    })
-                log.info('MQTT topic for {} is {}'.format(device_id, mqtt_pub_topic.text))
+                    }).json()
             except Exception:
                 log.exception(self.__class__.__name__)
                 capture_exception()
-                return
+                sleep(10)
+                continue
+            log.info('mDash returns {} devices.'.format(len(mdash_devices)))
+            for device in mdash_devices:
+                device_id = device['id']
+                log.info('Retrieving mDash information for device {}'.format(device_id))
+                try:
+                    # retrieve specific configuration item
+                    mqtt_pub_topic = requests.post(
+                        url='{}/{}/rpc/Config.Get'.format(
+                            self._mdash_devices_url,
+                            device_id),
+                        json={
+                            'key': self._app_config_mqtt_pub_topic
+                        },
+                        params={
+                            "access_token": self._mdash_api_key
+                        })
+                    log.info('MQTT topic for {} is {}'.format(device_id, mqtt_pub_topic.text))
+                except Exception:
+                    log.exception(self.__class__.__name__)
+                    capture_exception()
+                    sleep(10)
+                    continue
 
         # un-nanny and goodbye
         threads.threads_tracked.remove(self.getName())
@@ -2176,8 +2166,6 @@ if __name__ == "__main__":
     event_processor = EventProcessor(origin_nanny, boto_session, swf_region, swf_domain)
     # connect ZMQ IPC clients next
     event_source_discovery = EventSourceDiscovery(boto_session, swf_region, swf_domain)
-    # discover MQTT topics from mDash
-    mqtt_topic_discovery = MqttTopicDiscovery()
     mqtt_subscriber = MqttSubscriber()
     sqs_listener = SQSListener()
     telegram_bot = TBot()
@@ -2187,7 +2175,6 @@ if __name__ == "__main__":
     # start the connectors
     origin_nanny.start()
     event_source_discovery.start()
-    mqtt_topic_discovery.start()
     mqtt_subscriber.start()
     sqs_listener.start()
     telegram_bot.start()
