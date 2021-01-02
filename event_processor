@@ -1299,25 +1299,27 @@ class EventProcessor(Thread):
                                     active_device_config = self._input_config[active_device_key]
                                     # always process a fresh meter update
                                     if 'type' in active_device and 'meter' in active_device['type'].lower():
-                                        meter_value = int(active_device['sample_value'])
-                                        meter_reading_unit = ''
-                                        if 'meter_reading_unit' in active_device_config:
-                                            meter_reading_unit = ' ' + active_device_config['meter_reading_unit']
-                                        meter_reading_unit_factor = 1
-                                        if 'meter_reading_unit_factor' in active_device_config:
-                                            meter_reading_unit_factor = active_device_config[
-                                                'meter_reading_unit_factor']
-                                        meter_reading_unit_precision = 0
-                                        if 'meter_reading_unit_precision' in active_device_config:
-                                            meter_reading_unit_precision = active_device_config[
-                                                'meter_reading_unit_precision']
-                                        number_format_string = "{:." + str(meter_reading_unit_precision) + "f}"
-                                        # update but do not persist in DDB (Lambda already does this)
-                                        active_device_config.update({
-                                            'meter_value': meter_value,
-                                            'meter_reading': number_format_string.format(int(meter_value) / float(
-                                                meter_reading_unit_factor)) + meter_reading_unit
-                                        })
+                                        # FIXME
+                                        if 'sample_value' in active_device:
+                                            meter_value = int(active_device['sample_value'])
+                                            meter_reading_unit = ''
+                                            if 'meter_reading_unit' in active_device_config:
+                                                meter_reading_unit = ' ' + active_device_config['meter_reading_unit']
+                                            meter_reading_unit_factor = 1
+                                            if 'meter_reading_unit_factor' in active_device_config:
+                                                meter_reading_unit_factor = active_device_config[
+                                                    'meter_reading_unit_factor']
+                                            meter_reading_unit_precision = 0
+                                            if 'meter_reading_unit_precision' in active_device_config:
+                                                meter_reading_unit_precision = active_device_config[
+                                                    'meter_reading_unit_precision']
+                                            number_format_string = "{:." + str(meter_reading_unit_precision) + "f}"
+                                            # update but do not persist in DDB (Lambda already does this)
+                                            active_device_config.update({
+                                                'meter_value': meter_value,
+                                                'meter_reading': number_format_string.format(int(meter_value) / float(
+                                                    meter_reading_unit_factor)) + meter_reading_unit
+                                            })
                                     # input disabled?
                                     if 'device_disabled' in active_device_config:
                                         continue
@@ -1657,39 +1659,60 @@ class MqttSubscriber(Thread):
         if topic_base in self._source_subscribers:
             subscriber = self._source_subscribers[topic_base]
             subscriber.last_message = time.time()
+        event_timestamp = make_timestamp()
         # unpack the message
-        if msg.topic.startswith('sensor'):
-            device_inputs = list()
-            active_devices = list()
-            for msg_key in msg_data:
-                # look for inputs
-                if re.match("input_\d+", msg_key):
-                    input_label = msg_data[msg_key]['input_label']
-                    sample_value = msg_data[msg_key]['sample_value']
-                    input_active = msg_data[msg_key]['active']
-                    device_description = {
-                        'type': input_label,
-                        'location': input_location,
-                        'device_key': '{} {}'.format(input_location, input_label)
+        try:
+            if msg.topic.startswith('sensor'):
+                device_inputs = list()
+                active_devices = list()
+                for msg_key in msg_data:
+                    # look for inputs
+                    if re.match("input_\d+", msg_key):
+                        input_label = msg_data[msg_key]['input_label']
+                        sample_value = msg_data[msg_key]['sample_value']
+                        input_active = msg_data[msg_key]['active']
+                        device_description = {
+                            'type': input_label,
+                            'location': input_location,
+                            'device_key': '{} {}'.format(input_location, input_label)
+                        }
+                        if input_active:
+                            log.info('{}: {} {} ({})'.format(device_id, input_location, input_label, sample_value))
+                            device_description['sample_value'] = sample_value
+                            active_devices.append(device_description)
+                        else:
+                            device_inputs.append(device_description)
+            elif msg.topic.startswith('meter'):
+                topic_parts = msg.topic.split('/')
+                device_type = topic_parts[0]
+                device_name = topic_parts[1]
+                device_key = '{} {}'.format(device_name, device_type).title()
+                metered = msg_data['last_minute_metered']
+                register = msg_data['register_reading']
+                log.debug('{}: {} ({} of {})'.format(device_id, input_location, metered, register))
+                self.processor.send_pyobj({
+                    topic_base: {
+                        'data': {
+                            'device_info': {
+                                'inputs': [{
+                                    'device_key': device_key,
+                                    'type': 'meter'
+                                }]
+                            },
+                            'active_devices': [{
+                                'device_key': device_key,
+                                'type': 'meter',
+                                'sample_values': {
+                                    'meter': metered,
+                                    'register': register
+                                }
+                            }]
+                        },
+                        'timestamp': event_timestamp
                     }
-                    if input_active:
-                        log.info('{}: {} {} ({})'.format(device_id, input_location, input_label, sample_value))
-                        device_description['sample_value'] = sample_value
-                        active_devices.append(device_description)
-                    else:
-                        device_inputs.append(device_description)
-            self.processor.send_pyobj({
-                topic_base: {
-                    'data': {
-                        'device_info': {'inputs': device_inputs},
-                        'active_devices': active_devices
-                    },
-                    'timestamp': make_timestamp()
-                }
-            })
-        elif msg.topic.startswith('meter'):
-            # FIXME: meter support (again)
-            log.debug('{}: {} ({})'.format(device_id, input_location, msg_data['last_minute_metered']))
+                })
+        except ContextTerminated:
+            log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
 
     # noinspection PyBroadException
     def run(self):
