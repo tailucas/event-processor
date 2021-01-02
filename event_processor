@@ -2122,8 +2122,13 @@ class EventSourceDiscovery(Thread):
             # important to stop
             break
 
-        # close the IPC socket
-        self.processor.close()
+        try:
+            # close the IPC socket
+            self.processor.close()
+        except ContextTerminated:
+            self.processor.close()
+            log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
+            return
 
         # un-nanny and goodbye
         threads.threads_tracked.remove(self.getName())
