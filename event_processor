@@ -139,6 +139,7 @@ OUTPUT_TYPE_TTS = 'tts'
 URL_WORKER_APP = 'inproc://app-worker'
 URL_WORKER_EVENT_LOG = 'inproc://event-log'
 URL_WORKER_TELEGRAM_BOT = 'inproc://telegram-bot'
+URL_WORKER_MQTT_PUBLISH = 'inproc://mqtt-publish'
 
 event_processor = None
 event_logger = None
@@ -246,8 +247,13 @@ def index():
             #TODO: correctly update 'meter_reading'
             device_listing[device_key]['meter_value'] = reset_value
             # send IoT message
-            #FIXME: replace with MQTT equivalent
-            # event_processor.iot.publish(APP_CONFIG.get('iot', 'topic_pub_meter'), json.dumps(iot_message), 0)
+            mqtt_ipc = zmq_context.socket(zmq.PUSH)
+            mqtt_ipc.connect(URL_WORKER_MQTT_PUBLISH)
+            mqtt_ipc.send_pyobj((
+                APP_CONFIG.get('mqtt', 'meter_reset_topic'),
+                json.dumps(iot_message)
+            ))
+            mqtt_ipc.close()
         elif 'meter_history' in request.form:
             scheme = None
             if 'X-Forwarded-Proto' in request.headers:
@@ -1299,27 +1305,28 @@ class EventProcessor(Thread):
                                     active_device_config = self._input_config[active_device_key]
                                     # always process a fresh meter update
                                     if 'type' in active_device and 'meter' in active_device['type'].lower():
-                                        # FIXME
-                                        if 'sample_value' in active_device:
-                                            meter_value = int(active_device['sample_value'])
-                                            meter_reading_unit = ''
-                                            if 'meter_reading_unit' in active_device_config:
-                                                meter_reading_unit = ' ' + active_device_config['meter_reading_unit']
-                                            meter_reading_unit_factor = 1
-                                            if 'meter_reading_unit_factor' in active_device_config:
-                                                meter_reading_unit_factor = active_device_config[
-                                                    'meter_reading_unit_factor']
-                                            meter_reading_unit_precision = 0
-                                            if 'meter_reading_unit_precision' in active_device_config:
-                                                meter_reading_unit_precision = active_device_config[
-                                                    'meter_reading_unit_precision']
-                                            number_format_string = "{:." + str(meter_reading_unit_precision) + "f}"
-                                            # update but do not persist in DDB (Lambda already does this)
-                                            active_device_config.update({
-                                                'meter_value': meter_value,
-                                                'meter_reading': number_format_string.format(int(meter_value) / float(
-                                                    meter_reading_unit_factor)) + meter_reading_unit
-                                            })
+                                        meter_value = int(active_device['sample_values']['meter'])
+                                        meter_reading_unit = ''
+                                        if 'meter_reading_unit' in active_device_config:
+                                            meter_reading_unit = ' ' + active_device_config['meter_reading_unit']
+                                        meter_reading_unit_factor = 1
+                                        if 'meter_reading_unit_factor' in active_device_config:
+                                            meter_reading_unit_factor = active_device_config[
+                                                'meter_reading_unit_factor']
+                                        meter_reading_unit_precision = 0
+                                        if 'meter_reading_unit_precision' in active_device_config:
+                                            meter_reading_unit_precision = active_device_config[
+                                                'meter_reading_unit_precision']
+                                        number_format_string = "{:." + str(meter_reading_unit_precision) + "f}"
+                                        # update but do not persist in DDB (Lambda already does this)
+                                        active_device_config.update({
+                                            'meter_value': meter_value,
+                                            'meter_reading': number_format_string.format(int(meter_value) / float(
+                                                meter_reading_unit_factor)) + meter_reading_unit
+                                        })
+                                        # post metric
+                                        # FIXME: post metric
+                                        register_value = int(active_device['sample_values']['register'])
                                     # input disabled?
                                     if 'device_disabled' in active_device_config:
                                         continue
@@ -1633,6 +1640,9 @@ class MqttSubscriber(Thread):
         for mqtt_source in APP_CONFIG.get('mqtt', 'subscription_sources').split(','):
             self._mqtt_subscribe_topics.append((mqtt_source, 0))
         self._source_subscribers = dict()
+        # IPC for publish
+        self.socket = zmq_context.socket(zmq.PULL) # pylint: disable=no-member
+        self.socket.bind(URL_WORKER_MQTT_PUBLISH)
 
     def add_source_subscriber(self, topic, subscriber):
         self._source_subscribers[topic] = subscriber
@@ -1726,6 +1736,14 @@ class MqttSubscriber(Thread):
         while True:
             try:
                 self._mqtt_client.loop()
+                # check for messages to publish
+                try:
+                    mqtt_pub_topic, message_data = self.socket.recv_pyobj(flags=zmq.NOBLOCK) # pylint: disable=no-member
+                    log.debug('Publishing {} bytes to topic {}...'.format(len(message_data), mqtt_pub_topic))
+                    self._mqtt_client.publish(topic=mqtt_pub_topic, payload=message_data)
+                except ZMQError:
+                    # ignore, no data
+                    pass
                 # test for application shutdown
                 if threads.shutting_down:
                     log.warning('App terminate: {}'.format(self.__class__.__name__))
@@ -1735,6 +1753,7 @@ class MqttSubscriber(Thread):
                     break
             except ContextTerminated:
                 log.warning('ZMQ terminate: {}'.format(self.__class__.__name__))
+                self.socket.close()
                 self._mqtt_client.disconnect()
                 self.processor.close()
                 log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
