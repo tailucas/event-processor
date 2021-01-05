@@ -1697,6 +1697,15 @@ class MqttSubscriber(Thread):
                             active_devices.append(device_description)
                         else:
                             device_inputs.append(device_description)
+                self.processor.send_pyobj({
+                    topic_base: {
+                        'data': {
+                            'device_info': {'inputs': device_inputs},
+                            'active_devices': active_devices
+                        },
+                        'timestamp': event_timestamp
+                    }
+                })
             elif msg.topic.startswith('meter'):
                 topic_parts = msg.topic.split('/')
                 device_type = topic_parts[0]
