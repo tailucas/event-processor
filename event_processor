@@ -1478,6 +1478,8 @@ class EventLog(Thread):
 
         self._ddb_storage = None
         self._event_log_table = None
+        self._metric_last_posted_device_event = 0
+        self._device_events_accumulator = 0
 
         self.socket = zmq_context.socket(zmq.PULL) # pylint: disable=no-member
         self.socket.bind(URL_WORKER_EVENT_LOG)
@@ -1521,7 +1523,13 @@ class EventLog(Thread):
                 if not saved:
                     log.warning('Unable to save event log entry: {}'.format(event))
                     continue
-                post_count_metric(metric_name='Device Event')
+                now - time.time()
+                if now - self._metric_last_posted_device_event > 5*60:
+                    post_count_metric(metric_name='Device Event')
+                    self._metric_last_posted_device_event = now
+                    self._device_events_accumulator = 0
+                else:
+                    self._device_events_accumulator += 1
             except ContextTerminated:
                 log.warning('ZMQ terminate: {}'.format(self.__class__.__name__))
                 self.socket.close()
