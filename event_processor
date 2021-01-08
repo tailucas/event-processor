@@ -1523,7 +1523,7 @@ class EventLog(Thread):
                 if not saved:
                     log.warning('Unable to save event log entry: {}'.format(event))
                     continue
-                now - time.time()
+                now = time.time()
                 if now - self._metric_last_posted_device_event > 5*60:
                     post_count_metric(metric_name='Device Event')
                     self._metric_last_posted_device_event = now
