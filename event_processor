@@ -665,6 +665,10 @@ class EventProcessor(Thread):
 
         self._mqtt_subscriber = mqtt_subscriber
 
+        self._metric_last_posted_meter_value = 0
+        self._metric_meter_value_accumulator = 0
+        self._metric_last_posted_register_value = 0
+
     @property
     def origins(self):
         return self._origin_connections.keys()
@@ -1306,6 +1310,11 @@ class EventProcessor(Thread):
                                     # always process a fresh meter update
                                     if 'type' in active_device and 'meter' in active_device['type'].lower():
                                         meter_value = int(active_device['sample_values']['meter'])
+                                        register_value = int(active_device['sample_values']['register'])
+                                        if (register_value < 0):
+                                            # TODO: reset to knkown value
+                                            log.debug('Resetting negative {} meter register value {} to 0.'.format(active_device_key, register_value))
+                                            register_value = 0
                                         meter_reading_unit = ''
                                         if 'meter_reading_unit' in active_device_config:
                                             meter_reading_unit = ' ' + active_device_config['meter_reading_unit']
@@ -1318,15 +1327,32 @@ class EventProcessor(Thread):
                                             meter_reading_unit_precision = active_device_config[
                                                 'meter_reading_unit_precision']
                                         number_format_string = "{:." + str(meter_reading_unit_precision) + "f}"
-                                        # update but do not persist in DDB (Lambda already does this)
+                                        # create normalized values
+                                        normalized_register_value = int(register_value) / float(meter_reading_unit_factor)
+                                        # update but do not persist
                                         active_device_config.update({
-                                            'meter_value': meter_value,
-                                            'meter_reading': number_format_string.format(int(meter_value) / float(
-                                                meter_reading_unit_factor)) + meter_reading_unit
+                                            'meter_value': register_value,
+                                            'meter_reading': number_format_string.format(normalized_register_value) + meter_reading_unit
                                         })
-                                        # post metric
-                                        # FIXME: post metric
-                                        register_value = int(active_device['sample_values']['register'])
+                                        # post metric every n-minutes
+                                        now = time.time()
+                                        # accumulated meter value
+                                        if now - self._metric_last_posted_meter_value > 5*60:
+                                            post_count_metric(
+                                                metric_name=active_device_key + ' Metered',
+                                                count=int(self._metric_meter_value_accumulator) / float(meter_reading_unit_factor),
+                                                unit='Count')
+                                            self._metric_last_posted_meter_value = now
+                                            self._metric_meter_value_accumulator = 0
+                                        else:
+                                            self._metric_meter_value_accumulator += meter_value
+                                        # register values
+                                        if now - self._metric_last_posted_register_value > 5*60:
+                                            post_count_metric(
+                                                metric_name=active_device_key + ' Register',
+                                                count=normalized_register_value,
+                                                unit='Count')
+                                            self._metric_last_posted_register_value = now
                                     # input disabled?
                                     if 'device_disabled' in active_device_config:
                                         continue
