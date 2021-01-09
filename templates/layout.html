@@ -35,40 +35,32 @@
             ] -%}
             {% set active_page = active_page|default('index') -%}
 
-            <!-- Static navbar -->
-            <nav class="navbar navbar-default">
-                <div class="container-fluid">
-                    <div class="navbar-header">
-                        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar" aria-expanded="false" aria-controls="navbar">
-                            <span class="sr-only">Toggle navigation</span>
-                            <span class="icon-bar"></span>
-                            <span class="icon-bar"></span>
-                            <span class="icon-bar"></span>
-                        </button>
-                        <a class="navbar-brand" href="{{ url_for('index') }}">Home Security</a>
-                    </div>
-                    <div id="navbar" class="navbar-collapse collapse">
-                        <ul class="nav navbar-nav">
-                        {% for caption, page in navigation_bar %}
-                            {% if page|is_list %}
-                            <li class="dropdown{% if active_page in dict(page).values() %} active{% endif %}">
-                                <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">{{ caption }}<span class="caret"></span></a>
-                                <ul class="dropdown-menu">
-                                {% for menu_caption, menu_page in page %}
-                                    <li{% if menu_page == active_page %} class="active"{% endif %}>
-                                        <a href="{{ url_for(menu_page) }}">{{ menu_caption|e }}</a>
-                                    </li>
-                                {% endfor %}
-                                </ul>
-                             </li>
-                            {% else %}
-                            <li{% if page == active_page %} class="active"{% endif %}>
-                                <a href="{{ url_for(page) }}">{{ caption|e }}</a>
-                            </li>
-                            {% endif %}
-                        {% endfor %}
-                        </ul>
-                    </div>
+            <nav class="navbar navbar-expand-lg navbar-light bg-light">
+                <a class="navbar-brand" href="{{ url_for('index') }}">Home Security</a>
+                <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+                  <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                  <ul class="navbar-nav mr-auto">
+                    {% for caption, page in navigation_bar %}
+                        {% if page|is_list %}
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                {{ caption }}
+                            </a>
+                            <div class="dropdown-menu" aria-labelledby="navbarDropdown">
+                            {% for menu_caption, menu_page in page %}
+                            <a class="dropdown-item" href="{{ url_for(menu_page) }}">{{ menu_caption|e }}</a>
+                            {% endfor %}
+                            </div>
+                        </li>
+                        {% else %}
+                        <li class="nav-item active">
+                            <a class="nav-link" href="{{ url_for(page) }}">{{ caption|e }}</a>
+                        </li>
+                        {% endif %}
+                    {% endfor %}
+                  </ul>
                 </div>
             </nav>
 
