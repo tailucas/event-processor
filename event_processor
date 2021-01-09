@@ -344,6 +344,14 @@ def show_config():
     device_key = None
     if request.method == 'POST':
         device_key = request.form['device_key']
+        auto_schedule = request.form['auto_schedule']
+        auto_schedule_enable = request.form['auto_schedule_enable']
+        auto_schedule_disable = request.form['auto_schedule_disable']
+        log.info('{} auto-enable is {}: start time is {}, end time is {}'.format(
+            device_key,
+            auto_schedule,
+            auto_schedule_enable,
+            auto_schedule_disable))
     global event_processor
     # pylint: disable=no-member
     for device_key, device_config in list(event_processor.input_config.items()):

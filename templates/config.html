@@ -16,14 +16,20 @@
         <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if input_device_key == last_saved_device_key or (loop.first and last_saved_device_key is none) %} in{% endif %}">
             <div class="panel-body">
                 <form class="form" role="form" method='POST'>
+                    <div class="form-group">
+                        <label><input type="checkbox" name="auto_schedule" value="{{ input_device_key }}"{% if input_device['auto_schedule'] %} checked{% endif %}>Auto-schedule</label>
+                    </div>
                     <div class="input-group clockpicker">
-                        <input type="text" class="form-control" value="09:30">
+                        <label>Enable at:<input type="text" name="auto_schedule_enable" class="form-control" value="22:30"></label>
                         <span class="input-group-addon">
                             <span class="glyphicon glyphicon-time"></span>
                         </span>
                     </div>
-                    <div class="form-group">
-                        <label><input type="checkbox" name="info_notify" value="{{ input_device_key }}"{% if input_device['info_notify'] %} checked{% endif %}>Notifications are informational (daylight hours only)</label>
+                    <div class="input-group clockpicker">
+                        <label>Disable at:<input type="text" name="auto_schedule_disable" class="form-control" value="05:30"></label>
+                        <span class="input-group-addon">
+                            <span class="glyphicon glyphicon-time"></span>
+                        </span>
                     </div>
                     <div class="form-group">
                         <button type="submit" class="btn btn-default" name="device_key" value="{{ input_device_key }}"><span class="glyphicon glyphicon-floppy-disk"></span> Save</button>
