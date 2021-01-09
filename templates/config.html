@@ -1,7 +1,7 @@
 {% extends "layout.html" %}
 {% set active_page = "show_config" %}
 {% block head %}
-    <link rel="stylesheet" type="text/css" href="https://raw.githubusercontent.com/weareoutman/clockpicker/gh-pages/dist/bootstrap-clockpicker.min.css">
+    <link rel="stylesheet" type="text/css" href="{{url_for('static', filename='bootstrap-clockpicker.min.css')}}">
 {% endblock %}
 {% block body %}
 <p>General configuration.</p>
@@ -36,7 +36,7 @@
 </div>
 {% endblock %}
 {% block script %}
-    <script src="https://raw.githubusercontent.com/weareoutman/clockpicker/gh-pages/dist/bootstrap-clockpicker.min.js"></script>
+    <script src="{{url_for('static', filename='bootstrap-clockpicker.min.js')}}"></script>
     <script type="text/javascript">
         $('.clockpicker').clockpicker();
     </script>
