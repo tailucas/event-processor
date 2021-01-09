@@ -339,7 +339,31 @@ def event_log():
 
 @rest_api.route('/config', methods=['GET', 'POST'])
 def show_config():
-    return render_template('config.html')
+    device_listing = {}
+    input_labels = {}
+    device_key = None
+    if request.method == 'POST':
+        device_key = request.form['device_key']
+    global event_processor
+    # pylint: disable=no-member
+    for device_key, device_config in list(event_processor.input_config.items()):
+        if 'group_name' not in device_config:
+            device_listing[device_key] = device_config
+        else:
+            group_name = device_config['group_name']
+            if group_name not in device_listing:
+                device_listing[group_name] = {}
+                device_listing[group_name]['grouped_inputs'] = {}
+            device_listing[group_name]['grouped_inputs'][device_key] = device_config
+            if group_name not in input_labels:
+                input_labels[group_name] = []
+            input_labels[group_name].append(device_config['device_label'])
+            # manufacture a device label for the group
+            device_listing[group_name]['device_label'] = group_name
+    return render_template('config.html',
+                           inputs=device_listing,
+                           input_labels=input_labels,
+                           last_saved_device_key=device_key)
 
 
 @rest_api.route('/input_config', methods=['GET', 'POST'])
