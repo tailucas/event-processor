@@ -2,17 +2,19 @@
 {% set active_page = "input_config" %}
 {% block body %}
             <p>Customize inputs.</p>
-            <div class="panel-group" id="accordion">
+            <div id="accordion">
                 {% for input_device_key, input_device in inputs|dictsort %}
                 {% if input_device['type'] in ['Panic Button', 'Dash Button'] %}{% continue %}{% endif %}
-                <div class="panel panel-default">
-                    <div class="panel-heading">
-                        <h4 class="panel-title">
-                            <a data-toggle="collapse" data-parent="#accordion" href="#collapse{{loop.index}}">{{ input_device['device_label'] }}{% if input_device['customized'] %} <span class="badge">Customized</span>{% endif %}</a>
+                <div class="card">
+                    <div class="card-header" id="heading{{loop.index}}">
+                        <h4 class="mb-0">
+                            <button class="btn btn-link" data-toggle="collapse" data-target="#collapse{{loop.index}}" aria-expanded="true" aria-controls="collapse{{loop.index}}">
+                                {{ input_device['device_label'] }}{% if input_device['customized'] %} <span class="badge badge-pill badge-info">Customized</span>{% endif %}
+                            </button>
                         </h4>
                     </div>
-                    <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if input_device_key == last_saved_device_key or (loop.first and last_saved_device_key is none) %} in{% endif %}">
-                        <div class="panel-body">
+                    <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if input_device_key == last_saved_device_key or (loop.first and last_saved_device_key is none) %} show{% endif %}" aria-labelledby="heading{{loop.index}}" data-parent="#accordion">
+                        <div class="card-body">
                             <form class="form" role="form" method='POST'>
                                 <div class="form-group">
                                     <label><input type="checkbox" name="info_notify" value="{{ input_device_key }}"{% if input_device['info_notify'] %} checked{% endif %}>Notifications are informational (daylight hours only)</label>

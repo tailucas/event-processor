@@ -2,16 +2,18 @@
 {% set active_page = "output_config" %}
 {% block body %}
             <p>Customize outputs.</p>
-            <div class="panel-group" id="accordion">
+            <div id="accordion">
                 {% for output_device_key, output_device in outputs|dictsort %}
-                <div class="panel panel-default">
-                    <div class="panel-heading">
-                        <h4 class="panel-title">
-                            <a data-toggle="collapse" data-parent="#accordion" href="#collapse{{loop.index}}">{{ output_device['device_label'] }}{% if 'device_params' in output_device %} <span class="badge">Customized</span>{% endif %}</a>
+                <div class="card">
+                    <div class="card-header" id="heading{{loop.index}}">
+                        <h4 class="mb-0">
+                            <button class="btn btn-link" data-toggle="collapse" data-target="#collapse{{loop.index}}" aria-expanded="true" aria-controls="collapse{{loop.index}}">
+                                {{ output_device['device_label'] }}{% if 'device_params' in output_device %} <span class="badge badge-pill badge-info">Customized</span>{% endif %}
+                            </button>
                         </h4>
                     </div>
-                    <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if output_device_key == last_saved_device_key or (loop.first and last_saved_device_key is none) %} in{% endif %}">
-                        <div class="panel-body">
+                    <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if output_device_key == last_saved_device_key or (loop.first and last_saved_device_key is none) %} show{% endif %}" aria-labelledby="heading{{loop.index}}" data-parent="#accordion">
+                        <div class="card-body">
                             <form role="form" method='POST'>
                                 <div class="form-group">
                                     <input class="form-control" type="text" name="device_params" placeholder="Parameters" value="{{ output_device['device_params'] }}">
