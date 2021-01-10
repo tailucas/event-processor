@@ -1,7 +1,6 @@
 {% extends "layout.html" %}
 {% set active_page = "output_config" %}
 {% block body %}
-            <p>Customize outputs.</p>
             <div id="accordion">
                 {% for output_device_key, output_device in outputs|dictsort %}
                 <div class="card">

@@ -1,7 +1,6 @@
 {% extends "layout.html" %}
 {% set active_page = "input_config" %}
 {% block body %}
-            <p>Customize inputs.</p>
             <div id="accordion">
                 {% for input_device_key, input_device in inputs|dictsort %}
                 {% if input_device['type'] in ['Panic Button', 'Dash Button'] %}{% continue %}{% endif %}

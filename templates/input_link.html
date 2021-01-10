@@ -2,6 +2,7 @@
 {% set active_page = "input_link" %}
 {% block body %}
             <p>Link inputs to other inputs so that activations require mutual triggering within the same activation interval.</p>
+            <span class="badge badge-warning">Warning: Funtionality not implemented.</span>
             <div id="accordion">
                 {% for input_device_key, input_device in inputs|dictsort %}
                 {% if input_device['type'] in ['Panic Button', 'Dash Button'] %}{% continue %}{% endif %}
