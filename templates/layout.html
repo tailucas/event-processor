@@ -93,7 +93,8 @@
         $(document).ready(function(){
             $(".btn").click(function(){
                 var context = $(this);
-                var the_form = $(this).closest("form");
+                // extract the form associated with this button
+                var the_form = context[0].form;
                 if ($(this).data("bb") === 'confirm') {
                   bootbox.confirm("Are you sure?", function(result) {
                     if (result) {
