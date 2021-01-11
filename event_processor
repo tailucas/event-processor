@@ -339,20 +339,38 @@ def event_log():
 
 @rest_api.route('/config', methods=['GET', 'POST'])
 def show_config():
+    global event_processor
+    device_key = None
     device_listing = {}
     input_labels = {}
-    device_key = None
     if request.method == 'POST':
         device_key = request.form['device_key']
-        auto_schedule = request.form['auto_schedule']
-        auto_schedule_enable = request.form['auto_schedule_enable']
-        auto_schedule_disable = request.form['auto_schedule_disable']
-        log.info('{} auto-enable is {}: start time is {}, end time is {}'.format(
-            device_key,
-            auto_schedule,
-            auto_schedule_enable,
-            auto_schedule_disable))
-    global event_processor
+        try:
+            customized = False
+            to_save = {}
+            if request.form.get('auto_schedule'):
+                to_save['auto_schedule'] = True
+                customized = True
+            else:
+                to_save['auto_schedule'] = None
+            if len(request.form['auto_schedule_enable']) > 0:
+                to_save['auto_schedule_enable'] = request.form['auto_schedule_enable']
+                customized = True
+            else:
+                to_save['auto_schedule_enable'] = None
+            if len(request.form['auto_schedule_disable']) > 0:
+                to_save['auto_schedule_disable'] = request.form['auto_schedule_disable']
+                customized = True
+            else:
+                to_save['auto_schedule_disable'] = None
+            to_save['customized'] = customized
+            event_processor.input_config = (
+                device_key,
+                to_save
+            )
+        except ValueError as e:
+            exception_msg = "Cannot update '{}'".format(event_processor.input_config[device_key]['device_label'])
+            flash(message='{}: {}'.format(exception_msg, str(e)), category='danger')
     # pylint: disable=no-member
     for device_key, device_config in list(event_processor.input_config.items()):
         if 'group_name' not in device_config:
