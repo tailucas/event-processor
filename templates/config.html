@@ -18,21 +18,18 @@
             <div class="card-body">
                 <form class="form" role="form" method='POST'>
                     <div class="form-group">
-                        <label><input type="checkbox" name="auto_schedule" value="{{ input_device_key }}"{% if input_device['auto_schedule'] %} checked{% endif %}>Auto-schedule</label>
+                        <div class="custom-control custom-checkbox">
+                            <input type="checkbox" class="custom-control-input" id="customCheck1" name="auto_schedule" value="{{ input_device_key }}"{% if input_device['auto_schedule'] %} checked{% endif %}>
+                            <label class="custom-control-label" for="customCheck1">Auto-schedule</label>
+                        </div>
                     </div>
                     <label>Enable at:</label>
                     <div class="input-group clockpicker" data-autoclose="true">
                         <input type="text" name="auto_schedule_enable" class="form-control" value="22:30">
-                        <span class="input-group-addon">
-                            <i class="far fa-clock"></i>
-                        </span>
                     </div>
                     <label>Disable at:</label>
                     <div class="input-group clockpicker" data-autoclose="true">
                         <input type="text" name="auto_schedule_disable" class="form-control" value="05:30">
-                        <span class="input-group-addon">
-                            <i class="far fa-clock"></i>
-                        </span>
                     </div>
                     <div class="form-group">
                         <button type="submit" class="btn btn-primary" name="device_key" value="{{ input_device_key }}"><i class="far fa-save"></i> Save</button>
