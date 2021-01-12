@@ -13,6 +13,7 @@ python-telegram-bot
 pytz
 pyzmq
 requests
+schedule
 sentry-sdk[flask]
 simplejson
 u-msgpack-python
