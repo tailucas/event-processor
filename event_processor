@@ -392,9 +392,15 @@ def show_config():
             # for group checkbox
             if 'auto_schedule' in device_config and device_config['auto_schedule']:
                 device_listing[group_name]['auto_schedule'] = True
+    device_key = None
     if request.method == 'POST':
         if 'device_key' in request.form:
             device_key = request.form['device_key']
+            # sync up the device model for page load
+            device_listing[device_key]['auto_schedule'] = request.form.get('auto_schedule')
+            device_listing[device_key]['auto_schedule_enable'] = request.form['auto_schedule_enable']
+            device_listing[device_key]['auto_schedule_disable'] = request.form['auto_schedule_disable']
+            # update device configuration
             if 'grouped_inputs' not in device_listing[device_key]:
                 update_config(
                     event_processor=event_processor,
