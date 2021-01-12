@@ -19,7 +19,7 @@
                 <form class="form" role="form" method='POST'>
                     <div class="form-group">
                         <div class="custom-control custom-checkbox">
-                            <input type="checkbox" class="custom-control-input" id="customCheck{{loop.index}}" name="auto_schedule" value="{{ input_device_key }}"{% if input_device['auto_schedule'] %} checked{% endif %}>
+                            <input type="checkbox" class="custom-control-input" id="customCheck{{loop.index}}" name="auto_schedule" value="{{ input_device_key }}"{% if input_device['auto_schedule'] %} checked=""{% endif %}>
                             <label class="custom-control-label" for="customCheck{{loop.index}}">Auto-schedule</label>
                         </div>
                     </div>
