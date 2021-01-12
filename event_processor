@@ -337,40 +337,43 @@ def event_log():
                            events=events)
 
 
+# TODO: generify
+def update_config(event_processor, device_key, request_form):
+    try:
+        customized = False
+        to_save = {}
+        if request_form.get('auto_schedule'):
+            to_save['auto_schedule'] = True
+            customized = True
+        else:
+            to_save['auto_schedule'] = None
+        if len(request_form['auto_schedule_enable']) > 0:
+            to_save['auto_schedule_enable'] = request_form['auto_schedule_enable']
+            customized = True
+        else:
+            to_save['auto_schedule_enable'] = None
+        if len(request_form['auto_schedule_disable']) > 0:
+            to_save['auto_schedule_disable'] = request_form['auto_schedule_disable']
+            customized = True
+        else:
+            to_save['auto_schedule_disable'] = None
+        to_save['customized'] = customized
+        event_processor.flash_info = False
+        event_processor.input_config = (
+            device_key,
+            to_save
+        )
+        event_processor.flash_info = True
+    except ValueError as e:
+        exception_msg = "Cannot update '{}'".format(event_processor.input_config[device_key]['device_label'])
+        flash(message='{}: {}'.format(exception_msg, str(e)), category='danger')
+
+
 @rest_api.route('/config', methods=['GET', 'POST'])
 def show_config():
-    global event_processor
-    device_key = None
     device_listing = {}
     input_labels = {}
-    if request.method == 'POST':
-        device_key = request.form['device_key']
-        try:
-            customized = False
-            to_save = {}
-            if request.form.get('auto_schedule'):
-                to_save['auto_schedule'] = True
-                customized = True
-            else:
-                to_save['auto_schedule'] = None
-            if len(request.form['auto_schedule_enable']) > 0:
-                to_save['auto_schedule_enable'] = request.form['auto_schedule_enable']
-                customized = True
-            else:
-                to_save['auto_schedule_enable'] = None
-            if len(request.form['auto_schedule_disable']) > 0:
-                to_save['auto_schedule_disable'] = request.form['auto_schedule_disable']
-                customized = True
-            else:
-                to_save['auto_schedule_disable'] = None
-            to_save['customized'] = customized
-            event_processor.input_config = (
-                device_key,
-                to_save
-            )
-        except ValueError as e:
-            exception_msg = "Cannot update '{}'".format(event_processor.input_config[device_key]['device_label'])
-            flash(message='{}: {}'.format(exception_msg, str(e)), category='danger')
+    global event_processor
     # pylint: disable=no-member
     for device_key, device_config in list(event_processor.input_config.items()):
         if 'group_name' not in device_config:
@@ -386,6 +389,25 @@ def show_config():
             input_labels[group_name].append(device_config['device_label'])
             # manufacture a device label for the group
             device_listing[group_name]['device_label'] = group_name
+            # for group checkbox
+            if 'auto_schedule' in device_config and device_config['auto_schedule']:
+                device_listing[group_name]['auto_schedule'] = True
+    if request.method == 'POST':
+        if 'device_key' in request.form:
+            device_key = request.form['device_key']
+            if 'grouped_inputs' not in device_listing[device_key]:
+                update_config(
+                    event_processor=event_processor,
+                    device_key=device_key,
+                    request_form=request.form)
+            else:
+                for grouped_device_key in list(device_listing[device_key]['grouped_inputs'].keys()):
+                    update_config(
+                        event_processor=event_processor,
+                        device_key=grouped_device_key,
+                        request_form=request.form)
+        else:
+            log.error('No action associated with this request: {}'.format(request.form))
     return render_template('config.html',
                            inputs=device_listing,
                            input_labels=input_labels,
