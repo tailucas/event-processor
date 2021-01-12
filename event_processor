@@ -340,24 +340,19 @@ def event_log():
 # TODO: generify
 def update_config(event_processor, device_key, request_form):
     try:
-        customized = False
         to_save = {}
         if request_form.get('auto_schedule'):
             to_save['auto_schedule'] = True
-            customized = True
         else:
             to_save['auto_schedule'] = None
         if len(request_form['auto_schedule_enable']) > 0:
             to_save['auto_schedule_enable'] = request_form['auto_schedule_enable']
-            customized = True
         else:
             to_save['auto_schedule_enable'] = None
         if len(request_form['auto_schedule_disable']) > 0:
             to_save['auto_schedule_disable'] = request_form['auto_schedule_disable']
-            customized = True
         else:
             to_save['auto_schedule_disable'] = None
-        to_save['customized'] = customized
         event_processor.flash_info = False
         event_processor.input_config = (
             device_key,
