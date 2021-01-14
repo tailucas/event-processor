@@ -409,6 +409,11 @@ def show_config():
                         event_processor=event_processor,
                         device_key=grouped_device_key,
                         request_form=request.form)
+            # reload auto-scheduler
+            auto_scheduler = zmq_context.socket(zmq.PUSH) # pylint: disable=no-member
+            auto_scheduler.connect(URL_WORKER_AUTO_SCHEDULER)
+            auto_scheduler.send_pyobj(device_key)
+            auto_scheduler.close()
         else:
             log.error('No action associated with this request: {}'.format(request.form))
     return render_template('config.html',
@@ -1237,6 +1242,21 @@ class EventProcessor(Thread):
                                 self._origin_nanny.add_origin_subscriber(origin=mqtt_topic, ip=None, subscriber=subscriber)
                                 # keep the heartbeats up to date
                                 self._mqtt_subscriber.add_source_subscriber(topic=mqtt_topic, subscriber=subscriber)
+                            continue
+                        if 'auto-scheduler' == event_origin:
+                            device_key = event_data['device_key']
+                            device_disable = not event_data['device_state']
+                            event_processor.flash_info = False
+                            log.info('Updating device {}; disable: {}'.format(device_key, device_disable))
+                            try:
+                                event_processor.input_config = (
+                                    device_key,
+                                    {'device_disabled': device_disable}
+                                )
+                            except KeyError:
+                                log.exception('Problem with device {}: {}'.format(device_key, str(event_data)))
+                            event_processor.flash_info = True
+                            # skip further processing because of enable/disable
                             continue
                         if 'sqs' == event_origin:
                             device_disable = None
@@ -2076,6 +2096,7 @@ class AutoScheduler(Thread):
 
     def update_device(self, device_key, device_state):
         log.info('Updating {} to enabled={}'.format(device_key, device_state))
+        self.processor.send_pyobj({'auto-scheduler': {device_key: device_state}})
 
     def _schedule(self, device_key, schedule_time, device_state):
         schedule.every().day.at(schedule_time).do(self.update_device, device_key=device_key, device_state=device_state).tag(device_key)
@@ -2086,19 +2107,23 @@ class AutoScheduler(Thread):
         self.processor.connect(URL_WORKER_APP)
         while True:
             try:
-                reload_inputs = False
+                device_key = None
                 try:
-                    reload_inputs = self.socket.recv_pyobj(flags=zmq.NOBLOCK) # pylint: disable=no-member
+                    device_key = self.socket.recv_pyobj(flags=zmq.NOBLOCK) # pylint: disable=no-member
                 except ZMQError:
                     # ignore, no data
                     pass
-                if reload_inputs:
-                    log.info('Reloading auto-schedule configuration...')
+                if device_key:
+                    if isinstance(device_key, str):
+                        devices = [(device_key, event_processor.input_config[device_key])]
+                    else:
+                        devices = list(event_processor.input_config.items()) # pylint: disable=no-member
+                    log.info('Reloading auto-schedule configuration for {} device(s)...'.format(len(devices)))
                     # pylint: disable=no-member
-                    for device_key, device_config in list(event_processor.input_config.items()):
+                    for device_key, device_config in devices:
                         # clear any previous schedule
                         schedule.clear(device_key)
-                        if 'auto_schedule' in device_config and device_config['auto_schedule']:
+                        if 'auto_schedule' in device_config and device_config['auto_schedule'] == 1:
                             auto_enable_time = device_config['auto_schedule_enable']
                             auto_disable_time = device_config['auto_schedule_disable']
                             log.info('Setting auto-schedule for {} to disable at {} and enable at {}.'.format(
