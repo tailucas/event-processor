@@ -12,6 +12,7 @@ import os
 import pytz
 import re
 import requests
+import schedule
 import sentry_sdk
 import signal
 import simplejson as json
@@ -140,6 +141,7 @@ URL_WORKER_APP = 'inproc://app-worker'
 URL_WORKER_EVENT_LOG = 'inproc://event-log'
 URL_WORKER_TELEGRAM_BOT = 'inproc://telegram-bot'
 URL_WORKER_MQTT_PUBLISH = 'inproc://mqtt-publish'
+URL_WORKER_AUTO_SCHEDULER = 'inproc://auto-scheduler'
 
 event_processor = None
 event_logger = None
@@ -1139,6 +1141,11 @@ class EventProcessor(Thread):
         self.event_log.connect(URL_WORKER_EVENT_LOG)
         # bot
         self.bot.connect(URL_WORKER_TELEGRAM_BOT)
+        # load auto-scheduler
+        auto_scheduler = zmq_context.socket(zmq.PUSH) # pylint: disable=no-member
+        auto_scheduler.connect(URL_WORKER_AUTO_SCHEDULER)
+        auto_scheduler.send_pyobj(True)
+        auto_scheduler.close()
         # informational notifications
         # TODO: move to UI configuration
         self.notify_not_before_time = make_timestamp(APP_CONFIG.get('info_notify', 'not_before_time'))
@@ -2055,6 +2062,77 @@ class SQSListener(Thread):
                 continue
 
 
+class AutoScheduler(Thread):
+
+    def __init__(self):
+        super(AutoScheduler, self).__init__(name=self.__class__.__name__)
+        self.daemon = True
+        threads.threads_tracked.add(self.name)
+
+        self.processor = zmq_context.socket(zmq.PUSH) # pylint: disable=no-member
+        # IPC for publish
+        self.socket = zmq_context.socket(zmq.PULL) # pylint: disable=no-member
+        self.socket.bind(URL_WORKER_AUTO_SCHEDULER)
+
+    def update_device(self, device_key, device_state):
+        log.info('Updating {} to enabled={}'.format(device_key, device_state))
+
+    def _schedule(self, device_key, schedule_time, device_state):
+        schedule.every().day.at(schedule_time).do(self.update_device, device_key=device_key, device_state=device_state).tag(device_key)
+
+    # noinspection PyBroadException
+    def run(self):
+        global event_processor
+        self.processor.connect(URL_WORKER_APP)
+        while True:
+            try:
+                reload_inputs = self.socket.recv_pyobj(flags=zmq.NOBLOCK) # pylint: disable=no-member
+                if reload_inputs:
+                    log.info('Reloading auto-schedule configuration...')
+                    # pylint: disable=no-member
+                    for device_key, device_config in list(event_processor.input_config.items()):
+                        # clear any previous schedule
+                        schedule.clear(device_key)
+                        if 'auto_schedule' in device_config and device_config['auto_schedule']:
+                            auto_enable_time = device_config['auto_schedule_enable']
+                            auto_disable_time = device_config['auto_schedule_disable']
+                            log.info('Setting auto-schedule for {} to disable at {} and enable at {}.'.format(
+                                device_key,
+                                auto_disable_time,
+                                auto_enable_time))
+                            # install a new scedule
+                            self._schedule(
+                                device_key=device_key,
+                                schedule_time=auto_disable_time,
+                                device_state=False)
+                            self._schedule(
+                                device_key=device_key,
+                                schedule_time=auto_enable_time,
+                                device_state=True)
+                # test for application shutdown
+                if threads.shutting_down:
+                    log.warning('App terminate: {}'.format(self.__class__.__name__))
+                    self.socket.close()
+                    self.processor.close()
+                    log.warning('App terminated: {}'.format(self.__class__.__name__))
+                    break
+            except ContextTerminated:
+                log.warning('ZMQ terminate: {}'.format(self.__class__.__name__))
+                self.socket.close()
+                self.processor.close()
+                log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
+                break
+            except ZMQError:
+                log.exception(self.name)
+                break
+            except Exception:
+                log.exception(self.name)
+                capture_exception()
+                sleep(1)
+                continue
+            threads.interruptable_sleep.wait(60)
+
+
 class OriginNanny(Thread):
 
     def __init__(self):
@@ -2402,6 +2480,7 @@ if __name__ == "__main__":
     event_logger = EventLog()
     origin_nanny = OriginNanny()
     mqtt_subscriber = MqttSubscriber()
+    auto_scheduler = AutoScheduler()
     event_processor = EventProcessor(origin_nanny, boto_session, swf_region, swf_domain, mqtt_subscriber)
     # connect ZMQ IPC clients next
     event_source_discovery = EventSourceDiscovery(boto_session, swf_region, swf_domain)
@@ -2414,6 +2493,7 @@ if __name__ == "__main__":
     origin_nanny.start()
     event_source_discovery.start()
     mqtt_subscriber.start()
+    auto_scheduler.start()
     sqs_listener.start()
     telegram_bot.start()
     # start Telegram integration
