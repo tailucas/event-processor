@@ -2086,7 +2086,12 @@ class AutoScheduler(Thread):
         self.processor.connect(URL_WORKER_APP)
         while True:
             try:
-                reload_inputs = self.socket.recv_pyobj(flags=zmq.NOBLOCK) # pylint: disable=no-member
+                reload_inputs = False
+                try:
+                    reload_inputs = self.socket.recv_pyobj(flags=zmq.NOBLOCK) # pylint: disable=no-member
+                except ZMQError:
+                    # ignore, no data
+                    pass
                 if reload_inputs:
                     log.info('Reloading auto-schedule configuration...')
                     # pylint: disable=no-member
