@@ -2096,7 +2096,11 @@ class AutoScheduler(Thread):
 
     def update_device(self, device_key, device_state):
         log.info('Updating {} to enabled={}'.format(device_key, device_state))
-        self.processor.send_pyobj({'auto-scheduler': {device_key: device_state}})
+        self.processor.send_pyobj({
+            'auto-scheduler': {
+                'device_key': device_key,
+                'device_state': device_state
+            }})
 
     def _schedule(self, device_key, schedule_time, device_state):
         schedule.every().day.at(schedule_time).do(self.update_device, device_key=device_key, device_state=device_state).tag(device_key)
