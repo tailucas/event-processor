@@ -2107,6 +2107,9 @@ class AutoScheduler(Thread):
         self.processor.connect(URL_WORKER_APP)
         while True:
             try:
+                # trigger any scheduled work
+                schedule.run_pending()
+                # look for device updates
                 device_key = None
                 try:
                     device_key = self.socket.recv_pyobj(flags=zmq.NOBLOCK) # pylint: disable=no-member
@@ -2160,7 +2163,8 @@ class AutoScheduler(Thread):
                 capture_exception()
                 sleep(1)
                 continue
-            threads.interruptable_sleep.wait(60)
+            # don't spin
+            threads.interruptable_sleep.wait(10)
 
 
 class OriginNanny(Thread):
