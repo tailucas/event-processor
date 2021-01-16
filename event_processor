@@ -2114,6 +2114,7 @@ class AutoScheduler(Thread):
         global event_processor
         self.processor.connect(URL_WORKER_APP)
         while True:
+            next_message = False
             try:
                 # trigger any scheduled work
                 schedule.run_pending()
@@ -2121,9 +2122,10 @@ class AutoScheduler(Thread):
                 device_key = None
                 try:
                     device_key = self.socket.recv_pyobj(flags=zmq.NOBLOCK) # pylint: disable=no-member
+                    next_message = True
                 except ZMQError:
                     # ignore, no data
-                    pass
+                    next_message = False
                 if device_key:
                     if isinstance(device_key, str):
                         devices = [(device_key, event_processor.input_config[device_key])]
@@ -2172,7 +2174,8 @@ class AutoScheduler(Thread):
                 sleep(1)
                 continue
             # don't spin
-            threads.interruptable_sleep.wait(10)
+            if not next_message:
+                threads.interruptable_sleep.wait(10)
 
 
 class OriginNanny(Thread):
