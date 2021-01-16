@@ -407,7 +407,7 @@ def show_config():
                     device_key=device_key,
                     request_form=request.form)
                 # reload auto-scheduler
-                auto_scheduler.send_pyobj(device_key)
+                auto_scheduler.send_pyobj((device_key, event_processor.input_config[device_key]))
             else:
                 for grouped_device_key in list(device_listing[device_key]['grouped_inputs'].keys()):
                     update_config(
@@ -415,7 +415,7 @@ def show_config():
                         device_key=grouped_device_key,
                         request_form=request.form)
                     # reload auto-scheduler
-                    auto_scheduler.send_pyobj(grouped_device_key)
+                    auto_scheduler.send_pyobj((grouped_device_key, event_processor.input_config[grouped_device_key]))
             # close IPC
             auto_scheduler.close()
         else:
@@ -1153,7 +1153,7 @@ class EventProcessor(Thread):
         # load auto-scheduler
         auto_scheduler = zmq_context.socket(zmq.PUSH) # pylint: disable=no-member
         auto_scheduler.connect(URL_WORKER_AUTO_SCHEDULER)
-        auto_scheduler.send_pyobj(True)
+        auto_scheduler.send_pyobj(self._input_config)
         auto_scheduler.close()
         # informational notifications
         # TODO: move to UI configuration
@@ -2111,7 +2111,6 @@ class AutoScheduler(Thread):
 
     # noinspection PyBroadException
     def run(self):
-        global event_processor
         self.processor.connect(URL_WORKER_APP)
         while True:
             next_message = False
@@ -2119,20 +2118,18 @@ class AutoScheduler(Thread):
                 # trigger any scheduled work
                 schedule.run_pending()
                 # look for device updates
-                device_key = None
+                device_config = None
                 try:
-                    device_key = self.socket.recv_pyobj(flags=zmq.NOBLOCK) # pylint: disable=no-member
+                    device_config = self.socket.recv_pyobj(flags=zmq.NOBLOCK) # pylint: disable=no-member
                     next_message = True
                 except ZMQError:
                     # ignore, no data
                     next_message = False
-                if device_key:
-                    if isinstance(device_key, str):
-                        devices = [(device_key, event_processor.input_config[device_key])]
-                    else:
-                        devices = list(event_processor.input_config.items()) # pylint: disable=no-member
-                    log.info('Reloading auto-schedule configuration for {} device(s): {}'.format(len(devices), [device[0] for device in devices]))
-                    # pylint: disable=no-member
+                if device_config:
+                    devices = device_config
+                    if isinstance(device_config, dict):
+                        devices = list(device_config.items())
+                    log.info('Reloading auto-schedule configuration for {} devices: {}'.format(len(devices), [device[0] for device in devices]))
                     for device_key, device_config in devices:
                         # clear any previous schedule
                         schedule.clear(device_key)
