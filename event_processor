@@ -2131,7 +2131,7 @@ class AutoScheduler(Thread):
                         devices = [(device_key, event_processor.input_config[device_key])]
                     else:
                         devices = list(event_processor.input_config.items()) # pylint: disable=no-member
-                    log.info('Reloading auto-schedule configuration for {} device(s)...'.format(len(devices)))
+                    log.info('Reloading auto-schedule configuration for {} device(s): {}'.format(len(devices), [device[0] for device in devices]))
                     # pylint: disable=no-member
                     for device_key, device_config in devices:
                         # clear any previous schedule
