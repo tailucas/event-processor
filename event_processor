@@ -129,8 +129,8 @@ zmq_context = builtins.zmq_context
 APP_NAME = builtins.APP_NAME
 DEVICE_NAME = builtins.DEVICE_NAME
 
-rest_api = Flask(APP_NAME)
-Compress(rest_api)
+flask_app = Flask(APP_NAME)
+flask_compress = Compress()
 
 OUTPUT_TYPE_BLUETOOTH = 'bluetooth'
 OUTPUT_TYPE_SWITCH = 'ioboard'
@@ -149,18 +149,18 @@ ngrok_tunnel_url = None
 ngrok_tunnel_url_with_bauth = None
 
 
-@rest_api.route('/debug-sentry')
+@flask_app.route('/debug-sentry')
 def trigger_error():
     1 / 0
 
 
-@rest_api.route('/logging')
+@flask_app.route('/logging')
 def debug():
     log.setLevel(request.args.get('level'))
     return 'OK'
 
 
-@rest_api.errorhandler(500)
+@flask_app.errorhandler(500)
 def internal_server_error(e):
     return render_template('error.html',
                            sentry_event_id=last_event_id(),
@@ -168,7 +168,7 @@ def internal_server_error(e):
                            ), 500
 
 
-@rest_api.route('/', methods=['GET', 'POST'])
+@flask_app.route('/', methods=['GET', 'POST'])
 def index():
     meter_history = {}
     group_disabled = {}
@@ -314,7 +314,7 @@ def index():
                            render_timestamp=render_timestamp)
 
 
-@rest_api.route('/metrics', methods=['GET', 'POST'])
+@flask_app.route('/metrics', methods=['GET', 'POST'])
 def show_metrics():
     global event_processor
     widgets = event_processor.general_config['cloudwatch_widgets']['config_value']
@@ -326,7 +326,7 @@ def show_metrics():
                            img_data=images)
 
 
-@rest_api.route('/event_log', methods=['GET', 'POST'])
+@flask_app.route('/event_log', methods=['GET', 'POST'])
 def event_log():
     events = {}
     if request.method == 'GET':
@@ -366,7 +366,7 @@ def update_config(event_processor, device_key, request_form):
         flash(message='{}: {}'.format(exception_msg, str(e)), category='danger')
 
 
-@rest_api.route('/config', methods=['GET', 'POST'])
+@flask_app.route('/config', methods=['GET', 'POST'])
 def show_config():
     device_listing = {}
     input_labels = {}
@@ -429,7 +429,7 @@ def show_config():
                            last_saved_device_key=device_key)
 
 
-@rest_api.route('/input_config', methods=['GET', 'POST'])
+@flask_app.route('/input_config', methods=['GET', 'POST'])
 def input_config():
     global event_processor
     device_key = None
@@ -526,7 +526,7 @@ def input_config():
                            default_activation_interval=int(APP_CONFIG.get('config', 'default_activation_interval')))
 
 
-@rest_api.route('/input_link', methods=['GET', 'POST'])
+@flask_app.route('/input_link', methods=['GET', 'POST'])
 def input_link():
     global event_processor
     device_key = None
@@ -541,7 +541,7 @@ def input_link():
                            last_saved_device_key=device_key)
 
 
-@rest_api.route('/output_link', methods=['GET', 'POST'])
+@flask_app.route('/output_link', methods=['GET', 'POST'])
 def output_link():
     global event_processor
     device_key = None
@@ -557,7 +557,7 @@ def output_link():
                            outputs=event_processor.outputs)
 
 
-@rest_api.route('/output_config', methods=['GET', 'POST'])
+@flask_app.route('/output_config', methods=['GET', 'POST'])
 def output_config():
     global event_processor
     device_key = None
@@ -2465,7 +2465,7 @@ class CallbackUrlDiscovery(Thread):
 
 class FlaskThread(Thread):
 
-    def __init__(self, app):
+    def __init__(self, app, compress):
         super(FlaskThread, self).__init__(name=self.__class__.__name__)
         # start frontend
         app.secret_key = os.environ['APP_FLASK_SECRET_KEY']
@@ -2473,6 +2473,8 @@ class FlaskThread(Thread):
         app.jinja_env.filters.update({
             'is_list': is_list,
         })
+        # enable compression
+        compress.init_app(app)
         #TODO: how to enable debug mode
         self.srv = make_server(host='0.0.0.0',
                                port=int(APP_CONFIG.get('flask', 'http_port')),
@@ -2562,7 +2564,7 @@ if __name__ == "__main__":
     f.setDaemon(True)
     f.start()
     # not tracked by nanny because this is used for Flask bootstrap
-    server = FlaskThread(rest_api)
+    server = FlaskThread(flask_app, flask_compress)
     server.start()
     try:
         # startup completed
