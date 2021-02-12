@@ -4,6 +4,11 @@ set -o pipefail
 
 # system updates
 
+# Rust for cryptography wheel
+curl https://sh.rustup.rs -sSf | sh -s -- -y
+# Add rustc to PATH
+source $HOME/.cargo/env
+
 # work around pip stupidity
 python -m pip install --upgrade pip
 # work around setuptools stupidity

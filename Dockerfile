@@ -17,6 +17,8 @@ RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommend
     htop \
     lsof \
     libffi-dev \
+    # for rust build of Python cryptography
+    libssl-dev \
     network-manager \
     openssh-server \
     patch \
