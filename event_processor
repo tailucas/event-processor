@@ -1073,7 +1073,8 @@ class EventProcessor(Thread):
                             workflow_instance = SnapshotWorkflow.execute(
                                 app=APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT),
                                 device_key=output_device_key,
-                                device_label=output_device_label)
+                                device_label=output_device_label,
+                                camera_config=self._output_config[output_device_key]['device_params'])
                     elif output_type in OUTPUT_TYPE_SWITCH:
                         with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, APP_NAME) as starter:
                             # pylint: disable=no-value-for-parameter
