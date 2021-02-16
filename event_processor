@@ -111,6 +111,7 @@ from pylib.aws.swf import SWFActivityWaiter, \
     HelloWorldActivities, \
     HelloWorldWorkflow, \
     DeviceWorkflow, \
+    ImageProcessWorkflow, \
     SnapshotWorkflow, \
     TTSWorkflow, \
     IOBoardWorkflow, \
@@ -134,6 +135,7 @@ flask_compress = Compress()
 
 OUTPUT_TYPE_BLUETOOTH = 'bluetooth'
 OUTPUT_TYPE_SWITCH = 'ioboard'
+OUTPUT_TYPE_IMAGE = 'image'
 OUTPUT_TYPE_SNAPSHOT = 'snapshot'
 OUTPUT_TYPE_TTS = 'tts'
 
@@ -2513,7 +2515,8 @@ if __name__ == "__main__":
                                              BluetoothWorkflow,
                                              TTSWorkflow,
                                              IOBoardWorkflow,
-                                             SnapshotWorkflow))
+                                             SnapshotWorkflow,
+                                             ImageProcessWorkflow))
     swf_decider._worker.unhandled_exception_handler = swf_exception_handler
     swf_decider.start()
     # activities run on devices hosting this application
