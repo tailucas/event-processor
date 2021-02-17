@@ -713,6 +713,7 @@ class EventProcessor(Thread):
         self._input_active_history = {}
 
         self._origin_connections = {}
+        self._origin_pull_connections = {}
 
         self._input_origin = {}
         self._output_origin = {}
@@ -1070,13 +1071,24 @@ class EventProcessor(Thread):
                             workflow_starter=starter,
                             workflow_instance=workflow_instance).start()
                     elif output_type == OUTPUT_TYPE_SNAPSHOT:
+                        camera_config = self._output_config[output_device_key]['device_params']
                         with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, APP_NAME) as starter:
                             # pylint: disable=no-value-for-parameter
                             workflow_instance = SnapshotWorkflow.execute(
                                 app=APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT),
                                 device_key=output_device_key,
                                 device_label=output_device_label,
-                                camera_config=self._output_config[output_device_key]['device_params'])
+                                camera_config=camera_config)
+                        # image detection
+                        image_processor_source = APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_IMAGE)
+                        with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, APP_NAME) as starter:
+                            # pylint: disable=no-value-for-parameter
+                            workflow_instance = ImageProcessWorkflow.execute(
+                                app=image_processor_source,
+                                device_key=output_device_key,
+                                device_label=output_device_label,
+                                camera_config=camera_config,
+                                snapshot_processor_address=self._origin_pull_connections[image_processor_source])
                     elif output_type in OUTPUT_TYPE_SWITCH:
                         with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, APP_NAME) as starter:
                             # pylint: disable=no-value-for-parameter
@@ -1243,6 +1255,7 @@ class EventProcessor(Thread):
                                 self._origin_nanny.add_origin_subscriber(origin=origin, ip=ip, subscriber=subscriber)
                                 # keep track of the available event origins
                                 self._origin_connections[origin] = connection_string
+                                self._origin_pull_connections[origin] = 'tcp://{}:{}'.format(ip, APP_CONFIG.get('zmq', 'pushpull_port'))
                             continue
                         if 'register_mqtt_origin' == event_origin:
                             # connect to event origins
