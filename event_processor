@@ -1088,7 +1088,8 @@ class EventProcessor(Thread):
                                 device_key=output_device_key,
                                 device_label=output_device_label,
                                 camera_config=camera_config,
-                                snapshot_processor_address=self._origin_pull_connections[image_processor_source])
+                                # pass the address of the device that performs snapshots
+                                snapshot_processor_address=self._origin_pull_connections[APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT)])
                     elif output_type in OUTPUT_TYPE_SWITCH:
                         with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, APP_NAME) as starter:
                             # pylint: disable=no-value-for-parameter
