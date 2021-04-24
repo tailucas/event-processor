@@ -4,6 +4,7 @@ boto3
 botoflow
 blinker
 netifaces
+onepasswordconnectsdk
 paho-mqtt
 pathtools
 pylru

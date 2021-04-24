@@ -125,6 +125,7 @@ from pylib.threads import thread_nanny
 
 # expose builtins for lint-friendly
 log = builtins.log
+creds = builtins.creds
 APP_CONFIG = builtins.APP_CONFIG
 zmq_context = builtins.zmq_context
 APP_NAME = builtins.APP_NAME
@@ -2511,6 +2512,9 @@ class FlaskThread(Thread):
 
 if __name__ == "__main__":
     log.setLevel(logging.INFO)
+    #FIXME: testing 1password
+    log.info("1password vaults available are {}".format(creds.get_vaults()))
+    log.info("1password vault items are {}".format(creds.get_items(APP_CONFIG.get('app', 'creds_vault_id'))))
     # determine leadership
     leader_election = Leader()
     leader_election.yield_to_leader()
