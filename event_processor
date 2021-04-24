@@ -165,13 +165,18 @@ CREDS_CONFIG = {
     "cred1_password": {
         "opitem": "test.login",
         "opfield": "password",
-        "opvault": "some_vault_id",
     },
     "cred2": {
         "opitem": "test.pwd",
         "opfield": "password",
     },
 }
+
+
+class CredsConfig:
+    cred1_username: 'opitem:"test.login" opfield:.username' = None # type: ignore
+    cred1_password: 'opitem:"test.login" opfield:.password' = None # type: ignore
+    cred2: 'opitem:"test.pwd" opfield:.password' = None # type: ignore
 
 
 @flask_app.route('/debug-sentry')
@@ -2537,7 +2542,7 @@ if __name__ == "__main__":
     creds_vaults = creds_client.get_vaults()
     creds_summary = creds_client.get_items(creds_vault_id)
     log.info("Credential server reports {} vaults, with {} credentials in configured vault.".format(len(creds_vaults), len(creds_summary)))
-    creds = onepasswordconnectsdk.load_dict(client=creds_client, config=CREDS_CONFIG)
+    creds: CredsConfig = onepasswordconnectsdk.load(client=creds_client, config=CredsConfig())
     log.info("Retrieved creds {}:{} and {}".format(creds.cred1_username, creds.cred1_password, creds.cred2))
     # determine leadership
     leader_election = Leader()
