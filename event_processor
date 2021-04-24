@@ -157,22 +157,6 @@ ngrok_tunnel_url = None
 ngrok_tunnel_url_with_bauth = None
 
 
-CREDS_CONFIG = {
-    "cred1_username": {
-        "opitem": "test.login",
-        "opfield": "username",
-    },
-    "cred1_password": {
-        "opitem": "test.login",
-        "opfield": "password",
-    },
-    "cred2": {
-        "opitem": "test.pwd",
-        "opfield": "password",
-    },
-}
-
-
 class CredsConfig:
     cred1_username: 'opitem:"test.login" opfield:.username' = None # type: ignore
     cred1_password: 'opitem:"test.login" opfield:.password' = None # type: ignore
