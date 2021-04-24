@@ -35,6 +35,7 @@ from datetime import datetime, timedelta
 from dateutil import tz
 from decimal import Decimal
 from io import BytesIO
+from onepasswordconnectsdk.client import Client as CredsClient
 from operator import itemgetter
 from pathlib import Path
 from pylru import lrucache
@@ -125,7 +126,8 @@ from pylib.threads import thread_nanny
 
 # expose builtins for lint-friendly
 log = builtins.log
-creds = builtins.creds
+creds: CredsClient = builtins.creds
+creds_vault_id = builtins.creds_vault_id
 APP_CONFIG = builtins.APP_CONFIG
 zmq_context = builtins.zmq_context
 APP_NAME = builtins.APP_NAME
@@ -2512,9 +2514,9 @@ class FlaskThread(Thread):
 
 if __name__ == "__main__":
     log.setLevel(logging.INFO)
-    #FIXME: testing 1password
-    log.info("1password vaults available are {}".format(creds.get_vaults()))
-    log.info("1password vault items are {}".format(creds.get_items(APP_CONFIG.get('app', 'creds_vault_id'))))
+    creds_vaults = creds.get_vaults()
+    creds_summary = creds.get_items(creds_vault_id)
+    log.info("Credential server reports {} vaults, with {} credentials in configured vault.".format(len(creds_vaults), len(creds_summary)))
     # determine leadership
     leader_election = Leader()
     leader_election.yield_to_leader()
