@@ -8,7 +8,9 @@ import boto3
 import copy
 import inspect
 import netifaces
+import onepasswordconnectsdk
 import os
+from onepasswordconnectsdk import client
 import pytz
 import re
 import requests
@@ -126,7 +128,7 @@ from pylib.threads import thread_nanny
 
 # expose builtins for lint-friendly
 log = builtins.log
-creds: CredsClient = builtins.creds
+creds_client: CredsClient = builtins.creds
 creds_vault_id = builtins.creds_vault_id
 APP_CONFIG = builtins.APP_CONFIG
 zmq_context = builtins.zmq_context
@@ -148,10 +150,28 @@ URL_WORKER_TELEGRAM_BOT = 'inproc://telegram-bot'
 URL_WORKER_MQTT_PUBLISH = 'inproc://mqtt-publish'
 URL_WORKER_AUTO_SCHEDULER = 'inproc://auto-scheduler'
 
+creds = None
 event_processor = None
 event_logger = None
 ngrok_tunnel_url = None
 ngrok_tunnel_url_with_bauth = None
+
+
+CREDS_CONFIG = {
+    "cred1_username": {
+        "opitem": "test.login",
+        "opfield": "username",
+    },
+    "cred1_password": {
+        "opitem": "test.login",
+        "opfield": "password",
+        "opvault": "some_vault_id",
+    },
+    "cred2": {
+        "opitem": "test.pwd",
+        "opfield": "password",
+    },
+}
 
 
 @flask_app.route('/debug-sentry')
@@ -2514,9 +2534,11 @@ class FlaskThread(Thread):
 
 if __name__ == "__main__":
     log.setLevel(logging.INFO)
-    creds_vaults = creds.get_vaults()
-    creds_summary = creds.get_items(creds_vault_id)
+    creds_vaults = creds_client.get_vaults()
+    creds_summary = creds_client.get_items(creds_vault_id)
     log.info("Credential server reports {} vaults, with {} credentials in configured vault.".format(len(creds_vaults), len(creds_summary)))
+    creds = onepasswordconnectsdk.load_dict(client=creds_client, config=CREDS_CONFIG)
+    log.info("Retrieved creds {}:{} and {}".format(creds.cred1_username, creds.cred1_password, creds.cred2))
     # determine leadership
     leader_election = Leader()
     leader_election.yield_to_leader()
