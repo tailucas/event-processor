@@ -133,6 +133,7 @@ creds_vault_id = builtins.creds_vault_id
 APP_CONFIG = builtins.APP_CONFIG
 zmq_context = builtins.zmq_context
 APP_NAME = builtins.APP_NAME
+BALENA_APP_NAME = builtins.BALENA_APP_NAME
 DEVICE_NAME = builtins.DEVICE_NAME
 
 flask_app = Flask(APP_NAME)
