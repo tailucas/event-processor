@@ -2504,7 +2504,7 @@ class FlaskThread(Thread):
     def __init__(self, app, compress):
         super(FlaskThread, self).__init__(name=self.__class__.__name__)
         # start frontend
-        app.secret_key = os.environ['APP_FLASK_SECRET_KEY']
+        app.secret_key = creds.flask_secret_key
         app.jinja_env.add_extension('jinja2.ext.loopcontrols')
         app.jinja_env.filters.update({
             'is_list': is_list,
