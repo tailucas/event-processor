@@ -98,10 +98,10 @@ builtins.APP_NAME = Path(__file__).stem
 builtins.SENTRY_EXTRAS = [FlaskIntegration()]
 RESIN_APP_NAME = os.environ['RESIN_APP_NAME']
 class CredsConfig:
-    sentry_dsn: f'opitem:"{RESIN_APP_NAME}.SentryDSN" opfield:.password' = None # type: ignore
-    flask_secret_key: f'opitem:"Flask" opfield:.password' = None # type: ignore
-    flask_basic_auth_username: f'opitem:"Flask" opfield:.username' = None # type: ignore
-    flask_basic_auth_password: f'opitem:"Flask" opfield:.password' = None # type: ignore
+    sentry_dsn: f'opitem:"Sentry" opfield:{RESIN_APP_NAME}.dsn' = None # type: ignore
+    flask_secret_key: f'opitem:"Frontend" opfield:Flask.secret_key' = None # type: ignore
+    flask_basic_auth_username: f'opitem:"Frontend" opfield:.username' = None # type: ignore
+    flask_basic_auth_password: f'opitem:"Frontend" opfield:.password' = None # type: ignore
     mdash_api_key: f'opitem:"mdash" opfield:.password' = None # type: ignore
     telegram_bot_api_token: f'opitem:"Telegram" opfield:.password' = None # type: ignore
     aws_cpt_akid: f'opitem:"AWS.af-south-1" opfield:.username' = None # type: ignore
