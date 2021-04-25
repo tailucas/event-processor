@@ -98,11 +98,17 @@ builtins.APP_NAME = Path(__file__).stem
 builtins.SENTRY_EXTRAS = [FlaskIntegration()]
 RESIN_APP_NAME = os.environ['RESIN_APP_NAME']
 class CredsConfig:
-    aws_cpt_akid: 'opitem:"AWS.af-south-1" opfield:.username' = None # type: ignore
-    aws_cpt_sak: 'opitem:"AWS.af-south-1" opfield:.password' = None # type: ignore
-    cred1_username: 'opitem:"test.login" opfield:.username' = None # type: ignore
-    cred1_password: 'opitem:"test.login" opfield:.password' = None # type: ignore
-    cred2: 'opitem:"test.pwd" opfield:.password' = None # type: ignore
+    sentry_dsn: f'opitem:"{RESIN_APP_NAME}.SentryDSN" opfield:.password' = None # type: ignore
+    flask_secret_key: f'opitem:"Flask" opfield:.password' = None # type: ignore
+    flask_basic_auth_username: f'opitem:"Flask" opfield:.username' = None # type: ignore
+    flask_basic_auth_password: f'opitem:"Flask" opfield:.password' = None # type: ignore
+    mdash_api_key: f'opitem:"mdash" opfield:.password' = None # type: ignore
+    telegram_bot_api_token: f'opitem:"Telegram" opfield:.password' = None # type: ignore
+    aws_cpt_akid: f'opitem:"AWS.af-south-1" opfield:.username' = None # type: ignore
+    aws_cpt_sak: f'opitem:"AWS.af-south-1" opfield:.password' = None # type: ignore
+    cred1_username: f'opitem:"test.login" opfield:.username' = None # type: ignore
+    cred1_password: f'opitem:"test.login" opfield:.password' = None # type: ignore
+    cred2: f'opitem:"test.pwd" opfield:.password' = None # type: ignore
 # instantiate class
 builtins.creds_config = CredsConfig()
 
@@ -1726,7 +1732,7 @@ class TBot(Thread):
     def run(self):
         global ngrok_tunnel_url_with_bauth
         # connect to Telegram
-        self.bot = TelegramBot(token=APP_CONFIG.get('telegram', 'bot_api_token'))
+        self.bot = TelegramBot(token=creds.telegram_bot_api_token)
         while True:
             try:
                 event = self.socket.recv_pyobj()
@@ -1854,7 +1860,7 @@ class MqttSubscriber(Thread):
                 active_devices = list()
                 for msg_key in msg_data:
                     # look for inputs
-                    if re.match("input_\d+", msg_key):
+                    if re.match("input_\d+", msg_key): # pylint: disable=anomalous-backslash-in-string
                         input_label = msg_data[msg_key]['input_label']
                         sample_value = msg_data[msg_key]['sample_value']
                         input_active = msg_data[msg_key]['active']
@@ -2324,7 +2330,7 @@ class EventSourceDiscovery(Thread):
         self._swf_region = swf_region
         self._swf_domain = swf_domain
 
-        self._mdash_api_key = APP_CONFIG.get('mdash', 'api_key')
+        self._mdash_api_key = creds.mdash_api_key
         self._mdash_devices_url = APP_CONFIG.get('mdash', 'base_url')
         self._app_config_mqtt_pub_topic = APP_CONFIG.get('mdash', 'app_config_mqtt_pub_topic')
 
@@ -2483,8 +2489,8 @@ class CallbackUrlDiscovery(Thread):
             # decorate the URL with basic-auth details
             global ngrok_tunnel_url_with_bauth
             ngrok_tunnel_url_with_bauth = '{}://{}:{}@{}{}'.format(purl.scheme,
-                                                                   APP_CONFIG.get('ngrok', 'auth_user'),
-                                                                   APP_CONFIG.get('ngrok', 'auth_password'),
+                                                                   creds.flask_basic_auth_username,
+                                                                   creds.flask_basic_auth_password,
                                                                    purl.netloc,
                                                                    purl.path)
         except Exception:
@@ -2576,7 +2582,7 @@ if __name__ == "__main__":
     sqs_listener.start()
     telegram_bot.start()
     # start Telegram integration
-    telegram_updater = TelegramUpdater(token=APP_CONFIG.get('telegram', 'bot_api_token'), use_context=True)
+    telegram_updater = TelegramUpdater(token=creds.telegram_bot_api_token, use_context=True)
     telegram_dispatcher = telegram_updater.dispatcher
     telegram_dispatcher.add_handler(TelegramCommandHandler('start',
                                                            telegram_bot_cmd,
