@@ -8,9 +8,7 @@ import boto3
 import copy
 import inspect
 import netifaces
-import onepasswordconnectsdk
 import os
-from onepasswordconnectsdk import client
 import pytz
 import re
 import requests
@@ -94,8 +92,20 @@ from botoflow.constants import SECONDS, MINUTES
 from botoflow.exceptions import ActivityTaskFailedError, ActivityTaskTimedOutError, \
     WorkflowFailedError, WorkflowTimedOutError
 
+# setup builtins used by pylib init
+
 builtins.APP_NAME = Path(__file__).stem
 builtins.SENTRY_EXTRAS = [FlaskIntegration()]
+RESIN_APP_NAME = os.environ['RESIN_APP_NAME']
+class CredsConfig:
+    aws_cpt_akid: 'opitem:"AWS.af-south-1" opfield:.username' = None # type: ignore
+    aws_cpt_sak: 'opitem:"AWS.af-south-1" opfield:.password' = None # type: ignore
+    cred1_username: 'opitem:"test.login" opfield:.username' = None # type: ignore
+    cred1_password: 'opitem:"test.login" opfield:.password' = None # type: ignore
+    cred2: 'opitem:"test.pwd" opfield:.password' = None # type: ignore
+# instantiate class
+builtins.creds_config = CredsConfig()
+
 import pylib
 
 from pylib.datetime import is_list, \
@@ -128,13 +138,12 @@ from pylib.threads import thread_nanny
 
 # expose builtins for lint-friendly
 log = builtins.log
-creds_client: CredsClient = builtins.creds
-creds_vault_id = builtins.creds_vault_id
+creds: CredsConfig = builtins.creds_config
 APP_CONFIG = builtins.APP_CONFIG
 zmq_context = builtins.zmq_context
 APP_NAME = builtins.APP_NAME
-BALENA_APP_NAME = builtins.BALENA_APP_NAME
 DEVICE_NAME = builtins.DEVICE_NAME
+ISO_DATE_FORMAT = builtins.ISO_DATE_FORMAT
 
 flask_app = Flask(APP_NAME)
 flask_compress = Compress()
@@ -151,17 +160,10 @@ URL_WORKER_TELEGRAM_BOT = 'inproc://telegram-bot'
 URL_WORKER_MQTT_PUBLISH = 'inproc://mqtt-publish'
 URL_WORKER_AUTO_SCHEDULER = 'inproc://auto-scheduler'
 
-creds = None
 event_processor = None
 event_logger = None
 ngrok_tunnel_url = None
 ngrok_tunnel_url_with_bauth = None
-
-
-class CredsConfig:
-    cred1_username: 'opitem:"test.login" opfield:.username' = None # type: ignore
-    cred1_password: 'opitem:"test.login" opfield:.password' = None # type: ignore
-    cred2: 'opitem:"test.pwd" opfield:.password' = None # type: ignore
 
 
 @flask_app.route('/debug-sentry')
@@ -1251,7 +1253,6 @@ class EventProcessor(Thread):
                             timestamp = make_timestamp(str_timestamp)
                         else:
                             timestamp = make_timestamp()
-                            # pylint: disable=undefined-variable
                             log_msg = "Message from {} does not include a 'timestamp' so it can't be filtered if it " \
                                       "is stale. Using {}.".format(event_origin, timestamp.strftime(ISO_DATE_FORMAT))
                             if 'data' in event_data and 'active_devices' in event_data['data']:
@@ -2259,9 +2260,7 @@ class OriginNanny(Thread):
                     if last_message is None or heartbeat_age > self._max_heartbeat_delay:
                         device_status = None
                         if last_message:
-                             # pylint: disable=undefined-variable
-                            last_message = datetime.utcfromtimestamp(last_message).replace(tzinfo=pytz.utc).strftime(
-                                ISO_DATE_FORMAT)
+                            last_message = datetime.utcfromtimestamp(last_message).replace(tzinfo=pytz.utc).strftime(ISO_DATE_FORMAT)
                         else:
                             last_message = "never"
                         log_message = "'{}' last activity was {}.".format(origin, last_message)
@@ -2524,11 +2523,8 @@ class FlaskThread(Thread):
 
 if __name__ == "__main__":
     log.setLevel(logging.INFO)
-    creds_vaults = creds_client.get_vaults()
-    creds_summary = creds_client.get_items(creds_vault_id)
-    log.info("Credential server reports {} vaults, with {} credentials in configured vault.".format(len(creds_vaults), len(creds_summary)))
-    creds: CredsConfig = onepasswordconnectsdk.load(client=creds_client, config=CredsConfig())
-    log.info("Retrieved creds {}:{} and {}".format(creds.cred1_username, creds.cred1_password, creds.cred2))
+    # FIXME: test creds
+    log.info("Credentials {}:{}, and {} are loaded.".format(creds.cred1_username, creds.cred1_password, creds.cred2))
     # determine leadership
     leader_election = Leader()
     leader_election.yield_to_leader()
