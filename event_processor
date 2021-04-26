@@ -107,9 +107,6 @@ class CredsConfig:
     telegram_bot_api_token: f'opitem:"Telegram" opfield:.password' = None # type: ignore
     aws_akid: f'opitem:"AWS" opfield:{AWS_REGION}.akid' = None # type: ignore
     aws_sak: f'opitem:"AWS" opfield:{AWS_REGION}.sak' = None # type: ignore
-    cred1_username: f'opitem:"test.login" opfield:.username' = None # type: ignore
-    cred1_password: f'opitem:"test.login" opfield:.password' = None # type: ignore
-    cred2: f'opitem:"test.pwd" opfield:.password' = None # type: ignore
 # instantiate class
 builtins.creds_config = CredsConfig()
 
@@ -2530,8 +2527,6 @@ class FlaskThread(Thread):
 
 if __name__ == "__main__":
     log.setLevel(logging.INFO)
-    # FIXME: test creds
-    log.info("Credentials {}:{}, and {} are loaded.".format(creds.cred1_username, creds.cred1_password, creds.cred2))
     # determine leadership
     leader_election = Leader()
     leader_election.yield_to_leader()
