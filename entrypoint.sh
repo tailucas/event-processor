@@ -2,6 +2,12 @@
 set -eu
 set -o pipefail
 
+while [ -n "${STAY_DOWN:-}" ]; do
+  echo "${BALENA_DEVICE_NAME_AT_INIT} (${BALENA_DEVICE_ARCH} ${BALENA_DEVICE_TYPE}) is in StayDown (unset STAY_DOWN variable to start)."
+  curl -s -X GET --header "Content-Type:application/json" "${BALENA_SUPERVISOR_ADDRESS}/v1/device?apikey=${BALENA_SUPERVISOR_API_KEY}" | jq
+  sleep 3600
+done
+
 # Resin API key (prefer override from application/device environment)
 export RESIN_API_KEY="${API_KEY_RESIN:-$RESIN_API_KEY}"
 # root user access, prefer key
@@ -154,13 +160,6 @@ cat /opt/app/config/aws-config | /opt/app/config_interpol > "/home/${APP_USER}/.
 # AttributeError: 'Endpoint' object has no attribute 'timeout'
 PY_BASE_WORKER="$(find /opt/app/ -name base_worker.py)"
 patch -f -u "$PY_BASE_WORKER" -i /opt/app/config/base_worker.patch || true
-
-# log archival (no tee for secrets)
-if [ -d /var/awslogs/etc/ ]; then
-  cat /var/awslogs/etc/aws.conf | /opt/app/config_interpol /opt/app/config/aws.conf > /var/awslogs/etc/aws.conf.new
-  mv /var/awslogs/etc/aws.conf /var/awslogs/etc/aws.conf.backup
-  mv /var/awslogs/etc/aws.conf.new /var/awslogs/etc/aws.conf
-fi
 
 # Bash history
 echo "export HISTFILE=/data/.bash_history" >> /etc/bash.bashrc
