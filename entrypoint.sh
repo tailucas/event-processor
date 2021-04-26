@@ -22,6 +22,8 @@ service ssh reload
 
 # ngrok
 ./opt/app/ngrok authtoken --config /opt/app/ngrok.yml $(/opt/app/bin/python /opt/app/cred_tool <<< '{"s": {"opitem": "ngrok", "opfield": ".password"}}')
+FRONTEND_USER="$(/opt/app/bin/python /opt/app/cred_tool <<< '{"s": {"opitem": "Frontend", "opfield": ".username"}}')"
+FRONTEND_PASSWORD="$(/opt/app/bin/python /opt/app/cred_tool <<< '{"s": {"opitem": "Frontend", "opfield": ".password"}}')"
 cat /opt/app/config/ngrok_frontend.yml \
   | sed 's@APP_FLASK_HTTP_PORT@'"$APP_FLASK_HTTP_PORT"'@' \
   | sed 's@FRONTEND_USER@'"$FRONTEND_USER"'@' \
@@ -29,6 +31,8 @@ cat /opt/app/config/ngrok_frontend.yml \
   | sed 's@NGROK_CLIENT_API_PORT@'"$NGROK_CLIENT_API_PORT"'@' \
   | sed 's@NGROK_TUNNEL_NAME@'"$NGROK_TUNNEL_NAME"'@' \
   > /opt/app/ngrok_frontend.yml
+unset FRONTEND_USER
+unset FRONTEND_PASSWORD
 
 # aws code commit
 if [ -n "${AWS_REPO_SSH_KEY_ID:-}" ]; then
