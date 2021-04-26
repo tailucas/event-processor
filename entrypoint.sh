@@ -21,7 +21,7 @@ mkdir -p /run/sshd
 service ssh reload
 
 # ngrok
-./opt/app/ngrok authtoken --config /opt/app/ngrok.yml $(/opt/app/cred_tool <<< '{"s": {"opitem": "ngrok", "opfield": ".password"}}')
+./opt/app/ngrok authtoken --config /opt/app/ngrok.yml $(/opt/app/bin/python /opt/app/cred_tool <<< '{"s": {"opitem": "ngrok", "opfield": ".password"}}')
 cat /opt/app/config/ngrok_frontend.yml \
   | sed 's@APP_FLASK_HTTP_PORT@'"$APP_FLASK_HTTP_PORT"'@' \
   | sed 's@FRONTEND_USER@'"$FRONTEND_USER"'@' \
