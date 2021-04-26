@@ -9,7 +9,7 @@ mkdir -p /root/.ssh/
 
 echo "$(/opt/app/bin/python /opt/app/cred_tool <<< '{"s": {"opitem": "SSH", "opfield": ".password"}}')" > /root/.ssh/authorized_keys
 chmod 600 /root/.ssh/authorized_keys
-if [ -n "$ROOT_PASSWORD" ]; then
+if [ -n "${ROOT_PASSWORD:-}" ]; then
   echo "root:${ROOT_PASSWORD}" | chpasswd
   sed -i 's/PermitRootLogin without-password/PermitRootLogin yes/' /etc/ssh/sshd_config
   # SSH login fix. Otherwise user is kicked off after login
