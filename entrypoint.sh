@@ -6,10 +6,10 @@ set -o pipefail
 export RESIN_API_KEY="${API_KEY_RESIN:-$RESIN_API_KEY}"
 # root user access, prefer key
 mkdir -p /root/.ssh/
-if [ -n "$SSH_AUTHORIZED_KEY" ]; then
-  echo "$SSH_AUTHORIZED_KEY" > /root/.ssh/authorized_keys
-  chmod 600 /root/.ssh/authorized_keys
-elif [ -n "$ROOT_PASSWORD" ]; then
+
+echo "$(/opt/app/bin/python /opt/app/cred_tool <<< '{"s": {"opitem": "SSH", "opfield": ".password"}}')" > /root/.ssh/authorized_keys
+chmod 600 /root/.ssh/authorized_keys
+if [ -n "$ROOT_PASSWORD" ]; then
   echo "root:${ROOT_PASSWORD}" | chpasswd
   sed -i 's/PermitRootLogin without-password/PermitRootLogin yes/' /etc/ssh/sshd_config
   # SSH login fix. Otherwise user is kicked off after login
@@ -103,10 +103,12 @@ fi
 # logentries
 if [ -n "${RSYSLOG_LOGENTRIES:-}" ]; then
   set +x
+  RSYSLOG_LOGENTRIES_TOKEN="$(/opt/app/bin/python /opt/app/cred_tool <<< '{"s": {"opitem": "Logentries", "opfield": "${RESIN_APP_NAME}.token"}}')"
   if [ -n "${RSYSLOG_LOGENTRIES_TOKEN:-}" ] && ! grep -q "$RSYSLOG_LOGENTRIES_TOKEN" /etc/rsyslog.d/logentries.conf; then
     echo "\$template LogentriesFormat,\"${RSYSLOG_LOGENTRIES_TOKEN} %HOSTNAME% %syslogtag%%msg%\n\"" >> /etc/rsyslog.d/logentries.conf
     RSYSLOG_TEMPLATE=";LogentriesFormat"
   fi
+  unset RSYSLOG_LOGENTRIES_TOKEN
   echo "*.*          @@${RSYSLOG_LOGENTRIES_SERVER}${RSYSLOG_TEMPLATE:-}" >> /etc/rsyslog.d/logentries.conf
   set -x
 fi
