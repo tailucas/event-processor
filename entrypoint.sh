@@ -113,7 +113,7 @@ fi
 # logentries
 if [ -n "${RSYSLOG_LOGENTRIES:-}" ]; then
   set +x
-  RSYSLOG_LOGENTRIES_TOKEN="$(/opt/app/bin/python /opt/app/cred_tool <<< '{"s": {"opitem": "Logentries", "opfield": "${RESIN_APP_NAME}.token"}}')"
+  RSYSLOG_LOGENTRIES_TOKEN="$(/opt/app/bin/python /opt/app/cred_tool <<< '{"s": {"opitem": "Logentries", "opfield": "${APP_NAME}.token"}}')"
   if [ -n "${RSYSLOG_LOGENTRIES_TOKEN:-}" ] && ! grep -q "$RSYSLOG_LOGENTRIES_TOKEN" /etc/rsyslog.d/logentries.conf; then
     echo "\$template LogentriesFormat,\"${RSYSLOG_LOGENTRIES_TOKEN} %HOSTNAME% %syslogtag%%msg%\n\"" >> /etc/rsyslog.d/logentries.conf
     RSYSLOG_TEMPLATE=";LogentriesFormat"
