@@ -32,5 +32,9 @@ python -m pip install --upgrade wheel
 
 # work around apt/pip stupidity
 python -m pip install --upgrade -r "/opt/app/requirements.txt"
+# add pylib dependencies
+if [ -f /opt/app/pylib/requirements.txt ]; then
+  python -m pip install --upgrade -r "/opt/app/pylib/requirements.txt"
+fi
 
 deactivate
