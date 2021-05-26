@@ -199,7 +199,7 @@ def index():
     awol_inputs = event_processor.awol_inputs
     if len(awol_inputs) > 0:
         flash(message='{} devices are unavailable right now.'.format(len(awol_inputs)), category='danger')
-    # pylint: disable=no-member
+    # type: ignore
     for device_key, device_config in list(event_processor.input_config.items()):
         if device_key in awol_inputs:
             awol_input_labels.add(device_config['device_label'])
@@ -391,7 +391,7 @@ def show_config():
     device_listing = {}
     input_labels = {}
     global event_processor
-    # pylint: disable=no-member
+    # type: ignore
     for device_key, device_config in list(event_processor.input_config.items()):
         # exclude invalid types
         if 'type' in device_config and 'button' in device_config['type'].lower():
@@ -421,7 +421,7 @@ def show_config():
             device_listing[device_key]['auto_schedule_enable'] = request.form['auto_schedule_enable']
             device_listing[device_key]['auto_schedule_disable'] = request.form['auto_schedule_disable']
             # open IPC
-            auto_scheduler = zmq_context.socket(zmq.PUSH) # pylint: disable=no-member
+            auto_scheduler = zmq_context.socket(zmq.PUSH) # type: ignore
             auto_scheduler.connect(URL_WORKER_AUTO_SCHEDULER)
             # update device configuration
             if 'grouped_inputs' not in device_listing[device_key]:
@@ -638,7 +638,7 @@ def telegram_bot_cmd(update: Update, context: TelegramCallbackContext):
                         parse_mode='Markdown')
         # status update
         if update.effective_message.text.startswith('/report'):
-            processor = zmq_context.socket(zmq.PUSH) # pylint: disable=no-member
+            processor = zmq_context.socket(zmq.PUSH) # type: ignore
             processor.connect(URL_WORKER_APP)
             processor.send_pyobj({
                 DEVICE_NAME: {
@@ -764,12 +764,12 @@ class EventProcessor(Thread):
 
         self._origin_nanny = origin_nanny
 
-        self.socket = zmq_context.socket(zmq.PULL) # pylint: disable=no-member
+        self.socket = zmq_context.socket(zmq.PULL) # type: ignore
         self.socket.bind(URL_WORKER_APP)
 
-        self.event_log = zmq_context.socket(zmq.PUSH) # pylint: disable=no-member
+        self.event_log = zmq_context.socket(zmq.PUSH) # type: ignore
 
-        self.bot = zmq_context.socket(zmq.PUSH) # pylint: disable=no-member
+        self.bot = zmq_context.socket(zmq.PUSH) # type: ignore
 
         self._mqtt_subscriber = mqtt_subscriber
 
@@ -1127,7 +1127,7 @@ class EventProcessor(Thread):
                                 app=APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_TTS),
                                 message=notification_message)
                     if workflow_instance is not None:
-                        # pylint: disable=no-member
+                        # type: ignore
                         log.info("{} workflow is {}".format(output_type, workflow_instance.workflow_execution))
                 elif event_destination == DEVICE_NAME:
                     #TODO: route this properly
@@ -1188,7 +1188,7 @@ class EventProcessor(Thread):
         # bot
         self.bot.connect(URL_WORKER_TELEGRAM_BOT)
         # load auto-scheduler
-        auto_scheduler = zmq_context.socket(zmq.PUSH) # pylint: disable=no-member
+        auto_scheduler = zmq_context.socket(zmq.PUSH) # type: ignore
         auto_scheduler.connect(URL_WORKER_AUTO_SCHEDULER)
         auto_scheduler.send_pyobj(self._input_config)
         auto_scheduler.close()
@@ -1622,7 +1622,7 @@ class EventLog(Thread):
         self._metric_last_posted_device_event = 0
         self._device_events_accumulator = 0
 
-        self.socket = zmq_context.socket(zmq.PULL) # pylint: disable=no-member
+        self.socket = zmq_context.socket(zmq.PULL) # type: ignore
         self.socket.bind(URL_WORKER_EVENT_LOG)
 
     def get_events(self, since_ts):
@@ -1692,7 +1692,7 @@ class TBot(Thread):
 
         self.bot = None
         self.chat_id = APP_CONFIG.getint('telegram', 'chat_room_id')
-        self.socket = zmq_context.socket(zmq.PULL) # pylint: disable=no-member
+        self.socket = zmq_context.socket(zmq.PULL) # type: ignore
         self.socket.bind(URL_WORKER_TELEGRAM_BOT)
 
         self.sns = boto3.client('sns')
@@ -1807,7 +1807,7 @@ class MqttSubscriber(Thread):
         self.daemon = True
         threads.threads_tracked.add(self.name)
 
-        self.processor = zmq_context.socket(zmq.PUSH) # pylint: disable=no-member
+        self.processor = zmq_context.socket(zmq.PUSH) # type: ignore
         self._mqtt_client = None
         self._mqtt_server_address = APP_CONFIG.get('mqtt', 'server_address')
         self._mqtt_subscribe_topics = list()
@@ -1816,7 +1816,7 @@ class MqttSubscriber(Thread):
             self._mqtt_subscribe_topics.append((mqtt_source, 0))
         self._source_subscribers = dict()
         # IPC for publish
-        self.socket = zmq_context.socket(zmq.PULL) # pylint: disable=no-member
+        self.socket = zmq_context.socket(zmq.PULL) # type: ignore
         self.socket.bind(URL_WORKER_MQTT_PUBLISH)
 
     def add_source_subscriber(self, topic, subscriber):
@@ -1927,7 +1927,7 @@ class MqttSubscriber(Thread):
                 self._mqtt_client.loop()
                 # check for messages to publish
                 try:
-                    mqtt_pub_topic, message_data = self.socket.recv_pyobj(flags=zmq.NOBLOCK) # pylint: disable=no-member
+                    mqtt_pub_topic, message_data = self.socket.recv_pyobj(flags=zmq.NOBLOCK) # type: ignore
                     log.debug('Publishing {} bytes to topic {}...'.format(len(message_data), mqtt_pub_topic))
                     self._mqtt_client.publish(topic=mqtt_pub_topic, payload=message_data)
                 except ZMQError:
@@ -1991,8 +1991,8 @@ class ZmqEventSourceSubscriber(EventSourceSubscriber, Thread):
 
         self._publisher_endpoint = publisher_endpoint
 
-        self.subscriber = zmq_context.socket(zmq.SUB) # pylint: disable=no-member
-        self.processor = zmq_context.socket(zmq.PUSH) # pylint: disable=no-member
+        self.subscriber = zmq_context.socket(zmq.SUB) # type: ignore
+        self.processor = zmq_context.socket(zmq.PUSH) # type: ignore
 
         self._reconnected = False
         # use half of the tolerated heartbeat value
@@ -2002,7 +2002,7 @@ class ZmqEventSourceSubscriber(EventSourceSubscriber, Thread):
     def run(self):
         log.info('Subscribing to {} @ {}'.format(self._label, self._publisher_endpoint))
         self.subscriber.connect(self._publisher_endpoint)
-        self.subscriber.setsockopt(zmq.SUBSCRIBE, b'') # pylint: disable=no-member
+        self.subscriber.setsockopt(zmq.SUBSCRIBE, b'') # type: ignore
         self.processor.connect(URL_WORKER_APP)
         while True:
             try:
@@ -2018,14 +2018,14 @@ class ZmqEventSourceSubscriber(EventSourceSubscriber, Thread):
                         self.subscriber.close()
                     except ZMQError:
                         log.exception(self.name)
-                    self.subscriber = zmq_context.socket(zmq.SUB) # pylint: disable=no-member
+                    self.subscriber = zmq_context.socket(zmq.SUB) # type: ignore
                     self.subscriber.connect(self._publisher_endpoint)
-                    self.subscriber.setsockopt(zmq.SUBSCRIBE, b'') # pylint: disable=no-member
+                    self.subscriber.setsockopt(zmq.SUBSCRIBE, b'') # type: ignore
                     self._reconnected = True
                     # poll again
                     continue
                 try:
-                    publisher_data = self.subscriber.recv(zmq.NOBLOCK) # pylint: disable=no-member
+                    publisher_data = self.subscriber.recv(zmq.NOBLOCK) # type: ignore
                     publisher_event = umsgpack.unpackb(publisher_data)
                 except Again as e:
                     log.debug('{}: {}'.format(self.name, str(e)))
@@ -2070,7 +2070,7 @@ class SQSListener(Thread):
         self.daemon = True
         threads.threads_tracked.add(self.name)
 
-        self.processor = zmq_context.socket(zmq.PUSH) # pylint: disable=no-member
+        self.processor = zmq_context.socket(zmq.PUSH) # type: ignore
         self._sqs = None
         self._sqs_queue = None
 
@@ -2130,9 +2130,9 @@ class AutoScheduler(Thread):
         self.daemon = True
         threads.threads_tracked.add(self.name)
 
-        self.processor = zmq_context.socket(zmq.PUSH) # pylint: disable=no-member
+        self.processor = zmq_context.socket(zmq.PUSH) # type: ignore
         # IPC for publish
-        self.socket = zmq_context.socket(zmq.PULL) # pylint: disable=no-member
+        self.socket = zmq_context.socket(zmq.PULL) # type: ignore
         self.socket.bind(URL_WORKER_AUTO_SCHEDULER)
 
     def update_device(self, device_key, device_state):
@@ -2157,7 +2157,7 @@ class AutoScheduler(Thread):
                 # look for device updates
                 device_config = None
                 try:
-                    device_config = self.socket.recv_pyobj(flags=zmq.NOBLOCK) # pylint: disable=no-member
+                    device_config = self.socket.recv_pyobj(flags=zmq.NOBLOCK) # type: ignore
                     next_message = True
                 except ZMQError:
                     # ignore, no data
@@ -2219,7 +2219,7 @@ class OriginNanny(Thread):
         self.daemon = True
         threads.threads_tracked.add(self.name)
 
-        self.processor = zmq_context.socket(zmq.PUSH) # pylint: disable=no-member
+        self.processor = zmq_context.socket(zmq.PUSH) # type: ignore
 
         self.origin_subscriber = {}
         self._heartbeat_sample_interval = int(APP_CONFIG.get('app', 'heartbeat_sample_interval_seconds'))
@@ -2321,7 +2321,7 @@ class EventSourceDiscovery(Thread):
         self.daemon = True
         threads.threads_tracked.add(self.name)
 
-        self.processor = zmq_context.socket(zmq.PUSH) # pylint: disable=no-member
+        self.processor = zmq_context.socket(zmq.PUSH) # type: ignore
 
         self._boto_session = boto_session
         self._swf_region = swf_region
@@ -2358,7 +2358,7 @@ class EventSourceDiscovery(Thread):
             try:
                 outstanding_registrations = set(sources_to_register) - event_processor.origins
                 for source_to_register in outstanding_registrations:
-                     # pylint: disable=no-member
+                     # type: ignore
                     workflow_instance = None
                     # determine IPs of available devices for ZMQ subscriptions
                     with workflow_starter(self._boto_session,
