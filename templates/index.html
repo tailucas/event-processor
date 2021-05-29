@@ -29,4 +29,9 @@
   </div>
 </ul>
 <p style="text-align:center">Served by {{ server_context }} at {{ render_timestamp }}</p>
+<div class="row">
+  {% for badge_uri in healthchecks_badges %}
+  <img src="https://healthchecks.io/badge/{{badge_uri}}" class="mx-auto d-block">
+  {% endfor %}
+</div>
 {% endblock %}

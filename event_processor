@@ -331,7 +331,8 @@ def index():
                            awol_input_labels=awol_input_labels,
                            meter_history=meter_history,
                            server_context=DEVICE_NAME,
-                           render_timestamp=render_timestamp)
+                           render_timestamp=render_timestamp,
+                           healthchecks_badges=event_processor.healthchecks_badge_uris)
 
 
 @flask_app.route('/metrics', methods=['GET', 'POST'])
@@ -776,6 +777,8 @@ class EventProcessor(Thread):
         self._metric_last_posted_meter_value = 0
         self._metric_meter_value_accumulator = 0
         self._metric_last_posted_register_value = 0
+
+        self.healthchecks_badge_uris = APP_CONFIG.get('app', 'healthchecks_badges').split(',')
 
     @property
     def origins(self):
