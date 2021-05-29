@@ -2,6 +2,10 @@
 set -eu
 set -o pipefail
 
+# host heartbeat, must fail if variable is unset
+echo "Installing heartbeat to ${HC_PING_URL}"
+cp /opt/app/config/healthchecks_heartbeat /etc/cron.d/healthchecks_heartbeat
+
 while [ -n "${STAY_DOWN:-}" ]; do
   echo "${BALENA_DEVICE_NAME_AT_INIT} (${BALENA_DEVICE_ARCH} ${BALENA_DEVICE_TYPE}) is in StayDown (unset STAY_DOWN variable to start)."
   curl -s -X GET --header "Content-Type:application/json" "${BALENA_SUPERVISOR_ADDRESS}/v1/device?apikey=${BALENA_SUPERVISOR_API_KEY}" | jq
