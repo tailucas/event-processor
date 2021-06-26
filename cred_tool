@@ -23,10 +23,10 @@ def err(msg, code=1):
 if __name__ == "__main__":
     cred_schema = json.loads(sys.stdin.readline())
     if (len(cred_schema) > 1):
-        err("Only a single credential specification supported. {} provided.".format(list(cred_schema)))
+        err(f"Only a single credential specification supported. {list(cred_schema)} provided.")
     key_field = list(cred_schema)[0]
     creds_client: Client = new_client_from_environment(url=os.environ['OP_CONNECT_SERVER'])
     creds = OP.load_dict(client=creds_client, config=cred_schema)
     if key_field not in creds:
-        err("Expected [{}] field in server response.".format(key_field))
+        err(f"Expected [{key_field}] field in server response.")
     out(creds[key_field])

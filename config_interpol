@@ -13,7 +13,7 @@ def load_config(fp):
     cfg = ConfigParser()
     cfg.optionxform = str
     # prepend with fake header
-    cfg.read_file(['[{}]\n'.format(FAKE_SECTION) + os.linesep] + fp.readlines())
+    cfg.read_file([f'[{FAKE_SECTION}]\n' + os.linesep] + fp.readlines())
     return cfg
 
 
@@ -61,14 +61,14 @@ if __name__ == "__main__":
         section_name = "section: '{}'."
         if section == FAKE_SECTION:
             section_name = "default section."
-        err("No option '{}' in {}".format(option, section_name), 2)
+        err(f"No option '{option}' in {section_name}", 2)
     # now output, starting with the default section
     if FAKE_SECTION in sections:
         for option, value in list(sections[FAKE_SECTION].items()):
-            print('{key}={value}'.format(key=option, value=value))
+            print(f'{option}={value}')
         del sections[FAKE_SECTION]
     # now do each section
     for section in sections:
-        print('[{section}]'.format(section=section))
+        print(f'[{section}]')
         for option, value in list(sections[section].items()):
-            print('{key}={value}'.format(key=option, value=value))
+            print(f'{option}={value}')
