@@ -109,18 +109,18 @@ class CredsConfig:
 # instantiate class
 builtins.creds_config = CredsConfig()
 
-import pylib
+import lib
 
-from pylib.datetime import is_list, \
+from lib.datetime import is_list, \
     make_timestamp, \
     make_unix_timestamp, \
     parse_datetime
-from pylib.data import make_payload
-from pylib.aws import boto_session, \
+from lib.data import make_payload
+from lib.aws import boto_session, \
     swf_region, \
     swf_domain
-from pylib.aws.metrics import app_metrics, post_count_metric
-from pylib.aws.swf import SWFActivityWaiter, \
+from lib.aws.metrics import app_metrics, post_count_metric
+from lib.aws.swf import SWFActivityWaiter, \
     swf_exception_handler, \
     DeviceInfoActivity, \
     DeviceWorkflow, \
@@ -132,12 +132,12 @@ from pylib.aws.swf import SWFActivityWaiter, \
     TTSWorkflow, \
     IOBoardWorkflow, \
     BluetoothWorkflow
-from pylib.leader import Leader
-from pylib.process import SignalHandler, \
+from lib.leader import Leader
+from lib.process import SignalHandler, \
     exec_cmd, \
     exec_cmd_log
-from pylib import threads
-from pylib.threads import thread_nanny
+from lib import threads
+from lib.threads import thread_nanny
 
 # expose builtins for lint-friendly
 log = builtins.log
