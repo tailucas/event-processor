@@ -139,6 +139,9 @@ from lib.process import SignalHandler, \
 from lib import threads
 from lib.threads import thread_nanny
 
+from influxdb_client import InfluxDBClient, Point, WritePrecision
+from influxdb_client.client.write_api import SYNCHRONOUS
+
 # expose builtins for lint-friendly
 log = builtins.log
 creds: CredsConfig = builtins.creds_config
