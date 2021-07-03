@@ -2339,11 +2339,13 @@ class EventSourceDiscovery(Thread):
         # register ZMQ sources
         try:
             # start with static sources
-            for source in APP_CONFIG.get('app', 'subscription_sources').split(','):
-                label_ip = source.split(':')
-                source_label = label_ip[0]
-                source_ip = label_ip[1]
-                self.processor.send_pyobj({'register_origin': {source_label: source_ip}})
+            subscription_sources = APP_CONFIG.get('app', 'subscription_sources')
+            if len(subscription_sources) > 0:
+                for source in APP_CONFIG.get('app', 'subscription_sources').split(','):
+                    label_ip = source.split(':')
+                    source_label = label_ip[0]
+                    source_ip = label_ip[1]
+                    self.processor.send_pyobj({'register_origin': {source_label: source_ip}})
         except ContextTerminated:
             self.processor.close()
             log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
