@@ -106,6 +106,8 @@ class CredsConfig:
     telegram_bot_api_token: f'opitem:"Telegram" opfield:{APP_NAME}.token' = None # type: ignore
     aws_akid: f'opitem:"AWS" opfield:{AWS_REGION}.akid' = None # type: ignore
     aws_sak: f'opitem:"AWS" opfield:{AWS_REGION}.sak' = None # type: ignore
+    influxdb_org: f'opitem:"InfluxDB" opfield:automation.org' = None # type: ignore
+    influxdb_token: f'opitem:"InfluxDB" opfield:automation.token' = None # type: ignore
 # instantiate class
 builtins.creds_config = CredsConfig()
 
@@ -140,7 +142,7 @@ from lib import threads
 from lib.threads import thread_nanny
 
 from influxdb_client import InfluxDBClient, Point, WritePrecision
-from influxdb_client.client.write_api import SYNCHRONOUS
+from influxdb_client.client.write_api import ASYNCHRONOUS
 
 # expose builtins for lint-friendly
 log = builtins.log
@@ -149,6 +151,7 @@ APP_CONFIG = builtins.APP_CONFIG
 zmq_context = builtins.zmq_context
 APP_NAME = builtins.APP_NAME
 DEVICE_NAME = builtins.DEVICE_NAME
+DEVICE_NAME_BASE = builtins.DEVICE_NAME_BASE
 ISO_DATE_FORMAT = builtins.ISO_DATE_FORMAT
 
 flask_app = Flask(APP_NAME)
@@ -783,6 +786,10 @@ class EventProcessor(Thread):
 
         self.healthchecks_badge_uris = APP_CONFIG.get('app', 'healthchecks_badges').split(',')
 
+        self.influxdb = None
+        self.influxdb_rw = None
+        self.influxdb_ro = None
+
     @property
     def origins(self):
         return self._origin_connections.keys()
@@ -1175,6 +1182,12 @@ class EventProcessor(Thread):
         log.info("Loaded {} items from table '{}'".format(len(scan_response['Items']), table_name))
         return member, member_table
 
+    def _influxdb_write(self, bucket, active_device_key, field_name, field_value):
+        measurement_name = '_'.join(active_device_key.split()).lower()
+        self.influxdb_rw.write(
+            bucket=bucket,
+            record=Point(measurement_name).tag("application", APP_NAME).tag("device", DEVICE_NAME_BASE).field(field_name, field_value))
+
     # noinspection PyBroadException
     def run(self):
         # set up local DB storage
@@ -1193,6 +1206,13 @@ class EventProcessor(Thread):
         self.event_log.connect(URL_WORKER_EVENT_LOG)
         # bot
         self.bot.connect(URL_WORKER_TELEGRAM_BOT)
+        # influx DB
+        self.influxdb = InfluxDBClient(
+            url=APP_CONFIG.get('influxdb', 'url'),
+            token=creds.influxdb_token,
+            org=creds.influxdb_org)
+        self.influxdb_rw = self.influxdb.write_api(write_options=ASYNCHRONOUS)
+        self.influxdb_ro = self.influxdb.query_api()
         # load auto-scheduler
         auto_scheduler = zmq_context.socket(zmq.PUSH) # type: ignore
         auto_scheduler.connect(URL_WORKER_AUTO_SCHEDULER)
@@ -1485,20 +1505,22 @@ class EventProcessor(Thread):
                                         now = time.time()
                                         # accumulated meter value
                                         if now - self._metric_last_posted_meter_value > 5*60:
-                                            post_count_metric(
-                                                metric_name=active_device_key + ' Metered',
-                                                count=int(self._metric_meter_value_accumulator) / float(meter_reading_unit_factor),
-                                                unit='Count')
+                                            self._influxdb_write(
+                                                bucket='meter',
+                                                active_device_key=active_device_key,
+                                                field_name='metered',
+                                                field_value=int(self._metric_meter_value_accumulator) / float(meter_reading_unit_factor))
                                             self._metric_last_posted_meter_value = now
                                             self._metric_meter_value_accumulator = 0
                                         else:
                                             self._metric_meter_value_accumulator += meter_value
                                         # register values
                                         if now - self._metric_last_posted_register_value > 5*60:
-                                            post_count_metric(
-                                                metric_name=active_device_key + ' Register',
-                                                count=normalized_register_value,
-                                                unit='Count')
+                                            self._influxdb_write(
+                                                bucket='meter',
+                                                active_device_key=active_device_key,
+                                                field_name='register',
+                                                field_value=normalized_register_value)
                                             self._metric_last_posted_register_value = now
                                     # input disabled?
                                     if 'device_disabled' in active_device_config:
