@@ -108,6 +108,7 @@ class CredsConfig:
     aws_sak: f'opitem:"AWS" opfield:{AWS_REGION}.sak' = None # type: ignore
     influxdb_org: f'opitem:"InfluxDB" opfield:automation.org' = None # type: ignore
     influxdb_token: f'opitem:"InfluxDB" opfield:automation.token' = None # type: ignore
+    grafana_url: f'opitem:"Grafana" opfield:dashboard.URL' = None # type: ignore
 # instantiate class
 builtins.creds_config = CredsConfig()
 
@@ -343,14 +344,7 @@ def index():
 
 @flask_app.route('/metrics', methods=['GET', 'POST'])
 def show_metrics():
-    global event_processor
-    widgets = event_processor.general_config['cloudwatch_widgets']['config_value']
-    images = []
-    for widget in widgets:
-        response = app_metrics.get_metric_widget_image(MetricWidget=b64decode(widget).decode('utf-8'))
-        images.append(b64encode(response['MetricWidgetImage']).decode('ascii'))
-    return render_template('metrics.html',
-                           img_data=images)
+    return redirect(creds.grafana_url, code=302)
 
 
 @flask_app.route('/event_log', methods=['GET', 'POST'])
