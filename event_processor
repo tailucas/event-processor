@@ -93,7 +93,6 @@ from botoflow.exceptions import ActivityTaskFailedError, ActivityTaskTimedOutErr
     WorkflowFailedError, WorkflowTimedOutError
 
 # setup builtins used by pylib init
-
 app_name = Path(__file__).stem
 builtins.APP_NAME = app_name
 builtins.SENTRY_EXTRAS = [FlaskIntegration()]
