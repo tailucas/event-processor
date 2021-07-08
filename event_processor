@@ -1087,7 +1087,6 @@ class EventProcessor(Thread):
                                 owner_device_list=self._output_config[output_device_key]['device_params'])
                         SWFActivityWaiter(
                             zmq_ipc_url=URL_WORKER_APP,
-                            zmq_context=zmq_context,
                             event_source=swf_tasklist,
                             output_type=OUTPUT_TYPE_BLUETOOTH,
                             workflow_starter=starter,
@@ -2134,6 +2133,7 @@ class SQSListener(Thread):
                 break
             except ZMQError:
                 log.exception(self.name)
+                sleep(1)
                 break
             except Exception:
                 log.exception(self.name)
@@ -2375,7 +2375,7 @@ class EventSourceDiscovery(Thread):
             app_config.get('swf_tasklist', OUTPUT_TYPE_SWITCH),
             app_config.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT),
             app_config.get('swf_tasklist', OUTPUT_TYPE_TTS))
-        while True:
+        while not threads.shutting_down:
             try:
                 outstanding_registrations = set(sources_to_register) - event_processor.origins
                 for source_to_register in outstanding_registrations:
@@ -2392,15 +2392,12 @@ class EventSourceDiscovery(Thread):
                             workflow_instance.workflow_execution))
                     SWFActivityWaiter(
                         zmq_ipc_url=URL_WORKER_APP,
-                        zmq_context=zmq_context,
                         event_source='register_origin',
                         output_type=source_to_register,
                         workflow_starter=starter,
                         workflow_instance=workflow_instance).start()
                 # try get more in a minute
                 threads.interruptable_sleep.wait(60)
-                if threads.shutting_down:
-                    break
                 outstanding_registrations = set(sources_to_register) - event_processor.origins
                 if not outstanding_registrations:
                     log.info('All event sources {} have been discovered and registered.'.format(
@@ -2411,10 +2408,10 @@ class EventSourceDiscovery(Thread):
             except Exception:
                 log.exception(self.name)
                 capture_exception()
-                sleep(10)
+                threads.interruptable_sleep.wait(10)
                 continue
         # register MQTT inputs
-        while True:
+        while not threads.shutting_down:
             mdash_devices = None
             log.info('Requesting mDash device listing from {}'.format(self._mdash_devices_url))
             try:
@@ -2427,7 +2424,7 @@ class EventSourceDiscovery(Thread):
             except Exception:
                 log.exception(self.__class__.__name__)
                 capture_exception()
-                sleep(10)
+                threads.interruptable_sleep.wait(10)
                 continue
             log.info('mDash returns {} devices.'.format(len(mdash_devices)))
             for device in mdash_devices:
@@ -2457,19 +2454,13 @@ class EventSourceDiscovery(Thread):
                 except Exception:
                     log.exception(self.__class__.__name__)
                     capture_exception()
-                    sleep(10)
+                    threads.interruptable_sleep.wait(10)
                     continue
             # important to stop
             break
 
-        try:
-            # close the IPC socket
-            self.processor.close()
-        except ContextTerminated:
-            self.processor.close()
-            log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
-            return
-
+        # close the IPC socket
+        self.processor.close()
         # un-nanny and goodbye
         threads.threads_tracked.remove(self.getName())
 
@@ -2494,7 +2485,7 @@ class CallbackUrlDiscovery(Thread):
                     ngrok_tunnel_url = requests.get(self._discover_url).json()['public_url']
                 except (KeyError, ConnectionError) as e:
                     log.warning('Still attempting to discover ngrok tunnel URL ({})...'.format(repr(e)))
-                    sleep(10)
+                    threads.interruptable_sleep.wait(10)
                     continue
                 log.info('External call-back URL is {}'.format(ngrok_tunnel_url))
                 break
