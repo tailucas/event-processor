@@ -94,16 +94,17 @@ from botoflow.exceptions import ActivityTaskFailedError, ActivityTaskTimedOutErr
 
 # setup builtins used by pylib init
 
-builtins.APP_NAME = Path(__file__).stem
+app_name = Path(__file__).stem
+builtins.APP_NAME = app_name
 builtins.SENTRY_EXTRAS = [FlaskIntegration()]
 AWS_REGION = os.environ['AWS_DEFAULT_REGION']
 class CredsConfig:
-    sentry_dsn: f'opitem:"Sentry" opfield:{APP_NAME}.dsn' = None # type: ignore
+    sentry_dsn: f'opitem:"Sentry" opfield:{app_name}.dsn' = None # type: ignore
     flask_secret_key: f'opitem:"Frontend" opfield:Flask.secret_key' = None # type: ignore
     flask_basic_auth_username: f'opitem:"Frontend" opfield:.username' = None # type: ignore
     flask_basic_auth_password: f'opitem:"Frontend" opfield:.password' = None # type: ignore
     mdash_api_key: f'opitem:"mdash" opfield:.password' = None # type: ignore
-    telegram_bot_api_token: f'opitem:"Telegram" opfield:{APP_NAME}.token' = None # type: ignore
+    telegram_bot_api_token: f'opitem:"Telegram" opfield:{app_name}.token' = None # type: ignore
     aws_akid: f'opitem:"AWS" opfield:{AWS_REGION}.akid' = None # type: ignore
     aws_sak: f'opitem:"AWS" opfield:{AWS_REGION}.sak' = None # type: ignore
     influxdb_org: f'opitem:"InfluxDB" opfield:automation.org' = None # type: ignore
@@ -112,7 +113,11 @@ class CredsConfig:
 # instantiate class
 builtins.creds_config = CredsConfig()
 
-import lib
+from lib import app_config, \
+    creds, \
+    device_name, \
+    device_name_base, \
+    log
 
 from lib.datetime import is_list, \
     make_timestamp, \
@@ -141,21 +146,14 @@ from lib.process import SignalHandler, \
     exec_cmd_log
 from lib import threads
 from lib.threads import thread_nanny
+from lib.zmq import zmq_context, zmq_socket
 
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import ASYNCHRONOUS
 
-# expose builtins for lint-friendly
-log = builtins.log
-creds: CredsConfig = builtins.creds_config
-APP_CONFIG = builtins.APP_CONFIG
-zmq_context = builtins.zmq_context
-APP_NAME = builtins.APP_NAME
-DEVICE_NAME = builtins.DEVICE_NAME
-DEVICE_NAME_BASE = builtins.DEVICE_NAME_BASE
 ISO_DATE_FORMAT = builtins.ISO_DATE_FORMAT
 
-flask_app = Flask(APP_NAME)
+flask_app = Flask(app_name)
 flask_compress = Compress()
 
 OUTPUT_TYPE_BLUETOOTH = 'bluetooth'
@@ -191,7 +189,7 @@ def debug():
 def internal_server_error(e):
     return render_template('error.html',
                            sentry_event_id=last_event_id(),
-                           sentry_dsn=APP_CONFIG.get('sentry', 'dsn')
+                           sentry_dsn=app_config.get('sentry', 'dsn')
                            ), 500
 
 
@@ -235,10 +233,10 @@ def index():
     if request.method == 'POST':
         if 'panic_button' in request.form:
             log.info('Panic button pressed.')
-            processor = zmq_context.socket(zmq.PUSH)
+            processor = zmq_socket(zmq.PUSH)
             processor.connect(URL_WORKER_APP)
             processor.send_pyobj({
-                DEVICE_NAME: {
+                device_name: {
                     'data': {
                         'active_devices': [
                             {
@@ -276,10 +274,10 @@ def index():
             #TODO: correctly update 'meter_reading'
             device_listing[device_key]['meter_value'] = reset_value
             # send IoT message
-            mqtt_ipc = zmq_context.socket(zmq.PUSH)
+            mqtt_ipc = zmq_socket(zmq.PUSH)
             mqtt_ipc.connect(URL_WORKER_MQTT_PUBLISH)
             mqtt_ipc.send_pyobj((
-                APP_CONFIG.get('mqtt', 'meter_reset_topic'),
+                app_config.get('mqtt', 'meter_reset_topic'),
                 json.dumps(iot_message)
             ))
             mqtt_ipc.close()
@@ -337,7 +335,7 @@ def index():
                            awol_inputs=awol_inputs,
                            awol_input_labels=awol_input_labels,
                            meter_history=meter_history,
-                           server_context=DEVICE_NAME,
+                           server_context=device_name,
                            render_timestamp=render_timestamp,
                            healthchecks_badges=event_processor.healthchecks_badge_uris)
 
@@ -422,7 +420,7 @@ def show_config():
             device_listing[device_key]['auto_schedule_enable'] = request.form['auto_schedule_enable']
             device_listing[device_key]['auto_schedule_disable'] = request.form['auto_schedule_disable']
             # open IPC
-            auto_scheduler = zmq_context.socket(zmq.PUSH) # type: ignore
+            auto_scheduler = zmq_socket(zmq.PUSH) # type: ignore
             auto_scheduler.connect(URL_WORKER_AUTO_SCHEDULER)
             # update device configuration
             if 'grouped_inputs' not in device_listing[device_key]:
@@ -543,8 +541,8 @@ def input_config():
     return render_template('input_config.html',
                            inputs=event_processor.input_config,
                            last_saved_device_key=device_key,
-                           default_trigger_window=int(APP_CONFIG.get('config', 'default_trigger_window')),
-                           default_activation_interval=int(APP_CONFIG.get('config', 'default_activation_interval')))
+                           default_trigger_window=int(app_config.get('config', 'default_trigger_window')),
+                           default_activation_interval=int(app_config.get('config', 'default_activation_interval')))
 
 
 @flask_app.route('/input_link', methods=['GET', 'POST'])
@@ -602,7 +600,7 @@ def output_config():
 def telegram_bot_echo(update: Update, context: TelegramCallbackContext):
     global ngrok_tunnel_url
     try:
-        authorized_users = APP_CONFIG.get('telegram', 'authorized_users').split(',')
+        authorized_users = app_config.get('telegram', 'authorized_users').split(',')
         if str(update.effective_user.id) not in authorized_users:
             log.warning('Unauthorized message {}'.format(str(update)))
             return
@@ -611,7 +609,7 @@ def telegram_bot_echo(update: Update, context: TelegramCallbackContext):
                                                                         update.effective_message.text,
                                                                         update.effective_message.chat_id))
 
-        group_info = context.bot.get_chat(chat_id=APP_CONFIG.getint('telegram', 'chat_room_id'))
+        group_info = context.bot.get_chat(chat_id=app_config.getint('telegram', 'chat_room_id'))
         bot_response = "I am in the [{}]({}) group.".format(group_info.title, group_info.invite_link)
         dashboard_link = '[Dashboard]({})'.format(ngrok_tunnel_url)
         context.bot.send_message(chat_id=update.effective_message.chat_id,
@@ -625,7 +623,7 @@ def telegram_bot_echo(update: Update, context: TelegramCallbackContext):
 def telegram_bot_cmd(update: Update, context: TelegramCallbackContext):
     global ngrok_tunnel_url_with_bauth
     try:
-        authorized_users = APP_CONFIG.get('telegram', 'authorized_users').split(',')
+        authorized_users = app_config.get('telegram', 'authorized_users').split(',')
         if str(update.effective_user.id) not in authorized_users:
             log.warning('Unauthorized message {}'.format(str(update)))
             return
@@ -639,10 +637,10 @@ def telegram_bot_cmd(update: Update, context: TelegramCallbackContext):
                         parse_mode='Markdown')
         # status update
         if update.effective_message.text.startswith('/report'):
-            processor = zmq_context.socket(zmq.PUSH) # type: ignore
+            processor = zmq_socket(zmq.PUSH) # type: ignore
             processor.connect(URL_WORKER_APP)
             processor.send_pyobj({
-                DEVICE_NAME: {
+                device_name: {
                     'data': {
                         'active_devices': [
                             {
@@ -663,7 +661,7 @@ def telegram_bot_cmd(update: Update, context: TelegramCallbackContext):
 def telegram_bot_inline(update: Update, context: TelegramCallbackContext):
     global ngrok_tunnel_url
     try:
-        authorized_users = APP_CONFIG.get('telegram', 'authorized_users').split(',')
+        authorized_users = app_config.get('telegram', 'authorized_users').split(',')
         if str(update.inline_query.from_user.id) not in authorized_users:
             log.warning('Unauthorized message {}'.format(str(update)))
             return
@@ -765,12 +763,12 @@ class EventProcessor(Thread):
 
         self._origin_nanny = origin_nanny
 
-        self.socket = zmq_context.socket(zmq.PULL) # type: ignore
+        self.socket = zmq_socket(zmq.PULL) # type: ignore
         self.socket.bind(URL_WORKER_APP)
 
-        self.event_log = zmq_context.socket(zmq.PUSH) # type: ignore
+        self.event_log = zmq_socket(zmq.PUSH) # type: ignore
 
-        self.bot = zmq_context.socket(zmq.PUSH) # type: ignore
+        self.bot = zmq_socket(zmq.PUSH) # type: ignore
 
         self._mqtt_subscriber = mqtt_subscriber
 
@@ -778,7 +776,7 @@ class EventProcessor(Thread):
         self._metric_meter_value_accumulator = 0
         self._metric_last_posted_register_value = 0
 
-        self.healthchecks_badge_uris = APP_CONFIG.get('app', 'healthchecks_badges').split(',')
+        self.healthchecks_badge_uris = app_config.get('app', 'healthchecks_badges').split(',')
 
         self.influxdb = None
         self.influxdb_rw = None
@@ -1082,8 +1080,8 @@ class EventProcessor(Thread):
                         output_device_activation))
                     workflow_instance = None
                     if output_type == OUTPUT_TYPE_BLUETOOTH:
-                        swf_tasklist = APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_BLUETOOTH)
-                        with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, APP_NAME) as starter:
+                        swf_tasklist = app_config.get('swf_tasklist', OUTPUT_TYPE_BLUETOOTH)
+                        with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, app_name) as starter:
                             # pylint: disable=no-value-for-parameter
                             workflow_instance = BluetoothWorkflow.execute(
                                 app=swf_tasklist,
@@ -1097,16 +1095,16 @@ class EventProcessor(Thread):
                             workflow_instance=workflow_instance).start()
                     elif output_type == OUTPUT_TYPE_SNAPSHOT:
                         camera_config = self._output_config[output_device_key]['device_params']
-                        with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, APP_NAME) as starter:
+                        with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, app_name) as starter:
                             # pylint: disable=no-value-for-parameter
                             workflow_instance = SnapshotWorkflow.execute(
-                                app=APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT),
+                                app=app_config.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT),
                                 device_key=output_device_key,
                                 device_label=output_device_label,
                                 camera_config=camera_config)
                         # image detection
-                        image_processor_source = APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_IMAGE)
-                        with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, APP_NAME) as starter:
+                        image_processor_source = app_config.get('swf_tasklist', OUTPUT_TYPE_IMAGE)
+                        with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, app_name) as starter:
                             # pylint: disable=no-value-for-parameter
                             workflow_instance = ImageProcessWorkflow.execute(
                                 app=image_processor_source,
@@ -1114,12 +1112,12 @@ class EventProcessor(Thread):
                                 device_label=output_device_label,
                                 camera_config=camera_config,
                                 # pass the address of the device that performs snapshots
-                                snapshot_processor_address=self._origin_pull_connections[APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT)])
+                                snapshot_processor_address=self._origin_pull_connections[app_config.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT)])
                     elif output_type in OUTPUT_TYPE_SWITCH:
-                        with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, APP_NAME) as starter:
+                        with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, app_name) as starter:
                             # pylint: disable=no-value-for-parameter
                             workflow_instance = IOBoardWorkflow.execute(
-                                app=APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_SWITCH),
+                                app=app_config.get('swf_tasklist', OUTPUT_TYPE_SWITCH),
                                 device_key=output_device_key,
                                 duration=trigger_duration)
                     elif output_type == OUTPUT_TYPE_TTS:
@@ -1128,15 +1126,15 @@ class EventProcessor(Thread):
                         if 'event_detail' in active_device:
                             event_detail = ' {}'.format(active_device['event_detail'])
                         notification_message = '{}{}'.format(active_device_label, event_detail)
-                        with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, APP_NAME) as starter:
+                        with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, app_name) as starter:
                             # pylint: disable=no-value-for-parameter
                             workflow_instance = TTSWorkflow.execute(
-                                app=APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_TTS),
+                                app=app_config.get('swf_tasklist', OUTPUT_TYPE_TTS),
                                 message=notification_message)
                     if workflow_instance is not None:
                         # type: ignore
                         log.info("{} workflow is {}".format(output_type, workflow_instance.workflow_execution))
-                elif event_destination == DEVICE_NAME:
+                elif event_destination == device_name:
                     #TODO: route this properly
                     log.warning('Not dispatching event to self: {} {} => {}.'.format(event_origin,
                                                                                      active_device_key,
@@ -1180,7 +1178,7 @@ class EventProcessor(Thread):
         measurement_name = '_'.join(active_device_key.split()).lower()
         self.influxdb_rw.write(
             bucket=bucket,
-            record=Point(measurement_name).tag("application", APP_NAME).tag("device", DEVICE_NAME_BASE).field(field_name, field_value))
+            record=Point(measurement_name).tag("application", app_name).tag("device", device_name_base).field(field_name, field_value))
 
     # noinspection PyBroadException
     def run(self):
@@ -1202,26 +1200,26 @@ class EventProcessor(Thread):
         self.bot.connect(URL_WORKER_TELEGRAM_BOT)
         # influx DB
         self.influxdb = InfluxDBClient(
-            url=APP_CONFIG.get('influxdb', 'url'),
+            url=app_config.get('influxdb', 'url'),
             token=creds.influxdb_token,
             org=creds.influxdb_org)
         self.influxdb_rw = self.influxdb.write_api(write_options=ASYNCHRONOUS)
         self.influxdb_ro = self.influxdb.query_api()
         # load auto-scheduler
-        auto_scheduler = zmq_context.socket(zmq.PUSH) # type: ignore
+        auto_scheduler = zmq_socket(zmq.PUSH) # type: ignore
         auto_scheduler.connect(URL_WORKER_AUTO_SCHEDULER)
         auto_scheduler.send_pyobj(self._input_config)
         auto_scheduler.close()
         # informational notifications
         # TODO: move to UI configuration
-        self.notify_not_before_time = make_timestamp(APP_CONFIG.get('info_notify', 'not_before_time'))
-        self.notify_not_after_time = make_timestamp(APP_CONFIG.get('info_notify', 'not_after_time'))
+        self.notify_not_before_time = make_timestamp(app_config.get('info_notify', 'not_before_time'))
+        self.notify_not_after_time = make_timestamp(app_config.get('info_notify', 'not_after_time'))
         # message validity
-        self._max_message_validity_seconds = int(APP_CONFIG.get('app', 'max_message_validity_seconds'))
+        self._max_message_validity_seconds = int(app_config.get('app', 'max_message_validity_seconds'))
         # output type handlers
         self._output_type_handlers = dict()
         for output_type_handler in [OUTPUT_TYPE_BLUETOOTH, OUTPUT_TYPE_SWITCH, OUTPUT_TYPE_SNAPSHOT, OUTPUT_TYPE_TTS]:
-            output_types = APP_CONFIG.get('output_types', output_type_handler).lower().split(',')
+            output_types = app_config.get('output_types', output_type_handler).lower().split(',')
             for output_type in output_types:
                 self._output_type_handlers[output_type] = output_type_handler
         # set up the special input for the panic button
@@ -1229,7 +1227,7 @@ class EventProcessor(Thread):
             input_outputs=self.inputs,
             device_origin=self._input_origin,
             origin_devices=self._inputs_by_origin,
-            event_origin=DEVICE_NAME,
+            event_origin=device_name,
             awol_devices=self._awol_inputs,
             device={
                 'device_key': 'App Panic Button',
@@ -1241,7 +1239,7 @@ class EventProcessor(Thread):
             input_outputs=self.inputs,
             device_origin=self._input_origin,
             origin_devices=self._inputs_by_origin,
-            event_origin=DEVICE_NAME,
+            event_origin=device_name,
             awol_devices=self._awol_inputs,
             device={
                 'device_key': 'App Dash Button',
@@ -1253,7 +1251,7 @@ class EventProcessor(Thread):
             input_outputs=self.outputs,
             device_origin=self._output_origin,
             origin_devices=self._outputs_by_origin,
-            event_origin=DEVICE_NAME,
+            event_origin=device_name,
             awol_devices=self._awol_outputs,
             device={
                 'device_key': 'SMS',
@@ -1285,7 +1283,7 @@ class EventProcessor(Thread):
                         if 'register_origin' == event_origin:
                             # connect to event origins
                             for origin, ip in list(event_data.items()):
-                                connection_string = 'tcp://{}:{}'.format(ip, APP_CONFIG.get('zmq', 'pubsub_port'))
+                                connection_string = 'tcp://{}:{}'.format(ip, app_config.get('zmq', 'pubsub_port'))
                                 subscriber = ZmqEventSourceSubscriber(label=origin, publisher_endpoint=connection_string)
                                 subscriber.start()
                                 threads.threads_tracked.add(subscriber.getName())
@@ -1293,7 +1291,7 @@ class EventProcessor(Thread):
                                 self._origin_nanny.add_origin_subscriber(origin=origin, ip=ip, subscriber=subscriber)
                                 # keep track of the available event origins
                                 self._origin_connections[origin] = connection_string
-                                self._origin_pull_connections[origin] = 'tcp://{}:{}'.format(ip, APP_CONFIG.get('zmq', 'pushpull_port'))
+                                self._origin_pull_connections[origin] = 'tcp://{}:{}'.format(ip, app_config.get('zmq', 'pushpull_port'))
                             continue
                         if 'register_mqtt_origin' == event_origin:
                             # connect to event origins
@@ -1329,7 +1327,7 @@ class EventProcessor(Thread):
                             if 'dash_button' in event_data:
                                 log.info('Dash button event: {}'.format(event_data['dash_button']))
                                 # splice in a new event
-                                event_origin = DEVICE_NAME
+                                event_origin = device_name
                                 event_data.update({
                                     'data': {
                                         'active_devices': [
@@ -1535,7 +1533,7 @@ class EventProcessor(Thread):
                                         if 'trigger_window' in active_device_config:
                                             trigger_window = active_device_config['trigger_window']
                                         else:
-                                            trigger_window = int(APP_CONFIG.get('config', 'default_trigger_window'))
+                                            trigger_window = int(app_config.get('config', 'default_trigger_window'))
                                         # if not in the trigger history, treat as never activated
                                         if active_device_key not in self._input_trigger_history:
                                             self._input_trigger_history[active_device_key] = time.time()
@@ -1562,7 +1560,7 @@ class EventProcessor(Thread):
                                             activation_interval = active_device_config['activation_interval']
                                         else:
                                             activation_interval = int(
-                                                APP_CONFIG.get('config', 'default_activation_interval'))
+                                                app_config.get('config', 'default_activation_interval'))
                                         input_last_active, last_event_detail = self._input_active_history[
                                             active_device_key]
                                         if last_event_detail == event_detail:
@@ -1644,7 +1642,7 @@ class EventLog(Thread):
         self._metric_last_posted_device_event = 0
         self._device_events_accumulator = 0
 
-        self.socket = zmq_context.socket(zmq.PULL) # type: ignore
+        self.socket = zmq_socket(zmq.PULL) # type: ignore
         self.socket.bind(URL_WORKER_EVENT_LOG)
 
     def get_events(self, since_ts):
@@ -1713,8 +1711,8 @@ class TBot(Thread):
         threads.threads_tracked.add(self.name)
 
         self.bot = None
-        self.chat_id = APP_CONFIG.getint('telegram', 'chat_room_id')
-        self.socket = zmq_context.socket(zmq.PULL) # type: ignore
+        self.chat_id = app_config.getint('telegram', 'chat_room_id')
+        self.socket = zmq_socket(zmq.PULL) # type: ignore
         self.socket.bind(URL_WORKER_TELEGRAM_BOT)
 
         self.sns = boto3.client('sns')
@@ -1829,16 +1827,16 @@ class MqttSubscriber(Thread):
         self.daemon = True
         threads.threads_tracked.add(self.name)
 
-        self.processor = zmq_context.socket(zmq.PUSH) # type: ignore
+        self.processor = zmq_socket(zmq.PUSH) # type: ignore
         self._mqtt_client = None
-        self._mqtt_server_address = APP_CONFIG.get('mqtt', 'server_address')
+        self._mqtt_server_address = app_config.get('mqtt', 'server_address')
         self._mqtt_subscribe_topics = list()
         # match Paho interface
-        for mqtt_source in APP_CONFIG.get('mqtt', 'subscription_sources').split(','):
+        for mqtt_source in app_config.get('mqtt', 'subscription_sources').split(','):
             self._mqtt_subscribe_topics.append((mqtt_source, 0))
         self._source_subscribers = dict()
         # IPC for publish
-        self.socket = zmq_context.socket(zmq.PULL) # type: ignore
+        self.socket = zmq_socket(zmq.PULL) # type: ignore
         self.socket.bind(URL_WORKER_MQTT_PUBLISH)
 
     def add_source_subscriber(self, topic, subscriber):
@@ -2013,12 +2011,12 @@ class ZmqEventSourceSubscriber(EventSourceSubscriber, Thread):
 
         self._publisher_endpoint = publisher_endpoint
 
-        self.subscriber = zmq_context.socket(zmq.SUB) # type: ignore
-        self.processor = zmq_context.socket(zmq.PUSH) # type: ignore
+        self.subscriber = zmq_socket(zmq.SUB) # type: ignore
+        self.processor = zmq_socket(zmq.PUSH) # type: ignore
 
         self._reconnected = False
         # use half of the tolerated heartbeat value
-        self._zmq_poll_period = int(APP_CONFIG.get('app', 'max_heartbeat_delay_seconds')) / 2
+        self._zmq_poll_period = int(app_config.get('app', 'max_heartbeat_delay_seconds')) / 2
 
     # noinspection PyBroadException
     def run(self):
@@ -2040,7 +2038,7 @@ class ZmqEventSourceSubscriber(EventSourceSubscriber, Thread):
                         self.subscriber.close()
                     except ZMQError:
                         log.exception(self.name)
-                    self.subscriber = zmq_context.socket(zmq.SUB) # type: ignore
+                    self.subscriber = zmq_socket(zmq.SUB) # type: ignore
                     self.subscriber.connect(self._publisher_endpoint)
                     self.subscriber.setsockopt(zmq.SUBSCRIBE, b'') # type: ignore
                     self._reconnected = True
@@ -2092,7 +2090,7 @@ class SQSListener(Thread):
         self.daemon = True
         threads.threads_tracked.add(self.name)
 
-        self.processor = zmq_context.socket(zmq.PUSH) # type: ignore
+        self.processor = zmq_socket(zmq.PUSH) # type: ignore
         self._sqs = None
         self._sqs_queue = None
 
@@ -2152,9 +2150,9 @@ class AutoScheduler(Thread):
         self.daemon = True
         threads.threads_tracked.add(self.name)
 
-        self.processor = zmq_context.socket(zmq.PUSH) # type: ignore
+        self.processor = zmq_socket(zmq.PUSH) # type: ignore
         # IPC for publish
-        self.socket = zmq_context.socket(zmq.PULL) # type: ignore
+        self.socket = zmq_socket(zmq.PULL) # type: ignore
         self.socket.bind(URL_WORKER_AUTO_SCHEDULER)
 
     def update_device(self, device_key, device_state):
@@ -2241,12 +2239,12 @@ class OriginNanny(Thread):
         self.daemon = True
         threads.threads_tracked.add(self.name)
 
-        self.processor = zmq_context.socket(zmq.PUSH) # type: ignore
+        self.processor = zmq_socket(zmq.PUSH) # type: ignore
 
         self.origin_subscriber = {}
-        self._heartbeat_sample_interval = int(APP_CONFIG.get('app', 'heartbeat_sample_interval_seconds'))
-        self._heartbeat_report_interval = int(APP_CONFIG.get('app', 'heartbeat_report_interval_seconds'))
-        self._max_heartbeat_delay = int(APP_CONFIG.get('app', 'max_heartbeat_delay_seconds'))
+        self._heartbeat_sample_interval = int(app_config.get('app', 'heartbeat_sample_interval_seconds'))
+        self._heartbeat_report_interval = int(app_config.get('app', 'heartbeat_report_interval_seconds'))
+        self._max_heartbeat_delay = int(app_config.get('app', 'max_heartbeat_delay_seconds'))
         self._heartbeats = {}
 
     # noinspection PyShadowingNames
@@ -2319,7 +2317,7 @@ class OriginNanny(Thread):
                 # send the maximum heartbeat
                 if heartbeat_due and max_heartbeat >= 0:
                     self.processor.send_pyobj({
-                        DEVICE_NAME: {
+                        device_name: {
                             'data': {
                                 'max_heartbeat_age': max_heartbeat
                             }
@@ -2343,24 +2341,24 @@ class EventSourceDiscovery(Thread):
         self.daemon = True
         threads.threads_tracked.add(self.name)
 
-        self.processor = zmq_context.socket(zmq.PUSH) # type: ignore
+        self.processor = zmq_socket(zmq.PUSH) # type: ignore
 
         self._boto_session = boto_session
         self._swf_region = swf_region
         self._swf_domain = swf_domain
 
         self._mdash_api_key = creds.mdash_api_key
-        self._mdash_devices_url = APP_CONFIG.get('mdash', 'base_url')
-        self._app_config_mqtt_pub_topic = APP_CONFIG.get('mdash', 'app_config_mqtt_pub_topic')
+        self._mdash_devices_url = app_config.get('mdash', 'base_url')
+        self._app_config_mqtt_pub_topic = app_config.get('mdash', 'app_config_mqtt_pub_topic')
 
     def run(self):
         self.processor.connect(URL_WORKER_APP)
         # register ZMQ sources
         try:
             # start with static sources
-            subscription_sources = APP_CONFIG.get('app', 'subscription_sources')
+            subscription_sources = app_config.get('app', 'subscription_sources')
             if len(subscription_sources) > 0:
-                for source in APP_CONFIG.get('app', 'subscription_sources').split(','):
+                for source in app_config.get('app', 'subscription_sources').split(','):
                     label_ip = source.split(':')
                     source_label = label_ip[0]
                     source_ip = label_ip[1]
@@ -2374,10 +2372,10 @@ class EventSourceDiscovery(Thread):
             return
         # register SWF actions
         sources_to_register = (
-            APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_BLUETOOTH),
-            APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_SWITCH),
-            APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT),
-            APP_CONFIG.get('swf_tasklist', OUTPUT_TYPE_TTS))
+            app_config.get('swf_tasklist', OUTPUT_TYPE_BLUETOOTH),
+            app_config.get('swf_tasklist', OUTPUT_TYPE_SWITCH),
+            app_config.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT),
+            app_config.get('swf_tasklist', OUTPUT_TYPE_TTS))
         while True:
             try:
                 outstanding_registrations = set(sources_to_register) - event_processor.origins
@@ -2388,7 +2386,7 @@ class EventSourceDiscovery(Thread):
                     with workflow_starter(self._boto_session,
                                         self._swf_region,
                                         self._swf_domain,
-                                        APP_NAME) as starter:
+                                        app_name) as starter:
                         workflow_instance = DeviceWorkflow.execute(app=source_to_register) # pylint: disable=no-value-for-parameter
                         log.debug("Registration workflow for {} is {}".format(
                             source_to_register,
@@ -2484,8 +2482,8 @@ class CallbackUrlDiscovery(Thread):
         self.daemon = True
 
         self._discover_url = 'http://127.0.0.1:{}/api/tunnels/{}'.format(
-            APP_CONFIG.get('ngrok', 'client_api_port'),
-            APP_CONFIG.get('ngrok', 'tunnel_name'))
+            app_config.get('ngrok', 'client_api_port'),
+            app_config.get('ngrok', 'tunnel_name'))
 
     # noinspection PyBroadException
     def run(self):
@@ -2533,7 +2531,7 @@ class FlaskThread(Thread):
         compress.init_app(app)
         #TODO: how to enable debug mode
         self.srv = make_server(host='0.0.0.0',
-                               port=int(APP_CONFIG.get('flask', 'http_port')),
+                               port=int(app_config.get('flask', 'http_port')),
                                app=app,
                                threaded=True)
         self.ctx = app.app_context()
@@ -2562,7 +2560,7 @@ if __name__ == "__main__":
     swf_decider = ThreadedWorkflowExecutor(WorkflowWorker(boto_session,
                                              swf_region,
                                              swf_domain,
-                                             APP_NAME,
+                                             app_name,
                                              HelloWorldWorkflow,
                                              DeviceWorkflow,
                                              BluetoothWorkflow,
@@ -2576,7 +2574,7 @@ if __name__ == "__main__":
     swf_worker = ThreadedActivityExecutor(ActivityWorker(boto_session,
                                             swf_region,
                                             swf_domain,
-                                            APP_NAME,
+                                            app_name,
                                             HelloWorldActivities()))
     swf_worker._worker.unhandled_exception_handler = swf_exception_handler
     swf_worker.start()
