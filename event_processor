@@ -181,7 +181,7 @@ def debug():
 def internal_server_error(e):
     return render_template('error.html',
                            sentry_event_id=last_event_id(),
-                           sentry_dsn=app_config.get('sentry', 'dsn')
+                           sentry_dsn=creds.sentry_dsn
                            ), 500
 
 
@@ -2602,7 +2602,6 @@ if __name__ == "__main__":
     f.setDaemon(True)
     f.start()
     # not tracked by nanny because this is used for Flask bootstrap
-    flask_app.register_error_handler(500, internal_server_error)
     server = FlaskThread(app=flask_app, compress=Compress())
     server.start()
     try:
