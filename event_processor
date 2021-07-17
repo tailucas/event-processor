@@ -2183,7 +2183,8 @@ class AutoScheduler(Thread, Closable):
 class OriginNanny(Thread, Closable):
 
     def __init__(self):
-        super(OriginNanny, self).__init__(name=self.__class__.__name__)
+        Thread.__init__(self, name=self.__class__.__name__)
+        Closable.__init__(self)
         self.daemon = True
         threads.threads_tracked.add(self.name)
 
@@ -2281,7 +2282,8 @@ class OriginNanny(Thread, Closable):
 
 class EventSourceDiscovery(Thread, Closable):
     def __init__(self, boto_session, swf_region, swf_domain):
-        super(EventSourceDiscovery, self).__init__(name=self.__class__.__name__)
+        Thread.__init__(self, name=self.__class__.__name__)
+        Closable.__init__(self)
         self.daemon = True
         threads.threads_tracked.add(self.name)
 
