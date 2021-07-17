@@ -708,8 +708,9 @@ def telegram_error_handler(update: Update, context: TelegramCallbackContext):
 class EventProcessor(Thread, Closable):
 
     def __init__(self, origin_nanny, boto_session, swf_region, swf_domain, mqtt_subscriber):
-        super(Thread, self).__init__(name=self.__class__.__name__)
-        super(Closable, self).__init__(name=self.__class__.__name__)
+        name = self.__class__.__name__
+        Thread.__init__(self, name=name)
+        Closable.__init__(self, name=name)
         self.daemon = True
         threads.threads_tracked.add(self.name)
 
