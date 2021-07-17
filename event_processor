@@ -700,9 +700,8 @@ def telegram_error_handler(update: Update, context: TelegramCallbackContext):
 class EventProcessor(Thread, Closable):
 
     def __init__(self, origin_nanny, boto_session, swf_region, swf_domain, mqtt_subscriber):
-        name = self.__class__.__name__
-        Thread.__init__(self, name=name)
-        Closable.__init__(self, name=name)
+        Thread.__init__(self, name=self.__class__.__name__)
+        Closable.__init__(self, bind_url=URL_WORKER_APP)
         self.daemon = True
         threads.threads_tracked.add(self.name)
 
@@ -749,9 +748,6 @@ class EventProcessor(Thread, Closable):
         self._device_event_lru = lrucache(100)
 
         self._origin_nanny = origin_nanny
-
-        self.socket = self.get_socket(zmq.PULL) # type: ignore
-        self.socket.bind(URL_WORKER_APP)
 
         self.event_log = self.get_socket(zmq.PUSH) # type: ignore
 
@@ -1611,9 +1607,8 @@ class EventProcessor(Thread, Closable):
 class EventLog(Thread, Closable):
 
     def __init__(self):
-        name = self.__class__.__name__
-        Thread.__init__(self, name=name)
-        Closable.__init__(self, name=name)
+        Thread.__init__(self, name=self.__class__.__name__)
+        Closable.__init__(self, bind_url=URL_WORKER_EVENT_LOG)
         self.daemon = True
         threads.threads_tracked.add(self.name)
 
@@ -1621,9 +1616,6 @@ class EventLog(Thread, Closable):
         self._event_log_table = None
         self._metric_last_posted_device_event = 0
         self._device_events_accumulator = 0
-
-        self.socket = self.get_socket(zmq.PULL) # type: ignore
-        self.socket.bind(URL_WORKER_EVENT_LOG)
 
     def get_events(self, since_ts):
         event_data = self._event_log_table.scan(FilterExpression=Attr('timestamp').gte(since_ts))
@@ -1683,17 +1675,13 @@ class EventLog(Thread, Closable):
 class TBot(Thread, Closable):
 
     def __init__(self):
-        name = self.__class__.__name__
-        Thread.__init__(self, name=name)
-        Closable.__init__(self, name=name)
+        Thread.__init__(self, name=self.__class__.__name__)
+        Closable.__init__(self, bind_url=URL_WORKER_TELEGRAM_BOT)
         self.daemon = True
         threads.threads_tracked.add(self.name)
 
         self.bot = None
         self.chat_id = app_config.getint('telegram', 'chat_room_id')
-        self.socket = self.get_socket(zmq.PULL) # type: ignore
-        self.socket.bind(URL_WORKER_TELEGRAM_BOT)
-
         self.sns = boto3.client('sns')
 
     def build_message(self, timestamp, event_data, max_length=160, build_sms=False):
@@ -1800,9 +1788,8 @@ class TBot(Thread, Closable):
 class MqttSubscriber(Thread, Closable):
 
     def __init__(self):
-        name = self.__class__.__name__
-        Thread.__init__(self, name=name)
-        Closable.__init__(self, name=name)
+        Thread.__init__(self, name=self.__class__.__name__)
+        Closable.__init__(self, bind_url=URL_WORKER_MQTT_PUBLISH)
         self.daemon = True
         threads.threads_tracked.add(self.name)
 
@@ -1814,9 +1801,6 @@ class MqttSubscriber(Thread, Closable):
         for mqtt_source in app_config.get('mqtt', 'subscription_sources').split(','):
             self._mqtt_subscribe_topics.append((mqtt_source, 0))
         self._source_subscribers = dict()
-        # IPC for publish
-        self.socket = self.get_socket(zmq.PULL) # type: ignore
-        self.socket.bind(URL_WORKER_MQTT_PUBLISH)
 
     def close(self):
         Closable.close(self)
@@ -1985,7 +1969,7 @@ class ZmqEventSourceSubscriber(EventSourceSubscriber, Thread, Closable):
         name = '{}::{}'.format(self.__class__.__name__, label)
         EventSourceSubscriber.__init__(self, label=label)
         Thread.__init__(self, name=name)
-        Closable.__init__(self, name=name)
+        Closable.__init__(self)
         self.daemon = True
 
         self._publisher_endpoint = publisher_endpoint
@@ -2061,9 +2045,8 @@ class ZmqEventSourceSubscriber(EventSourceSubscriber, Thread, Closable):
 class SQSListener(Thread, Closable):
 
     def __init__(self):
-        name = self.__class__.__name__
-        Thread.__init__(self, name=name)
-        Closable.__init__(self, name=name)
+        Thread.__init__(self, name=self.__class__.__name__)
+        Closable.__init__(self)
         self.daemon = True
         threads.threads_tracked.add(self.name)
 
@@ -2120,14 +2103,12 @@ class SQSListener(Thread, Closable):
 class AutoScheduler(Thread, Closable):
 
     def __init__(self):
-        super(AutoScheduler, self).__init__(name=self.__class__.__name__)
+        Thread.__init__(self, name=self.__class__.__name__)
+        Closable.__init__(self, bind_url=URL_WORKER_AUTO_SCHEDULER)
         self.daemon = True
         threads.threads_tracked.add(self.name)
 
         self.processor = self.get_socket(zmq.PUSH) # type: ignore
-        # IPC for publish
-        self.socket = self.get_socket(zmq.PULL) # type: ignore
-        self.socket.bind(URL_WORKER_AUTO_SCHEDULER)
 
     def update_device(self, device_key, device_state):
         log.info('Updating {} to enabled={}'.format(device_key, device_state))
