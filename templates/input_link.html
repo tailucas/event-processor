@@ -21,7 +21,7 @@
                                 {% if linkable_input_key == input_device_key %}{% continue %}{% endif %}
                                 <div class="form-group">
                                     <div class="checkbox">
-                                        <label><input type="checkbox" name="linked_input" value="{{ linkable_input_key }}"{% if linkable_input_key in input_device['linked_inputs'] %} checked{% endif %}>{{ linkable_input['device_label'] }}</label>
+                                        <label><input type="checkbox" name="linked_input" value="{{ linkable_input_key }}"{% if 'linked_inputs' in input_device and linkable_input_key in input_device['linked_inputs'] %} checked{% endif %}>{{ linkable_input['device_label'] }}</label>
                                     </div>
                                 </div>
                                 {% endfor %}
