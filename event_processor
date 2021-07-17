@@ -226,8 +226,8 @@ def index():
     if request.method == 'POST':
         if 'panic_button' in request.form:
             log.info('Panic button pressed.')
-            with exception_handler(closable=None, with_socket_type=zmq.PUSH, connect_url=URL_WORKER_APP) as processor:
-                processor.send_pyobj({
+            with exception_handler(connect_url=URL_WORKER_APP, with_socket_type=zmq.PUSH) as zmq_socket:
+                zmq_socket.send_pyobj({
                     device_name: {
                         'data': {
                             'active_devices': [
@@ -265,8 +265,8 @@ def index():
             #TODO: correctly update 'meter_reading'
             device_listing[device_key]['meter_value'] = reset_value
             # send IoT message
-            with exception_handler(closable=None, with_socket_type=zmq.PUSH, connect_url=URL_WORKER_MQTT_PUBLISH) as mqtt_ipc:
-                mqtt_ipc.send_pyobj((
+            with exception_handler(connect_url=URL_WORKER_MQTT_PUBLISH, with_socket_type=zmq.PUSH) as zmq_socket:
+                zmq_socket.send_pyobj((
                     app_config.get('mqtt', 'meter_reset_topic'),
                     json.dumps(iot_message)
                 ))
@@ -409,8 +409,7 @@ def show_config():
             device_listing[device_key]['auto_schedule_enable'] = request.form['auto_schedule_enable']
             device_listing[device_key]['auto_schedule_disable'] = request.form['auto_schedule_disable']
             # open IPC
-            with exception_handler(closable=None, with_socket_type=zmq.PUSH) as auto_scheduler:
-                auto_scheduler.connect(URL_WORKER_AUTO_SCHEDULER)
+            with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, with_socket_type=zmq.PUSH) as zmq_socket:
                 # update device configuration
                 if 'grouped_inputs' not in device_listing[device_key]:
                     update_config(
@@ -418,7 +417,7 @@ def show_config():
                         device_key=device_key,
                         request_form=request.form)
                     # reload auto-scheduler
-                    auto_scheduler.send_pyobj([(device_key, event_processor.input_config[device_key])])
+                    zmq_socket.send_pyobj([(device_key, event_processor.input_config[device_key])])
                 else:
                     for grouped_device_key in list(device_listing[device_key]['grouped_inputs'].keys()):
                         update_config(
@@ -426,7 +425,7 @@ def show_config():
                             device_key=grouped_device_key,
                             request_form=request.form)
                         # reload auto-scheduler
-                        auto_scheduler.send_pyobj([(grouped_device_key, event_processor.input_config[grouped_device_key])])
+                        zmq_socket.send_pyobj([(grouped_device_key, event_processor.input_config[grouped_device_key])])
         else:
             log.error('No action associated with this request: {}'.format(request.form))
     return render_template('config.html',
@@ -624,8 +623,8 @@ def telegram_bot_cmd(update: Update, context: TelegramCallbackContext):
                         parse_mode='Markdown')
         # status update
         if update.effective_message.text.startswith('/report'):
-            with exception_handler(closable=None, with_socket_type=zmq.PUSH, connect_url=URL_WORKER_APP) as processor:
-                processor.send_pyobj({
+            with exception_handler(connect_url=URL_WORKER_APP, with_socket_type=zmq.PUSH) as zmq_socket:
+                zmq_socket.send_pyobj({
                     device_name: {
                         'data': {
                             'active_devices': [
@@ -1188,8 +1187,8 @@ class EventProcessor(Thread, Closable):
         self.influxdb_rw = self.influxdb.write_api(write_options=ASYNCHRONOUS)
         self.influxdb_ro = self.influxdb.query_api()
         # load auto-scheduler
-        with exception_handler(closable=None, with_socket_type=zmq.PUSH, connect_url=URL_WORKER_AUTO_SCHEDULER) as auto_scheduler:
-            auto_scheduler.send_pyobj(self._input_config)
+        with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, with_socket_type=zmq.PUSH) as zmq_socket:
+            zmq_socket.send_pyobj(self._input_config)
         # informational notifications
         # TODO: move to UI configuration
         self.notify_not_before_time = make_timestamp(app_config.get('info_notify', 'not_before_time'))
