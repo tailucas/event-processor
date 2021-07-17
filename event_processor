@@ -139,7 +139,7 @@ from lib.process import SignalHandler, \
     exec_cmd_log
 from lib import threads
 from lib.threads import thread_nanny
-from lib.zmq import zmq_socket, zmq_term, Closable
+from lib.zmq import zmq_term, Closable
 from lib.handler import exception_handler
 
 from influxdb_client import InfluxDBClient, Point, WritePrecision
@@ -226,22 +226,20 @@ def index():
     if request.method == 'POST':
         if 'panic_button' in request.form:
             log.info('Panic button pressed.')
-            processor = zmq_socket(zmq.PUSH)
-            processor.connect(URL_WORKER_APP)
-            processor.send_pyobj({
-                device_name: {
-                    'data': {
-                        'active_devices': [
-                            {
-                                'device_key': 'App Panic Button',
-                                'device_label': 'Panic Button',
-                                'type': 'Panic Button'
-                            }
-                        ]
+            with exception_handler(closable=None, with_socket_type=zmq.PUSH, connect_url=URL_WORKER_APP) as processor:
+                processor.send_pyobj({
+                    device_name: {
+                        'data': {
+                            'active_devices': [
+                                {
+                                    'device_key': 'App Panic Button',
+                                    'device_label': 'Panic Button',
+                                    'type': 'Panic Button'
+                                }
+                            ]
+                        }
                     }
-                }
-            })
-            processor.close()
+                })
         elif 'meter_reset' in request.form:
             device_key = request.form['meter_reset']
             reset_value = 0
@@ -267,13 +265,11 @@ def index():
             #TODO: correctly update 'meter_reading'
             device_listing[device_key]['meter_value'] = reset_value
             # send IoT message
-            mqtt_ipc = zmq_socket(zmq.PUSH)
-            mqtt_ipc.connect(URL_WORKER_MQTT_PUBLISH)
-            mqtt_ipc.send_pyobj((
-                app_config.get('mqtt', 'meter_reset_topic'),
-                json.dumps(iot_message)
-            ))
-            mqtt_ipc.close()
+            with exception_handler(closable=None, with_socket_type=zmq.PUSH, connect_url=URL_WORKER_MQTT_PUBLISH) as mqtt_ipc:
+                mqtt_ipc.send_pyobj((
+                    app_config.get('mqtt', 'meter_reset_topic'),
+                    json.dumps(iot_message)
+                ))
         elif 'meter_history' in request.form:
             scheme = None
             if 'X-Forwarded-Proto' in request.headers:
@@ -413,26 +409,24 @@ def show_config():
             device_listing[device_key]['auto_schedule_enable'] = request.form['auto_schedule_enable']
             device_listing[device_key]['auto_schedule_disable'] = request.form['auto_schedule_disable']
             # open IPC
-            auto_scheduler = zmq_socket(zmq.PUSH) # type: ignore
-            auto_scheduler.connect(URL_WORKER_AUTO_SCHEDULER)
-            # update device configuration
-            if 'grouped_inputs' not in device_listing[device_key]:
-                update_config(
-                    event_processor=event_processor,
-                    device_key=device_key,
-                    request_form=request.form)
-                # reload auto-scheduler
-                auto_scheduler.send_pyobj([(device_key, event_processor.input_config[device_key])])
-            else:
-                for grouped_device_key in list(device_listing[device_key]['grouped_inputs'].keys()):
+            with exception_handler(closable=None, with_socket_type=zmq.PUSH) as auto_scheduler:
+                auto_scheduler.connect(URL_WORKER_AUTO_SCHEDULER)
+                # update device configuration
+                if 'grouped_inputs' not in device_listing[device_key]:
                     update_config(
                         event_processor=event_processor,
-                        device_key=grouped_device_key,
+                        device_key=device_key,
                         request_form=request.form)
                     # reload auto-scheduler
-                    auto_scheduler.send_pyobj([(grouped_device_key, event_processor.input_config[grouped_device_key])])
-            # close IPC
-            auto_scheduler.close()
+                    auto_scheduler.send_pyobj([(device_key, event_processor.input_config[device_key])])
+                else:
+                    for grouped_device_key in list(device_listing[device_key]['grouped_inputs'].keys()):
+                        update_config(
+                            event_processor=event_processor,
+                            device_key=grouped_device_key,
+                            request_form=request.form)
+                        # reload auto-scheduler
+                        auto_scheduler.send_pyobj([(grouped_device_key, event_processor.input_config[grouped_device_key])])
         else:
             log.error('No action associated with this request: {}'.format(request.form))
     return render_template('config.html',
@@ -630,22 +624,20 @@ def telegram_bot_cmd(update: Update, context: TelegramCallbackContext):
                         parse_mode='Markdown')
         # status update
         if update.effective_message.text.startswith('/report'):
-            processor = zmq_socket(zmq.PUSH) # type: ignore
-            processor.connect(URL_WORKER_APP)
-            processor.send_pyobj({
-                device_name: {
-                    'data': {
-                        'active_devices': [
-                            {
-                                'device_key': 'App Dash Button',
-                                'device_label': 'Dash Button',
-                                'type': 'Dash Button'
-                            }
-                        ]
+            with exception_handler(closable=None, with_socket_type=zmq.PUSH, connect_url=URL_WORKER_APP) as processor:
+                processor.send_pyobj({
+                    device_name: {
+                        'data': {
+                            'active_devices': [
+                                {
+                                    'device_key': 'App Dash Button',
+                                    'device_label': 'Dash Button',
+                                    'type': 'Dash Button'
+                                }
+                            ]
+                        }
                     }
-                }
-            })
-            processor.close()
+                })
     except Exception:
         log.exception('bot handler')
         capture_exception()
@@ -1200,10 +1192,8 @@ class EventProcessor(Thread, Closable):
         self.influxdb_rw = self.influxdb.write_api(write_options=ASYNCHRONOUS)
         self.influxdb_ro = self.influxdb.query_api()
         # load auto-scheduler
-        auto_scheduler = zmq_socket(zmq.PUSH) # type: ignore
-        auto_scheduler.connect(URL_WORKER_AUTO_SCHEDULER)
-        auto_scheduler.send_pyobj(self._input_config)
-        auto_scheduler.close()
+        with exception_handler(closable=None, with_socket_type=zmq.PUSH, connect_url=URL_WORKER_AUTO_SCHEDULER) as auto_scheduler:
+            auto_scheduler.send_pyobj(self._input_config)
         # informational notifications
         # TODO: move to UI configuration
         self.notify_not_before_time = make_timestamp(app_config.get('info_notify', 'not_before_time'))
@@ -1618,10 +1608,12 @@ class EventProcessor(Thread, Closable):
                 continue
 
 
-class EventLog(Thread):
+class EventLog(Thread, Closable):
 
     def __init__(self):
-        super(EventLog, self).__init__(name=self.__class__.__name__)
+        name = self.__class__.__name__
+        Thread.__init__(self, name=name)
+        Closable.__init__(self, name=name)
         self.daemon = True
         threads.threads_tracked.add(self.name)
 
@@ -1630,7 +1622,7 @@ class EventLog(Thread):
         self._metric_last_posted_device_event = 0
         self._device_events_accumulator = 0
 
-        self.socket = zmq_socket(zmq.PULL) # type: ignore
+        self.socket = self.get_socket(zmq.PULL) # type: ignore
         self.socket.bind(URL_WORKER_EVENT_LOG)
 
     def get_events(self, since_ts):
@@ -1680,10 +1672,7 @@ class EventLog(Thread):
                 else:
                     self._device_events_accumulator += 1
             except ContextTerminated:
-                log.warning('ZMQ terminate: {}'.format(self.__class__.__name__))
-                self.socket.close()
-                log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
-                break
+                self.close()
             except Exception:
                 log.exception(self.__class__.__name__)
                 capture_exception()
@@ -1691,16 +1680,18 @@ class EventLog(Thread):
                 continue
 
 
-class TBot(Thread):
+class TBot(Thread, Closable):
 
     def __init__(self):
-        super(TBot, self).__init__(name=self.__class__.__name__)
+        name = self.__class__.__name__
+        Thread.__init__(self, name=name)
+        Closable.__init__(self, name=name)
         self.daemon = True
         threads.threads_tracked.add(self.name)
 
         self.bot = None
         self.chat_id = app_config.getint('telegram', 'chat_room_id')
-        self.socket = zmq_socket(zmq.PULL) # type: ignore
+        self.socket = self.get_socket(zmq.PULL) # type: ignore
         self.socket.bind(URL_WORKER_TELEGRAM_BOT)
 
         self.sns = boto3.client('sns')
@@ -1797,9 +1788,7 @@ class TBot(Thread):
                     else:
                         log.error('No viable method to send notification for event: {}'.format(notification_message))
             except ContextTerminated:
-                log.warning('ZMQ terminate: {}'.format(self.__class__.__name__))
-                self.socket.close()
-                log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
+                self.close()
                 break
             except Exception:
                 log.exception(self.__class__.__name__)
@@ -1808,14 +1797,16 @@ class TBot(Thread):
                 continue
 
 
-class MqttSubscriber(Thread):
+class MqttSubscriber(Thread, Closable):
 
     def __init__(self):
-        super(MqttSubscriber, self).__init__(name=self.__class__.__name__)
+        name = self.__class__.__name__
+        Thread.__init__(self, name=name)
+        Closable.__init__(self, name=name)
         self.daemon = True
         threads.threads_tracked.add(self.name)
 
-        self.processor = zmq_socket(zmq.PUSH) # type: ignore
+        self.processor = self.get_socket(zmq.PUSH) # type: ignore
         self._mqtt_client = None
         self._mqtt_server_address = app_config.get('mqtt', 'server_address')
         self._mqtt_subscribe_topics = list()
@@ -1824,8 +1815,15 @@ class MqttSubscriber(Thread):
             self._mqtt_subscribe_topics.append((mqtt_source, 0))
         self._source_subscribers = dict()
         # IPC for publish
-        self.socket = zmq_socket(zmq.PULL) # type: ignore
+        self.socket = self.get_socket(zmq.PULL) # type: ignore
         self.socket.bind(URL_WORKER_MQTT_PUBLISH)
+
+    def close(self):
+        Closable.close(self)
+        try:
+            self._mqtt_client.disconnect()
+        except Exception:
+            log.warning('Ignoring error closing MQTT socket.', exc_info=True)
 
     def add_source_subscriber(self, topic, subscriber):
         self._source_subscribers[topic] = subscriber
@@ -1919,7 +1917,7 @@ class MqttSubscriber(Thread):
                     }
                 })
         except ContextTerminated:
-            log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
+            self.close()
 
     # noinspection PyBroadException
     def run(self):
@@ -1943,25 +1941,17 @@ class MqttSubscriber(Thread):
                     pass
                 # test for application shutdown
                 if threads.shutting_down:
-                    log.warning('App terminate: {}'.format(self.__class__.__name__))
-                    self.socket.close()
-                    self._mqtt_client.disconnect()
-                    self.processor.close()
-                    log.warning('App terminated: {}'.format(self.__class__.__name__))
+                    self.close()
                     break
             except ContextTerminated:
-                log.warning('ZMQ terminate: {}'.format(self.__class__.__name__))
-                self.socket.close()
-                self._mqtt_client.disconnect()
-                self.processor.close()
-                log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
+                self.close()
                 break
             except ZMQError:
-                log.exception(self.name)
+                log.exception()
                 break
             except Exception:
                 # consider mqttc.reinitialise()
-                log.exception(self.name)
+                log.exception()
                 capture_exception()
                 sleep(1)
                 continue
@@ -1989,18 +1979,19 @@ class MqttEventSourceSubscriber(EventSourceSubscriber):
         return self._device_id
 
 
-class ZmqEventSourceSubscriber(EventSourceSubscriber, Thread):
+class ZmqEventSourceSubscriber(EventSourceSubscriber, Thread, Closable):
 
     def __init__(self, label, publisher_endpoint):
+        name = '{}::{}'.format(self.__class__.__name__, label)
         EventSourceSubscriber.__init__(self, label=label)
-        Thread.__init__(self)
-        self.name = '{}::{}'.format(self.__class__.__name__, label)
+        Thread.__init__(self, name=name)
+        Closable.__init__(self, name=name)
         self.daemon = True
 
         self._publisher_endpoint = publisher_endpoint
 
-        self.subscriber = zmq_socket(zmq.SUB) # type: ignore
-        self.processor = zmq_socket(zmq.PUSH) # type: ignore
+        self.subscriber = self.get_socket(zmq.SUB) # type: ignore
+        self.processor = self.get_socket(zmq.PUSH) # type: ignore
 
         self._reconnected = False
         # use half of the tolerated heartbeat value
@@ -2025,8 +2016,8 @@ class ZmqEventSourceSubscriber(EventSourceSubscriber, Thread):
                     try:
                         self.subscriber.close()
                     except ZMQError:
-                        log.exception(self.name)
-                    self.subscriber = zmq_socket(zmq.SUB) # type: ignore
+                        log.exception()
+                    self.subscriber = self.get_socket(zmq.SUB) # type: ignore
                     self.subscriber.connect(self._publisher_endpoint)
                     self.subscriber.setsockopt(zmq.SUBSCRIBE, b'') # type: ignore
                     self._reconnected = True
@@ -2036,7 +2027,7 @@ class ZmqEventSourceSubscriber(EventSourceSubscriber, Thread):
                     publisher_data = self.subscriber.recv(zmq.NOBLOCK) # type: ignore
                     publisher_event = umsgpack.unpackb(publisher_data)
                 except Again as e:
-                    log.debug('{}: {}'.format(self.name, str(e)))
+                    log.debug(f'{e!s}')
                     continue
                 # output how long since the last message
                 if self.last_message and self._reconnected:
@@ -2055,30 +2046,28 @@ class ZmqEventSourceSubscriber(EventSourceSubscriber, Thread):
                 log.exception('Cannot unpack message from {}.'.format(self._label))
                 continue
             except ContextTerminated:
-                log.warning('ZMQ terminate: {}'.format(self.__class__.__name__))
-                self.subscriber.close()
-                log.warning('ZMQ terminated subscriber: {}'.format(self.__class__.__name__))
-                self.processor.close()
-                log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
+                self.close()
                 break
             except ZMQError:
-                log.exception(self.name)
+                log.exception()
                 break
             except Exception:
-                log.exception(self.name)
+                log.exception()
                 capture_exception()
                 sleep(1)
                 continue
 
 
-class SQSListener(Thread):
+class SQSListener(Thread, Closable):
 
     def __init__(self):
-        super(SQSListener, self).__init__(name=self.__class__.__name__)
+        name = self.__class__.__name__
+        Thread.__init__(self, name=name)
+        Closable.__init__(self, name=name)
         self.daemon = True
         threads.threads_tracked.add(self.name)
 
-        self.processor = zmq_socket(zmq.PUSH) # type: ignore
+        self.processor = self.get_socket(zmq.PUSH) # type: ignore
         self._sqs = None
         self._sqs_queue = None
 
@@ -2105,9 +2094,7 @@ class SQSListener(Thread):
                 self.processor.poll(timeout=0)
                 # test for application shutdown
                 if threads.shutting_down:
-                    log.warning('App terminate: {}'.format(self.__class__.__name__))
-                    self.processor.close()
-                    log.warning('App terminated: {}'.format(self.__class__.__name__))
+                    self.close()
                     break
             except (gaierror, bce, bccce, bcece) as e:
                 log.warning(repr(e))
@@ -2117,31 +2104,29 @@ class SQSListener(Thread):
                 log.exception('Cannot unpack message from SQS queue {}.'.format(self._sqs_queue))
                 continue
             except ContextTerminated:
-                log.warning('ZMQ terminate: {}'.format(self.__class__.__name__))
-                self.processor.close()
-                log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
+                self.close()
                 break
             except ZMQError:
-                log.exception(self.name)
+                log.exception()
                 sleep(1)
                 break
             except Exception:
-                log.exception(self.name)
+                log.exception()
                 capture_exception()
                 sleep(1)
                 continue
 
 
-class AutoScheduler(Thread):
+class AutoScheduler(Thread, Closable):
 
     def __init__(self):
         super(AutoScheduler, self).__init__(name=self.__class__.__name__)
         self.daemon = True
         threads.threads_tracked.add(self.name)
 
-        self.processor = zmq_socket(zmq.PUSH) # type: ignore
+        self.processor = self.get_socket(zmq.PUSH) # type: ignore
         # IPC for publish
-        self.socket = zmq_socket(zmq.PULL) # type: ignore
+        self.socket = self.get_socket(zmq.PULL) # type: ignore
         self.socket.bind(URL_WORKER_AUTO_SCHEDULER)
 
     def update_device(self, device_key, device_state):
@@ -2197,22 +2182,16 @@ class AutoScheduler(Thread):
                                 device_state=True)
                 # test for application shutdown
                 if threads.shutting_down:
-                    log.warning('App terminate: {}'.format(self.__class__.__name__))
-                    self.socket.close()
-                    self.processor.close()
-                    log.warning('App terminated: {}'.format(self.__class__.__name__))
+                    self.close()
                     break
             except ContextTerminated:
-                log.warning('ZMQ terminate: {}'.format(self.__class__.__name__))
-                self.socket.close()
-                self.processor.close()
-                log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
+                self.close()
                 break
             except ZMQError:
-                log.exception(self.name)
+                log.exception()
                 break
             except Exception:
-                log.exception(self.name)
+                log.exception()
                 capture_exception()
                 sleep(1)
                 continue
@@ -2221,14 +2200,14 @@ class AutoScheduler(Thread):
                 threads.interruptable_sleep.wait(10)
 
 
-class OriginNanny(Thread):
+class OriginNanny(Thread, Closable):
 
     def __init__(self):
         super(OriginNanny, self).__init__(name=self.__class__.__name__)
         self.daemon = True
         threads.threads_tracked.add(self.name)
 
-        self.processor = zmq_socket(zmq.PUSH) # type: ignore
+        self.processor = self.get_socket(zmq.PUSH) # type: ignore
 
         self.origin_subscriber = {}
         self._heartbeat_sample_interval = int(app_config.get('app', 'heartbeat_sample_interval_seconds'))
@@ -2249,9 +2228,7 @@ class OriginNanny(Thread):
         max_heartbeat = -1
         while True:
             if threads.shutting_down:
-                log.warning('App terminate: {}'.format(self.__class__.__name__))
-                self.processor.close()
-                log.warning('App terminated: {}'.format(self.__class__.__name__))
+                self.close()
                 break
             try:
                 # send out either a stale alert or the heartbeat
@@ -2317,20 +2294,18 @@ class OriginNanny(Thread):
                 # test for ZMQ shutdown
                 self.processor.poll(timeout=0)
             except ContextTerminated:
-                log.warning('ZMQ terminate: {}'.format(self.__class__.__name__))
-                self.processor.close()
-                log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
+                self.close()
                 break
             threads.interruptable_sleep.wait(self._heartbeat_sample_interval)
 
 
-class EventSourceDiscovery(Thread):
+class EventSourceDiscovery(Thread, Closable):
     def __init__(self, boto_session, swf_region, swf_domain):
         super(EventSourceDiscovery, self).__init__(name=self.__class__.__name__)
         self.daemon = True
         threads.threads_tracked.add(self.name)
 
-        self.processor = zmq_socket(zmq.PUSH) # type: ignore
+        self.processor = self.get_socket(zmq.PUSH) # type: ignore
 
         self._boto_session = boto_session
         self._swf_region = swf_region
@@ -2353,11 +2328,10 @@ class EventSourceDiscovery(Thread):
                     source_ip = label_ip[1]
                     self.processor.send_pyobj({'register_origin': {source_label: source_ip}})
         except ContextTerminated:
-            self.processor.close()
-            log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
+            self.close()
             return
         except ZMQError:
-            log.exception(self.name)
+            log.exception()
             return
         # register SWF actions
         sources_to_register = (
@@ -2396,7 +2370,7 @@ class EventSourceDiscovery(Thread):
                 else:
                     log.warning('Waiting to retry on incomplete source registration: {}'.format(outstanding_registrations))
             except Exception:
-                log.exception(self.name)
+                log.exception()
                 capture_exception()
                 threads.interruptable_sleep.wait(10)
                 continue
@@ -2435,11 +2409,10 @@ class EventSourceDiscovery(Thread):
                     log.info('MQTT topic for {} is {}'.format(device_id, mqtt_pub_topic.text))
                     self.processor.send_pyobj({'register_mqtt_origin': {mqtt_pub_topic.text: device_id}})
                 except ContextTerminated:
-                    self.processor.close()
-                    log.warning('ZMQ terminated: {}'.format(self.__class__.__name__))
+                    self.close()
                     return
                 except ZMQError:
-                    log.exception(self.name)
+                    log.exception()
                     return
                 except Exception:
                     log.exception(self.__class__.__name__)
@@ -2450,7 +2423,7 @@ class EventSourceDiscovery(Thread):
             break
 
         # close the IPC socket
-        self.processor.close()
+        self.close()
         # un-nanny and goodbye
         threads.threads_tracked.remove(self.getName())
 
