@@ -139,7 +139,8 @@ from lib.process import SignalHandler, \
     exec_cmd_log
 from lib import threads
 from lib.threads import thread_nanny
-from lib.zmq import zmq_context, zmq_socket
+from lib.zmq import zmq_socket, zmq_term, Closable
+from lib.handler import exception_handler
 
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import ASYNCHRONOUS
@@ -704,7 +705,7 @@ def telegram_error_handler(update: Update, context: TelegramCallbackContext):
         capture_exception()
 
 
-class EventProcessor(Thread):
+class EventProcessor(Thread, Closable):
 
     def __init__(self, origin_nanny, boto_session, swf_region, swf_domain, mqtt_subscriber):
         super(EventProcessor, self).__init__(name=self.__class__.__name__)
@@ -755,12 +756,12 @@ class EventProcessor(Thread):
 
         self._origin_nanny = origin_nanny
 
-        self.socket = zmq_socket(zmq.PULL) # type: ignore
+        self.socket = self.get_socket(zmq.PULL) # type: ignore
         self.socket.bind(URL_WORKER_APP)
 
-        self.event_log = zmq_socket(zmq.PUSH) # type: ignore
+        self.event_log = self.get_socket(zmq.PUSH) # type: ignore
 
-        self.bot = zmq_socket(zmq.PUSH) # type: ignore
+        self.bot = self.get_socket(zmq.PUSH) # type: ignore
 
         self._mqtt_subscriber = mqtt_subscriber
 
@@ -1606,13 +1607,7 @@ class EventProcessor(Thread):
                                         active_device_key=active_device_key,
                                         active_device=active_device)
             except ContextTerminated:
-                log.warning('ZMQ terminate: {}'.format(self.__class__.__name__))
-                self.socket.close()
-                log.warning('ZMQ terminated socket: {}'.format(self.__class__.__name__))
-                self.event_log.close()
-                log.warning('ZMQ terminated event log: {}'.format(self.__class__.__name__))
-                self.bot.close()
-                log.warning('ZMQ terminated telegram bot: {}'.format(self.__class__.__name__))
+                self.close()
                 break
             except Exception:
                 log.exception(self.__class__.__name__)
@@ -2629,8 +2624,7 @@ if __name__ == "__main__":
         log.info(message.format('Application threads'))
         # bring any threads out of their Pythonic coma
         threads.interruptable_sleep.set()
-        log.info(message.format('ZMQ context'))
-        zmq_context.term()
+        zmq_term()
         log.info(message.format('leader election.'))
         leader_election.surrender_leadership()
         log.info(message.format('ngrok tunnel'))
