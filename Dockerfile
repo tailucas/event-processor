@@ -2,7 +2,6 @@ FROM balenalib/raspberrypi3-debian:buster-run
 ENV INITSYSTEM on
 ENV container docker
 
-MAINTAINER Tai Lucas <tglucas@gmail.com>
 LABEL Description="event_processor" Vendor="tglucas" Version="1.0"
 
 ENV DEBIAN_FRONTEND noninteractive
@@ -15,6 +14,7 @@ RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommend
     dbus \
     html-xml-utils \
     htop \
+    jq \
     lsof \
     libffi-dev \
     # for rust build of Python cryptography
