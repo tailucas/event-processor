@@ -1961,7 +1961,7 @@ class ZmqEventSourceSubscriber(EventSourceSubscriber, Thread, Closable):
                     try:
                         self.subscriber.close()
                     except ZMQError:
-                        log.exception()
+                        log.warning(self.name, exc_info=True)
                     self.subscriber = self.get_socket(zmq.SUB) # type: ignore
                     self.subscriber.connect(self._publisher_endpoint)
                     self.subscriber.setsockopt(zmq.SUBSCRIBE, b'') # type: ignore
