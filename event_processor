@@ -2213,6 +2213,9 @@ class EventSourceDiscovery(Thread, Closable):
                     source_ip = label_ip[1]
                     self.processor.send_pyobj({'register_origin': {source_label: source_ip}})
 
+        if threads.shutting_down:
+            return
+
         # register SWF actions
         sources_to_register = (
             app_config.get('swf_tasklist', OUTPUT_TYPE_BLUETOOTH),
