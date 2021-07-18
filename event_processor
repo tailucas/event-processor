@@ -2250,6 +2250,9 @@ class EventSourceDiscovery(Thread, Closable):
 
             while not threads.shutting_down:
                 outstanding_registrations = set(sources_to_register) - event_processor.origins
+                if not outstanding_registrations:
+                    log.info(f'All event sources {event_processor.origins!s} have been discovered and registered.')
+                    break
                 for source_to_register in outstanding_registrations:
                      # type: ignore
                     workflow_instance = None
@@ -2268,13 +2271,6 @@ class EventSourceDiscovery(Thread, Closable):
                         output_type=source_to_register,
                         workflow_starter=starter,
                         workflow_instance=workflow_instance).start()
-                outstanding_registrations = set(sources_to_register) - event_processor.origins
-                if not outstanding_registrations:
-                    log.info('All event sources {} have been discovered and registered.'.format(
-                        event_processor.origins))
-                    break
-                else:
-                    log.warning('Waiting to retry on incomplete source registration: {}'.format(outstanding_registrations))
                 # try get more in a minute
                 threads.interruptable_sleep.wait(60)
 
