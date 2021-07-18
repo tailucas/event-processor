@@ -2203,7 +2203,7 @@ class EventSourceDiscovery(Thread, Closable):
 
     def run(self):
         self.processor.connect(URL_WORKER_APP)
-        with exception_handler(closable=self):
+        with exception_handler(closable=self, close_on_exit=False):
             # start with static sources
             subscription_sources = app_config.get('app', 'subscription_sources')
             if len(subscription_sources) > 0:
@@ -2220,7 +2220,7 @@ class EventSourceDiscovery(Thread, Closable):
             app_config.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT),
             app_config.get('swf_tasklist', OUTPUT_TYPE_TTS))
 
-        with exception_handler(closable=self, close_on_exit=True):
+        with exception_handler(closable=self):
             # register MQTT inputs
             mdash_devices = None
             log.info('Requesting mDash device listing from {}'.format(self._mdash_devices_url))
