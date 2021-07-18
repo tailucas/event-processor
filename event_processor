@@ -226,7 +226,7 @@ def index():
     if request.method == 'POST':
         if 'panic_button' in request.form:
             log.info('Panic button pressed.')
-            with exception_handler(connect_url=URL_WORKER_APP, with_socket_type=zmq.PUSH) as zmq_socket:
+            with exception_handler(connect_url=URL_WORKER_APP, with_socket_type=zmq.PUSH, and_raise=False) as zmq_socket:
                 zmq_socket.send_pyobj({
                     device_name: {
                         'data': {
@@ -265,7 +265,7 @@ def index():
             #TODO: correctly update 'meter_reading'
             device_listing[device_key]['meter_value'] = reset_value
             # send IoT message
-            with exception_handler(connect_url=URL_WORKER_MQTT_PUBLISH, with_socket_type=zmq.PUSH) as zmq_socket:
+            with exception_handler(connect_url=URL_WORKER_MQTT_PUBLISH, with_socket_type=zmq.PUSH, and_raise=False) as zmq_socket:
                 zmq_socket.send_pyobj((
                     app_config.get('mqtt', 'meter_reset_topic'),
                     json.dumps(iot_message)
@@ -409,7 +409,7 @@ def show_config():
             device_listing[device_key]['auto_schedule_enable'] = request.form['auto_schedule_enable']
             device_listing[device_key]['auto_schedule_disable'] = request.form['auto_schedule_disable']
             # open IPC
-            with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, with_socket_type=zmq.PUSH) as zmq_socket:
+            with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, with_socket_type=zmq.PUSH, and_raise=False) as zmq_socket:
                 # update device configuration
                 if 'grouped_inputs' not in device_listing[device_key]:
                     update_config(
@@ -623,7 +623,7 @@ def telegram_bot_cmd(update: Update, context: TelegramCallbackContext):
                         parse_mode='Markdown')
         # status update
         if update.effective_message.text.startswith('/report'):
-            with exception_handler(connect_url=URL_WORKER_APP, with_socket_type=zmq.PUSH) as zmq_socket:
+            with exception_handler(connect_url=URL_WORKER_APP, with_socket_type=zmq.PUSH, and_raise=False) as zmq_socket:
                 zmq_socket.send_pyobj({
                     device_name: {
                         'data': {
@@ -1237,8 +1237,8 @@ class EventProcessor(Thread, Closable):
                 'device_label': 'SMS',
                 'type': 'SMS'
             })
-        while True:
-            try:
+        with exception_handler(closable=self):
+            while not threads.shutting_down:
                 event = self.socket.recv_pyobj()
                 log.debug(event)
                 if isinstance(event, dict):
@@ -1593,14 +1593,6 @@ class EventProcessor(Thread, Closable):
                                         timestamp=timestamp,
                                         active_device_key=active_device_key,
                                         active_device=active_device)
-            except ContextTerminated:
-                self.close()
-                break
-            except Exception:
-                log.exception(self.__class__.__name__)
-                capture_exception()
-                sleep(1)
-                continue
 
 
 class EventLog(Thread, Closable):
@@ -1637,8 +1629,8 @@ class EventLog(Thread, Closable):
         # connect to AWS services
         self._ddb_storage = boto3.resource('dynamodb')
         self._event_log_table = self._ddb_storage.Table('event_log')
-        while True:
-            try:
+        with exception_handler(closable=self):
+            while not threads.shutting_down:
                 event = self.socket.recv_pyobj()
                 log.debug(event)
                 timestamp = event['timestamp']
@@ -1662,13 +1654,6 @@ class EventLog(Thread, Closable):
                     self._device_events_accumulator = 0
                 else:
                     self._device_events_accumulator += 1
-            except ContextTerminated:
-                self.close()
-            except Exception:
-                log.exception(self.__class__.__name__)
-                capture_exception()
-                sleep(1)
-                continue
 
 
 class TBot(Thread, Closable):
@@ -1716,8 +1701,8 @@ class TBot(Thread, Closable):
         global ngrok_tunnel_url_with_bauth
         # connect to Telegram
         self.bot = TelegramBot(token=creds.telegram_bot_api_token)
-        while True:
-            try:
+        with exception_handler(closable=self):
+            while not threads.shutting_down:
                 event = self.socket.recv_pyobj()
                 #TODO: fix me for small payloads
                 #log.debug(event)
@@ -1774,14 +1759,6 @@ class TBot(Thread, Closable):
                                 log.exception('Cannot send SMS {}: {}'.format(name_number[1], notification_message))
                     else:
                         log.error('No viable method to send notification for event: {}'.format(notification_message))
-            except ContextTerminated:
-                self.close()
-                break
-            except Exception:
-                log.exception(self.__class__.__name__)
-                capture_exception()
-                sleep(1)
-                continue
 
 
 class MqttSubscriber(Thread, Closable):
@@ -1793,6 +1770,7 @@ class MqttSubscriber(Thread, Closable):
         threads.threads_tracked.add(self.name)
 
         self.processor = self.get_socket(zmq.PUSH) # type: ignore
+
         self._mqtt_client = None
         self._mqtt_server_address = app_config.get('mqtt', 'server_address')
         self._mqtt_subscribe_topics = list()
@@ -1904,15 +1882,15 @@ class MqttSubscriber(Thread, Closable):
 
     # noinspection PyBroadException
     def run(self):
+        self.processor.connect(URL_WORKER_APP)
         log.info('Connecting to MQTT server {}...'.format(self._mqtt_server_address))
         self._mqtt_client = mqtt.Client()
         self._mqtt_client.on_connect = self.on_connect
         self._mqtt_client.on_disconnect = self.on_disconnect
         self._mqtt_client.on_message = self.on_message
         self._mqtt_client.connect(self._mqtt_server_address)
-        self.processor.connect(URL_WORKER_APP)
-        while True:
-            try:
+        with exception_handler(closable=self):
+            while not threads.shutting_down:
                 self._mqtt_client.loop()
                 # check for messages to publish
                 try:
@@ -1922,22 +1900,6 @@ class MqttSubscriber(Thread, Closable):
                 except ZMQError:
                     # ignore, no data
                     pass
-                # test for application shutdown
-                if threads.shutting_down:
-                    self.close()
-                    break
-            except ContextTerminated:
-                self.close()
-                break
-            except ZMQError:
-                log.exception()
-                break
-            except Exception:
-                # consider mqttc.reinitialise()
-                log.exception()
-                capture_exception()
-                sleep(1)
-                continue
 
 
 class EventSourceSubscriber(object):
@@ -1986,8 +1948,8 @@ class ZmqEventSourceSubscriber(EventSourceSubscriber, Thread, Closable):
         self.subscriber.connect(self._publisher_endpoint)
         self.subscriber.setsockopt(zmq.SUBSCRIBE, b'') # type: ignore
         self.processor.connect(URL_WORKER_APP)
-        while True:
-            try:
+        with exception_handler(closable=self):
+            while not threads.shutting_down:
                 # timeout in millis
                 zmq_events = self.subscriber.poll(timeout=self._zmq_poll_period * 1000)
                 # TODO: remove nanny
@@ -2025,20 +1987,6 @@ class ZmqEventSourceSubscriber(EventSourceSubscriber, Thread, Closable):
                         len(publisher_data),
                         self._publisher_endpoint))
                 self.processor.send_pyobj({self._label: publisher_event})
-            except UnpackException:
-                log.exception('Cannot unpack message from {}.'.format(self._label))
-                continue
-            except ContextTerminated:
-                self.close()
-                break
-            except ZMQError:
-                log.exception()
-                break
-            except Exception:
-                log.exception()
-                capture_exception()
-                sleep(1)
-                continue
 
 
 class SQSListener(Thread, Closable):
@@ -2061,8 +2009,8 @@ class SQSListener(Thread, Closable):
         self._sqs = boto3.resource('sqs')
         self._sqs_queue = self._sqs.get_queue_by_name(QueueName=sqs_queue_name)
         self.processor.connect(URL_WORKER_APP)
-        while True:
-            try:
+        with exception_handler(closable=self):
+            while not threads.shutting_down:
                 for sqs_message in self._sqs_queue.receive_messages(WaitTimeSeconds=20):
                     # forward for further processing
                     message_body = sqs_message.body
@@ -2074,29 +2022,6 @@ class SQSListener(Thread, Closable):
                     sqs_message.delete()
                 # test for ZMQ shutdown
                 self.processor.poll(timeout=0)
-                # test for application shutdown
-                if threads.shutting_down:
-                    self.close()
-                    break
-            except (gaierror, bce, bccce, bcece) as e:
-                log.warning(repr(e))
-                sleep(1)
-                continue
-            except UnpackException:
-                log.exception('Cannot unpack message from SQS queue {}.'.format(self._sqs_queue))
-                continue
-            except ContextTerminated:
-                self.close()
-                break
-            except ZMQError:
-                log.exception()
-                sleep(1)
-                break
-            except Exception:
-                log.exception()
-                capture_exception()
-                sleep(1)
-                continue
 
 
 class AutoScheduler(Thread, Closable):
@@ -2123,9 +2048,9 @@ class AutoScheduler(Thread, Closable):
     # noinspection PyBroadException
     def run(self):
         self.processor.connect(URL_WORKER_APP)
-        while True:
-            next_message = False
-            try:
+        with exception_handler(closable=self):
+            while not threads.shutting_down:
+                next_message = False
                 # trigger any scheduled work
                 schedule.run_pending()
                 # look for device updates
@@ -2160,24 +2085,9 @@ class AutoScheduler(Thread, Closable):
                                 device_key=device_key,
                                 schedule_time=auto_enable_time,
                                 device_state=True)
-                # test for application shutdown
-                if threads.shutting_down:
-                    self.close()
-                    break
-            except ContextTerminated:
-                self.close()
-                break
-            except ZMQError:
-                log.exception()
-                break
-            except Exception:
-                log.exception()
-                capture_exception()
-                sleep(1)
-                continue
-            # don't spin
-            if not next_message:
-                threads.interruptable_sleep.wait(10)
+                # don't spin
+                if not next_message:
+                    threads.interruptable_sleep.wait(10)
 
 
 class OriginNanny(Thread, Closable):
@@ -2207,11 +2117,8 @@ class OriginNanny(Thread, Closable):
         last_report = make_timestamp()
         heartbeat_due = False
         max_heartbeat = -1
-        while True:
-            if threads.shutting_down:
-                self.close()
-                break
-            try:
+        with exception_handler(closable=self):
+            while not threads.shutting_down:
                 # send out either a stale alert or the heartbeat
                 now = make_timestamp()
                 if now - last_report > timedelta(seconds=self._heartbeat_report_interval):
@@ -2274,10 +2181,7 @@ class OriginNanny(Thread, Closable):
                     max_heartbeat = -1
                 # test for ZMQ shutdown
                 self.processor.poll(timeout=0)
-            except ContextTerminated:
-                self.close()
-                break
-            threads.interruptable_sleep.wait(self._heartbeat_sample_interval)
+                threads.interruptable_sleep.wait(self._heartbeat_sample_interval)
 
 
 class EventSourceDiscovery(Thread, Closable):
@@ -2299,8 +2203,7 @@ class EventSourceDiscovery(Thread, Closable):
 
     def run(self):
         self.processor.connect(URL_WORKER_APP)
-        # register ZMQ sources
-        try:
+        with exception_handler(closable=self):
             # start with static sources
             subscription_sources = app_config.get('app', 'subscription_sources')
             if len(subscription_sources) > 0:
@@ -2309,20 +2212,16 @@ class EventSourceDiscovery(Thread, Closable):
                     source_label = label_ip[0]
                     source_ip = label_ip[1]
                     self.processor.send_pyobj({'register_origin': {source_label: source_ip}})
-        except ContextTerminated:
-            self.close()
-            return
-        except ZMQError:
-            log.exception()
-            return
+
         # register SWF actions
         sources_to_register = (
             app_config.get('swf_tasklist', OUTPUT_TYPE_BLUETOOTH),
             app_config.get('swf_tasklist', OUTPUT_TYPE_SWITCH),
             app_config.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT),
             app_config.get('swf_tasklist', OUTPUT_TYPE_TTS))
-        while not threads.shutting_down:
-            try:
+
+        with exception_handler(closable=self, close_on_exit=True):
+            while not threads.shutting_down:
                 outstanding_registrations = set(sources_to_register) - event_processor.origins
                 for source_to_register in outstanding_registrations:
                      # type: ignore
@@ -2351,61 +2250,34 @@ class EventSourceDiscovery(Thread, Closable):
                     break
                 else:
                     log.warning('Waiting to retry on incomplete source registration: {}'.format(outstanding_registrations))
-            except Exception:
-                log.exception()
-                capture_exception()
-                threads.interruptable_sleep.wait(10)
-                continue
-        # register MQTT inputs
-        while not threads.shutting_down:
+
+            # register MQTT inputs
             mdash_devices = None
             log.info('Requesting mDash device listing from {}'.format(self._mdash_devices_url))
-            try:
-                # get listing of all applications
-                mdash_devices = requests.get(
-                    url=self._mdash_devices_url,
-                    params={
-                        "access_token": self._mdash_api_key
-                    }).json()
-            except Exception:
-                log.exception(self.__class__.__name__)
-                capture_exception()
-                threads.interruptable_sleep.wait(10)
-                continue
+            # get listing of all applications
+            mdash_devices = requests.get(
+                url=self._mdash_devices_url,
+                params={
+                    "access_token": self._mdash_api_key
+                }).json()
             log.info('mDash returns {} devices.'.format(len(mdash_devices)))
             for device in mdash_devices:
                 device_id = device['id']
                 log.info('Retrieving mDash information for device {}'.format(device_id))
-                try:
-                    # retrieve specific configuration item
-                    mqtt_pub_topic = requests.post(
-                        url='{}/{}/rpc/Config.Get'.format(
-                            self._mdash_devices_url,
-                            device_id),
-                        json={
-                            'key': self._app_config_mqtt_pub_topic
-                        },
-                        params={
-                            "access_token": self._mdash_api_key
-                        })
-                    log.info('MQTT topic for {} is {}'.format(device_id, mqtt_pub_topic.text))
-                    self.processor.send_pyobj({'register_mqtt_origin': {mqtt_pub_topic.text: device_id}})
-                except ContextTerminated:
-                    self.close()
-                    return
-                except ZMQError:
-                    log.exception()
-                    return
-                except Exception:
-                    log.exception(self.__class__.__name__)
-                    capture_exception()
-                    threads.interruptable_sleep.wait(10)
-                    continue
-            # important to stop
-            break
+                # retrieve specific configuration item
+                mqtt_pub_topic = requests.post(
+                    url='{}/{}/rpc/Config.Get'.format(
+                        self._mdash_devices_url,
+                        device_id),
+                    json={
+                        'key': self._app_config_mqtt_pub_topic
+                    },
+                    params={
+                        "access_token": self._mdash_api_key
+                    })
+                log.info('MQTT topic for {} is {}'.format(device_id, mqtt_pub_topic.text))
+                self.processor.send_pyobj({'register_mqtt_origin': {mqtt_pub_topic.text: device_id}})
 
-        # close the IPC socket
-        self.close()
         # un-nanny and goodbye
         threads.threads_tracked.remove(self.getName())
 
@@ -2422,8 +2294,8 @@ class CallbackUrlDiscovery(Thread):
 
     # noinspection PyBroadException
     def run(self):
-        while True:
-            try:
+        with exception_handler():
+            while not threads.shutting_down:
                 # sudo update
                 global ngrok_tunnel_url
                 try:
@@ -2434,11 +2306,7 @@ class CallbackUrlDiscovery(Thread):
                     continue
                 log.info('External call-back URL is {}'.format(ngrok_tunnel_url))
                 break
-            except Exception:
-                log.exception(self.__class__.__name__)
-                capture_exception()
-                sleep(1)
-        try:
+
             purl = urlparse(ngrok_tunnel_url)
             # decorate the URL with basic-auth details
             global ngrok_tunnel_url_with_bauth
@@ -2447,9 +2315,6 @@ class CallbackUrlDiscovery(Thread):
                                                                    creds.flask_basic_auth_password,
                                                                    purl.netloc,
                                                                    purl.path)
-        except Exception:
-            log.exception(self.__class__.__name__)
-            capture_exception()
 
 
 class FlaskThread(Thread):
