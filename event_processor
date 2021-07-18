@@ -2221,36 +2221,6 @@ class EventSourceDiscovery(Thread, Closable):
             app_config.get('swf_tasklist', OUTPUT_TYPE_TTS))
 
         with exception_handler(closable=self, close_on_exit=True):
-            while not threads.shutting_down:
-                outstanding_registrations = set(sources_to_register) - event_processor.origins
-                for source_to_register in outstanding_registrations:
-                     # type: ignore
-                    workflow_instance = None
-                    # determine IPs of available devices for ZMQ subscriptions
-                    with workflow_starter(self._boto_session,
-                                        self._swf_region,
-                                        self._swf_domain,
-                                        app_name) as starter:
-                        workflow_instance = DeviceWorkflow.execute(app=source_to_register) # pylint: disable=no-value-for-parameter
-                        log.debug("Registration workflow for {} is {}".format(
-                            source_to_register,
-                            workflow_instance.workflow_execution))
-                    SWFActivityWaiter(
-                        zmq_ipc_url=URL_WORKER_APP,
-                        event_source='register_origin',
-                        output_type=source_to_register,
-                        workflow_starter=starter,
-                        workflow_instance=workflow_instance).start()
-                # try get more in a minute
-                threads.interruptable_sleep.wait(60)
-                outstanding_registrations = set(sources_to_register) - event_processor.origins
-                if not outstanding_registrations:
-                    log.info('All event sources {} have been discovered and registered.'.format(
-                        event_processor.origins))
-                    break
-                else:
-                    log.warning('Waiting to retry on incomplete source registration: {}'.format(outstanding_registrations))
-
             # register MQTT inputs
             mdash_devices = None
             log.info('Requesting mDash device listing from {}'.format(self._mdash_devices_url))
@@ -2278,6 +2248,36 @@ class EventSourceDiscovery(Thread, Closable):
                 log.info('MQTT topic for {} is {}'.format(device_id, mqtt_pub_topic.text))
                 self.processor.send_pyobj({'register_mqtt_origin': {mqtt_pub_topic.text: device_id}})
 
+            while not threads.shutting_down:
+                outstanding_registrations = set(sources_to_register) - event_processor.origins
+                for source_to_register in outstanding_registrations:
+                     # type: ignore
+                    workflow_instance = None
+                    # determine IPs of available devices for ZMQ subscriptions
+                    with workflow_starter(self._boto_session,
+                                        self._swf_region,
+                                        self._swf_domain,
+                                        app_name) as starter:
+                        workflow_instance = DeviceWorkflow.execute(app=source_to_register) # pylint: disable=no-value-for-parameter
+                        log.debug("Registration workflow for {} is {}".format(
+                            source_to_register,
+                            workflow_instance.workflow_execution))
+                    SWFActivityWaiter(
+                        zmq_ipc_url=URL_WORKER_APP,
+                        event_source='register_origin',
+                        output_type=source_to_register,
+                        workflow_starter=starter,
+                        workflow_instance=workflow_instance).start()
+                outstanding_registrations = set(sources_to_register) - event_processor.origins
+                if not outstanding_registrations:
+                    log.info('All event sources {} have been discovered and registered.'.format(
+                        event_processor.origins))
+                    break
+                else:
+                    log.warning('Waiting to retry on incomplete source registration: {}'.format(outstanding_registrations))
+                # try get more in a minute
+                threads.interruptable_sleep.wait(60)
+
         # un-nanny and goodbye
         threads.threads_tracked.remove(self.getName())
 
@@ -2303,7 +2303,10 @@ class CallbackUrlDiscovery(Thread):
                 except (KeyError, ConnectionError) as e:
                     log.warning('Still attempting to discover ngrok tunnel URL ({})...'.format(repr(e)))
                     threads.interruptable_sleep.wait(10)
-                    continue
+                    if threads.shutting_down:
+                        return
+                    else:
+                        continue
                 log.info('External call-back URL is {}'.format(ngrok_tunnel_url))
                 break
 
