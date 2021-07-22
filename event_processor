@@ -69,10 +69,6 @@ from zmq.error import ZMQError, ContextTerminated, Again
 import paho.mqtt.client as mqtt
 from paho.mqtt.client import MQTT_ERR_SUCCESS
 
-from botocore.exceptions import (
-    EndpointConnectionError
-)
-
 import os.path
 from botoflow import activity, \
     activities, \
@@ -2024,7 +2020,7 @@ class SQSListener(Thread, Closable):
                         sqs_message.delete()
                     # test for ZMQ shutdown
                     self.processor.poll(timeout=0)
-                except EndpointConnectionError:
+                except bcece:
                     log.warning(f'SOS', exc_info=True)
                     threads.interruptable_sleep.wait(10)
 
