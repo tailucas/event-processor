@@ -690,10 +690,8 @@ def telegram_bot_inline(update: Update, context: TelegramCallbackContext):
 def telegram_error_handler(update: Update, context: TelegramCallbackContext):
     try:
         raise context.error
-    except NetworkError as e:
-        log.warning('Problem with {} network {}: {}'.format(context.bot, update, e.message))
-    except TelegramError as e:
-        log.warning('Problem with {} processing {}: {}'.format(context.bot, update, e.message))
+    except (NetworkError, TelegramError):
+        log.warning(f'Problem with {context.bot}: {update}', exc_info=True)
     except Exception:
         log.exception('bot')
         capture_exception()
