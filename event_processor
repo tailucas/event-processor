@@ -69,7 +69,10 @@ from zmq.error import ZMQError, ContextTerminated, Again
 import paho.mqtt.client as mqtt
 from paho.mqtt.client import MQTT_ERR_SUCCESS
 
-import botocore
+from botocore.exceptions import (
+    EndpointConnectionError
+)
+
 import os.path
 from botoflow import activity, \
     activities, \
@@ -2011,17 +2014,21 @@ class SQSListener(Thread, Closable):
         self.processor.connect(URL_WORKER_APP)
         with exception_handler(closable=self):
             while not threads.shutting_down:
-                for sqs_message in self._sqs_queue.receive_messages(WaitTimeSeconds=20):
-                    # forward for further processing
-                    message_body = sqs_message.body
-                    try:
-                        self.processor.send_pyobj({'sqs': json.loads(message_body)})
-                    except JSONDecodeError:
-                        log.exception('Unstructured SQS message: {}'.format(message_body))
-                    # Let the queue know that the message is processed
-                    sqs_message.delete()
-                # test for ZMQ shutdown
-                self.processor.poll(timeout=0)
+                try:
+                    for sqs_message in self._sqs_queue.receive_messages(WaitTimeSeconds=20):
+                        # forward for further processing
+                        message_body = sqs_message.body
+                        try:
+                            self.processor.send_pyobj({'sqs': json.loads(message_body)})
+                        except JSONDecodeError:
+                            log.exception('Unstructured SQS message: {}'.format(message_body))
+                        # Let the queue know that the message is processed
+                        sqs_message.delete()
+                    # test for ZMQ shutdown
+                    self.processor.poll(timeout=0)
+                except EndpointConnectionError:
+                    log.warning(f'SOS', exc_info=True)
+                    threads.interruptable_sleep.wait(10)
 
 
 class AutoScheduler(Thread, Closable):
