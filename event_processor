@@ -2264,7 +2264,7 @@ class EventSourceDiscovery(AppThread, Closable):
                 threads.interruptable_sleep.wait(60)
 
         # un-nanny and goodbye
-        threads.threads_tracked.remove(self.getName())
+        self.untrack()
 
 
 class CallbackUrlDiscovery(AppThread):
@@ -2303,7 +2303,7 @@ class CallbackUrlDiscovery(AppThread):
                                                                    purl.netloc,
                                                                    purl.path)
         # thread is done
-        threads.threads_tracked.remove(self.getName())
+        self.untrack()
 
 
 class FlaskThread(Thread):
