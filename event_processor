@@ -138,6 +138,7 @@ from lib.process import SignalHandler, \
     exec_cmd_log
 from lib import threads
 from lib.threads import thread_nanny
+from lib.app import AppThread
 from lib.zmq import zmq_term, Closable
 from lib.handler import exception_handler
 
@@ -225,7 +226,7 @@ def index():
     if request.method == 'POST':
         if 'panic_button' in request.form:
             log.info('Panic button pressed.')
-            with exception_handler(connect_url=URL_WORKER_APP, with_socket_type=zmq.PUSH, and_raise=False) as zmq_socket:
+            with exception_handler(connect_url=URL_WORKER_APP, socket_type=zmq.PUSH, and_raise=False) as zmq_socket:
                 zmq_socket.send_pyobj({
                     device_name: {
                         'data': {
@@ -264,7 +265,7 @@ def index():
             #TODO: correctly update 'meter_reading'
             device_listing[device_key]['meter_value'] = reset_value
             # send IoT message
-            with exception_handler(connect_url=URL_WORKER_MQTT_PUBLISH, with_socket_type=zmq.PUSH, and_raise=False) as zmq_socket:
+            with exception_handler(connect_url=URL_WORKER_MQTT_PUBLISH, socket_type=zmq.PUSH, and_raise=False) as zmq_socket:
                 zmq_socket.send_pyobj((
                     app_config.get('mqtt', 'meter_reset_topic'),
                     json.dumps(iot_message)
@@ -408,7 +409,7 @@ def show_config():
             device_listing[device_key]['auto_schedule_enable'] = request.form['auto_schedule_enable']
             device_listing[device_key]['auto_schedule_disable'] = request.form['auto_schedule_disable']
             # open IPC
-            with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, with_socket_type=zmq.PUSH, and_raise=False) as zmq_socket:
+            with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, socket_type=zmq.PUSH, and_raise=False) as zmq_socket:
                 # update device configuration
                 if 'grouped_inputs' not in device_listing[device_key]:
                     update_config(
@@ -622,7 +623,7 @@ def telegram_bot_cmd(update: Update, context: TelegramCallbackContext):
                         parse_mode='Markdown')
         # status update
         if update.effective_message.text.startswith('/report'):
-            with exception_handler(connect_url=URL_WORKER_APP, with_socket_type=zmq.PUSH, and_raise=False) as zmq_socket:
+            with exception_handler(connect_url=URL_WORKER_APP, socket_type=zmq.PUSH, and_raise=False) as zmq_socket:
                 zmq_socket.send_pyobj({
                     device_name: {
                         'data': {
@@ -693,13 +694,11 @@ def telegram_error_handler(update: Update, context: TelegramCallbackContext):
         capture_exception()
 
 
-class EventProcessor(Thread, Closable):
+class EventProcessor(AppThread, Closable):
 
     def __init__(self, origin_nanny, boto_session, swf_region, swf_domain, mqtt_subscriber):
-        Thread.__init__(self, name=self.__class__.__name__)
-        Closable.__init__(self, bind_url=URL_WORKER_APP)
-        self.daemon = True
-        threads.threads_tracked.add(self.name)
+        AppThread.__init__(self, name=self.__class__.__name__)
+        Closable.__init__(self, connect_url=URL_WORKER_APP)
 
         self._boto_session = boto_session
         self._swf_region = swf_region
@@ -1184,7 +1183,7 @@ class EventProcessor(Thread, Closable):
         self.influxdb_rw = self.influxdb.write_api(write_options=ASYNCHRONOUS)
         self.influxdb_ro = self.influxdb.query_api()
         # load auto-scheduler
-        with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, with_socket_type=zmq.PUSH) as zmq_socket:
+        with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, socket_type=zmq.PUSH) as zmq_socket:
             zmq_socket.send_pyobj(self._input_config)
         # informational notifications
         # TODO: move to UI configuration
@@ -1262,7 +1261,6 @@ class EventProcessor(Thread, Closable):
                                 connection_string = 'tcp://{}:{}'.format(ip, app_config.get('zmq', 'pubsub_port'))
                                 subscriber = ZmqEventSourceSubscriber(label=origin, publisher_endpoint=connection_string)
                                 subscriber.start()
-                                threads.threads_tracked.add(subscriber.getName())
                                 # nanny the heartbeats
                                 self._origin_nanny.add_origin_subscriber(origin=origin, ip=ip, subscriber=subscriber)
                                 # keep track of the available event origins
@@ -1592,13 +1590,11 @@ class EventProcessor(Thread, Closable):
                                         active_device=active_device)
 
 
-class EventLog(Thread, Closable):
+class EventLog(AppThread, Closable):
 
     def __init__(self):
-        Thread.__init__(self, name=self.__class__.__name__)
-        Closable.__init__(self, bind_url=URL_WORKER_EVENT_LOG)
-        self.daemon = True
-        threads.threads_tracked.add(self.name)
+        AppThread.__init__(self, name=self.__class__.__name__)
+        Closable.__init__(self, connect_url=URL_WORKER_EVENT_LOG)
 
         self._ddb_storage = None
         self._event_log_table = None
@@ -1653,13 +1649,11 @@ class EventLog(Thread, Closable):
                     self._device_events_accumulator += 1
 
 
-class TBot(Thread, Closable):
+class TBot(AppThread, Closable):
 
     def __init__(self):
-        Thread.__init__(self, name=self.__class__.__name__)
-        Closable.__init__(self, bind_url=URL_WORKER_TELEGRAM_BOT)
-        self.daemon = True
-        threads.threads_tracked.add(self.name)
+        AppThread.__init__(self, name=self.__class__.__name__)
+        Closable.__init__(self, connect_url=URL_WORKER_TELEGRAM_BOT)
 
         self.bot = None
         self.chat_id = app_config.getint('telegram', 'chat_room_id')
@@ -1758,13 +1752,11 @@ class TBot(Thread, Closable):
                         log.error('No viable method to send notification for event: {}'.format(notification_message))
 
 
-class MqttSubscriber(Thread, Closable):
+class MqttSubscriber(AppThread, Closable):
 
     def __init__(self):
-        Thread.__init__(self, name=self.__class__.__name__)
-        Closable.__init__(self, bind_url=URL_WORKER_MQTT_PUBLISH)
-        self.daemon = True
-        threads.threads_tracked.add(self.name)
+        AppThread.__init__(self, name=self.__class__.__name__)
+        Closable.__init__(self, connect_url=URL_WORKER_MQTT_PUBLISH)
 
         self.processor = self.get_socket(zmq.PUSH) # type: ignore
 
@@ -1921,14 +1913,13 @@ class MqttEventSourceSubscriber(EventSourceSubscriber):
         return self._device_id
 
 
-class ZmqEventSourceSubscriber(EventSourceSubscriber, Thread, Closable):
+class ZmqEventSourceSubscriber(EventSourceSubscriber, AppThread, Closable):
 
     def __init__(self, label, publisher_endpoint):
         name = '{}::{}'.format(self.__class__.__name__, label)
         EventSourceSubscriber.__init__(self, label=label)
-        Thread.__init__(self, name=name)
+        AppThread.__init__(self, name=name)
         Closable.__init__(self)
-        self.daemon = True
 
         self._publisher_endpoint = publisher_endpoint
 
@@ -1986,13 +1977,11 @@ class ZmqEventSourceSubscriber(EventSourceSubscriber, Thread, Closable):
                 self.processor.send_pyobj({self._label: publisher_event})
 
 
-class SQSListener(Thread, Closable):
+class SQSListener(AppThread, Closable):
 
     def __init__(self):
-        Thread.__init__(self, name=self.__class__.__name__)
+        AppThread.__init__(self, name=self.__class__.__name__)
         Closable.__init__(self)
-        self.daemon = True
-        threads.threads_tracked.add(self.name)
 
         self.processor = self.get_socket(zmq.PUSH) # type: ignore
         self._sqs = None
@@ -2025,13 +2014,11 @@ class SQSListener(Thread, Closable):
                     threads.interruptable_sleep.wait(10)
 
 
-class AutoScheduler(Thread, Closable):
+class AutoScheduler(AppThread, Closable):
 
     def __init__(self):
-        Thread.__init__(self, name=self.__class__.__name__)
-        Closable.__init__(self, bind_url=URL_WORKER_AUTO_SCHEDULER)
-        self.daemon = True
-        threads.threads_tracked.add(self.name)
+        AppThread.__init__(self, name=self.__class__.__name__)
+        Closable.__init__(self, connect_url=URL_WORKER_AUTO_SCHEDULER)
 
         self.processor = self.get_socket(zmq.PUSH) # type: ignore
 
@@ -2091,13 +2078,11 @@ class AutoScheduler(Thread, Closable):
                     threads.interruptable_sleep.wait(10)
 
 
-class OriginNanny(Thread, Closable):
+class OriginNanny(AppThread, Closable):
 
     def __init__(self):
-        Thread.__init__(self, name=self.__class__.__name__)
+        AppThread.__init__(self, name=self.__class__.__name__)
         Closable.__init__(self)
-        self.daemon = True
-        threads.threads_tracked.add(self.name)
 
         self.processor = self.get_socket(zmq.PUSH) # type: ignore
 
@@ -2185,12 +2170,10 @@ class OriginNanny(Thread, Closable):
                 threads.interruptable_sleep.wait(self._heartbeat_sample_interval)
 
 
-class EventSourceDiscovery(Thread, Closable):
+class EventSourceDiscovery(AppThread, Closable):
     def __init__(self, boto_session, swf_region, swf_domain):
-        Thread.__init__(self, name=self.__class__.__name__)
+        AppThread.__init__(self, name=self.__class__.__name__)
         Closable.__init__(self)
-        self.daemon = True
-        threads.threads_tracked.add(self.name)
 
         self.processor = self.get_socket(zmq.PUSH) # type: ignore
 
@@ -2284,11 +2267,10 @@ class EventSourceDiscovery(Thread, Closable):
         threads.threads_tracked.remove(self.getName())
 
 
-class CallbackUrlDiscovery(Thread):
+class CallbackUrlDiscovery(AppThread):
 
     def __init__(self):
-        super(CallbackUrlDiscovery, self).__init__(name=self.__class__.__name__)
-        self.daemon = True
+        AppThread.__init__(self, name=self.__class__.__name__)
 
         self._discover_url = 'http://127.0.0.1:{}/api/tunnels/{}'.format(
             app_config.get('ngrok', 'client_api_port'),
@@ -2320,6 +2302,8 @@ class CallbackUrlDiscovery(Thread):
                                                                    creds.flask_basic_auth_password,
                                                                    purl.netloc,
                                                                    purl.path)
+        # thread is done
+        threads.threads_tracked.remove(self.getName())
 
 
 class FlaskThread(Thread):
