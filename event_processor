@@ -114,7 +114,8 @@ from lib import app_config, \
 from lib.datetime import is_list, \
     make_timestamp, \
     make_unix_timestamp, \
-    parse_datetime
+    parse_datetime, \
+    ISO_DATE_FORMAT
 from lib.data import make_payload
 from lib.aws import boto_session, \
     swf_region, \
@@ -145,7 +146,6 @@ from lib.handler import exception_handler
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import ASYNCHRONOUS
 
-ISO_DATE_FORMAT = builtins.ISO_DATE_FORMAT
 
 flask_app = Flask(app_name)
 
