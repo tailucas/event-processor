@@ -197,7 +197,6 @@ def index():
     awol_inputs = event_processor.awol_inputs
     if len(awol_inputs) > 0:
         flash(message='{} devices are unavailable right now.'.format(len(awol_inputs)), category='danger')
-    # type: ignore
     for device_key, device_config in list(event_processor.input_config.items()):
         if device_key in awol_inputs:
             awol_input_labels.add(device_config['device_label'])
@@ -379,7 +378,6 @@ def show_config():
     device_listing = {}
     input_labels = {}
     global event_processor
-    # type: ignore
     for device_key, device_config in list(event_processor.input_config.items()):
         # exclude invalid types
         if 'type' in device_config and 'button' in device_config['type'].lower():
@@ -744,9 +742,9 @@ class EventProcessor(AppThread, Closable):
 
         self._origin_nanny = origin_nanny
 
-        self.event_log = self.get_socket(zmq.PUSH) # type: ignore
+        self.event_log = self.get_socket(zmq.PUSH)
 
-        self.bot = self.get_socket(zmq.PUSH) # type: ignore
+        self.bot = self.get_socket(zmq.PUSH)
 
         self._mqtt_subscriber = mqtt_subscriber
 
@@ -1109,7 +1107,6 @@ class EventProcessor(AppThread, Closable):
                                 app=app_config.get('swf_tasklist', OUTPUT_TYPE_TTS),
                                 message=notification_message)
                     if workflow_instance is not None:
-                        # type: ignore
                         log.info("{} workflow is {}".format(output_type, workflow_instance.workflow_execution))
                 elif event_destination == device_name:
                     #TODO: route this properly
@@ -1758,7 +1755,7 @@ class MqttSubscriber(AppThread, Closable):
         AppThread.__init__(self, name=self.__class__.__name__)
         Closable.__init__(self, connect_url=URL_WORKER_MQTT_PUBLISH)
 
-        self.processor = self.get_socket(zmq.PUSH) # type: ignore
+        self.processor = self.get_socket(zmq.PUSH)
 
         self._mqtt_client = None
         self._mqtt_server_address = app_config.get('mqtt', 'server_address')
@@ -1883,7 +1880,7 @@ class MqttSubscriber(AppThread, Closable):
                 self._mqtt_client.loop()
                 # check for messages to publish
                 try:
-                    mqtt_pub_topic, message_data = self.socket.recv_pyobj(flags=zmq.NOBLOCK) # type: ignore
+                    mqtt_pub_topic, message_data = self.socket.recv_pyobj(flags=zmq.NOBLOCK)
                     log.debug('Publishing {} bytes to topic {}...'.format(len(message_data), mqtt_pub_topic))
                     self._mqtt_client.publish(topic=mqtt_pub_topic, payload=message_data)
                 except ZMQError:
@@ -1923,8 +1920,8 @@ class ZmqEventSourceSubscriber(EventSourceSubscriber, AppThread, Closable):
 
         self._publisher_endpoint = publisher_endpoint
 
-        self.subscriber = self.get_socket(zmq.SUB) # type: ignore
-        self.processor = self.get_socket(zmq.PUSH) # type: ignore
+        self.subscriber = self.get_socket(zmq.SUB)
+        self.processor = self.get_socket(zmq.PUSH)
 
         self._reconnected = False
         # use half of the tolerated heartbeat value
@@ -1934,7 +1931,7 @@ class ZmqEventSourceSubscriber(EventSourceSubscriber, AppThread, Closable):
     def run(self):
         log.info('Subscribing to {} @ {}'.format(self._label, self._publisher_endpoint))
         self.subscriber.connect(self._publisher_endpoint)
-        self.subscriber.setsockopt(zmq.SUBSCRIBE, b'') # type: ignore
+        self.subscriber.setsockopt(zmq.SUBSCRIBE, b'')
         self.processor.connect(URL_WORKER_APP)
         with exception_handler(closable=self):
             while not threads.shutting_down:
@@ -1950,14 +1947,14 @@ class ZmqEventSourceSubscriber(EventSourceSubscriber, AppThread, Closable):
                         self.subscriber.close()
                     except ZMQError:
                         log.warning(self.name, exc_info=True)
-                    self.subscriber = self.get_socket(zmq.SUB) # type: ignore
+                    self.subscriber = self.get_socket(zmq.SUB)
                     self.subscriber.connect(self._publisher_endpoint)
-                    self.subscriber.setsockopt(zmq.SUBSCRIBE, b'') # type: ignore
+                    self.subscriber.setsockopt(zmq.SUBSCRIBE, b'')
                     self._reconnected = True
                     # poll again
                     continue
                 try:
-                    publisher_data = self.subscriber.recv(zmq.NOBLOCK) # type: ignore
+                    publisher_data = self.subscriber.recv(zmq.NOBLOCK)
                     publisher_event = umsgpack.unpackb(publisher_data)
                 except Again as e:
                     log.debug(f'{e!s}')
@@ -1983,7 +1980,7 @@ class SQSListener(AppThread, Closable):
         AppThread.__init__(self, name=self.__class__.__name__)
         Closable.__init__(self)
 
-        self.processor = self.get_socket(zmq.PUSH) # type: ignore
+        self.processor = self.get_socket(zmq.PUSH)
         self._sqs = None
         self._sqs_queue = None
 
@@ -2020,7 +2017,7 @@ class AutoScheduler(AppThread, Closable):
         AppThread.__init__(self, name=self.__class__.__name__)
         Closable.__init__(self, connect_url=URL_WORKER_AUTO_SCHEDULER)
 
-        self.processor = self.get_socket(zmq.PUSH) # type: ignore
+        self.processor = self.get_socket(zmq.PUSH)
 
     def update_device(self, device_key, device_state):
         log.info('Updating {} to enabled={}'.format(device_key, device_state))
@@ -2044,7 +2041,7 @@ class AutoScheduler(AppThread, Closable):
                 # look for device updates
                 device_config = None
                 try:
-                    device_config = self.socket.recv_pyobj(flags=zmq.NOBLOCK) # type: ignore
+                    device_config = self.socket.recv_pyobj(flags=zmq.NOBLOCK)
                     next_message = True
                 except ZMQError:
                     # ignore, no data
@@ -2084,7 +2081,7 @@ class OriginNanny(AppThread, Closable):
         AppThread.__init__(self, name=self.__class__.__name__)
         Closable.__init__(self)
 
-        self.processor = self.get_socket(zmq.PUSH) # type: ignore
+        self.processor = self.get_socket(zmq.PUSH)
 
         self.origin_subscriber = {}
         self._heartbeat_sample_interval = int(app_config.get('app', 'heartbeat_sample_interval_seconds'))
@@ -2175,7 +2172,7 @@ class EventSourceDiscovery(AppThread, Closable):
         AppThread.__init__(self, name=self.__class__.__name__)
         Closable.__init__(self)
 
-        self.processor = self.get_socket(zmq.PUSH) # type: ignore
+        self.processor = self.get_socket(zmq.PUSH)
 
         self._boto_session = boto_session
         self._swf_region = swf_region
@@ -2243,7 +2240,6 @@ class EventSourceDiscovery(AppThread, Closable):
                     log.info(f'All event sources {event_processor.origins!s} have been discovered and registered.')
                     break
                 for source_to_register in outstanding_registrations:
-                     # type: ignore
                     workflow_instance = None
                     # determine IPs of available devices for ZMQ subscriptions
                     with workflow_starter(self._boto_session,
@@ -2404,9 +2400,8 @@ if __name__ == "__main__":
     # must be main thread
     signal_handler = SignalHandler()
     # start the nanny
-    f = threading.Thread(name='nanny', target=thread_nanny, args=(signal_handler,))
-    f.setDaemon(True)
-    f.start()
+    nanny = threading.Thread(name='nanny', target=thread_nanny, args=(signal_handler,))
+    nanny.setDaemon(True)
     # not tracked by nanny because this is used for Flask bootstrap
     server = FlaskThread(app=flask_app, compress=Compress())
     server.start()
@@ -2416,6 +2411,7 @@ if __name__ == "__main__":
         log.setLevel(logging.INFO)
         # discover callback URL
         CallbackUrlDiscovery().start()
+        nanny.start()
         # hang around until something goes wrong
         threads.interruptable_sleep.wait()
         raise RuntimeWarning("Shutting down...")
