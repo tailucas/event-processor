@@ -17,8 +17,11 @@ export RESIN_API_KEY="${API_KEY_RESIN:-$RESIN_API_KEY}"
 # root user access, prefer key
 mkdir -p /root/.ssh/
 
-echo "$(/opt/app/bin/python /opt/app/pylib/cred_tool <<< '{"s": {"opitem": "SSH", "opfield": ".password"}}')" > /root/.ssh/authorized_keys
-chmod 600 /root/.ssh/authorized_keys
+AUTH_KEYS_FILE="/root/.ssh/authorized_keys"
+echo "$(/opt/app/bin/python /opt/app/pylib/cred_tool <<< '{"s": {"opitem": "SSH", "opfield": ".password"}}')" > "${AUTH_KEYS_FILE}"
+[ -e "${AUTH_KEYS_FILE}" ] && grep -q '[^[:space:]]' "${AUTH_KEYS_FILE}"
+chmod 600 "${AUTH_KEYS_FILE}"
+unset AUTH_KEYS_FILE
 if [ -n "${ROOT_PASSWORD:-}" ]; then
   echo "root:${ROOT_PASSWORD}" | chpasswd
   sed -i 's/PermitRootLogin without-password/PermitRootLogin yes/' /etc/ssh/sshd_config
