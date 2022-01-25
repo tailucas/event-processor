@@ -2,7 +2,7 @@
 set -eux
 set -o pipefail
 
-NGROK_URL=$(curl -s 'https://ngrok.com/download' | hxnormalize -x 2>/dev/null | hxselect '#dl-linux-arm' 2>/dev/null | egrep -o 'https.*\arm.zip' | tail -1)
+NGROK_URL=$(curl -s 'https://ngrok.com/download' | hxnormalize -x 2>/dev/null | grep '#linux-dl-link' | egrep -o 'https://.*-arm.tgz' | tail -1)
 TMP_DIR=$(mktemp -d -t ngrok-XXX)
 wget -nv -P "${TMP_DIR}" "${NGROK_URL}"
-unzip "${TMP_DIR}/*.zip" -d /opt/app/
+tar -xvzf ${TMP_DIR}/*.tgz --directory /opt/app/
