@@ -2182,6 +2182,11 @@ class EventSourceDiscovery(AppThread, Closable):
         self._mdash_devices_url = app_config.get('mdash', 'base_url')
         self._app_config_mqtt_pub_topic = app_config.get('mdash', 'app_config_mqtt_pub_topic')
 
+        self._disabled_swf_tasklists = list()
+        for swf_tasklist in app_config.get('app', 'swf_tasklists_disabled').split(','):
+            self._disabled_swf_tasklists.append(swf_tasklist)
+
+
     def run(self):
         self.processor.connect(URL_WORKER_APP)
         with exception_handler(closable=self, close_on_exit=False):
@@ -2198,11 +2203,18 @@ class EventSourceDiscovery(AppThread, Closable):
             return
 
         # register SWF actions
-        sources_to_register = (
-            app_config.get('swf_tasklist', OUTPUT_TYPE_BLUETOOTH),
-            app_config.get('swf_tasklist', OUTPUT_TYPE_SWITCH),
-            app_config.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT),
-            app_config.get('swf_tasklist', OUTPUT_TYPE_TTS))
+        if len(self._disabled_swf_tasklists) > 0:
+            log.warning(f'{len(self._disabled_swf_tasklists)} SWF task lists have been disabled in configuration: {self._disabled_swf_tasklists}')
+        to_register = list()
+        if OUTPUT_TYPE_BLUETOOTH not in self._disabled_swf_tasklists:
+            to_register.append(app_config.get('swf_tasklist', OUTPUT_TYPE_BLUETOOTH))
+        if OUTPUT_TYPE_SWITCH not in self._disabled_swf_tasklists:
+            to_register.append(app_config.get('swf_tasklist', OUTPUT_TYPE_SWITCH))
+        if OUTPUT_TYPE_SNAPSHOT not in self._disabled_swf_tasklists:
+            to_register.append(app_config.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT))
+        if OUTPUT_TYPE_TTS not in self._disabled_swf_tasklists:
+            to_register.append(app_config.get('swf_tasklist', OUTPUT_TYPE_TTS))
+        sources_to_register = tuple(to_register)
 
         with exception_handler(closable=self):
             # register MQTT inputs
