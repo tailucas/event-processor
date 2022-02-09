@@ -7,6 +7,7 @@ import builtins
 import boto3
 import copy
 import os
+import pika
 import pytz
 import re
 import requests
@@ -2353,6 +2354,16 @@ if __name__ == "__main__":
     exec_cmd_log(['sudo', 'systemctl', 'start', 'ngrok'])
     # elected leader, now stay leader
     leader_election.start()
+    # connect to Rabbit exchange
+    mq_config_server = app_config.get('rabbitmq', 'server_address')
+    mq_connection = pika.BlockingConnection(pika.ConnectionParameters(host=mq_config_server))
+    mq_channel = mq_connection.channel()
+    mq_exchange_type = 'topic'
+    mq_config_exchange = app_config.get('rabbitmq', 'mq_exchange')
+    mq_channel.exchange_declare(exchange=mq_config_exchange, exchange_type=mq_exchange_type)
+    mq_result = mq_channel.queue_declare('', exclusive=True)
+    mq_queue_name = mq_result.method.queue
+    log.info(f'Using RabbitMQ server at {mq_config_server} using {mq_exchange_type} exchange {mq_config_exchange} and queue {mq_queue_name}.')
     # connect to SWF
     swf_decider = ThreadedWorkflowExecutor(WorkflowWorker(boto_session,
                                              swf_region,
