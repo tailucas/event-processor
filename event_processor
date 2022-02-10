@@ -2344,6 +2344,48 @@ class FlaskThread(Thread):
         log.warning('Flask server shutdown complete: {}'.format(self.__class__.__name__))
 
 
+class MQTopicListener(AppThread, Closable):
+
+    def __init__(self, mq_channel, mq_exchange_name, mq_queue_name):
+        AppThread.__init__(self, name=self.__class__.__name__)
+        Closable.__init__(self)
+
+        self.processor = self.get_socket(zmq.PUSH)
+
+        self._mq_channel = mq_channel
+        self._mq_exchange_name = mq_exchange_name
+        self._mq_queue_name = mq_queue_name
+
+    def close(self):
+        Closable.close(self)
+
+    def callback(self, ch, method, properties, body):
+        log.debug(f'Message on topic {method.routing_key}: {body}')
+        msg_data = None
+        try:
+            msg_data = json.loads(body)
+        except JSONDecodeError:
+            log.exception('Unstructured message: {}'.format(body))
+            return
+
+    # noinspection PyBroadException
+    def run(self):
+        self.processor.connect(URL_WORKER_APP)
+        with exception_handler(closable=self):
+            topic_filter = '#'
+            # bind to all MQ topics
+            self._mq_channel.queue_bind(
+                exchange=self._mq_exchange_name,
+                queue=self._mq_queue_name,
+                routing_key=topic_filter)
+            self._mq_channel.basic_consume(
+                queue=self._mq_queue_name,
+                on_message_callback=self.callback,
+                auto_ack=True)
+            log.info(f'Ready for RabbitMQ messages with topic filter {topic_filter}')
+            self._mq_channel.start_consuming()
+
+
 if __name__ == "__main__":
     log.setLevel(logging.INFO)
     # determine leadership
@@ -2396,6 +2438,10 @@ if __name__ == "__main__":
     event_source_discovery = EventSourceDiscovery(boto_session, swf_region, swf_domain)
     sqs_listener = SQSListener()
     telegram_bot = TBot()
+    mq_listener = MQTopicListener(
+        mq_channel=mq_channel,
+        mq_exchange_name=mq_config_exchange,
+        mq_queue_name=mq_queue_name)
     # start the binders
     event_logger.start()
     event_processor.start()
@@ -2406,6 +2452,7 @@ if __name__ == "__main__":
     auto_scheduler.start()
     sqs_listener.start()
     telegram_bot.start()
+    mq_listener.start()
     # start Telegram integration
     telegram_updater = TelegramUpdater(token=creds.telegram_bot_api_token, use_context=True)
     telegram_dispatcher = telegram_updater.dispatcher
@@ -2443,6 +2490,8 @@ if __name__ == "__main__":
         threads.shutting_down = True
         threads.interruptable_sleep.set()
         message = "Shutting down {}..."
+        log.info(message.format('RabbitMQ worker'))
+        mq_connection.close()
         log.info(message.format('SWF workflow worker'))
         swf_decider.stop()
         log.info(message.format('SWF activity worker'))
