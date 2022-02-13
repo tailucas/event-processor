@@ -1,11 +1,11 @@
 #!/usr/bin/env python
-import dateutil.parser
 import logging
 import logging.handlers
 
 import builtins
 import boto3
 import copy
+import msgpack
 import os
 import pika
 import pytz
@@ -16,7 +16,6 @@ import simplejson as json
 import sqlite3
 import threading
 import time
-import umsgpack
 import zmq
 
 from base64 import b64decode, b64encode
@@ -30,9 +29,14 @@ from datetime import datetime, timedelta
 from dateutil import tz
 from decimal import Decimal
 from io import BytesIO
+from msgpack.exceptions import UnpackException
 from onepasswordconnectsdk.client import Client as CredsClient
 from operator import itemgetter
 from pathlib import Path
+from pika.exceptions import StreamLostError, \
+    ConnectionClosedByBroker, \
+    AMQPChannelError, \
+    AMQPConnectionError
 from pylru import lrucache
 from requests.exceptions import ConnectionError
 from sentry_sdk import capture_exception, last_event_id
@@ -59,7 +63,6 @@ from telegram.utils.helpers import escape_markdown
 from telegram.utils.request import TimedOut
 from threading import Thread
 from time import sleep
-from umsgpack import UnpackException
 from urllib.parse import urlparse
 from uuid import uuid4
 from flask import Flask, g, flash, request, render_template, url_for, redirect
@@ -1056,20 +1059,7 @@ class EventProcessor(AppThread, Closable):
                         output_type,
                         output_device_activation))
                     workflow_instance = None
-                    if output_type == OUTPUT_TYPE_BLUETOOTH:
-                        swf_tasklist = app_config.get('swf_tasklist', OUTPUT_TYPE_BLUETOOTH)
-                        with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, app_name) as starter:
-                            # pylint: disable=no-value-for-parameter
-                            workflow_instance = BluetoothWorkflow.execute(
-                                app=swf_tasklist,
-                                owner_device_list=self._output_config[output_device_key]['device_params'])
-                        SWFActivityWaiter(
-                            zmq_ipc_url=URL_WORKER_APP,
-                            event_source=swf_tasklist,
-                            output_type=OUTPUT_TYPE_BLUETOOTH,
-                            workflow_starter=starter,
-                            workflow_instance=workflow_instance).start()
-                    elif output_type == OUTPUT_TYPE_SNAPSHOT:
+                    if output_type == OUTPUT_TYPE_SNAPSHOT:
                         camera_config = self._output_config[output_device_key]['device_params']
                         with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, app_name) as starter:
                             # pylint: disable=no-value-for-parameter
@@ -1079,16 +1069,6 @@ class EventProcessor(AppThread, Closable):
                                 device_label=output_device_label,
                                 camera_config=camera_config)
                         # image detection
-                        image_processor_source = app_config.get('swf_tasklist', OUTPUT_TYPE_IMAGE)
-                        with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, app_name) as starter:
-                            # pylint: disable=no-value-for-parameter
-                            workflow_instance = ImageProcessWorkflow.execute(
-                                app=image_processor_source,
-                                device_key=output_device_key,
-                                device_label=output_device_label,
-                                camera_config=camera_config,
-                                # pass the address of the device that performs snapshots
-                                snapshot_processor_address=self._origin_pull_connections[app_config.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT)])
                     elif output_type in OUTPUT_TYPE_SWITCH:
                         with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, app_name) as starter:
                             # pylint: disable=no-value-for-parameter
@@ -1096,17 +1076,6 @@ class EventProcessor(AppThread, Closable):
                                 app=app_config.get('swf_tasklist', OUTPUT_TYPE_SWITCH),
                                 device_key=output_device_key,
                                 duration=trigger_duration)
-                    elif output_type == OUTPUT_TYPE_TTS:
-                        active_device_label = active_device['device_label']
-                        event_detail = ""
-                        if 'event_detail' in active_device:
-                            event_detail = ' {}'.format(active_device['event_detail'])
-                        notification_message = '{}{}'.format(active_device_label, event_detail)
-                        with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, app_name) as starter:
-                            # pylint: disable=no-value-for-parameter
-                            workflow_instance = TTSWorkflow.execute(
-                                app=app_config.get('swf_tasklist', OUTPUT_TYPE_TTS),
-                                message=notification_message)
                     if workflow_instance is not None:
                         log.info("{} workflow is {}".format(output_type, workflow_instance.workflow_execution))
                 elif event_destination == device_name:
@@ -1253,24 +1222,13 @@ class EventProcessor(AppThread, Closable):
                                 log.warning(log_msg)
                             else:
                                 log.debug(log_msg)
-                        if 'register_origin' == event_origin:
-                            # connect to event origins
-                            for origin, ip in list(event_data.items()):
-                                connection_string = 'tcp://{}:{}'.format(ip, app_config.get('zmq', 'pubsub_port'))
-                                subscriber = ZmqEventSourceSubscriber(label=origin, publisher_endpoint=connection_string)
-                                subscriber.start()
-                                # nanny the heartbeats
-                                self._origin_nanny.add_origin_subscriber(origin=origin, ip=ip, subscriber=subscriber)
-                                # keep track of the available event origins
-                                self._origin_connections[origin] = connection_string
-                                self._origin_pull_connections[origin] = 'tcp://{}:{}'.format(ip, app_config.get('zmq', 'pushpull_port'))
-                            continue
                         if 'register_mqtt_origin' == event_origin:
                             # connect to event origins
                             for mqtt_topic, device_id in list(event_data.items()):
                                 subscriber = MqttEventSourceSubscriber(mqtt_topic=mqtt_topic, device_id=device_id)
                                 # nanny the heartbeats
-                                self._origin_nanny.add_origin_subscriber(origin=mqtt_topic, ip=None, subscriber=subscriber)
+                                if self._origin_nanny:
+                                    self._origin_nanny.add_origin_subscriber(origin=mqtt_topic, ip=None, subscriber=subscriber)
                                 # keep the heartbeats up to date
                                 self._mqtt_subscriber.add_source_subscriber(topic=mqtt_topic, subscriber=subscriber)
                             continue
@@ -1956,7 +1914,7 @@ class ZmqEventSourceSubscriber(EventSourceSubscriber, AppThread, Closable):
                     continue
                 try:
                     publisher_data = self.subscriber.recv(zmq.NOBLOCK)
-                    publisher_event = umsgpack.unpackb(publisher_data)
+                    publisher_event = msgpack.unpackb(publisher_data)
                 except Again as e:
                     log.debug(f'{e!s}')
                     continue
@@ -2183,39 +2141,11 @@ class EventSourceDiscovery(AppThread, Closable):
         self._mdash_devices_url = app_config.get('mdash', 'base_url')
         self._app_config_mqtt_pub_topic = app_config.get('mdash', 'app_config_mqtt_pub_topic')
 
-        self._disabled_swf_tasklists = list()
-        for swf_tasklist in app_config.get('app', 'swf_tasklists_disabled').split(','):
-            self._disabled_swf_tasklists.append(swf_tasklist)
-
-
     def run(self):
         self.processor.connect(URL_WORKER_APP)
-        with exception_handler(closable=self, close_on_exit=False):
-            # start with static sources
-            subscription_sources = app_config.get('app', 'subscription_sources')
-            if len(subscription_sources) > 0:
-                for source in app_config.get('app', 'subscription_sources').split(','):
-                    label_ip = source.split(':')
-                    source_label = label_ip[0]
-                    source_ip = label_ip[1]
-                    self.processor.send_pyobj({'register_origin': {source_label: source_ip}})
 
         if threads.shutting_down:
             return
-
-        # register SWF actions
-        if len(self._disabled_swf_tasklists) > 0:
-            log.warning(f'{len(self._disabled_swf_tasklists)} SWF task lists have been disabled in configuration: {self._disabled_swf_tasklists}')
-        to_register = list()
-        if OUTPUT_TYPE_BLUETOOTH not in self._disabled_swf_tasklists:
-            to_register.append(app_config.get('swf_tasklist', OUTPUT_TYPE_BLUETOOTH))
-        if OUTPUT_TYPE_SWITCH not in self._disabled_swf_tasklists:
-            to_register.append(app_config.get('swf_tasklist', OUTPUT_TYPE_SWITCH))
-        if OUTPUT_TYPE_SNAPSHOT not in self._disabled_swf_tasklists:
-            to_register.append(app_config.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT))
-        if OUTPUT_TYPE_TTS not in self._disabled_swf_tasklists:
-            to_register.append(app_config.get('swf_tasklist', OUTPUT_TYPE_TTS))
-        sources_to_register = tuple(to_register)
 
         with exception_handler(closable=self):
             # register MQTT inputs
@@ -2246,31 +2176,6 @@ class EventSourceDiscovery(AppThread, Closable):
                 mqtt_pub_topic_name = mqtt_pub_topic.text.replace('"', '')
                 log.info(f"MQTT topic for {device_id} is '{mqtt_pub_topic_name}'")
                 self.processor.send_pyobj({'register_mqtt_origin': {mqtt_pub_topic_name: device_id}})
-
-            while not threads.shutting_down:
-                outstanding_registrations = set(sources_to_register) - event_processor.origins
-                if not outstanding_registrations:
-                    log.info(f'All event sources {event_processor.origins!s} have been discovered and registered.')
-                    break
-                for source_to_register in outstanding_registrations:
-                    workflow_instance = None
-                    # determine IPs of available devices for ZMQ subscriptions
-                    with workflow_starter(self._boto_session,
-                                        self._swf_region,
-                                        self._swf_domain,
-                                        app_name) as starter:
-                        workflow_instance = DeviceWorkflow.execute(app=source_to_register) # pylint: disable=no-value-for-parameter
-                        log.debug("Registration workflow for {} is {}".format(
-                            source_to_register,
-                            workflow_instance.workflow_execution))
-                    SWFActivityWaiter(
-                        zmq_ipc_url=URL_WORKER_APP,
-                        event_source='register_origin',
-                        output_type=source_to_register,
-                        workflow_starter=starter,
-                        workflow_instance=workflow_instance).start()
-                # try get more in a minute
-                threads.interruptable_sleep.wait(60)
 
         # un-nanny and goodbye
         self.untrack()
@@ -2346,44 +2251,87 @@ class FlaskThread(Thread):
 
 class MQTopicListener(AppThread, Closable):
 
-    def __init__(self, mq_channel, mq_exchange_name, mq_queue_name):
+    def __init__(self):
         AppThread.__init__(self, name=self.__class__.__name__)
         Closable.__init__(self)
 
         self.processor = self.get_socket(zmq.PUSH)
 
-        self._mq_channel = mq_channel
-        self._mq_exchange_name = mq_exchange_name
-        self._mq_queue_name = mq_queue_name
+        pika_parameters = list()
+        self._mq_server_address_list = app_config.get('rabbitmq', 'server_address').split(',')
+        for source in self._mq_server_address_list:
+            pika_parameters.append(pika.ConnectionParameters(host=source))
+        self._pika_parameters = tuple(pika_parameters)
+        self._mq_exchange_type = 'topic'
+        self._mq_exchange_name = app_config.get('rabbitmq', 'mq_exchange')
+        self._mq_topic_filter = '#'
+
+        self._message_counter = 0
+        self._mq_channel = None
 
     def close(self):
+        if self._mq_channel:
+            try:
+                self._mq_channel.stop_consuming()
+            except Exception:
+                pass
         Closable.close(self)
 
     def callback(self, ch, method, properties, body):
-        log.debug(f'Message on topic {method.routing_key}: {body}')
-        msg_data = None
-        try:
-            msg_data = json.loads(body)
-        except JSONDecodeError:
-            log.exception('Unstructured message: {}'.format(body))
+        self._message_counter += 1
+        topic = method.routing_key
+        log.debug(f'[{topic}]: {body}')
+        topic_parts = topic.split('.')
+        if len(topic_parts) < 2:
+            log.warning(f'Ignoring non-routable message from topic [{topic}] due to unsufficient topic parts.')
             return
+        if 'heartbeat' not in topic:
+            log.info(f'Device event on topic [{topic}]')
+        device_event = None
+        try:
+            device_event = msgpack.unpackb(body)
+        except UnpackException:
+            log.exception('Bad message: {}'.format(body))
+            return
+        try:
+            self.processor.send_pyobj({topic_parts[1]: device_event})
+        except Exception:
+            if not threads.shutting_down:
+                raise e
 
     # noinspection PyBroadException
     def run(self):
         self.processor.connect(URL_WORKER_APP)
         with exception_handler(closable=self):
-            topic_filter = '#'
-            # bind to all MQ topics
-            self._mq_channel.queue_bind(
-                exchange=self._mq_exchange_name,
-                queue=self._mq_queue_name,
-                routing_key=topic_filter)
-            self._mq_channel.basic_consume(
-                queue=self._mq_queue_name,
-                on_message_callback=self.callback,
-                auto_ack=True)
-            log.info(f'Ready for RabbitMQ messages with topic filter {topic_filter}')
-            self._mq_channel.start_consuming()
+            while not threads.shutting_down:
+                try:
+                    mq_connection = pika.BlockingConnection(parameters=self._pika_parameters)
+                    self._mq_channel = mq_connection.channel()
+                    self._mq_channel.exchange_declare(exchange=self._mq_exchange_name, exchange_type=self._mq_exchange_type)
+                    mq_result = self._mq_channel.queue_declare('', exclusive=True)
+                    mq_queue_name = mq_result.method.queue
+                    log.info(f'Using RabbitMQ server(s) {self._mq_server_address_list} using {self._mq_exchange_type} exchange {self._mq_exchange_name} and queue {mq_queue_name}.')
+                    # bind to all MQ topics
+                    self._mq_channel.queue_bind(
+                        exchange=self._mq_exchange_name,
+                        queue=mq_queue_name,
+                        routing_key=self._mq_topic_filter)
+                    self._mq_channel.basic_consume(
+                        queue=mq_queue_name,
+                        on_message_callback=self.callback,
+                        auto_ack=True)
+                    log.info(f'Ready for RabbitMQ messages with topic filter {self._mq_topic_filter}')
+                    self._mq_channel.start_consuming()
+                    log.info(f'RabbitMQ listener has finished after {self._message_counter} messages.')
+                    mq_connection.close()
+                except (StreamLostError, AMQPConnectionError) as e:
+                    if not threads.shutting_down:
+                        raise e
+                except (ConnectionClosedByBroker, AMQPChannelError) as ce:
+                    if not threads.shutting_down:
+                        backoff = 10
+                        log.warning(f'{ce!s}. Retrying connection setup after {backoff}s backoff...')
+                        threads.interruptable_sleep.wait(backoff)
 
 
 if __name__ == "__main__":
@@ -2396,16 +2344,6 @@ if __name__ == "__main__":
     exec_cmd_log(['sudo', 'systemctl', 'start', 'ngrok'])
     # elected leader, now stay leader
     leader_election.start()
-    # connect to Rabbit exchange
-    mq_config_server = app_config.get('rabbitmq', 'server_address')
-    mq_connection = pika.BlockingConnection(pika.ConnectionParameters(host=mq_config_server))
-    mq_channel = mq_connection.channel()
-    mq_exchange_type = 'topic'
-    mq_config_exchange = app_config.get('rabbitmq', 'mq_exchange')
-    mq_channel.exchange_declare(exchange=mq_config_exchange, exchange_type=mq_exchange_type)
-    mq_result = mq_channel.queue_declare('', exclusive=True)
-    mq_queue_name = mq_result.method.queue
-    log.info(f'Using RabbitMQ server at {mq_config_server} using {mq_exchange_type} exchange {mq_config_exchange} and queue {mq_queue_name}.')
     # connect to SWF
     swf_decider = ThreadedWorkflowExecutor(WorkflowWorker(boto_session,
                                              swf_region,
@@ -2430,7 +2368,9 @@ if __name__ == "__main__":
     swf_worker.start()
     # bind listeners first
     event_logger = EventLog()
-    origin_nanny = OriginNanny()
+    origin_nanny = None
+    #origin_nanny = OriginNanny()
+    mq_listener = MQTopicListener()
     mqtt_subscriber = MqttSubscriber()
     auto_scheduler = AutoScheduler()
     event_processor = EventProcessor(origin_nanny, boto_session, swf_region, swf_domain, mqtt_subscriber)
@@ -2438,15 +2378,11 @@ if __name__ == "__main__":
     event_source_discovery = EventSourceDiscovery(boto_session, swf_region, swf_domain)
     sqs_listener = SQSListener()
     telegram_bot = TBot()
-    mq_listener = MQTopicListener(
-        mq_channel=mq_channel,
-        mq_exchange_name=mq_config_exchange,
-        mq_queue_name=mq_queue_name)
     # start the binders
     event_logger.start()
     event_processor.start()
     # start the connectors
-    origin_nanny.start()
+    #origin_nanny.start()
     event_source_discovery.start()
     mqtt_subscriber.start()
     auto_scheduler.start()
@@ -2490,8 +2426,8 @@ if __name__ == "__main__":
         threads.shutting_down = True
         threads.interruptable_sleep.set()
         message = "Shutting down {}..."
-        log.info(message.format('RabbitMQ worker'))
-        mq_connection.close()
+        log.info(message.format('Rabbit MQ listener'))
+        mq_listener.close()
         log.info(message.format('SWF workflow worker'))
         swf_decider.stop()
         log.info(message.format('SWF activity worker'))

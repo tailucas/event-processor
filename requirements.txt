@@ -4,6 +4,7 @@ boto3
 botoflow
 blinker
 influxdb-client
+msgpack
 netifaces
 onepasswordconnectsdk
 paho-mqtt
@@ -18,6 +19,5 @@ requests
 schedule
 sentry-sdk[flask]
 simplejson
-u-msgpack-python
 Flask
 Flask-Compress
