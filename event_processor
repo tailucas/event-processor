@@ -143,7 +143,7 @@ from lib.process import SignalHandler, \
     exec_cmd_log
 from lib import threads
 from lib.threads import thread_nanny
-from lib.app import AppThread
+from lib.app import AppThread, ZmqRelay
 from lib.zmq import zmq_term, Closable
 from lib.handler import exception_handler
 
@@ -160,6 +160,7 @@ OUTPUT_TYPE_SNAPSHOT = 'snapshot'
 OUTPUT_TYPE_TTS = 'tts'
 
 URL_WORKER_APP = 'inproc://app-worker'
+URL_WORKER_HEARTBEAT_NANNY = 'inproc://heartbeat-nanny'
 URL_WORKER_EVENT_LOG = 'inproc://event-log'
 URL_WORKER_TELEGRAM_BOT = 'inproc://telegram-bot'
 URL_WORKER_MQTT_PUBLISH = 'inproc://mqtt-publish'
@@ -698,7 +699,7 @@ def telegram_error_handler(update: Update, context: TelegramCallbackContext):
 
 class EventProcessor(AppThread, Closable):
 
-    def __init__(self, origin_nanny, boto_session, swf_region, swf_domain, mqtt_subscriber):
+    def __init__(self, boto_session, swf_region, swf_domain, mqtt_subscriber):
         AppThread.__init__(self, name=self.__class__.__name__)
         Closable.__init__(self, connect_url=URL_WORKER_APP)
 
@@ -743,8 +744,6 @@ class EventProcessor(AppThread, Closable):
         self._max_message_validity_seconds = None
 
         self._device_event_lru = lrucache(100)
-
-        self._origin_nanny = origin_nanny
 
         self.event_log = self.get_socket(zmq.PUSH)
 
@@ -1226,9 +1225,6 @@ class EventProcessor(AppThread, Closable):
                             # connect to event origins
                             for mqtt_topic, device_id in list(event_data.items()):
                                 subscriber = MqttEventSourceSubscriber(mqtt_topic=mqtt_topic, device_id=device_id)
-                                # nanny the heartbeats
-                                if self._origin_nanny:
-                                    self._origin_nanny.add_origin_subscriber(origin=mqtt_topic, ip=None, subscriber=subscriber)
                                 # keep the heartbeats up to date
                                 self._mqtt_subscriber.add_source_subscriber(topic=mqtt_topic, subscriber=subscriber)
                             continue
@@ -1330,44 +1326,44 @@ class EventProcessor(AppThread, Closable):
                                 event_processor.flash_info = True
                                 # skip further processing because of enable/disable
                                 continue
-                        if 'data' in event_data:
-                            if 'stale_heartbeat' in event_data['data']:
-                                stale_heartbeat = event_data['data']['stale_heartbeat']
-                                device_status = "unknown"
-                                if 'device_status' in event_data['data']:
-                                    device_status = event_data['data']['device_status']
-                                # check if there are any inputs or outputs configured for this origin
-                                for _, origin_devices, awol_devices in [
-                                    (self.inputs, self._inputs_by_origin, self._awol_inputs),
-                                    (self.outputs, self._outputs_by_origin, self._awol_outputs)
-                                ]:
-                                    new_awol = 0
-                                    if event_origin in origin_devices and len(origin_devices[event_origin]) > 0:
-                                        log.debug("'{}' last checked-in: {} in an '{}' state.".format(
+                        if 'stale_heartbeat' in event_data:
+                            stale_heartbeat = event_data['stale_heartbeat']
+                            device_status = "unknown"
+                            if 'device_status' in event_data:
+                                device_status = event_data['device_status']
+                            # check if there are any inputs or outputs configured for this origin
+                            for _, origin_devices, awol_devices in [
+                                (self.inputs, self._inputs_by_origin, self._awol_inputs),
+                                (self.outputs, self._outputs_by_origin, self._awol_outputs)
+                            ]:
+                                new_awol = 0
+                                if event_origin in origin_devices and len(origin_devices[event_origin]) > 0:
+                                    log.debug("'{}' last checked-in: {} in an '{}' state.".format(
+                                        event_origin,
+                                        stale_heartbeat,
+                                        device_status.lower()))
+                                    for device_key in origin_devices[event_origin]:
+                                        if device_key not in awol_devices:
+                                            awol_devices.add(device_key)
+                                            new_awol += 1
+                                if new_awol > 0:
+                                    log.warning(
+                                        "{} devices are unavailable because '{}' has gone AWOL. "
+                                        "{} devices: {}. Last seen: {}, status: {}".format(
+                                            len(awol_devices),
                                             event_origin,
+                                            new_awol,
+                                            str(awol_devices),
                                             stale_heartbeat,
-                                            device_status.lower()))
-                                        for device_key in origin_devices[event_origin]:
-                                            if device_key not in awol_devices:
-                                                awol_devices.add(device_key)
-                                                new_awol += 1
-                                    if new_awol > 0:
-                                        log.warning(
-                                            "{} devices are unavailable because '{}' has gone AWOL. "
-                                            "{} devices: {}. Last seen: {}, status: {}".format(
-                                                len(awol_devices),
-                                                event_origin,
-                                                new_awol,
-                                                str(awol_devices),
-                                                stale_heartbeat,
-                                                device_status
-                                            ))
-                            if 'max_heartbeat_age' in event_data['data']:
-                                heartbeat_age = int(event_data['data']['max_heartbeat_age'])
-                                post_count_metric(
-                                    metric_name='Heartbeat Age',
-                                    count=heartbeat_age,
-                                    unit='Seconds')
+                                            device_status
+                                        ))
+                        if 'max_heartbeat_age' in event_data:
+                            heartbeat_age = int(event_data['max_heartbeat_age'])
+                            post_count_metric(
+                                metric_name='Heartbeat Age',
+                                count=heartbeat_age,
+                                unit='Seconds')
+                        if 'data' in event_data:
                             if 'device_info' in event_data['data']:
                                 devices_updated = self._update_devices(
                                     event_origin=event_origin,
@@ -2034,96 +2030,55 @@ class AutoScheduler(AppThread, Closable):
                     threads.interruptable_sleep.wait(10)
 
 
-class OriginNanny(AppThread, Closable):
+class HeartbeatFilter(ZmqRelay):
 
     def __init__(self):
-        AppThread.__init__(self, name=self.__class__.__name__)
-        Closable.__init__(self)
+        ZmqRelay.__init__(self,
+            name=self.__class__.__name__,
+            source_zmq_url=URL_WORKER_HEARTBEAT_NANNY,
+            source_socket_type=zmq.PULL,
+            sink_zmq_url=URL_WORKER_APP,
+            sink_socket_type=zmq.PUSH)
 
-        self.processor = self.get_socket(zmq.PUSH)
-
-        self.origin_subscriber = {}
-        self._heartbeat_sample_interval = int(app_config.get('app', 'heartbeat_sample_interval_seconds'))
         self._heartbeat_report_interval = int(app_config.get('app', 'heartbeat_report_interval_seconds'))
         self._max_heartbeat_delay = int(app_config.get('app', 'max_heartbeat_delay_seconds'))
+
         self._heartbeats = {}
 
-    # noinspection PyShadowingNames
-    def add_origin_subscriber(self, origin, ip, subscriber):
-        self.origin_subscriber[origin] = (ip, subscriber)
+        self._last_report = int(time.time())
+        self._heartbeat_report_due = False
+        self._max_reported_heartbeat = -1
 
-    def run(self):
-        self.processor.connect(URL_WORKER_APP)
-        # warm-up to wait for first volley of heartbeats
-        threads.interruptable_sleep.wait(self._heartbeat_sample_interval)
-        last_report = make_timestamp()
-        heartbeat_due = False
-        max_heartbeat = -1
-        with exception_handler(closable=self):
-            while not threads.shutting_down:
-                # send out either a stale alert or the heartbeat
-                now = make_timestamp()
-                if now - last_report > timedelta(seconds=self._heartbeat_report_interval):
-                    last_report = now
-                    heartbeat_due = True
-                    max_heartbeat = -1
-                payload = {}
-                for origin, (_, origin_subscriber) in list(self.origin_subscriber.items()):
-                    if origin not in self._heartbeats:
-                        self._heartbeats[origin] = []
-                    # when last was an event seen by this subscriber
-                    last_message = origin_subscriber.last_message
-                    heartbeat_age = None
-                    if last_message:
-                        heartbeat_age = time.time() - origin_subscriber.last_message
-                    if last_message is None or heartbeat_age > self._max_heartbeat_delay:
-                        device_status = None
-                        if last_message:
-                            last_message = datetime.utcfromtimestamp(last_message).replace(tzinfo=pytz.utc).strftime(ISO_DATE_FORMAT)
-                        else:
-                            last_message = "never"
-                        log_message = "'{}' last activity was {}.".format(origin, last_message)
-                        if device_status:
-                            log.debug("{} Device is {}.".format(log_message, device_status))
-                        else:
-                            log.debug(log_message)
-                        # used as an out-of-band trigger for something amiss
-                        payload['stale_heartbeat'] = last_message
-                        if device_status:
-                            payload['device_status'] = device_status
-                    # do this for each device irrespective of stale or not
-                    origin_heartbeat = self._heartbeats[origin]
-                    if heartbeat_age:
-                        origin_heartbeat.append(heartbeat_age)
-                    # send out either a stale alert or the heartbeat
-                    if heartbeat_due:
-                        if len(payload) > 0 or len(origin_heartbeat) > 0:
-                            # add in the maximum heartbeat observed
-                            if len(origin_heartbeat) > 0:
-                                log.debug("Aggregating {} heartbeats captured from {}.".format(len(origin_heartbeat), origin))
-                                device_max_heartbeat = 0
-                                for heartbeat in origin_heartbeat:
-                                    if heartbeat > max_heartbeat:
-                                        max_heartbeat = heartbeat
-                                    if heartbeat > device_max_heartbeat:
-                                        device_max_heartbeat = heartbeat
-                                origin_heartbeat.clear()
-                                payload['heartbeat_age'] = device_max_heartbeat
-                                self.processor.send_pyobj({origin: {'data': payload}})
-                # send the maximum heartbeat
-                if heartbeat_due and max_heartbeat >= 0:
-                    self.processor.send_pyobj({
-                        device_name: {
-                            'data': {
-                                'max_heartbeat_age': max_heartbeat
-                            }
-                        }
-                    })
-                    heartbeat_due = False
-                    max_heartbeat = -1
-                # test for ZMQ shutdown
-                self.processor.poll(timeout=0)
-                threads.interruptable_sleep.wait(self._heartbeat_sample_interval)
+    def process_message(self, zmq_socket):
+        event = zmq_socket.recv_pyobj()
+        origin, data = list(event.items())[0]
+        now = int(time.time())
+        last_time = None
+        if origin in self._heartbeats:
+            last_time = self._heartbeats[origin]
+        # update new heartbeat
+        self._heartbeats[origin] = now
+        if last_time:
+            heartbeat_age = now - last_time
+            data['heartbeat_age'] = heartbeat_age
+            last_time_formatted = make_timestamp(timestamp=last_time, make_string=True)
+            if heartbeat_age > self._max_heartbeat_delay:
+                # used as an out-of-band trigger for something amiss
+                data['stale_heartbeat'] = last_time_formatted
+            # update maximum heartbeat seen in this interval
+            if heartbeat_age > self._max_reported_heartbeat:
+                self._max_reported_heartbeat = heartbeat_age
+        else:
+            heartbeat_age = None
+            last_time_formatted = "never"
+        log.debug(f'Last activity from {origin} was {heartbeat_age}s ago ({last_time_formatted}).')
+        # send the maximum heartbeat, and reset
+        if now - self._last_report > self._heartbeat_report_interval:
+            data['max_heartbeat_age'] = self._max_reported_heartbeat
+            self._last_report = now
+            self._max_reported_heartbeat = -1
+        # forward the original payload
+        self.socket.send_pyobj({origin: data})
 
 
 class EventSourceDiscovery(AppThread, Closable):
@@ -2301,7 +2256,7 @@ class MQTopicListener(AppThread, Closable):
 
     # noinspection PyBroadException
     def run(self):
-        self.processor.connect(URL_WORKER_APP)
+        self.processor.connect(URL_WORKER_HEARTBEAT_NANNY)
         with exception_handler(closable=self):
             while not threads.shutting_down:
                 try:
@@ -2368,12 +2323,11 @@ if __name__ == "__main__":
     swf_worker.start()
     # bind listeners first
     event_logger = EventLog()
-    origin_nanny = None
-    #origin_nanny = OriginNanny()
+    heartbeat_filter = HeartbeatFilter()
     mq_listener = MQTopicListener()
     mqtt_subscriber = MqttSubscriber()
     auto_scheduler = AutoScheduler()
-    event_processor = EventProcessor(origin_nanny, boto_session, swf_region, swf_domain, mqtt_subscriber)
+    event_processor = EventProcessor(boto_session, swf_region, swf_domain, mqtt_subscriber)
     # connect ZMQ IPC clients next
     event_source_discovery = EventSourceDiscovery(boto_session, swf_region, swf_domain)
     sqs_listener = SQSListener()
@@ -2381,8 +2335,8 @@ if __name__ == "__main__":
     # start the binders
     event_logger.start()
     event_processor.start()
+    heartbeat_filter.start()
     # start the connectors
-    #origin_nanny.start()
     event_source_discovery.start()
     mqtt_subscriber.start()
     auto_scheduler.start()
