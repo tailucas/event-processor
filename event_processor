@@ -1823,7 +1823,7 @@ class MqttSubscriber(AppThread, Closable):
 
     # noinspection PyBroadException
     def run(self):
-        self.processor.connect(URL_WORKER_APP)
+        self.processor.connect(URL_WORKER_HEARTBEAT_NANNY)
         log.info('Connecting to MQTT server {}...'.format(self._mqtt_server_address))
         self._mqtt_client = mqtt.Client()
         self._mqtt_client.on_connect = self.on_connect
@@ -1847,7 +1847,6 @@ class EventSourceSubscriber(object):
 
     def __init__(self, label):
         self._label = label
-        self.last_message = None
 
     @property
     def label(self):
@@ -1878,7 +1877,6 @@ class ZmqEventSourceSubscriber(EventSourceSubscriber, AppThread, Closable):
         self.subscriber = self.get_socket(zmq.SUB)
         self.processor = self.get_socket(zmq.PUSH)
 
-        self._reconnected = False
         # use half of the tolerated heartbeat value
         self._zmq_poll_period = int(app_config.get('app', 'max_heartbeat_delay_seconds')) / 2
 
@@ -1887,7 +1885,7 @@ class ZmqEventSourceSubscriber(EventSourceSubscriber, AppThread, Closable):
         log.info('Subscribing to {} @ {}'.format(self._label, self._publisher_endpoint))
         self.subscriber.connect(self._publisher_endpoint)
         self.subscriber.setsockopt(zmq.SUBSCRIBE, b'')
-        self.processor.connect(URL_WORKER_APP)
+        self.processor.connect(URL_WORKER_HEARTBEAT_NANNY)
         with exception_handler(closable=self):
             while not threads.shutting_down:
                 # timeout in millis
@@ -1905,7 +1903,6 @@ class ZmqEventSourceSubscriber(EventSourceSubscriber, AppThread, Closable):
                     self.subscriber = self.get_socket(zmq.SUB)
                     self.subscriber.connect(self._publisher_endpoint)
                     self.subscriber.setsockopt(zmq.SUBSCRIBE, b'')
-                    self._reconnected = True
                     # poll again
                     continue
                 try:
@@ -1914,14 +1911,6 @@ class ZmqEventSourceSubscriber(EventSourceSubscriber, AppThread, Closable):
                 except Again as e:
                     log.debug(f'{e!s}')
                     continue
-                # output how long since the last message
-                if self.last_message and self._reconnected:
-                    log.info('{} resumes events after {} seconds.'.format(
-                        self._label,
-                        time.time() - self.last_message))
-                self.last_message = time.time()
-                self._reconnected = False
-                # do not info on heartbeats
                 if 'data' in publisher_event and 'device_info' not in publisher_event['data']:
                     log.debug('Received {} bytes from {}'.format(
                         len(publisher_data),
