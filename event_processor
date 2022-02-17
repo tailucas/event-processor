@@ -2141,23 +2141,31 @@ class FlaskThread(Thread):
 
 class MQTopicListener(AppThread, Closable):
 
-    def __init__(self):
+    def __init__(self, zmq_url, mq_server_address, mq_exchange_name, mq_topic_filter='#'):
         AppThread.__init__(self, name=self.__class__.__name__)
         Closable.__init__(self)
 
         self.processor = self.get_socket(zmq.PUSH)
 
+        if isinstance(mq_server_address, str):
+            self._mq_server_list = [mq_server_address]
+        elif isinstance(mq_server_address, list):
+            self._mq_server_list = mq_server_address
+        else:
+            raise AssertionError(f'Unsupported argument type: {mq_server_address}')
+
         pika_parameters = list()
-        self._mq_server_address_list = app_config.get('rabbitmq', 'server_address').split(',')
-        for source in self._mq_server_address_list:
+        for source in self._mq_server_list:
             pika_parameters.append(pika.ConnectionParameters(host=source))
         self._pika_parameters = tuple(pika_parameters)
         self._mq_exchange_type = 'topic'
-        self._mq_exchange_name = app_config.get('rabbitmq', 'mq_exchange')
-        self._mq_topic_filter = '#'
+        self._mq_exchange_name = mq_exchange_name
+        self._mq_topic_filter = mq_topic_filter
 
         self._message_counter = 0
         self._mq_channel = None
+
+        self._zmq_url = zmq_url
 
     def close(self):
         if self._mq_channel:
@@ -2191,7 +2199,7 @@ class MQTopicListener(AppThread, Closable):
 
     # noinspection PyBroadException
     def run(self):
-        self.processor.connect(URL_WORKER_HEARTBEAT_NANNY)
+        self.processor.connect(self._zmq_url)
         with exception_handler(closable=self):
             while not threads.shutting_down:
                 try:
@@ -2200,7 +2208,7 @@ class MQTopicListener(AppThread, Closable):
                     self._mq_channel.exchange_declare(exchange=self._mq_exchange_name, exchange_type=self._mq_exchange_type)
                     mq_result = self._mq_channel.queue_declare('', exclusive=True)
                     mq_queue_name = mq_result.method.queue
-                    log.info(f'Using RabbitMQ server(s) {self._mq_server_address_list} using {self._mq_exchange_type} exchange {self._mq_exchange_name} and queue {mq_queue_name}.')
+                    log.info(f'Using RabbitMQ server(s) {self._mq_server_list} using {self._mq_exchange_type} exchange {self._mq_exchange_name} and queue {mq_queue_name}.')
                     # bind to all MQ topics
                     self._mq_channel.queue_bind(
                         exchange=self._mq_exchange_name,
@@ -2259,7 +2267,10 @@ if __name__ == "__main__":
     # bind listeners first
     event_logger = EventLog()
     heartbeat_filter = HeartbeatFilter()
-    mq_listener = MQTopicListener()
+    mq_listener = MQTopicListener(
+        zmq_url=URL_WORKER_HEARTBEAT_NANNY,
+        mq_server_address=app_config.get('rabbitmq', 'server_address').split(','),
+        mq_exchange_name=app_config.get('rabbitmq', 'mq_exchange'))
     mqtt_subscriber = MqttSubscriber()
     auto_scheduler = AutoScheduler()
     event_processor = EventProcessor(boto_session, swf_region, swf_domain, mqtt_subscriber)
