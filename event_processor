@@ -1864,60 +1864,6 @@ class MqttEventSourceSubscriber(EventSourceSubscriber):
         return self._device_id
 
 
-class ZmqEventSourceSubscriber(EventSourceSubscriber, AppThread, Closable):
-
-    def __init__(self, label, publisher_endpoint):
-        name = '{}::{}'.format(self.__class__.__name__, label)
-        EventSourceSubscriber.__init__(self, label=label)
-        AppThread.__init__(self, name=name)
-        Closable.__init__(self)
-
-        self._publisher_endpoint = publisher_endpoint
-
-        self.subscriber = self.get_socket(zmq.SUB)
-        self.processor = self.get_socket(zmq.PUSH)
-
-        # use half of the tolerated heartbeat value
-        self._zmq_poll_period = int(app_config.get('app', 'max_heartbeat_delay_seconds')) / 2
-
-    # noinspection PyBroadException
-    def run(self):
-        log.info('Subscribing to {} @ {}'.format(self._label, self._publisher_endpoint))
-        self.subscriber.connect(self._publisher_endpoint)
-        self.subscriber.setsockopt(zmq.SUBSCRIBE, b'')
-        self.processor.connect(URL_WORKER_HEARTBEAT_NANNY)
-        with exception_handler(closable=self):
-            while not threads.shutting_down:
-                # timeout in millis
-                zmq_events = self.subscriber.poll(timeout=self._zmq_poll_period * 1000)
-                # TODO: remove nanny
-                if zmq_events == 0:
-                    log.info('{} reconnecting to {} after more than {} seconds of inactivity...'.format(
-                        self.name,
-                        self._publisher_endpoint,
-                        self._zmq_poll_period))
-                    try:
-                        self.subscriber.close()
-                    except ZMQError:
-                        log.warning(self.name, exc_info=True)
-                    self.subscriber = self.get_socket(zmq.SUB)
-                    self.subscriber.connect(self._publisher_endpoint)
-                    self.subscriber.setsockopt(zmq.SUBSCRIBE, b'')
-                    # poll again
-                    continue
-                try:
-                    publisher_data = self.subscriber.recv(zmq.NOBLOCK)
-                    publisher_event = msgpack.unpackb(publisher_data)
-                except Again as e:
-                    log.debug(f'{e!s}')
-                    continue
-                if 'data' in publisher_event and 'device_info' not in publisher_event['data']:
-                    log.debug('Received {} bytes from {}'.format(
-                        len(publisher_data),
-                        self._publisher_endpoint))
-                self.processor.send_pyobj({self._label: publisher_event})
-
-
 class SQSListener(AppThread, Closable):
 
     def __init__(self):
