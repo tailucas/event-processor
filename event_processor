@@ -2270,7 +2270,8 @@ if __name__ == "__main__":
     mq_listener = MQTopicListener(
         zmq_url=URL_WORKER_HEARTBEAT_NANNY,
         mq_server_address=app_config.get('rabbitmq', 'server_address').split(','),
-        mq_exchange_name=app_config.get('rabbitmq', 'mq_exchange'))
+        mq_exchange_name=app_config.get('rabbitmq', 'mq_exchange'),
+        mq_topic_filter='event.#')
     mqtt_subscriber = MqttSubscriber()
     auto_scheduler = AutoScheduler()
     event_processor = EventProcessor(boto_session, swf_region, swf_domain, mqtt_subscriber)
