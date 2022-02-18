@@ -2180,7 +2180,7 @@ class MQTopicListener(AppThread, Closable):
         topic = method.routing_key
         log.debug(f'[{topic}]: {body}')
         topic_parts = topic.split('.')
-        if len(topic_parts) < 2:
+        if len(topic_parts) < 3:
             log.warning(f'Ignoring non-routable message from topic [{topic}] due to unsufficient topic parts.')
             return
         if 'heartbeat' not in topic:
@@ -2192,7 +2192,7 @@ class MQTopicListener(AppThread, Closable):
             log.exception('Bad message: {}'.format(body))
             return
         try:
-            self.processor.send_pyobj({topic_parts[1]: device_event})
+            self.processor.send_pyobj({topic_parts[2]: device_event})
         except Exception:
             if not threads.shutting_down:
                 raise e
