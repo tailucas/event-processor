@@ -141,6 +141,7 @@ from lib.leader import Leader
 from lib.process import SignalHandler, \
     exec_cmd, \
     exec_cmd_log
+from lib.rabbit import MQTopicListener
 from lib import threads
 from lib.threads import thread_nanny
 from lib.app import AppThread, ZmqRelay
@@ -2139,103 +2140,12 @@ class FlaskThread(Thread):
         log.warning('Flask server shutdown complete: {}'.format(self.__class__.__name__))
 
 
-class MQTopicListener(AppThread, Closable):
-
-    def __init__(self, zmq_url, mq_server_address, mq_exchange_name, mq_topic_filter='#'):
-        AppThread.__init__(self, name=self.__class__.__name__)
-        Closable.__init__(self)
-
-        self.processor = self.get_socket(zmq.PUSH)
-
-        if isinstance(mq_server_address, str):
-            self._mq_server_list = [mq_server_address]
-        elif isinstance(mq_server_address, list):
-            self._mq_server_list = mq_server_address
-        else:
-            raise AssertionError(f'Unsupported argument type: {mq_server_address}')
-
-        pika_parameters = list()
-        for source in self._mq_server_list:
-            pika_parameters.append(pika.ConnectionParameters(host=source))
-        self._pika_parameters = tuple(pika_parameters)
-        self._mq_exchange_type = 'topic'
-        self._mq_exchange_name = mq_exchange_name
-        self._mq_topic_filter = mq_topic_filter
-
-        self._message_counter = 0
-        self._mq_channel = None
-
-        self._zmq_url = zmq_url
-
-    def close(self):
-        if self._mq_channel:
-            try:
-                self._mq_channel.stop_consuming()
-            except Exception:
-                pass
-        Closable.close(self)
-
-    def callback(self, ch, method, properties, body):
-        self._message_counter += 1
-        topic = method.routing_key
-        log.debug(f'[{topic}]: {body}')
-        topic_parts = topic.split('.')
-        if len(topic_parts) < 3:
-            log.warning(f'Ignoring non-routable message from topic [{topic}] due to unsufficient topic parts.')
-            return
-        if 'heartbeat' not in topic:
-            log.info(f'Device event on topic [{topic}]')
-        device_event = None
-        try:
-            device_event = msgpack.unpackb(body)
-        except UnpackException:
-            log.exception('Bad message: {}'.format(body))
-            return
-        try:
-            self.processor.send_pyobj({topic_parts[2]: device_event})
-        except Exception:
-            if not threads.shutting_down:
-                raise e
-
-    # noinspection PyBroadException
-    def run(self):
-        self.processor.connect(self._zmq_url)
-        with exception_handler(closable=self):
-            while not threads.shutting_down:
-                try:
-                    mq_connection = pika.BlockingConnection(parameters=self._pika_parameters)
-                    self._mq_channel = mq_connection.channel()
-                    self._mq_channel.exchange_declare(exchange=self._mq_exchange_name, exchange_type=self._mq_exchange_type)
-                    mq_result = self._mq_channel.queue_declare('', exclusive=True)
-                    mq_queue_name = mq_result.method.queue
-                    log.info(f'Using RabbitMQ server(s) {self._mq_server_list} using {self._mq_exchange_type} exchange {self._mq_exchange_name} and queue {mq_queue_name}.')
-                    # bind to all MQ topics
-                    self._mq_channel.queue_bind(
-                        exchange=self._mq_exchange_name,
-                        queue=mq_queue_name,
-                        routing_key=self._mq_topic_filter)
-                    self._mq_channel.basic_consume(
-                        queue=mq_queue_name,
-                        on_message_callback=self.callback,
-                        auto_ack=True)
-                    log.info(f'Ready for RabbitMQ messages with topic filter {self._mq_topic_filter}')
-                    self._mq_channel.start_consuming()
-                    log.info(f'RabbitMQ listener has finished after {self._message_counter} messages.')
-                    mq_connection.close()
-                except (StreamLostError, AMQPConnectionError) as e:
-                    if not threads.shutting_down:
-                        raise e
-                except (ConnectionClosedByBroker, AMQPChannelError) as ce:
-                    if not threads.shutting_down:
-                        backoff = 10
-                        log.warning(f'{ce!s}. Retrying connection setup after {backoff}s backoff...')
-                        threads.interruptable_sleep.wait(backoff)
-
-
 if __name__ == "__main__":
     log.setLevel(logging.INFO)
     # determine leadership
-    leader_election = Leader()
+    leader_election = Leader(
+        mq_server_address=app_config.get('rabbitmq', 'server_address').split(','),
+        mq_exchange_name=app_config.get('rabbitmq', 'mq_exchange'))
     leader_election.yield_to_leader()
     # get ngrok going
     exec_cmd_log(['sudo', 'systemctl', 'enable', 'ngrok'])
