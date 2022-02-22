@@ -2146,12 +2146,11 @@ if __name__ == "__main__":
     leader_election = Leader(
         mq_server_address=app_config.get('rabbitmq', 'server_address').split(','),
         mq_exchange_name=app_config.get('rabbitmq', 'mq_exchange'))
+    leader_election.start()
     leader_election.yield_to_leader()
     # get ngrok going
     exec_cmd_log(['sudo', 'systemctl', 'enable', 'ngrok'])
     exec_cmd_log(['sudo', 'systemctl', 'start', 'ngrok'])
-    # elected leader, now stay leader
-    leader_election.start()
     # connect to SWF
     swf_decider = ThreadedWorkflowExecutor(WorkflowWorker(boto_session,
                                              swf_region,
