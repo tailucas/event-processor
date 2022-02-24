@@ -2250,8 +2250,6 @@ if __name__ == "__main__":
         # bring any threads out of their Pythonic coma
         threads.interruptable_sleep.set()
         zmq_term()
-        log.info(message.format('leader election.'))
-        leader_election.surrender_leadership()
     finally:
         log.info(message.format('ngrok tunnel'))
         exec_cmd_log(['sudo', 'systemctl', 'stop', 'ngrok'])
