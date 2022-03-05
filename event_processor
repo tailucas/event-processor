@@ -2151,125 +2151,127 @@ if __name__ == "__main__":
     leader_election.start()
     try:
         leader_election.yield_to_leader()
-    except (KeyboardInterrupt, RuntimeWarning):
-        raise
-    # get ngrok going
-    exec_cmd_log(['sudo', 'systemctl', 'enable', 'ngrok'])
-    exec_cmd_log(['sudo', 'systemctl', 'start', 'ngrok'])
-    # connect to SWF
-    swf_decider = ThreadedWorkflowExecutor(
-        WorkflowWorker(
-            boto_session,
-            swf_region,
-            swf_domain,
-            app_name,
-            HelloWorldWorkflow,
-            DeviceWorkflow,
-            BluetoothWorkflow,
-            TTSWorkflow,
-            IOBoardWorkflow,
-            SnapshotWorkflow,
-            ImageProcessWorkflow))
-    swf_decider._worker.unhandled_exception_handler = swf_exception_handler
-    swf_decider.start()
-    # activities run on devices hosting this application
-    swf_worker = ThreadedActivityExecutor(
-        ActivityWorker(
-            boto_session,
-            swf_region,
-            swf_domain,
-            app_name,
-            HelloWorldActivities()))
-    swf_worker._worker.unhandled_exception_handler = swf_exception_handler
-    swf_worker.start()
-    # bind listeners first
-    event_logger = EventLog()
-    heartbeat_filter = HeartbeatFilter()
-    mq_listener = MQTopicListener(
-        zmq_url=URL_WORKER_HEARTBEAT_NANNY,
-        mq_server_address=app_config.get('rabbitmq', 'server_address').split(','),
-        mq_exchange_name=app_config.get('rabbitmq', 'mq_exchange'),
-        mq_topic_filter='event.#')
-    mqtt_subscriber = MqttSubscriber()
-    auto_scheduler = AutoScheduler()
-    event_processor = EventProcessor(boto_session, swf_region, swf_domain, mqtt_subscriber)
-    # connect ZMQ IPC clients next
-    event_source_discovery = EventSourceDiscovery(boto_session, swf_region, swf_domain)
-    sqs_listener = SQSListener()
-    telegram_bot = TBot()
-    # start the binders
-    event_logger.start()
-    event_processor.start()
-    heartbeat_filter.start()
-    # start the connectors
-    event_source_discovery.start()
-    mqtt_subscriber.start()
-    auto_scheduler.start()
-    sqs_listener.start()
-    telegram_bot.start()
-    mq_listener.start()
-    # start Telegram integration
-    telegram_updater = TelegramUpdater(token=creds.telegram_bot_api_token, use_context=True)
-    telegram_dispatcher = telegram_updater.dispatcher
-    telegram_dispatcher.add_handler(
-        TelegramCommandHandler(
-            'start',
-            telegram_bot_cmd,
-            pass_args=True))
-    telegram_dispatcher.add_handler(
-        TelegramCommandHandler(
-            'report',
-            telegram_bot_cmd,
-            pass_args=True))
-    telegram_dispatcher.add_handler(
-        TelegramInlineHandler(telegram_bot_inline))
-    telegram_dispatcher.add_handler(
-        TelegramMessageHandler(
-            TelegramFilters.text,
-            telegram_bot_echo))
-    telegram_dispatcher.add_error_handler(telegram_error_handler)
-    telegram_updater.start_polling()
-    # start the nanny
-    nanny = threading.Thread(
-        name='nanny',
-        target=thread_nanny,
-        args=(signal_handler,))
-    nanny.setDaemon(True)
-    # not tracked by nanny because this is used for Flask bootstrap
-    server = FlaskThread(
-        app=flask_app,
-        compress=Compress())
-    server.start()
-    try:
-        # startup completed
-        # back to INFO logging
-        log.setLevel(logging.INFO)
-        # discover callback URL
-        CallbackUrlDiscovery().start()
-        nanny.start()
-        # hang around until something goes wrong
-        threads.interruptable_sleep.wait()
-        raise RuntimeWarning("Shutting down...")
-    except (KeyboardInterrupt, RuntimeWarning, ContextTerminated) as e:
+    except (KeyboardInterrupt, RuntimeWarning) as e:
+        # interrupted startup
         log.warning(str(e))
-        threads.shutting_down = True
-        threads.interruptable_sleep.set()
-        message = "Shutting down {}..."
-        log.info(message.format('Rabbit MQ listener'))
-        mq_listener.close()
-        log.info(message.format('SWF workflow worker'))
-        swf_decider.stop()
-        log.info(message.format('SWF activity worker'))
-        swf_worker.stop()
-        log.info(message.format('Web server'))
-        server.shutdown()
-        log.info(message.format('Telegram bot'))
-        telegram_updater.stop()
-        log.info(message.format('Application threads'))
-        # bring any threads out of their Pythonic coma
-        threads.interruptable_sleep.set()
-        zmq_term()
-    finally:
-        log.info(message.format('ngrok tunnel'))
-        exec_cmd_log(['sudo', 'systemctl', 'stop', 'ngrok'])
+    if not threads.shutting_down:
+        # get ngrok going
+        exec_cmd_log(['sudo', 'systemctl', 'enable', 'ngrok'])
+        exec_cmd_log(['sudo', 'systemctl', 'start', 'ngrok'])
+        # connect to SWF
+        swf_decider = ThreadedWorkflowExecutor(
+            WorkflowWorker(
+                boto_session,
+                swf_region,
+                swf_domain,
+                app_name,
+                HelloWorldWorkflow,
+                DeviceWorkflow,
+                BluetoothWorkflow,
+                TTSWorkflow,
+                IOBoardWorkflow,
+                SnapshotWorkflow,
+                ImageProcessWorkflow))
+        swf_decider._worker.unhandled_exception_handler = swf_exception_handler
+        swf_decider.start()
+        # activities run on devices hosting this application
+        swf_worker = ThreadedActivityExecutor(
+            ActivityWorker(
+                boto_session,
+                swf_region,
+                swf_domain,
+                app_name,
+                HelloWorldActivities()))
+        swf_worker._worker.unhandled_exception_handler = swf_exception_handler
+        swf_worker.start()
+        # bind listeners first
+        event_logger = EventLog()
+        heartbeat_filter = HeartbeatFilter()
+        mq_listener = MQTopicListener(
+            zmq_url=URL_WORKER_HEARTBEAT_NANNY,
+            mq_server_address=app_config.get('rabbitmq', 'server_address').split(','),
+            mq_exchange_name=app_config.get('rabbitmq', 'mq_exchange'),
+            mq_topic_filter='event.#')
+        mqtt_subscriber = MqttSubscriber()
+        auto_scheduler = AutoScheduler()
+        event_processor = EventProcessor(boto_session, swf_region, swf_domain, mqtt_subscriber)
+        # connect ZMQ IPC clients next
+        event_source_discovery = EventSourceDiscovery(boto_session, swf_region, swf_domain)
+        sqs_listener = SQSListener()
+        telegram_bot = TBot()
+        # start the binders
+        event_logger.start()
+        event_processor.start()
+        heartbeat_filter.start()
+        # start the connectors
+        event_source_discovery.start()
+        mqtt_subscriber.start()
+        auto_scheduler.start()
+        sqs_listener.start()
+        telegram_bot.start()
+        mq_listener.start()
+        # start Telegram integration
+        telegram_updater = TelegramUpdater(token=creds.telegram_bot_api_token, use_context=True)
+        telegram_dispatcher = telegram_updater.dispatcher
+        telegram_dispatcher.add_handler(
+            TelegramCommandHandler(
+                'start',
+                telegram_bot_cmd,
+                pass_args=True))
+        telegram_dispatcher.add_handler(
+            TelegramCommandHandler(
+                'report',
+                telegram_bot_cmd,
+                pass_args=True))
+        telegram_dispatcher.add_handler(
+            TelegramInlineHandler(telegram_bot_inline))
+        telegram_dispatcher.add_handler(
+            TelegramMessageHandler(
+                TelegramFilters.text,
+                telegram_bot_echo))
+        telegram_dispatcher.add_error_handler(telegram_error_handler)
+        telegram_updater.start_polling()
+        # start the nanny
+        nanny = threading.Thread(
+            name='nanny',
+            target=thread_nanny,
+            args=(signal_handler,))
+        nanny.setDaemon(True)
+        # not tracked by nanny because this is used for Flask bootstrap
+        server = FlaskThread(
+            app=flask_app,
+            compress=Compress())
+        server.start()
+        try:
+            # startup completed
+            # back to INFO logging
+            log.setLevel(logging.INFO)
+            # discover callback URL
+            CallbackUrlDiscovery().start()
+            nanny.start()
+            # hang around until something goes wrong
+            threads.interruptable_sleep.wait()
+            raise RuntimeWarning("Shutting down...")
+        except (KeyboardInterrupt, RuntimeWarning, ContextTerminated) as e:
+            log.warning(str(e))
+            threads.shutting_down = True
+            threads.interruptable_sleep.set()
+            message = "Shutting down {}..."
+            log.info(message.format('Rabbit MQ listener'))
+            mq_listener.close()
+            log.info(message.format('SWF workflow worker'))
+            swf_decider.stop()
+            log.info(message.format('SWF activity worker'))
+            swf_worker.stop()
+            log.info(message.format('Web server'))
+            server.shutdown()
+            log.info(message.format('Telegram bot'))
+            telegram_updater.stop()
+            log.info(message.format('Application threads'))
+            # bring any threads out of their Pythonic coma
+            threads.interruptable_sleep.set()
+            zmq_term()
+        finally:
+            log.info(message.format('ngrok tunnel'))
+            exec_cmd_log(['sudo', 'systemctl', 'stop', 'ngrok'])
     log.info('Shutdown complete.')
