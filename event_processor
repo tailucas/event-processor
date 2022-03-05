@@ -2142,35 +2142,44 @@ class FlaskThread(Thread):
 
 if __name__ == "__main__":
     log.setLevel(logging.INFO)
+    # ensure proper signal handling; must be main thread
+    signal_handler = SignalHandler()
     # determine leadership
     leader_election = Leader(
         mq_server_address=app_config.get('rabbitmq', 'server_address').split(','),
         mq_exchange_name=app_config.get('rabbitmq', 'mq_exchange'))
     leader_election.start()
-    leader_election.yield_to_leader()
+    try:
+        leader_election.yield_to_leader()
+    except (KeyboardInterrupt, RuntimeWarning):
+        raise
     # get ngrok going
     exec_cmd_log(['sudo', 'systemctl', 'enable', 'ngrok'])
     exec_cmd_log(['sudo', 'systemctl', 'start', 'ngrok'])
     # connect to SWF
-    swf_decider = ThreadedWorkflowExecutor(WorkflowWorker(boto_session,
-                                             swf_region,
-                                             swf_domain,
-                                             app_name,
-                                             HelloWorldWorkflow,
-                                             DeviceWorkflow,
-                                             BluetoothWorkflow,
-                                             TTSWorkflow,
-                                             IOBoardWorkflow,
-                                             SnapshotWorkflow,
-                                             ImageProcessWorkflow))
+    swf_decider = ThreadedWorkflowExecutor(
+        WorkflowWorker(
+            boto_session,
+            swf_region,
+            swf_domain,
+            app_name,
+            HelloWorldWorkflow,
+            DeviceWorkflow,
+            BluetoothWorkflow,
+            TTSWorkflow,
+            IOBoardWorkflow,
+            SnapshotWorkflow,
+            ImageProcessWorkflow))
     swf_decider._worker.unhandled_exception_handler = swf_exception_handler
     swf_decider.start()
     # activities run on devices hosting this application
-    swf_worker = ThreadedActivityExecutor(ActivityWorker(boto_session,
-                                            swf_region,
-                                            swf_domain,
-                                            app_name,
-                                            HelloWorldActivities()))
+    swf_worker = ThreadedActivityExecutor(
+        ActivityWorker(
+            boto_session,
+            swf_region,
+            swf_domain,
+            app_name,
+            HelloWorldActivities()))
     swf_worker._worker.unhandled_exception_handler = swf_exception_handler
     swf_worker.start()
     # bind listeners first
@@ -2202,24 +2211,34 @@ if __name__ == "__main__":
     # start Telegram integration
     telegram_updater = TelegramUpdater(token=creds.telegram_bot_api_token, use_context=True)
     telegram_dispatcher = telegram_updater.dispatcher
-    telegram_dispatcher.add_handler(TelegramCommandHandler('start',
-                                                           telegram_bot_cmd,
-                                                           pass_args=True))
-    telegram_dispatcher.add_handler(TelegramCommandHandler('report',
-                                                           telegram_bot_cmd,
-                                                           pass_args=True))
-    telegram_dispatcher.add_handler(TelegramInlineHandler(telegram_bot_inline))
-    telegram_dispatcher.add_handler(TelegramMessageHandler(TelegramFilters.text,
-                                                            telegram_bot_echo))
+    telegram_dispatcher.add_handler(
+        TelegramCommandHandler(
+            'start',
+            telegram_bot_cmd,
+            pass_args=True))
+    telegram_dispatcher.add_handler(
+        TelegramCommandHandler(
+            'report',
+            telegram_bot_cmd,
+            pass_args=True))
+    telegram_dispatcher.add_handler(
+        TelegramInlineHandler(telegram_bot_inline))
+    telegram_dispatcher.add_handler(
+        TelegramMessageHandler(
+            TelegramFilters.text,
+            telegram_bot_echo))
     telegram_dispatcher.add_error_handler(telegram_error_handler)
     telegram_updater.start_polling()
-    # must be main thread
-    signal_handler = SignalHandler()
     # start the nanny
-    nanny = threading.Thread(name='nanny', target=thread_nanny, args=(signal_handler,))
+    nanny = threading.Thread(
+        name='nanny',
+        target=thread_nanny,
+        args=(signal_handler,))
     nanny.setDaemon(True)
     # not tracked by nanny because this is used for Flask bootstrap
-    server = FlaskThread(app=flask_app, compress=Compress())
+    server = FlaskThread(
+        app=flask_app,
+        compress=Compress())
     server.start()
     try:
         # startup completed
@@ -2231,7 +2250,7 @@ if __name__ == "__main__":
         # hang around until something goes wrong
         threads.interruptable_sleep.wait()
         raise RuntimeWarning("Shutting down...")
-    except(KeyboardInterrupt, RuntimeWarning, ContextTerminated) as e:
+    except (KeyboardInterrupt, RuntimeWarning, ContextTerminated) as e:
         log.warning(str(e))
         threads.shutting_down = True
         threads.interruptable_sleep.set()
