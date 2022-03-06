@@ -2250,7 +2250,8 @@ if __name__ == "__main__":
             CallbackUrlDiscovery().start()
             nanny.start()
             # hang around until something goes wrong
-            threads.interruptable_sleep.wait()
+            while not threads.shutting_down:
+                threads.interruptable_sleep.wait(10)
             raise RuntimeWarning("Shutting down...")
         except (KeyboardInterrupt, RuntimeWarning, ContextTerminated) as e:
             log.warning(str(e))
