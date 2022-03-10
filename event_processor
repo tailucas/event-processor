@@ -2259,7 +2259,7 @@ if __name__ == "__main__":
             threads.interruptable_sleep.set()
             message = "Shutting down {}..."
             log.info(message.format('Rabbit MQ listener'))
-            mq_listener.close()
+            mq_listener.stop()
             log.info(message.format('SWF workflow worker'))
             swf_decider.stop()
             log.info(message.format('SWF activity worker'))
