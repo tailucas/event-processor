@@ -2083,30 +2083,28 @@ class CallbackUrlDiscovery(AppThread):
 
     # noinspection PyBroadException
     def run(self):
+        # sudo update
+        global ngrok_tunnel_url
         with exception_handler():
             while not threads.shutting_down:
-                # sudo update
-                global ngrok_tunnel_url
                 try:
                     ngrok_tunnel_url = requests.get(self._discover_url).json()['public_url']
                 except (KeyError, ConnectionError) as e:
                     log.warning('Still attempting to discover ngrok tunnel URL ({})...'.format(repr(e)))
+                # blocking on mutex doesn't work in exception handler
+                if ngrok_tunnel_url is None:
                     threads.interruptable_sleep.wait(10)
-                    if threads.shutting_down:
-                        return
-                    else:
-                        continue
+                    continue
                 log.info('External call-back URL is {}'.format(ngrok_tunnel_url))
                 break
-
-            purl = urlparse(ngrok_tunnel_url)
-            # decorate the URL with basic-auth details
-            global ngrok_tunnel_url_with_bauth
-            ngrok_tunnel_url_with_bauth = '{}://{}:{}@{}{}'.format(purl.scheme,
-                                                                   creds.flask_basic_auth_username,
-                                                                   creds.flask_basic_auth_password,
-                                                                   purl.netloc,
-                                                                   purl.path)
+        purl = urlparse(ngrok_tunnel_url)
+        # decorate the URL with basic-auth details
+        global ngrok_tunnel_url_with_bauth
+        ngrok_tunnel_url_with_bauth = '{}://{}:{}@{}{}'.format(purl.scheme,
+                                                                creds.flask_basic_auth_username,
+                                                                creds.flask_basic_auth_password,
+                                                                purl.netloc,
+                                                                purl.path)
         # thread is done
         self.untrack()
 
