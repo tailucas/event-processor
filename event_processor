@@ -2267,11 +2267,11 @@ if __name__ == "__main__":
             log.info(message.format('Telegram bot'))
             telegram_updater.stop()
             log.info(message.format('Application threads'))
+            # stop sending heartbeats as leader
+            leader_election.stop()
             # bring any threads out of their Pythonic coma
             threads.interruptable_sleep.set()
             zmq_term()
-            # stop sending heartbeats as leader
-            leader_election.stop()
         finally:
             log.info(message.format('ngrok tunnel'))
             exec_cmd_log(['sudo', 'systemctl', 'stop', 'ngrok'])
