@@ -2149,7 +2149,7 @@ if __name__ == "__main__":
         leader_election.yield_to_leader()
     except (KeyboardInterrupt, RuntimeWarning) as e:
         # interrupted startup
-        log.warning(str(e))
+        log.debug(f'{e!s}', exc_info=True)
     if not threads.shutting_down:
         # get ngrok going
         exec_cmd_log(['sudo', 'systemctl', 'enable', 'ngrok'])
@@ -2238,35 +2238,31 @@ if __name__ == "__main__":
             app=flask_app,
             compress=Compress())
         server.start()
+        # startup completed
+        # back to INFO logging
+        log.setLevel(logging.INFO)
+        # discover callback URL
+        CallbackUrlDiscovery().start()
+        nanny.start()
         try:
-            # startup completed
-            # back to INFO logging
-            log.setLevel(logging.INFO)
-            # discover callback URL
-            CallbackUrlDiscovery().start()
-            nanny.start()
             # hang around until something goes wrong
             threads.interruptable_sleep.wait()
-            raise RuntimeWarning("Shutting down...")
-        except (KeyboardInterrupt, RuntimeWarning, ContextTerminated) as e:
-            log.warning(str(e))
+        finally:
             die()
             message = "Shutting down {}..."
-            log.info(message.format('Rabbit MQ listener'))
-            mq_listener.stop()
+            log.info(message.format('ngrok tunnel'))
+            exec_cmd_log(['sudo', 'systemctl', 'stop', 'ngrok'])
+            log.info(message.format('Telegram bot'))
+            telegram_updater.stop()
+            log.info(message.format('Web server'))
+            server.shutdown()
             log.info(message.format('SWF workflow worker'))
             swf_decider.stop()
             log.info(message.format('SWF activity worker'))
             swf_worker.stop()
-            log.info(message.format('Web server'))
-            server.shutdown()
-            log.info(message.format('Telegram bot'))
-            telegram_updater.stop()
-            log.info(message.format('Application threads'))
+            log.info(message.format('Rabbit MQ listener'))
+            mq_listener.stop()
             # stop sending heartbeats as leader
             leader_election.stop()
             zmq_term()
-        finally:
-            log.info(message.format('ngrok tunnel'))
-            exec_cmd_log(['sudo', 'systemctl', 'stop', 'ngrok'])
     log.info('Shutdown complete.')
