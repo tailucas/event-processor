@@ -143,7 +143,7 @@ from lib.process import SignalHandler, \
     exec_cmd_log
 from lib.rabbit import MQTopicListener
 from lib import threads
-from lib.threads import thread_nanny
+from lib.threads import thread_nanny, die
 from lib.app import AppThread, ZmqRelay
 from lib.zmq import zmq_term, Closable
 from lib.handler import exception_handler
@@ -2091,8 +2091,6 @@ class CallbackUrlDiscovery(AppThread):
                     ngrok_tunnel_url = requests.get(self._discover_url).json()['public_url']
                 except (KeyError, ConnectionError) as e:
                     log.warning('Still attempting to discover ngrok tunnel URL ({})...'.format(repr(e)))
-                # blocking on mutex doesn't work in exception handler
-                if ngrok_tunnel_url is None:
                     threads.interruptable_sleep.wait(10)
                     continue
                 log.info('External call-back URL is {}'.format(ngrok_tunnel_url))
@@ -2248,13 +2246,11 @@ if __name__ == "__main__":
             CallbackUrlDiscovery().start()
             nanny.start()
             # hang around until something goes wrong
-            while not threads.shutting_down:
-                threads.interruptable_sleep.wait(10)
+            threads.interruptable_sleep.wait()
             raise RuntimeWarning("Shutting down...")
         except (KeyboardInterrupt, RuntimeWarning, ContextTerminated) as e:
             log.warning(str(e))
-            threads.shutting_down = True
-            threads.interruptable_sleep.set()
+            die()
             message = "Shutting down {}..."
             log.info(message.format('Rabbit MQ listener'))
             mq_listener.stop()
@@ -2269,8 +2265,6 @@ if __name__ == "__main__":
             log.info(message.format('Application threads'))
             # stop sending heartbeats as leader
             leader_election.stop()
-            # bring any threads out of their Pythonic coma
-            threads.interruptable_sleep.set()
             zmq_term()
         finally:
             log.info(message.format('ngrok tunnel'))
