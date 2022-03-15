@@ -2151,9 +2151,7 @@ if __name__ == "__main__":
         # interrupted startup
         log.debug(f'{e!s}', exc_info=True)
     if not threads.shutting_down:
-        # get ngrok going
-        exec_cmd_log(['sudo', 'systemctl', 'enable', 'ngrok'])
-        exec_cmd_log(['sudo', 'systemctl', 'start', 'ngrok'])
+        log.info('Creating application threads...')
         # connect to SWF
         swf_decider = ThreadedWorkflowExecutor(
             WorkflowWorker(
@@ -2169,7 +2167,6 @@ if __name__ == "__main__":
                 SnapshotWorkflow,
                 ImageProcessWorkflow))
         swf_decider._worker.unhandled_exception_handler = swf_exception_handler
-        swf_decider.start()
         # activities run on devices hosting this application
         swf_worker = ThreadedActivityExecutor(
             ActivityWorker(
@@ -2179,7 +2176,6 @@ if __name__ == "__main__":
                 app_name,
                 HelloWorldActivities()))
         swf_worker._worker.unhandled_exception_handler = swf_exception_handler
-        swf_worker.start()
         # bind listeners first
         event_logger = EventLog()
         heartbeat_filter = HeartbeatFilter()
@@ -2195,17 +2191,6 @@ if __name__ == "__main__":
         event_source_discovery = EventSourceDiscovery(boto_session, swf_region, swf_domain)
         sqs_listener = SQSListener()
         telegram_bot = TBot()
-        # start the binders
-        event_logger.start()
-        event_processor.start()
-        heartbeat_filter.start()
-        # start the connectors
-        event_source_discovery.start()
-        mqtt_subscriber.start()
-        auto_scheduler.start()
-        sqs_listener.start()
-        telegram_bot.start()
-        mq_listener.start()
         # start Telegram integration
         telegram_updater = TelegramUpdater(token=creds.telegram_bot_api_token, use_context=True)
         telegram_dispatcher = telegram_updater.dispatcher
@@ -2226,7 +2211,6 @@ if __name__ == "__main__":
                 TelegramFilters.text,
                 telegram_bot_echo))
         telegram_dispatcher.add_error_handler(telegram_error_handler)
-        telegram_updater.start_polling()
         # start the nanny
         nanny = threading.Thread(
             name='nanny',
@@ -2237,14 +2221,35 @@ if __name__ == "__main__":
         server = FlaskThread(
             app=flask_app,
             compress=Compress())
-        server.start()
         # startup completed
         # back to INFO logging
         log.setLevel(logging.INFO)
-        # discover callback URL
-        CallbackUrlDiscovery().start()
-        nanny.start()
         try:
+            log.info('Starting application threads...')
+            # SWF
+            swf_decider.start()
+            swf_worker.start()
+            # start the binders
+            event_logger.start()
+            event_processor.start()
+            heartbeat_filter.start()
+            # start the connectors
+            event_source_discovery.start()
+            mqtt_subscriber.start()
+            auto_scheduler.start()
+            sqs_listener.start()
+            telegram_bot.start()
+            mq_listener.start()
+            # Flask UI
+            server.start()
+            telegram_updater.start_polling()
+            # get ngrok going
+            exec_cmd_log(['sudo', 'systemctl', 'enable', 'ngrok'])
+            exec_cmd_log(['sudo', 'systemctl', 'start', 'ngrok'])
+            # discover ngrok callback URL
+            CallbackUrlDiscovery().start()
+            nanny.start()
+            log.info('Startup complete.')
             # hang around until something goes wrong
             threads.interruptable_sleep.wait()
         finally:
