@@ -2202,7 +2202,7 @@ if __name__ == "__main__":
             swf_domain,
             mqtt_subscriber,
             mq_server_address,
-            mq_exchange_name)
+            f'{mq_exchange_name}_control')
         # connect ZMQ IPC clients next
         event_source_discovery = EventSourceDiscovery(boto_session, swf_region, swf_domain)
         sqs_listener = SQSListener()
