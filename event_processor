@@ -705,7 +705,10 @@ class EventProcessor(MQConnection, Closable):
             self,
             mq_server_address=mq_server_address,
             mq_exchange_name=mq_exchange_name,
-            mq_exchange_type='direct')
+            # direct routing
+            mq_exchange_type='direct',
+            # no control message should live longer than 90s
+            mq_arguments={'x-message-ttl': 90*1000})
         Closable.__init__(self, connect_url=URL_WORKER_APP)
 
         self._boto_session = boto_session
