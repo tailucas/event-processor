@@ -1066,27 +1066,11 @@ class EventProcessor(MQConnection, Closable):
                         output_type,
                         output_device_activation))
                     event_payload = None
-                    workflow_instance = None
                     if output_type == OUTPUT_TYPE_SNAPSHOT:
                         camera_config = self._output_config[output_device_key]['device_params']
                         event_payload = (output_device_key, output_device_label, camera_config)
-                        with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, app_name) as starter:
-                            # pylint: disable=no-value-for-parameter
-                            workflow_instance = SnapshotWorkflow.execute(
-                                app=app_config.get('swf_tasklist', OUTPUT_TYPE_SNAPSHOT),
-                                device_key=output_device_key,
-                                device_label=output_device_label,
-                                camera_config=camera_config)
                     elif output_type in OUTPUT_TYPE_SWITCH:
                         event_payload=(output_device_key, trigger_duration)
-                        with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, app_name) as starter:
-                            # pylint: disable=no-value-for-parameter
-                            workflow_instance = IOBoardWorkflow.execute(
-                                app=app_config.get('swf_tasklist', OUTPUT_TYPE_SWITCH),
-                                device_key=output_device_key,
-                                duration=trigger_duration)
-                    if workflow_instance is not None:
-                        log.info("{} workflow is {}".format(output_type, workflow_instance.workflow_execution))
                     if event_payload:
                         try:
                             self._basic_publish(
