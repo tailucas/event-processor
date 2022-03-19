@@ -141,7 +141,7 @@ from lib.leader import Leader
 from lib.process import SignalHandler, \
     exec_cmd, \
     exec_cmd_log
-from lib.rabbit import ZMQListener
+from lib.rabbit import MQConnection, ZMQListener
 from lib import threads
 from lib.threads import thread_nanny, die
 from lib.app import AppThread, ZmqRelay
@@ -698,10 +698,14 @@ def telegram_error_handler(update: Update, context: TelegramCallbackContext):
         capture_exception()
 
 
-class EventProcessor(AppThread, Closable):
+class EventProcessor(MQConnection, Closable):
 
-    def __init__(self, boto_session, swf_region, swf_domain, mqtt_subscriber):
-        AppThread.__init__(self, name=self.__class__.__name__)
+    def __init__(self, boto_session, swf_region, swf_domain, mqtt_subscriber, mq_server_address, mq_exchange_name):
+        MQConnection.__init__(
+            self,
+            mq_server_address=mq_server_address,
+            mq_exchange_name=mq_exchange_name,
+            mq_exchange_type='direct')
         Closable.__init__(self, connect_url=URL_WORKER_APP)
 
         self._boto_session = boto_session
@@ -1126,6 +1130,9 @@ class EventProcessor(AppThread, Closable):
 
     # noinspection PyBroadException
     def run(self):
+        # set up RabbitMQ communication
+        with exception_handler(and_raise=False, shutdown_on_error=True):
+            self._setup_channel()
         # set up local DB storage
         self._db_storage = sqlite3.connect(database=os.environ['TABLESPACE_PATH'])
         # connect to AWS services
@@ -2179,15 +2186,23 @@ if __name__ == "__main__":
         # bind listeners first
         event_logger = EventLog()
         heartbeat_filter = HeartbeatFilter()
+        mq_server_address=app_config.get('rabbitmq', 'server_address').split(',')
+        mq_exchange_name=app_config.get('rabbitmq', 'mq_exchange')
         mq_listener = ZMQListener(
             zmq_url=URL_WORKER_HEARTBEAT_NANNY,
-            mq_server_address=app_config.get('rabbitmq', 'server_address').split(','),
-            mq_exchange_name=app_config.get('rabbitmq', 'mq_exchange'),
+            mq_server_address=mq_server_address,
+            mq_exchange_name=mq_exchange_name,
             mq_topic_filter='event.#',
             mq_exchange_type='topic')
         mqtt_subscriber = MqttSubscriber()
         auto_scheduler = AutoScheduler()
-        event_processor = EventProcessor(boto_session, swf_region, swf_domain, mqtt_subscriber)
+        event_processor = EventProcessor(
+            boto_session,
+            swf_region,
+            swf_domain,
+            mqtt_subscriber,
+            mq_server_address,
+            mq_exchange_name)
         # connect ZMQ IPC clients next
         event_source_discovery = EventSourceDiscovery(boto_session, swf_region, swf_domain)
         sqs_listener = SQSListener()
@@ -2260,6 +2275,8 @@ if __name__ == "__main__":
             exec_cmd_log(['sudo', 'systemctl', 'stop', 'ngrok'])
             log.info(message.format('Telegram bot'))
             telegram_updater.stop()
+            log.info(message.format('Main event processor'))
+            event_processor.stop()
             log.info(message.format('Web server'))
             server.shutdown()
             log.info(message.format('SWF workflow worker'))
