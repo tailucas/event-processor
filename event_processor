@@ -1075,7 +1075,16 @@ class EventProcessor(MQConnection, Closable):
                                 device_key=output_device_key,
                                 device_label=output_device_label,
                                 camera_config=camera_config)
-                        # image detection
+                        try:
+                            self._basic_publish(
+                                routing_key=f'event.control.{output_type}',
+                                event_payload=(
+                                    output_device_key,
+                                    output_device_label,
+                                    camera_config
+                                ))
+                        except Exception:
+                            log.warning(self.__class__.__name__, exc_info=True)
                     elif output_type in OUTPUT_TYPE_SWITCH:
                         with workflow_starter(self._boto_session, self._swf_region, self._swf_domain, app_name) as starter:
                             # pylint: disable=no-value-for-parameter
@@ -1083,6 +1092,15 @@ class EventProcessor(MQConnection, Closable):
                                 app=app_config.get('swf_tasklist', OUTPUT_TYPE_SWITCH),
                                 device_key=output_device_key,
                                 duration=trigger_duration)
+                        try:
+                            self._basic_publish(
+                                routing_key=f'event.control.{output_type}',
+                                event_payload=(
+                                    output_device_key,
+                                    trigger_duration
+                                ))
+                        except Exception:
+                            log.warning(self.__class__.__name__, exc_info=True)
                     if workflow_instance is not None:
                         log.info("{} workflow is {}".format(output_type, workflow_instance.workflow_execution))
                 elif event_destination == device_name:
@@ -1133,9 +1151,6 @@ class EventProcessor(MQConnection, Closable):
 
     # noinspection PyBroadException
     def run(self):
-        # set up RabbitMQ communication
-        with exception_handler(and_raise=False, shutdown_on_error=True):
-            self._setup_channel()
         # set up local DB storage
         self._db_storage = sqlite3.connect(database=os.environ['TABLESPACE_PATH'])
         # connect to AWS services
