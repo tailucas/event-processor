@@ -141,7 +141,7 @@ from lib.leader import Leader
 from lib.process import SignalHandler, \
     exec_cmd, \
     exec_cmd_log
-from lib.rabbit import MQTopicListener
+from lib.rabbit import ZMQListener
 from lib import threads
 from lib.threads import thread_nanny, die
 from lib.app import AppThread, ZmqRelay
@@ -2179,11 +2179,12 @@ if __name__ == "__main__":
         # bind listeners first
         event_logger = EventLog()
         heartbeat_filter = HeartbeatFilter()
-        mq_listener = MQTopicListener(
+        mq_listener = ZMQListener(
             zmq_url=URL_WORKER_HEARTBEAT_NANNY,
             mq_server_address=app_config.get('rabbitmq', 'server_address').split(','),
             mq_exchange_name=app_config.get('rabbitmq', 'mq_exchange'),
-            mq_topic_filter='event.#')
+            mq_topic_filter='event.#',
+            mq_exchange_type='topic')
         mqtt_subscriber = MqttSubscriber()
         auto_scheduler = AutoScheduler()
         event_processor = EventProcessor(boto_session, swf_region, swf_domain, mqtt_subscriber)
