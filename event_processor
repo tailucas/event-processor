@@ -5,10 +5,7 @@ import logging.handlers
 import builtins
 import boto3
 import copy
-import msgpack
 import os
-import pika
-import pytz
 import re
 import requests
 import schedule
@@ -74,20 +71,6 @@ import paho.mqtt.client as mqtt
 from paho.mqtt.client import MQTT_ERR_SUCCESS
 
 import os.path
-from botoflow import activity, \
-    activities, \
-    execute, \
-    return_, \
-    workflow_starter, \
-    WorkflowDefinition, \
-    ThreadedWorkflowExecutor, \
-    ThreadedActivityExecutor
-from botoflow.options import activity_options
-from botoflow.workers.workflow_worker import WorkflowWorker
-from botoflow.workers.activity_worker import ActivityWorker
-from botoflow.constants import SECONDS, MINUTES
-from botoflow.exceptions import ActivityTaskFailedError, ActivityTaskTimedOutError, \
-    WorkflowFailedError, WorkflowTimedOutError
 
 # setup builtins used by pylib init
 app_name = Path(__file__).stem
@@ -120,27 +103,9 @@ from lib.datetime import is_list, \
     make_unix_timestamp, \
     parse_datetime, \
     ISO_DATE_FORMAT
-from lib.data import make_payload
-from lib.aws import boto_session, \
-    swf_region, \
-    swf_domain
-from lib.aws.metrics import app_metrics, post_count_metric
-from lib.aws.swf import SWFActivityWaiter, \
-    swf_exception_handler, \
-    DeviceInfoActivity, \
-    DeviceWorkflow, \
-    HelloWorldActivities, \
-    HelloWorldWorkflow, \
-    DeviceWorkflow, \
-    ImageProcessWorkflow, \
-    SnapshotWorkflow, \
-    TTSWorkflow, \
-    IOBoardWorkflow, \
-    BluetoothWorkflow
+from lib.aws.metrics import post_count_metric
 from lib.leader import Leader
-from lib.process import SignalHandler, \
-    exec_cmd, \
-    exec_cmd_log
+from lib.process import SignalHandler, exec_cmd_log
 from lib.rabbit import MQConnection, ZMQListener
 from lib import threads
 from lib.threads import thread_nanny, die
