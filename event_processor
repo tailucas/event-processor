@@ -79,6 +79,7 @@ builtins.SENTRY_EXTRAS = [FlaskIntegration()]
 AWS_REGION = os.environ['AWS_DEFAULT_REGION']
 class CredsConfig:
     sentry_dsn: f'opitem:"Sentry" opfield:{app_name}.dsn' = None # type: ignore
+    cronitor_token: f'opitem:"cronitor" opfield:.password' = None # type: ignore
     flask_secret_key: f'opitem:"Frontend" opfield:Flask.secret_key' = None # type: ignore
     flask_basic_auth_username: f'opitem:"Frontend" opfield:.username' = None # type: ignore
     flask_basic_auth_password: f'opitem:"Frontend" opfield:.password' = None # type: ignore
