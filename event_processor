@@ -700,7 +700,7 @@ def telegram_error_handler(update: Update, context: TelegramCallbackContext):
 
 class EventProcessor(MQConnection, Closable):
 
-    def __init__(self, boto_session, swf_region, swf_domain, mqtt_subscriber, mq_server_address, mq_exchange_name):
+    def __init__(self, mqtt_subscriber, mq_server_address, mq_exchange_name):
         MQConnection.__init__(
             self,
             mq_server_address=mq_server_address,
@@ -710,10 +710,6 @@ class EventProcessor(MQConnection, Closable):
             # no control message should live longer than 90s
             mq_arguments={'x-message-ttl': 90*1000})
         Closable.__init__(self, connect_url=URL_WORKER_APP)
-
-        self._boto_session = boto_session
-        self._swf_region = swf_region
-        self._swf_domain = swf_domain
 
         self.inputs = {}
         self.outputs = {}
@@ -2018,15 +2014,11 @@ class HeartbeatFilter(ZmqRelay):
 
 
 class EventSourceDiscovery(AppThread, Closable):
-    def __init__(self, boto_session, swf_region, swf_domain):
+    def __init__(self):
         AppThread.__init__(self, name=self.__class__.__name__)
         Closable.__init__(self)
 
         self.processor = self.get_socket(zmq.PUSH)
-
-        self._boto_session = boto_session
-        self._swf_region = swf_region
-        self._swf_domain = swf_domain
 
         self._mdash_api_key = creds.mdash_api_key
         self._mdash_devices_url = app_config.get('mdash', 'base_url')
@@ -2152,30 +2144,6 @@ if __name__ == "__main__":
         log.debug(f'{e!s}', exc_info=True)
     if not threads.shutting_down:
         log.info('Creating application threads...')
-        # connect to SWF
-        swf_decider = ThreadedWorkflowExecutor(
-            WorkflowWorker(
-                boto_session,
-                swf_region,
-                swf_domain,
-                app_name,
-                HelloWorldWorkflow,
-                DeviceWorkflow,
-                BluetoothWorkflow,
-                TTSWorkflow,
-                IOBoardWorkflow,
-                SnapshotWorkflow,
-                ImageProcessWorkflow))
-        swf_decider._worker.unhandled_exception_handler = swf_exception_handler
-        # activities run on devices hosting this application
-        swf_worker = ThreadedActivityExecutor(
-            ActivityWorker(
-                boto_session,
-                swf_region,
-                swf_domain,
-                app_name,
-                HelloWorldActivities()))
-        swf_worker._worker.unhandled_exception_handler = swf_exception_handler
         # bind listeners first
         event_logger = EventLog()
         heartbeat_filter = HeartbeatFilter()
@@ -2190,14 +2158,11 @@ if __name__ == "__main__":
         mqtt_subscriber = MqttSubscriber()
         auto_scheduler = AutoScheduler()
         event_processor = EventProcessor(
-            boto_session,
-            swf_region,
-            swf_domain,
             mqtt_subscriber,
             mq_server_address,
             f'{mq_exchange_name}_control')
         # connect ZMQ IPC clients next
-        event_source_discovery = EventSourceDiscovery(boto_session, swf_region, swf_domain)
+        event_source_discovery = EventSourceDiscovery()
         sqs_listener = SQSListener()
         telegram_bot = TBot()
         # start Telegram integration
@@ -2235,9 +2200,6 @@ if __name__ == "__main__":
         log.setLevel(logging.INFO)
         try:
             log.info('Starting application threads...')
-            # SWF
-            swf_decider.start()
-            swf_worker.start()
             # start the binders
             event_logger.start()
             event_processor.start()
@@ -2272,10 +2234,6 @@ if __name__ == "__main__":
             event_processor.stop()
             log.info(message.format('Web server'))
             server.shutdown()
-            log.info(message.format('SWF workflow worker'))
-            swf_decider.stop()
-            log.info(message.format('SWF activity worker'))
-            swf_worker.stop()
             log.info(message.format('Rabbit MQ listener'))
             mq_listener.stop()
             # stop sending heartbeats as leader
