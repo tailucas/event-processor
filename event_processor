@@ -1162,7 +1162,8 @@ class EventProcessor(MQConnection, Closable):
                 'device_label': 'SMS',
                 'type': 'SMS'
             })
-        with exception_handler(closable=self):
+        with exception_handler(closable=self, and_raise=False, shutdown_on_error=True):
+            self._setup_channel()
             while not threads.shutting_down:
                 event = self.socket.recv_pyobj()
                 log.debug(event)
