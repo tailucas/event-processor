@@ -1014,7 +1014,7 @@ class EventProcessor(MQConnection, Closable):
                     output_device_label = self._output_config[output_device_key]['device_label']
                 except KeyError:
                     output_device_label = output_device_key
-                log.info('DEBUG: Activation command for {} ({}) ({} mapped in {}) is {}'.format(
+                log.debug('Activation command for {} ({}) ({} mapped in {}) is {}'.format(
                     output_device_key,
                     output_device_label,
                     output_device_type,
