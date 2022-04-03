@@ -22,4 +22,5 @@ sentry-sdk[flask]
 simplejson
 Flask
 Flask-Compress
+Flask-SQLAlchemy
 SQLAlchemy

@@ -10,7 +10,6 @@ import re
 import requests
 import schedule
 import simplejson as json
-import sqlite3
 import threading
 import time
 import zmq
@@ -25,6 +24,7 @@ from configparser import ConfigParser
 from datetime import datetime, timedelta
 from dateutil import tz
 from decimal import Decimal
+from flask_sqlalchemy import SQLAlchemy
 from io import BytesIO
 from msgpack.exceptions import UnpackException
 from onepasswordconnectsdk.client import Client as CredsClient
@@ -41,6 +41,7 @@ from sentry_sdk.integrations.flask import FlaskIntegration
 from sentry_sdk.integrations.logging import ignore_logger
 from simplejson.scanner import JSONDecodeError
 from socket import gaierror
+from sqlalchemy import UniqueConstraint, exc as sqlerr
 from traceback import StackSummary
 from telegram import Bot as TelegramBot, \
     InlineQueryResultArticle, InputTextMessageContent, \
@@ -125,6 +126,9 @@ ignore_logger('telegram.ext.updater')
 
 
 flask_app = Flask(app_name)
+db_tablespace = app_config.get('sqlite', 'tablespace_path')
+flask_app.config["SQLALCHEMY_DATABASE_URI"] = 'sqlite:///{db_tablespace}'
+db = SQLAlchemy(flask_app)
 
 OUTPUT_TYPE_BLUETOOTH = 'bluetooth'
 OUTPUT_TYPE_SWITCH = 'ioboard'
@@ -143,6 +147,87 @@ event_processor = None
 event_logger = None
 ngrok_tunnel_url = None
 ngrok_tunnel_url_with_bauth = None
+
+
+class EventLog(db.Model):
+    __tablename__ = 'event_log'
+    id = db.Column(db.Integer, primary_key=True)
+    input_device = db.Column(db.String(100))
+    output_device = db.Column(db.String(100))
+    timestamp = db.Column(db.Integer)
+
+def __init__(self, input_device, output_device, timestamp):
+    self.input_device = input_device
+    self.output_device = output_device
+    self.timestamp = timestamp
+
+
+class GeneralConfig(db.Model):
+    __tablename__ = 'general_config'
+    config_key = db.Column(db.String(50), unique=True, nullable=False, primary_key=True)
+    config_value = db.Column(db.Text, nullable=False)
+
+def __init__(self, config_key, config_value):
+   self.config_key = config_key
+   self.config_value = config_value
+
+
+class InputConfig(db.Model):
+    __tablename__ = 'input_config'
+    id = db.Column(db.Integer, primary_key = True, autoincrement=True)
+    device_key = db.Column(db.String(50), unique=True, nullable=False)
+    device_type = db.Column(db.String(100), nullable=False)
+    device_label = db.Column(db.String(100))
+    customized = db.Column(db.Integer)
+    activation_interval = db.Column(db.Integer)
+    auto_schedule = db.Column(db.Integer)
+    auto_schedule_enable = db.Column(db.String(5))
+    auto_schedule_disable = db.Column(db.String(5))
+    device_disabled = db.Column(db.Integer)
+    multi_trigger = db.Column(db.Integer)
+    group_name = db.Column(db.String(100))
+    links = db.relationship('InputLink', backref='input_config', cascade='all, delete-orphan', lazy='dynamic')
+
+def __init__(self, device_key, device_type, device_label, customized, activation_interval, auto_schedule, auto_schedule_enable, auto_schedule_disable, device_disabled, multi_trigger, group_name):
+   self.device_key = device_key
+   self.device_type = device_type
+   self.device_label = device_label
+   self.customized = customized
+   self.activation_interval = activation_interval
+   self.auto_schedule = auto_schedule
+   self.auto_schedule_enable = auto_schedule_enable
+   self.auto_schedule_disable = auto_schedule_disable
+   self.device_disabled = device_disabled
+   self.multi_trigger = multi_trigger
+   self.group_name = group_name
+
+
+class OutputConfig(db.Model):
+    __tablename__  = 'output_config'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    device_key = db.Column(db.String(50), unique=True, nullable=False)
+    device_type = db.Column(db.String(100), nullable=False)
+    device_label = db.Column(db.String(100))
+    device_params = db.Column(db.Text)
+    links = db.relationship('InputLink', backref='output_config', cascade='all, delete-orphan', lazy='dynamic')
+
+def __init__(self, device_key, device_type, device_label, device_params):
+   self.device_key = device_key
+   self.device_type = device_type
+   self.device_label = device_label
+   self.device_params = device_params
+
+
+class InputLink(db.Model):
+    __tablename__ = 'input_link'
+    __table_args__ = (UniqueConstraint('input_device_id','output_device_id', name='unique_link'),)
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    input_device_id = db.Column(db.Integer, db.ForeignKey('input_config.id'), nullable=False)
+    output_device_id = db.Column(db.Integer, db.ForeignKey('output_config.id'), nullable=False)
+
+def __init__(self, input_device_id, output_device_id):
+   self.input_device_id = input_device_id
+   self.output_device_id = output_device_id
 
 
 @flask_app.route('/debug-sentry')
@@ -701,7 +786,6 @@ class EventProcessor(MQConnection, Closable):
         self._awol_inputs = set()
         self._awol_outputs = set()
 
-        self._db_storage = None
         self._ddb_storage = None
 
         self._general_config = None
@@ -1094,8 +1178,8 @@ class EventProcessor(MQConnection, Closable):
 
     # noinspection PyBroadException
     def run(self):
-        # set up local DB storage
-        self._db_storage = sqlite3.connect(app_config.get('sqlite', 'tablespace_path'))
+        # set up the database
+        db.create_all()
         # connect to AWS services
         self._ddb_storage = boto3.resource('dynamodb')
         # load configuration data
