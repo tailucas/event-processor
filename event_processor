@@ -2355,9 +2355,7 @@ if __name__ == "__main__":
             # Flask UI
             server.start()
             telegram_updater.start_polling()
-            # get cron, ngrok going
-            exec_cmd_log(['sudo', 'systemctl', 'enable', 'cron'])
-            exec_cmd_log(['sudo', 'systemctl', 'start', 'cron'])
+            # get supporting services going
             exec_cmd_log(['sudo', 'systemctl', 'enable', 'ngrok'])
             exec_cmd_log(['sudo', 'systemctl', 'start', 'ngrok'])
             # discover ngrok callback URL
@@ -2369,8 +2367,6 @@ if __name__ == "__main__":
         finally:
             die()
             message = "Shutting down {}..."
-            log.info(message.format('cron jobs'))
-            exec_cmd_log(['sudo', 'systemctl', 'stop', 'cron'])
             log.info(message.format('ngrok tunnel'))
             exec_cmd_log(['sudo', 'systemctl', 'stop', 'ngrok'])
             log.info(message.format('Telegram bot'))
