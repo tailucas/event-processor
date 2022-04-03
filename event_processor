@@ -1213,13 +1213,13 @@ class EventProcessor(MQConnection, Closable):
                 d_device_label = dc['device_label']
             d_customized=None
             if 'customized' in dc:
-                d_customized = dc['customized']
+                d_customized = int(dc['customized'])
             d_activation_interval=None
             if 'activation_interval' in dc:
-                d_activation_interval = dc['activation_interval']
+                d_activation_interval = int(dc['activation_interval'])
             d_auto_schedule=None
             if 'auto_schedule' in dc:
-                d_auto_schedule = dc['auto_schedule']
+                d_auto_schedule = int(dc['auto_schedule'])
             d_auto_schedule_enable=None
             if 'auto_schedule_enable' in dc:
                 d_auto_schedule_enable = dc['auto_schedule_enable']
@@ -1228,10 +1228,10 @@ class EventProcessor(MQConnection, Closable):
                 d_auto_schedule_disable = dc['auto_schedule_disable']
             d_device_disabled=None
             if 'device_disabled' in dc:
-                d_device_disabled = dc['device_disabled']
+                d_device_disabled = int(dc['device_disabled'])
             d_multi_trigger=None
             if 'multi_trigger' in dc:
-                d_multi_trigger = dc['multi_trigger']
+                d_multi_trigger = int(dc['multi_trigger'])
             d_group_name=None
             if 'group_name' in dc:
                 d_group_name = dc['group_name']
