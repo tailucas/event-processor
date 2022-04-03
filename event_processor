@@ -127,7 +127,7 @@ ignore_logger('telegram.ext.updater')
 
 flask_app = Flask(app_name)
 db_tablespace = app_config.get('sqlite', 'tablespace_path')
-flask_app.config["SQLALCHEMY_DATABASE_URI"] = 'sqlite:///{db_tablespace}'
+flask_app.config["SQLALCHEMY_DATABASE_URI"] = f'sqlite:///{db_tablespace}'
 db = SQLAlchemy(flask_app)
 
 OUTPUT_TYPE_BLUETOOTH = 'bluetooth'
@@ -164,7 +164,8 @@ def __init__(self, input_device, output_device, timestamp):
 
 class GeneralConfig(db.Model):
     __tablename__ = 'general_config'
-    config_key = db.Column(db.String(50), unique=True, nullable=False, primary_key=True)
+    id = db.Column(db.Integer, primary_key = True, autoincrement=True)
+    config_key = db.Column(db.String(50), nullable=False)
     config_value = db.Column(db.Text, nullable=False)
 
 def __init__(self, config_key, config_value):
@@ -1178,8 +1179,6 @@ class EventProcessor(MQConnection, Closable):
 
     # noinspection PyBroadException
     def run(self):
-        # set up the database
-        db.create_all()
         # connect to AWS services
         self._ddb_storage = boto3.resource('dynamodb')
         # load configuration data
@@ -1190,6 +1189,91 @@ class EventProcessor(MQConnection, Closable):
             table_name=os.environ['CONFIG_TABLE_INPUT'])
         self._output_config, self._output_config_table = self._load_config_table(
             table_name=os.environ['CONFIG_TABLE_OUTPUT'])
+        # set up the local database
+        try:
+            db.create_all()
+        except Exception as e:
+            log.warning(f'Could not create database schema: {e!s}', exc_info=True)
+        for k,v in self._general_config.items():
+            config_items = v['config_value']
+            for ci in config_items:
+                row = GeneralConfig(config_key=k, config_value=ci)
+                db.session.add(row)
+        try:
+            db.session.commit()
+        except sqlerr.IntegrityError as e:
+            log.warning(f'Cannot update local database: {e!s}', exc_info=True)
+            db.session.rollback()
+        for dk, dc in list(self._input_config.items()):
+            d_device_type=None
+            if 'type' in dc:
+                d_device_type = dc['type']
+            d_device_label=None
+            if 'device_label' in dc:
+                d_device_label = dc['device_label']
+            d_customized=None
+            if 'customized' in dc:
+                d_customized = dc['customized']
+            d_activation_interval=None
+            if 'activation_interval' in dc:
+                d_activation_interval = dc['activation_interval']
+            d_auto_schedule=None
+            if 'auto_schedule' in dc:
+                d_auto_schedule = dc['auto_schedule']
+            d_auto_schedule_enable=None
+            if 'auto_schedule_enable' in dc:
+                d_auto_schedule_enable = dc['auto_schedule_enable']
+            d_auto_schedule_disable=None
+            if 'auto_schedule_disable' in dc:
+                d_auto_schedule_disable = dc['auto_schedule_disable']
+            d_device_disabled=None
+            if 'device_disabled' in dc:
+                d_device_disabled = dc['device_disabled']
+            d_multi_trigger=None
+            if 'multi_trigger' in dc:
+                d_multi_trigger = dc['multi_trigger']
+            d_group_name=None
+            if 'group_name' in dc:
+                d_group_name = dc['group_name']
+            row = InputConfig(
+                device_key=dk,
+                device_type=d_device_type,
+                device_label=d_device_label,
+                customized=d_customized,
+                activation_interval=d_activation_interval,
+                auto_schedule=d_auto_schedule,
+                auto_schedule_enable=d_auto_schedule_enable,
+                auto_schedule_disable=d_auto_schedule_disable,
+                device_disabled=d_device_disabled,
+                multi_trigger=d_multi_trigger,
+                group_name=d_group_name)
+            db.session.add(row)
+        try:
+            db.session.commit()
+        except sqlerr.IntegrityError as e:
+            log.warning(f'Cannot update local database: {e!s}', exc_info=True)
+            db.session.rollback()
+        for dk, dc in list(self._output_config.items()):
+            d_device_type=None
+            if 'type' in dc:
+                d_device_type = dc['type']
+            d_device_label=None
+            if 'device_label' in dc:
+                d_device_label = dc['device_label']
+            d_device_params=None
+            if 'device_params' in dc:
+                d_device_params = dc['device_params']
+            row = OutputConfig(
+                device_key=dk,
+                device_type=d_device_type,
+                device_label=d_device_label,
+                device_params=d_device_params)
+            db.session.add(row)
+        try:
+            db.session.commit()
+        except sqlerr.IntegrityError as e:
+            log.warning(f'Cannot update local database: {e!s}', exc_info=True)
+            db.session.rollback()
         # event log
         self.event_log.connect(URL_WORKER_EVENT_LOG)
         # bot
@@ -2271,7 +2355,9 @@ if __name__ == "__main__":
             # Flask UI
             server.start()
             telegram_updater.start_polling()
-            # get ngrok going
+            # get cron, ngrok going
+            exec_cmd_log(['sudo', 'systemctl', 'enable', 'cron'])
+            exec_cmd_log(['sudo', 'systemctl', 'start', 'cron'])
             exec_cmd_log(['sudo', 'systemctl', 'enable', 'ngrok'])
             exec_cmd_log(['sudo', 'systemctl', 'start', 'ngrok'])
             # discover ngrok callback URL
@@ -2283,6 +2369,8 @@ if __name__ == "__main__":
         finally:
             die()
             message = "Shutting down {}..."
+            log.info(message.format('cron jobs'))
+            exec_cmd_log(['sudo', 'systemctl', 'stop', 'cron'])
             log.info(message.format('ngrok tunnel'))
             exec_cmd_log(['sudo', 'systemctl', 'stop', 'ngrok'])
             log.info(message.format('Telegram bot'))

@@ -187,7 +187,8 @@ for systemdsvc in app ngrok; do
   fi
 done
 systemctl enable app
-# do not enable ngrok just yet
+# disable these unless leader
+systemctl disable cron
 systemctl disable ngrok
 
 # quiet down brcmfmac loaded by supervisor
