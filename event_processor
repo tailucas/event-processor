@@ -38,6 +38,7 @@ from pylru import lrucache
 from requests.exceptions import ConnectionError
 from sentry_sdk import capture_exception, last_event_id
 from sentry_sdk.integrations.flask import FlaskIntegration
+from sentry_sdk.integrations.logging import ignore_logger
 from simplejson.scanner import JSONDecodeError
 from socket import gaierror
 from traceback import StackSummary
@@ -117,6 +118,10 @@ from lib.handler import exception_handler
 
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import ASYNCHRONOUS
+
+
+# Reduce Sentry noise
+ignore_logger('telegram.ext.updater')
 
 
 flask_app = Flask(app_name)
