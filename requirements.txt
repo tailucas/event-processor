@@ -1,4 +1,5 @@
 argparse
+awscli
 beautifulsoup4
 boto3
 botoflow
@@ -21,3 +22,4 @@ sentry-sdk[flask]
 simplejson
 Flask
 Flask-Compress
+SQLAlchemy

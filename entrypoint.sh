@@ -145,11 +145,19 @@ done
 cat /opt/app/config/app.conf | /opt/app/pylib/config_interpol > "/opt/app/${APP_NAME}.conf"
 unset ETH0_IP
 
+cat /opt/app/config/backup_db | sed "s~__APP_USER__~${APP_USER}~g" > /etc/cron.d/backup_db
+
 # Load app environment, overriding HOME and USER
 # https://www.freedesktop.org/software/systemd/man/systemd.exec.html
 cat /etc/docker.env | egrep -v "^HOME|^USER" > /opt/app/environment.env
 echo "HOME=/data/" >> /opt/app/environment.env
 echo "USER=${APP_USER}" >> /opt/app/environment.env
+
+# Refresh local SQLite
+if [ ! -f "${TABLESPACE_PATH}" ]; then
+  /opt/app/backup_db.sh
+  chown "${APP_USER}:${APP_GROUP}" "${TABLESPACE_PATH}"
+fi
 
 # so app user can make the noise
 adduser "${APP_USER}" audio

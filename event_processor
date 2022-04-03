@@ -1095,7 +1095,7 @@ class EventProcessor(MQConnection, Closable):
     # noinspection PyBroadException
     def run(self):
         # set up local DB storage
-        self._db_storage = sqlite3.connect(database=os.environ['TABLESPACE_PATH'])
+        self._db_storage = sqlite3.connect(app_config.get('sqlite', 'tablespace_path'))
         # connect to AWS services
         self._ddb_storage = boto3.resource('dynamodb')
         # load configuration data
