@@ -1186,8 +1186,9 @@ class EventProcessor(MQConnection, Closable):
         self._output_config, self._output_config_table = self._load_config_table(
             table_name=os.environ['CONFIG_TABLE_OUTPUT'])
         # set up the local database
+        # TODO: remove
+        db.drop_all()
         db.create_all()
-
         for k,v in self._general_config.items():
             config_items = v['config_value']
             for ci in config_items:
@@ -1268,6 +1269,17 @@ class EventProcessor(MQConnection, Closable):
         except sqlerr.IntegrityError as e:
             log.warning(f'Cannot update local database: {e!s}', exc_info=True)
             db.session.rollback()
+        # link outputs
+        for dk, dc in list(self._input_config.items()):
+            if 'linked_outputs' in dc:
+                for lo in dc['linked_outputs']:
+                    ic = InputConfig.query.filter_by(device_key=dk).first()
+                    oc = OutputConfig.query.filter_by(device_key=lo).first()
+                    row = InputLink(
+                        input_device_id=ic.id,
+                        output_device_id=oc.id)
+                    db.session.add(row)
+                db.session.commit()
         # bot
         self.bot.connect(URL_WORKER_TELEGRAM_BOT)
         # influx DB
