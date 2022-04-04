@@ -1169,9 +1169,12 @@ class EventProcessor(MQConnection, Closable):
 
     def _influxdb_write(self, bucket, active_device_key, field_name, field_value):
         measurement_name = '_'.join(active_device_key.split()).lower()
-        self.influxdb_rw.write(
-            bucket=bucket,
-            record=Point(measurement_name).tag("application", app_name).tag("device", device_name_base).field(field_name, field_value))
+        try:
+            self.influxdb_rw.write(
+                bucket=bucket,
+                record=Point(measurement_name).tag("application", app_name).tag("device", device_name_base).field(field_name, field_value))
+        except Exception:
+            log.warning(f'Unable to post measurement {measurement_name} to InfluxDB.', exc_info=True)
 
     # noinspection PyBroadException
     def run(self):
@@ -1185,9 +1188,9 @@ class EventProcessor(MQConnection, Closable):
             table_name=os.environ['CONFIG_TABLE_INPUT'])
         self._output_config, self._output_config_table = self._load_config_table(
             table_name=os.environ['CONFIG_TABLE_OUTPUT'])
-        # set up the local database
         # TODO: remove
         db.drop_all()
+        # set up the local database
         db.create_all()
         for k,v in self._general_config.items():
             config_items = v['config_value']
