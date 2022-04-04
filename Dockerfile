@@ -32,6 +32,7 @@ RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommend
     python3-wheel \
     rsyslog \
     strace \
+    sqlite3 \
     systemd \
     tree \
     unzip \
