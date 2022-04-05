@@ -14,18 +14,18 @@
                             </button>
                         </h4>
                     </div>
-                    <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if device.device_key == last_saved_device_key or (loop.first and last_saved_device_key is none) %} show{% endif %}" aria-labelledby="heading{{loop.index}}" data-parent="#accordion">
+                    <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if device.id == last_saved_device_id or (loop.first and last_saved_device_id is none) %} show{% endif %}" aria-labelledby="heading{{loop.index}}" data-parent="#accordion">
                         <div class="card-body">
                             <form role="form" method='POST'>
                                 {% for linkable_device in inputs %}
                                 {% if linkable_device.id == device.id %}{% continue %}{% endif %}
                                 <div class="form-group">
                                     <div class="checkbox">
-                                        <label><input type="checkbox" name="linked_input" value="{{ linkable_device.id }}"{% if device.id in links and linkable_device.id in links[device.id] %} checked{% endif %}>{{ linkable_device.device_label }}</label>
+                                        <label><input type="checkbox" name="linked_device_id" value="{{ linkable_device.id }}"{% if device.id in links and linkable_device.id in links[device.id] %} checked{% endif %}>{{ linkable_device.device_label }}</label>
                                     </div>
                                 </div>
                                 {% endfor %}
-                                <button type="submit" class="btn btn-primary" name="device_key" value="{{ device.device_key }}"><i class="far fa-save"></i> Save</button>
+                                <button type="submit" class="btn btn-primary" name="device_id" value="{{ device.id }}"><i class="far fa-save"></i> Save</button>
                             </form>
                         </div>
                     </div>
