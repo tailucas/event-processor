@@ -162,17 +162,6 @@ def __init__(self, input_device, output_device, timestamp):
     self.timestamp = timestamp
 
 
-class GeneralConfig(db.Model):
-    __tablename__ = 'general_config'
-    id = db.Column(db.Integer, primary_key = True, autoincrement=True)
-    config_key = db.Column(db.String(50), nullable=False)
-    config_value = db.Column(db.Text, nullable=False)
-
-def __init__(self, config_key, config_value):
-   self.config_key = config_key
-   self.config_value = config_value
-
-
 class InputConfig(db.Model):
     __tablename__ = 'input_config'
     id = db.Column(db.Integer, primary_key = True, autoincrement=True)
@@ -785,9 +774,6 @@ class EventProcessor(MQConnection, Closable):
 
         self._ddb_storage = None
 
-        self._general_config = None
-        self._general_config_table = None
-
         self._input_config = None
         self._input_config_table = None
 
@@ -821,15 +807,6 @@ class EventProcessor(MQConnection, Closable):
     @property
     def origins(self):
         return self._origin_connections.keys()
-
-    @property
-    def general_config(self):
-        return self._general_config
-
-    @general_config.setter
-    def general_config(self, config_update):
-        _, _ = config_update
-        self._general_config = {}
 
     @property
     def input_config(self):
@@ -1180,10 +1157,6 @@ class EventProcessor(MQConnection, Closable):
     def run(self):
         # connect to AWS services
         self._ddb_storage = boto3.resource('dynamodb')
-        # load configuration data
-        self._general_config, self._general_config_table = self._load_config_table(
-            table_name=os.environ['CONFIG_TABLE_GENERAL'],
-            primary_key='config_key')
         self._input_config, self._input_config_table = self._load_config_table(
             table_name=os.environ['CONFIG_TABLE_INPUT'])
         self._output_config, self._output_config_table = self._load_config_table(
@@ -1192,16 +1165,6 @@ class EventProcessor(MQConnection, Closable):
         db.drop_all()
         # set up the local database
         db.create_all()
-        for k,v in self._general_config.items():
-            config_items = v['config_value']
-            for ci in config_items:
-                row = GeneralConfig(config_key=k, config_value=ci)
-                db.session.add(row)
-        try:
-            db.session.commit()
-        except sqlerr.IntegrityError as e:
-            log.warning(f'Cannot update local database: {e!s}', exc_info=True)
-            db.session.rollback()
         for dk, dc in list(self._input_config.items()):
             d_device_type=None
             if 'type' in dc:
