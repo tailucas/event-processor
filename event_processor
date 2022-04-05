@@ -177,6 +177,7 @@ class InputConfig(db.Model):
     multi_trigger = db.Column(db.Integer)
     group_name = db.Column(db.String(100), index=True)
     links = db.relationship('InputLink', backref='input_config', cascade='all, delete-orphan', lazy='dynamic')
+    links = db.relationship('OutputLink', backref='input_config', cascade='all, delete-orphan', lazy='dynamic')
 
 def __init__(self, device_key, device_type, device_label, customized, activation_interval, auto_schedule, auto_schedule_enable, auto_schedule_disable, device_disabled, multi_trigger, group_name):
    self.device_key = device_key
@@ -209,9 +210,21 @@ def __init__(self, device_key, device_type, device_label, device_params):
 
 class InputLink(db.Model):
     __tablename__ = 'input_link'
+    __table_args__ = (UniqueConstraint('input_device_id', 'linked_device_id', name='unique_link'),)
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    input_device_id = db.Column(db.Integer, db.ForeignKey('input_config.id'), index=True, nullable=False)
+    linked_device_id = db.Column(db.Integer, db.ForeignKey('input_config.id'), nullable=False)
+
+def __init__(self, input_device_id, linked_device_id):
+   self.input_device_id = input_device_id
+   self.linked_device_id = linked_device_id
+
+
+class OutputLink(db.Model):
+    __tablename__ = 'output_link'
     __table_args__ = (UniqueConstraint('input_device_id', 'device_key', name='unique_link'),)
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    input_device_id = db.Column(db.Integer, db.ForeignKey('input_config.id'), nullable=False)
+    input_device_id = db.Column(db.Integer, db.ForeignKey('input_config.id'), index=True, nullable=False)
     device_key = db.Column(db.String(50), nullable=False)
 
 def __init__(self, input_device_id, device_key):
@@ -1234,12 +1247,23 @@ class EventProcessor(MQConnection, Closable):
         except sqlerr.IntegrityError as e:
             log.warning(f'Cannot update local database: {e!s}', exc_info=True)
             db.session.rollback()
+        # link inputs
+        for dk, dc in list(self._input_config.items()):
+            if 'linked_inputs' in dc:
+                for li in dc['linked_inputs']:
+                    ic = InputConfig.query.filter_by(device_key=dk).first()
+                    icl = InputConfig.query.filter_by(device_key=li).first()
+                    row = InputLink(
+                        input_device_id=ic.id,
+                        linked_device_id=icl.id)
+                    db.session.add(row)
+                db.session.commit()
         # link outputs
         for dk, dc in list(self._input_config.items()):
             if 'linked_outputs' in dc:
                 for lo in dc['linked_outputs']:
                     ic = InputConfig.query.filter_by(device_key=dk).first()
-                    row = InputLink(
+                    row = OutputLink(
                         input_device_id=ic.id,
                         device_key=lo)
                     db.session.add(row)
