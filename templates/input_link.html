@@ -4,28 +4,28 @@
             <p>Link inputs to other inputs so that activations require mutual triggering within the same activation interval.</p>
             <span class="badge badge-warning">Warning: Funtionality not implemented.</span>
             <div id="accordion">
-                {% for device in inputs %}
-                {% if device.type in ['Panic Button', 'Dash Button'] %}{% continue %}{% endif %}
+                {% for input_device in inputs %}
+                {% if input_device.type in ['Panic Button', 'Dash Button'] %}{% continue %}{% endif %}
                 <div class="card">
                     <div class="card-header" id="heading{{loop.index}}">
                         <h4 class="mb-0">
                             <button class="btn btn-link" data-toggle="collapse" data-target="#collapse{{loop.index}}" aria-expanded="true" aria-controls="collapse{{loop.index}}">
-                                {{ device.device_label }}{% if device.id in links %} <span class="badge badge-pill badge-info">{{ links[device.id]|count }}</span>{% endif %}
+                                {{ input_device.device_label }}{% if input_device.id in links %} <span class="badge badge-pill badge-info">{{ links[input_device.id]|count }}</span>{% endif %}
                             </button>
                         </h4>
                     </div>
-                    <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if device.id == last_saved_device_id or (loop.first and last_saved_device_id is none) %} show{% endif %}" aria-labelledby="heading{{loop.index}}" data-parent="#accordion">
+                    <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if input_device.id == last_saved_device_id or (loop.first and last_saved_device_id is none) %} show{% endif %}" aria-labelledby="heading{{loop.index}}" data-parent="#accordion">
                         <div class="card-body">
                             <form role="form" method='POST'>
                                 {% for linkable_device in inputs %}
-                                {% if linkable_device.id == device.id %}{% continue %}{% endif %}
+                                {% if linkable_device.id == input_device.id %}{% continue %}{% endif %}
                                 <div class="form-group">
                                     <div class="checkbox">
-                                        <label><input type="checkbox" name="linked_device_id" value="{{ linkable_device.id }}"{% if device.id in links and linkable_device.id in links[device.id] %} checked{% endif %}>{{ linkable_device.device_label }}</label>
+                                        <label><input type="checkbox" name="linked_device_id" value="{{ linkable_device.id }}"{% if input_device.id in links and linkable_device.id in links[input_device.id] %} checked{% endif %}>{{ linkable_device.device_label }}</label>
                                     </div>
                                 </div>
                                 {% endfor %}
-                                <button type="submit" class="btn btn-primary" name="device_id" value="{{ device.id }}"><i class="far fa-save"></i> Save</button>
+                                <button type="submit" class="btn btn-primary" name="device_id" value="{{ input_device.id }}"><i class="far fa-save"></i> Save</button>
                             </form>
                         </div>
                     </div>
