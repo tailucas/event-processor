@@ -199,7 +199,6 @@ class OutputConfig(db.Model):
     device_type = db.Column(db.String(100), nullable=False)
     device_label = db.Column(db.String(100))
     device_params = db.Column(db.Text)
-    links = db.relationship('InputLink', backref='output_config', cascade='all, delete-orphan', lazy='dynamic')
 
 def __init__(self, device_key, device_type, device_label, device_params):
    self.device_key = device_key
@@ -1242,7 +1241,7 @@ class EventProcessor(MQConnection, Closable):
                     ic = InputConfig.query.filter_by(device_key=dk).first()
                     row = InputLink(
                         input_device_id=ic.id,
-                        output_device_id=lo)
+                        device_key=lo)
                     db.session.add(row)
                 db.session.commit()
         # bot
