@@ -152,9 +152,9 @@ ngrok_tunnel_url_with_bauth = None
 class EventLog(db.Model):
     __tablename__ = 'event_log'
     id = db.Column(db.Integer, primary_key=True)
-    input_device = db.Column(db.String(100))
-    output_device = db.Column(db.String(100))
-    timestamp = db.Column(db.Integer)
+    input_device = db.Column(db.String(100), index=True)
+    output_device = db.Column(db.String(100), index=True)
+    timestamp = db.Column(db.Integer, index=True)
 
 def __init__(self, input_device, output_device, timestamp):
     self.input_device = input_device
