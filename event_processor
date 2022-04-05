@@ -165,7 +165,7 @@ def __init__(self, input_device, output_device, timestamp):
 class InputConfig(db.Model):
     __tablename__ = 'input_config'
     id = db.Column(db.Integer, primary_key = True, autoincrement=True)
-    device_key = db.Column(db.String(50), unique=True, nullable=False)
+    device_key = db.Column(db.String(50), unique=True, index=True, nullable=False)
     device_type = db.Column(db.String(100), nullable=False)
     device_label = db.Column(db.String(100))
     customized = db.Column(db.Integer)
@@ -175,7 +175,7 @@ class InputConfig(db.Model):
     auto_schedule_disable = db.Column(db.String(5))
     device_disabled = db.Column(db.Integer)
     multi_trigger = db.Column(db.Integer)
-    group_name = db.Column(db.String(100))
+    group_name = db.Column(db.String(100), index=True)
     links = db.relationship('InputLink', backref='input_config', cascade='all, delete-orphan', lazy='dynamic')
 
 def __init__(self, device_key, device_type, device_label, customized, activation_interval, auto_schedule, auto_schedule_enable, auto_schedule_disable, device_disabled, multi_trigger, group_name):
@@ -195,7 +195,7 @@ def __init__(self, device_key, device_type, device_label, customized, activation
 class OutputConfig(db.Model):
     __tablename__  = 'output_config'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    device_key = db.Column(db.String(50), unique=True, nullable=False)
+    device_key = db.Column(db.String(50), unique=True, index=True, nullable=False)
     device_type = db.Column(db.String(100), nullable=False)
     device_label = db.Column(db.String(100))
     device_params = db.Column(db.Text)
