@@ -221,14 +221,14 @@ def __init__(self, device_key, device_type, device_label, device_params):
 
 class InputLink(db.Model):
     __tablename__ = 'input_link'
-    __table_args__ = (UniqueConstraint('input_device_id','output_device_id', name='unique_link'),)
+    __table_args__ = (UniqueConstraint('input_device_id', 'device_key', name='unique_link'),)
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     input_device_id = db.Column(db.Integer, db.ForeignKey('input_config.id'), nullable=False)
-    output_device_id = db.Column(db.Integer, db.ForeignKey('output_config.id'), nullable=False)
+    device_key = db.Column(db.String(50), nullable=False)
 
-def __init__(self, input_device_id, output_device_id):
+def __init__(self, input_device_id, device_key):
    self.input_device_id = input_device_id
-   self.output_device_id = output_device_id
+   self.device_key = device_key
 
 
 @flask_app.route('/debug-sentry')
@@ -1277,10 +1277,9 @@ class EventProcessor(MQConnection, Closable):
             if 'linked_outputs' in dc:
                 for lo in dc['linked_outputs']:
                     ic = InputConfig.query.filter_by(device_key=dk).first()
-                    oc = OutputConfig.query.filter_by(device_key=lo).first()
                     row = InputLink(
                         input_device_id=ic.id,
-                        output_device_id=oc.id)
+                        output_device_id=lo)
                     db.session.add(row)
                 db.session.commit()
         # bot
