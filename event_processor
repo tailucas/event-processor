@@ -592,16 +592,16 @@ def input_config():
 
 @flask_app.route('/input_link', methods=['GET', 'POST'])
 def input_link():
-    last_saved_device_id = None
+    saved_device_id = None
     if request.method == 'POST':
-        device_id = request.form['device_id']
+        saved_device_id = request.form['device_id']
         # remove existing links for this device
-        links = InputLink.query.filter_by(input_device_id=device_id).all()
+        links = InputLink.query.filter_by(input_device_id=saved_device_id).all()
         for link in links:
             db.session.delete(link)
         # set new links
         for linked_id in request.form.getlist('linked_device_id'):
-            db.session.add(InputLink(input_device_id=device_id, linked_device_id=linked_id))
+            db.session.add(InputLink(input_device_id=saved_device_id, linked_device_id=linked_id))
         # save the changes
         db.session.commit()
     input_links = InputConfig.query.add_entity(InputLink).join(InputLink, InputConfig.id==InputLink.input_device_id, isouter=True).order_by(InputConfig.device_key).all()
@@ -616,23 +616,21 @@ def input_link():
     return render_template('input_link.html',
                            inputs=inputs,
                            links=links,
-                           last_saved_device_id=last_saved_device_id)
+                           saved_device_id=saved_device_id)
 
 
 @flask_app.route('/output_link', methods=['GET', 'POST'])
 def output_link():
-    global event_processor
-    device_key = None
+    saved_device_id = None
     if request.method == 'POST':
-        device_key = request.form['device_key']
-        event_processor.input_config = (
-            device_key,
-            {'linked_outputs': request.form.getlist('linked_output')}
-        )
+        saved_device_id = request.form['device_key']
+        for linked_id in request.form.getlist('linked_output'):
+            pass
     return render_template('output_link.html',
-                           inputs=event_processor.input_config,
-                           last_saved_device_key=device_key,
-                           outputs=event_processor.outputs)
+                           inputs=list(),
+                           outputs=list(),
+                           links=dict(),
+                           saved_device_id=saved_device_id)
 
 
 @flask_app.route('/output_config', methods=['GET', 'POST'])

@@ -14,7 +14,7 @@
                             </button>
                         </h4>
                     </div>
-                    <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if input_device.id == last_saved_device_id or (loop.first and last_saved_device_id is none) %} show{% endif %}" aria-labelledby="heading{{loop.index}}" data-parent="#accordion">
+                    <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if input_device.id == saved_device_id or (loop.first and saved_device_id is none) %} show{% endif %}" aria-labelledby="heading{{loop.index}}" data-parent="#accordion">
                         <div class="card-body">
                             <form role="form" method='POST'>
                                 {% for linkable_device in inputs %}
