@@ -3,6 +3,7 @@ import logging
 import logging.handlers
 
 import builtins
+from tkinter import W
 import boto3
 import copy
 import os
@@ -600,6 +601,17 @@ def input_link():
             device_key,
             {'linked_inputs': request.form.getlist('linked_input')}
         )
+    input_links = InputConfig.query.add_entity(InputLink).join(InputLink, InputConfig.id==InputLink.input_device_id, isouter=True).order_by(InputConfig.device_key).all()
+    inputs = dict()
+    links = dict()
+    for input, link in input_links:
+        inputs[input.id] = input
+        if link:
+            if link.input_device_id not in links:
+                links[link.input_device_id] = list()
+            links[link.input_device_id].append(link.linked_device_id)
+    log.info(f'Inputs: {inputs!s}')
+    log.info(f'Links: {links!s}')
     return render_template('input_link.html',
                            inputs=event_processor.input_config,
                            last_saved_device_key=device_key)
