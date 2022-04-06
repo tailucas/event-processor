@@ -5,7 +5,7 @@
             <span class="badge badge-warning">Warning: Funtionality not implemented.</span>
             <div id="accordion">
                 {% for input_device in inputs %}
-                {% if input_device.type in ['Panic Button', 'Dash Button'] %}{% continue %}{% endif %}
+                {% if input_device.device_type in ['Panic Button', 'Dash Button'] %}{% continue %}{% endif %}
                 <div class="card">
                     <div class="card-header" id="heading{{loop.index}}">
                         <h4 class="mb-0">

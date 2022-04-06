@@ -15,6 +15,7 @@ import time
 import zmq
 
 from base64 import b64decode, b64encode
+from collections import OrderedDict
 from botocore.exceptions import EndpointConnectionError as bcece, \
     ConnectionClosedError as bccce, \
     ConnectionError as bce
@@ -599,22 +600,24 @@ def input_link():
         links = InputLink.query.filter_by(input_device_id=saved_device_id).all()
         for link in links:
             db.session.delete(link)
+        db.session.commit()
         # set new links
         for linked_id in request.form.getlist('linked_device_id'):
             db.session.add(InputLink(input_device_id=saved_device_id, linked_device_id=linked_id))
         # save the changes
         db.session.commit()
     input_links = InputConfig.query.add_entity(InputLink).join(InputLink, InputConfig.id==InputLink.input_device_id, isouter=True).order_by(InputConfig.device_key).all()
-    inputs = list()
+    inputs = OrderedDict()
     links = dict()
     for input, link in input_links:
-        inputs.append(input)
+        if input.id not in inputs:
+            inputs[input.id] = input
         if link:
             if link.input_device_id not in links:
                 links[link.input_device_id] = list()
             links[link.input_device_id].append(link.linked_device_id)
     return render_template('input_link.html',
-                           inputs=inputs,
+                           inputs=inputs.values(),
                            links=links,
                            saved_device_id=saved_device_id)
 
