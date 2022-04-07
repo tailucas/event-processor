@@ -596,7 +596,7 @@ def input_config():
 def input_link():
     saved_device_id = None
     if request.method == 'POST':
-        saved_device_id = request.form['device_id']
+        saved_device_id = int(request.form['device_id'])
         # remove existing links for this device
         links = InputLink.query.filter_by(input_device_id=saved_device_id).all()
         for link in links:
@@ -627,9 +627,17 @@ def input_link():
 def output_link():
     saved_device_id = None
     if request.method == 'POST':
-        saved_device_id = request.form['device_id']
-        for linked_id in request.form.getlist('linked_output'):
-            pass
+        saved_device_id = int(request.form['device_id'])
+        # remove existing links for this device
+        links = OutputLink.query.filter_by(input_device_id=saved_device_id).all()
+        for link in links:
+            db.session.delete(link)
+        db.session.commit()
+        # set new links
+        for output_device_id in request.form.getlist('linked_device_id'):
+            db.session.add(OutputLink(input_device_id=saved_device_id, output_device_id=output_device_id))
+        # save the changes
+        db.session.commit()
     output_links = InputConfig.query.add_entity(OutputLink).join(OutputLink, InputConfig.id==OutputLink.input_device_id, isouter=True).order_by(InputConfig.device_key).all()
     inputs = OrderedDict()
     outputs = OutputConfig.query.order_by(OutputConfig.device_key).all()
