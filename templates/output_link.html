@@ -18,7 +18,7 @@
                                 {% for output_device in outputs %}
                                 <div class="form-group">
                                     <div class="checkbox">
-                                        <label><input type="checkbox" name="linked_output" value="{{ output_device.id }}"{% if output_device_key.id in links.values() %} checked{% endif %}>{{ output_device.device_label }}</label>
+                                        <label><input type="checkbox" name="linked_output" value="{{ output_device.id }}"{% if input_device.id in links and output_device.id in links[input_device.id] %} checked{% endif %}>{{ output_device.device_label }}</label>
                                     </div>
                                 </div>
                                 {% endfor %}

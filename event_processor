@@ -201,6 +201,7 @@ class OutputConfig(db.Model):
     device_type = db.Column(db.String(100), nullable=False)
     device_label = db.Column(db.String(100))
     device_params = db.Column(db.Text)
+    links = db.relationship('OutputLink', backref='output_config', cascade='all, delete-orphan', lazy='dynamic')
 
 def __init__(self, device_key, device_type, device_label, device_params):
    self.device_key = device_key
@@ -223,14 +224,14 @@ def __init__(self, input_device_id, linked_device_id):
 
 class OutputLink(db.Model):
     __tablename__ = 'output_link'
-    __table_args__ = (UniqueConstraint('input_device_id', 'device_key', name='unique_link'),)
+    __table_args__ = (UniqueConstraint('input_device_id', 'output_device_id', name='unique_link'),)
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     input_device_id = db.Column(db.Integer, db.ForeignKey('input_config.id'), index=True, nullable=False)
-    device_key = db.Column(db.String(50), nullable=False)
+    output_device_id = db.Column(db.Integer, db.ForeignKey('output_config.id'), nullable=False)
 
-def __init__(self, input_device_id, device_key):
+def __init__(self, input_device_id, output_device_id):
    self.input_device_id = input_device_id
-   self.device_key = device_key
+   self.output_device_id = output_device_id
 
 
 @flask_app.route('/debug-sentry')
@@ -626,13 +627,24 @@ def input_link():
 def output_link():
     saved_device_id = None
     if request.method == 'POST':
-        saved_device_id = request.form['device_key']
+        saved_device_id = request.form['device_id']
         for linked_id in request.form.getlist('linked_output'):
             pass
+    output_links = InputConfig.query.add_entity(OutputLink).join(OutputLink, InputConfig.id==OutputLink.input_device_id, isouter=True).order_by(InputConfig.device_key).all()
+    inputs = OrderedDict()
+    outputs = OutputConfig.query.order_by(OutputConfig.device_key).all()
+    links = dict()
+    for input, link in output_links:
+        if input.id not in inputs:
+            inputs[input.id] = input
+        if link:
+            if link.input_device_id not in links:
+                links[link.input_device_id] = list()
+            links[link.input_device_id].append(link.output_device_id)
     return render_template('output_link.html',
-                           inputs=list(),
-                           outputs=list(),
-                           links=dict(),
+                           inputs=inputs.values(),
+                           outputs=outputs,
+                           links=links,
                            saved_device_id=saved_device_id)
 
 
@@ -1262,6 +1274,36 @@ class EventProcessor(MQConnection, Closable):
         except sqlerr.IntegrityError as e:
             log.warning(f'Cannot update local database: {e!s}', exc_info=True)
             db.session.rollback()
+        # link outputs - step 1 - ensure output configs
+        for dk, dc in list(self._input_config.items()):
+            if 'linked_outputs' in dc:
+                for lo in dc['linked_outputs']:
+                    #ic = InputConfig.query.filter_by(device_key=dk).first()
+                    row = OutputConfig(
+                        device_key=lo,
+                        device_type=None,
+                        device_label=None,
+                        device_params=None)
+                    db.session.add(row)
+                    try:
+                        db.session.commit()
+                    except sqlerr.IntegrityError as e:
+                        log.warning(f'Ignoring duplicate output config: {lo}: {e!s}', exc_info=True)
+                        db.session.rollback()
+        # link outputs - step 2 - link outputs
+        for dk, dc in list(self._input_config.items()):
+            if 'linked_outputs' in dc:
+                for lo in dc['linked_outputs']:
+                    ic = InputConfig.query.filter_by(device_key=dk).first()
+                    oc = OutputConfig.query.filter_by(device_key=lo).first()
+                    if oc is None:
+                        log.warning(f'No output config found for output: {lo} on input {dk}')
+                        continue
+                    row = OutputLink(
+                        input_device_id=ic.id,
+                        output_device_id=oc.id)
+                    db.session.add(row)
+                db.session.commit()
         # link inputs
         for dk, dc in list(self._input_config.items()):
             if 'linked_inputs' in dc:
@@ -1271,16 +1313,6 @@ class EventProcessor(MQConnection, Closable):
                     row = InputLink(
                         input_device_id=ic.id,
                         linked_device_id=icl.id)
-                    db.session.add(row)
-                db.session.commit()
-        # link outputs
-        for dk, dc in list(self._input_config.items()):
-            if 'linked_outputs' in dc:
-                for lo in dc['linked_outputs']:
-                    ic = InputConfig.query.filter_by(device_key=dk).first()
-                    row = OutputLink(
-                        input_device_id=ic.id,
-                        device_key=lo)
                     db.session.add(row)
                 db.session.commit()
         # bot
