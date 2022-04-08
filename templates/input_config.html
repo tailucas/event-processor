@@ -2,71 +2,71 @@
 {% set active_page = "input_config" %}
 {% block body %}
             <div id="accordion">
-                {% for input_device_key, input_device in inputs|dictsort %}
-                {% if input_device['type'] in ['Panic Button', 'Dash Button'] %}{% continue %}{% endif %}
+                {% for input_device in inputs %}
+                {% if input_device.type in ['Panic Button', 'Dash Button'] %}{% continue %}{% endif %}
                 <div class="card">
                     <div class="card-header" id="heading{{loop.index}}">
                         <h4 class="mb-0">
                             <button class="btn btn-link" data-toggle="collapse" data-target="#collapse{{loop.index}}" aria-expanded="true" aria-controls="collapse{{loop.index}}">
-                                {{ input_device['device_label'] }}{% if input_device['customized'] %} <span class="badge badge-pill badge-info">Customized</span>{% endif %}
+                                {{ input_device.device_label'] }}{% if input_device.customized'] %} <span class="badge badge-pill badge-info">Customized</span>{% endif %}
                             </button>
                         </h4>
                     </div>
-                    <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if input_device_key == last_saved_device_key or (loop.first and last_saved_device_key is none) %} show{% endif %}" aria-labelledby="heading{{loop.index}}" data-parent="#accordion">
+                    <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if input_device.id == saved_device_id or (loop.first and saved_device_id is none) %} show{% endif %}" aria-labelledby="heading{{loop.index}}" data-parent="#accordion">
                         <div class="card-body">
                             <form class="form" role="form" method='POST'>
                                 <div class="form-group">
-                                    <label><input type="checkbox" name="info_notify" value="{{ input_device_key }}"{% if input_device['info_notify'] %} checked{% endif %}>Notifications are informational (daylight hours only)</label>
+                                    <label><input type="checkbox" name="info_notify" value="{{ input_device.device_key }}"{% if input_device.info_notify %} checked{% endif %}>Notifications are informational (daylight hours only)</label>
                                 </div>
-                                {% if input_device['type'] != 'meter' %}
+                                {% if input_device.type != 'meter' %}
                                 <div class="form-group">
                                     <label for="group_name">Group name:</label>
-                                    <input id="group_name" class="form-control" type="text" name="group_name" placeholder="{{ input_device['device_label'] }}" value="{{ input_device['group_name'] }}">
+                                    <input id="group_name" class="form-control" type="text" name="group_name" placeholder="{{ input_device.device_label }}" value="{{ input_device.group_name }}">
                                 </div>
                                 {% endif %}
                                 <div class="form-group">
-                                    <label for="interval"><input type="checkbox" name="multi_trigger" value="{{ input_device_key }}"{% if input_device['multi_trigger'] %} checked{% endif %}>Treated as active only on multiple triggers within this interval:</label>
-                                    <input id="interval" class="form-control" type="text" name="trigger_window" placeholder="{{ default_trigger_window }} seconds" value="{{ input_device['trigger_window'] }}">
+                                    <label for="interval"><input type="checkbox" name="multi_trigger" value="{{ input_device.device_key }}"{% if input_device.multi_trigger %} checked{% endif %}>Treated as active only on multiple triggers within this interval:</label>
+                                    <input id="interval" class="form-control" type="text" name="trigger_window" placeholder="{{ default_trigger_window }} seconds" value="{{ input_device.trigger_window }}">
                                 </div>
                                 <div class="form-group">
                                     <label for="latch">Latched as activated for this duration irrespective of ongoing triggers:</label>
-                                    <input id="latch" class="form-control" type="text" name="activation_interval" placeholder="{{ default_activation_interval }} seconds" value="{{ input_device['activation_interval'] }}">
+                                    <input id="latch" class="form-control" type="text" name="activation_interval" placeholder="{{ default_activation_interval }} seconds" value="{{ input_device.activation_interval }}">
                                 </div>
-                                {% if input_device['type'] == 'meter' %}
+                                {% if input_device.type == 'meter' %}
                                 <div class="form-group">
                                     <label for="meter_iot_topic">IoT topic:</label>
-                                    <input id="meter_iot_topic" class="form-control" type="text" name="meter_iot_topic" value="{{ input_device['meter_iot_topic'] }}">
+                                    <input id="meter_iot_topic" class="form-control" type="text" name="meter_iot_topic" value="{{ input_device.meter_iot_topic }}">
                                 </div>
                                 <div class="form-group">
                                     <label for="meter_reading_unit">Display name for the units of the reading:</label>
-                                    <input id="meter_reading_unit" class="form-control" type="text" name="meter_reading_unit" value="{{ input_device['meter_reading_unit'] }}">
+                                    <input id="meter_reading_unit" class="form-control" type="text" name="meter_reading_unit" value="{{ input_device.meter_reading_unit }}">
                                 </div>
                                 <div class="form-group">
                                     <label for="meter_reading_unit_factor">Unit factor in tens (divide by this amount for display):</label>
-                                    <input id="meter_reading_unit_factor" class="form-control" type="text" name="meter_reading_unit_factor" placeholder="1" value="{{ input_device['meter_reading_unit_factor'] }}">
+                                    <input id="meter_reading_unit_factor" class="form-control" type="text" name="meter_reading_unit_factor" placeholder="1" value="{{ input_device.meter_reading_unit_factor }}">
                                 </div>
                                 <div class="form-group">
                                     <label for="meter_reading_unit_precision">Display decimal places (if factor is not 1):</label>
-                                    <input id="meter_reading_unit_precision" class="form-control" type="text" name="meter_reading_unit_precision" placeholder="0" value="{{ input_device['meter_reading_unit_precision'] }}">
+                                    <input id="meter_reading_unit_precision" class="form-control" type="text" name="meter_reading_unit_precision" placeholder="0" value="{{ input_device.meter_reading_unit_precision }}">
                                 </div>
                                 <div class="form-group">
                                     <label for="meter_reset">Reset value for the meter:</label>
-                                    <input id="meter_reset" class="form-control" type="text" name="meter_reset_value" placeholder="0" value="{{ input_device['meter_reset_value'] }}">
+                                    <input id="meter_reset" class="form-control" type="text" name="meter_reset_value" placeholder="0" value="{{ input_device.meter_reset_value }}">
                                 </div>
                                 <div class="form-group">
-                                    <label><input type="checkbox" name="meter_reset_additive" value="{{ input_device_key }}"{% if input_device['meter_reset_additive'] %} checked{% endif %}>Reset has additive effect</label>
+                                    <label><input type="checkbox" name="meter_reset_additive" value="{{ input_device.device_key }}"{% if input_device.meter_reset_additive %} checked{% endif %}>Reset has additive effect</label>
                                 </div>
                                 <div class="form-group">
                                     <label for="meter_low">Active if the metered value is below this value:</label>
-                                    <input id="meter_low" class="form-control" type="text" name="meter_low_limit" placeholder="" value="{{ input_device['meter_low_limit'] }}">
+                                    <input id="meter_low" class="form-control" type="text" name="meter_low_limit" placeholder="" value="{{ input_device.meter_low_limit }}">
                                 </div>
                                 <div class="form-group">
                                     <label for="meter_high">Active if the metered value is above this value:</label>
-                                    <input id="meter_high" class="form-control" type="text" name="meter_high_limit" placeholder="" value="{{ input_device['meter_high_limit'] }}">
+                                    <input id="meter_high" class="form-control" type="text" name="meter_high_limit" placeholder="" value="{{ input_device.meter_high_limit }}">
                                 </div>
                                 {% endif %}
                                 <div class="form-group">
-                                    <button type="submit" class="btn btn-primary" name="device_key" value="{{ input_device_key }}"><i class="far fa-save"></i> Save</button>
+                                    <button type="submit" class="btn btn-primary" name="device_id" value="{{ input_device.id }}"><i class="far fa-save"></i> Save</button>
                                 </div>
                             </form>
                         </div>

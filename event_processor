@@ -169,18 +169,46 @@ class InputConfig(db.Model):
     device_key = db.Column(db.String(50), unique=True, index=True, nullable=False)
     device_type = db.Column(db.String(100), nullable=False)
     device_label = db.Column(db.String(100))
-    customized = db.Column(db.Integer)
+    customized = db.Column(db.Boolean)
     activation_interval = db.Column(db.Integer)
-    auto_schedule = db.Column(db.Integer)
+    auto_schedule = db.Column(db.Boolean)
     auto_schedule_enable = db.Column(db.String(5))
     auto_schedule_disable = db.Column(db.String(5))
-    device_disabled = db.Column(db.Integer)
-    multi_trigger = db.Column(db.Integer)
+    device_disabled = db.Column(db.Boolean)
+    multi_trigger = db.Column(db.Boolean)
     group_name = db.Column(db.String(100), index=True)
+    meter_iot_topic = db.Column(db.String(100))
+    meter_reading_unit_precision = db.Column(db.Integer)
+    meter_low_limit = db.Column(db.Integer)
+    meter_reset_value = db.Column(db.Integer)
+    info_notify = db.Column(db.Boolean)
+    meter_reset_additive = db.Column(db.Boolean)
+    meter_reading_unit = db.Column(db.String(10))
+    meter_reading_unit_factor = db.Column(db.Integer)
     links = db.relationship('InputLink', backref='input_config', cascade='all, delete-orphan', lazy='dynamic')
     links = db.relationship('OutputLink', backref='input_config', cascade='all, delete-orphan', lazy='dynamic')
 
-def __init__(self, device_key, device_type, device_label, customized, activation_interval, auto_schedule, auto_schedule_enable, auto_schedule_disable, device_disabled, multi_trigger, group_name):
+def __init__(
+    self,
+    device_key,
+    device_type,
+    device_label,
+    customized,
+    activation_interval,
+    auto_schedule,
+    auto_schedule_enable,
+    auto_schedule_disable,
+    device_disabled,
+    multi_trigger,
+    group_name,
+    meter_iot_topic,
+    meter_reading_unit_precision,
+    meter_low_limit,
+    meter_reset_value,
+    info_notify,
+    meter_reset_additive,
+    meter_reading_unit,
+    meter_reading_unit_factor):
    self.device_key = device_key
    self.device_type = device_type
    self.device_label = device_label
@@ -192,6 +220,14 @@ def __init__(self, device_key, device_type, device_label, customized, activation
    self.device_disabled = device_disabled
    self.multi_trigger = multi_trigger
    self.group_name = group_name
+   self.meter_iot_topic = meter_iot_topic
+   self.meter_reading_unit_precision = meter_reading_unit_precision
+   self.meter_low_limit = meter_low_limit
+   self.meter_reset_value = meter_reset_value
+   self.info_notify = info_notify
+   self.meter_reset_additive = meter_reset_additive
+   self.meter_reading_unit = meter_reading_unit
+   self.meter_reading_unit_factor = meter_reading_unit_factor
 
 
 class OutputConfig(db.Model):
@@ -497,97 +533,91 @@ def show_config():
 
 @flask_app.route('/input_config', methods=['GET', 'POST'])
 def input_config():
-    global event_processor
-    device_key = None
+    saved_device_id = None
     if request.method == 'POST':
-        device_key = request.form['device_key']
-        try:
-            customized = False
-            to_save = {}
-            if 'group_name' in request.form:
-                group_name = request.form['group_name'].strip()
-                if len(group_name) > 0:
-                    to_save['group_name'] = group_name
-                    customized = True
-                else:
-                    to_save['group_name'] = None
-            if device_key in request.form.getlist('info_notify'):
-                to_save['info_notify'] = True
+        saved_device_id = int(request.form['device_key'])
+        input_cfg = InputConfig.query.filter_by(id=saved_device_id).first()
+        customized = False
+        if 'group_name' in request.form:
+            group_name = request.form['group_name'].strip()
+            if len(group_name) > 0:
+                input_cfg.group_name = group_name
                 customized = True
             else:
-                to_save['info_notify'] = None
-            if request.form.get('multi_trigger'):
-                to_save['multi_trigger'] = True
+                input_cfg.group_name = None
+        if input_cfg.device_key in request.form.getlist('info_notify'):
+            input_cfg.info_notify = True
+            customized = True
+        else:
+            input_cfg.info_notify = None
+        if request.form.get('multi_trigger'):
+            input_cfg.multi_trigger = True
+            customized = True
+        else:
+            input_cfg.multi_trigger = None
+        if len(request.form['activation_interval']) > 0:
+            input_cfg.activation_interval = int(request.form['activation_interval'])
+            customized = True
+        else:
+            input_cfg.activation_interval = None
+        if len(request.form['trigger_window']) > 0:
+            input_cfg.trigger_window = int(request.form['trigger_window'])
+            customized = True
+        else:
+            input_cfg.trigger_window = None
+        if request.form.get('meter_low_limit', None) and len(request.form['meter_low_limit']) > 0:
+            input_cfg.meter_low_limit = int(request.form['meter_low_limit'])
+            customized = True
+        else:
+            input_cfg.meter_low_limit = None
+        if request.form.get('meter_high_limit', None) and len(request.form['meter_high_limit']) > 0:
+            input_cfg.meter_high_limit = int(request.form['meter_high_limit'])
+            customized = True
+        else:
+            input_cfg.meter_high_limit = None
+        if request.form.get('meter_reset_value', None) and len(request.form['meter_reset_value']) > 0:
+            input_cfg.meter_reset_value = int(request.form['meter_reset_value'])
+            customized = True
+        else:
+            input_cfg.meter_reset_value = None
+        if input_cfg.device_key in request.form.getlist('meter_reset_additive'):
+            input_cfg.meter_reset_additive = True
+            customized = True
+        else:
+            input_cfg.meter_reset_additive = None
+        if request.form.get('meter_iot_topic', None) and len(request.form['meter_iot_topic'].strip()) > 0:
+            input_cfg.meter_iot_topic = request.form['meter_iot_topic'].strip()
+            customized = True
+        else:
+            input_cfg.meter_iot_topic = None
+        if request.form.get('meter_reading_unit', None) and len(request.form['meter_reading_unit'].strip()) > 0:
+            input_cfg.meter_reading_unit = request.form['meter_reading_unit'].strip()
+            customized = True
+        else:
+            input_cfg.meter_reading_unit = None
+        if request.form.get('meter_reading_unit_factor', None) and \
+                len(request.form['meter_reading_unit_factor']) > 0:
+            meter_reading_unit_factor = int(request.form['meter_reading_unit_factor'])
+            if 1 <= meter_reading_unit_factor <= 1000000000 and (meter_reading_unit_factor % 10 == 0):
+                input_cfg.meter_reading_unit_factor = meter_reading_unit_factor
                 customized = True
-            else:
-                to_save['multi_trigger'] = None
-            if len(request.form['activation_interval']) > 0:
-                to_save['activation_interval'] = int(request.form['activation_interval'])
+        else:
+            input_cfg.meter_reading_unit_factor = None
+        if request.form.get('meter_reading_unit_precision', None) and len(
+                request.form['meter_reading_unit_precision']) > 0:
+            meter_reading_unit_precision = int(request.form['meter_reading_unit_precision'])
+            if 1 <= meter_reading_unit_precision <= 9:
+                input_cfg.meter_reading_unit_precision = meter_reading_unit_precision
                 customized = True
-            else:
-                to_save['activation_interval'] = None
-            if len(request.form['trigger_window']) > 0:
-                to_save['trigger_window'] = int(request.form['trigger_window'])
-                customized = True
-            else:
-                to_save['trigger_window'] = None
-            if request.form.get('meter_low_limit', None) and len(request.form['meter_low_limit']) > 0:
-                to_save['meter_low_limit'] = int(request.form['meter_low_limit'])
-                customized = True
-            else:
-                to_save['meter_low_limit'] = None
-            if request.form.get('meter_high_limit', None) and len(request.form['meter_high_limit']) > 0:
-                to_save['meter_high_limit'] = int(request.form['meter_high_limit'])
-                customized = True
-            else:
-                to_save['meter_high_limit'] = None
-            if request.form.get('meter_reset_value', None) and len(request.form['meter_reset_value']) > 0:
-                to_save['meter_reset_value'] = int(request.form['meter_reset_value'])
-                customized = True
-            else:
-                to_save['meter_reset_value'] = None
-            if device_key in request.form.getlist('meter_reset_additive'):
-                to_save['meter_reset_additive'] = True
-                customized = True
-            else:
-                to_save['meter_reset_additive'] = None
-            if request.form.get('meter_iot_topic', None) and len(request.form['meter_iot_topic'].strip()) > 0:
-                to_save['meter_iot_topic'] = request.form['meter_iot_topic'].strip()
-                customized = True
-            else:
-                to_save['meter_iot_topic'] = None
-            if request.form.get('meter_reading_unit', None) and len(request.form['meter_reading_unit'].strip()) > 0:
-                to_save['meter_reading_unit'] = request.form['meter_reading_unit'].strip()
-                customized = True
-            else:
-                to_save['meter_reading_unit'] = None
-            if request.form.get('meter_reading_unit_factor', None) and \
-                    len(request.form['meter_reading_unit_factor']) > 0:
-                meter_reading_unit_factor = int(request.form['meter_reading_unit_factor'])
-                if 1 <= meter_reading_unit_factor <= 1000000000 and (meter_reading_unit_factor % 10 == 0):
-                    to_save['meter_reading_unit_factor'] = meter_reading_unit_factor
-                    customized = True
-            else:
-                to_save['meter_reading_unit_factor'] = None
-            if request.form.get('meter_reading_unit_precision', None) and len(
-                    request.form['meter_reading_unit_precision']) > 0:
-                meter_reading_unit_precision = int(request.form['meter_reading_unit_precision'])
-                if 1 <= meter_reading_unit_precision <= 9:
-                    to_save['meter_reading_unit_precision'] = meter_reading_unit_precision
-                    customized = True
-            else:
-                to_save['meter_reading_unit_precision'] = None
-            to_save['customized'] = customized
-            event_processor.input_config = (
-                device_key,
-                to_save
-            )
-        except ValueError as e:
-            exception_msg = "Cannot update '{}'".format(event_processor.input_config[device_key]['device_label'])
-            flash(message='{}: {}'.format(exception_msg, str(e)), category='danger')
+        else:
+            input_cfg.meter_reading_unit_precision = None
+        input_cfg.customized = customized
+        db.session.add(input_cfg)
+        db.session.commit()
+    inputs = InputConfig.query.order_by(InputConfig.device_key).all()
     return render_template('input_config.html',
-                           inputs=event_processor.input_config,
-                           last_saved_device_key=device_key,
+                           inputs=inputs,
+                           saved_device_id=saved_device_id,
                            default_trigger_window=int(app_config.get('config', 'default_trigger_window')),
                            default_activation_interval=int(app_config.get('config', 'default_activation_interval')))
 
@@ -661,7 +691,7 @@ def output_config():
     saved_device_id = None
     if request.method == 'POST':
         saved_device_id = int(request.form['device_key'])
-        output_config = OutputConfig.query.filter_by(output_device_id=saved_device_id).first()
+        output_config = OutputConfig.query.filter_by(id=saved_device_id).first()
         device_params = request.form['device_params'].strip()
         if len(device_params) > 0:
             output_config.device_params = device_params
@@ -1219,13 +1249,13 @@ class EventProcessor(MQConnection, Closable):
                 d_device_label = dc['device_label']
             d_customized=None
             if 'customized' in dc:
-                d_customized = int(dc['customized'])
+                d_customized = bool(dc['customized'])
             d_activation_interval=None
             if 'activation_interval' in dc:
                 d_activation_interval = int(dc['activation_interval'])
             d_auto_schedule=None
             if 'auto_schedule' in dc:
-                d_auto_schedule = int(dc['auto_schedule'])
+                d_auto_schedule = bool(dc['auto_schedule'])
             d_auto_schedule_enable=None
             if 'auto_schedule_enable' in dc:
                 d_auto_schedule_enable = dc['auto_schedule_enable']
@@ -1234,13 +1264,37 @@ class EventProcessor(MQConnection, Closable):
                 d_auto_schedule_disable = dc['auto_schedule_disable']
             d_device_disabled=None
             if 'device_disabled' in dc:
-                d_device_disabled = int(dc['device_disabled'])
+                d_device_disabled = bool(dc['device_disabled'])
             d_multi_trigger=None
             if 'multi_trigger' in dc:
-                d_multi_trigger = int(dc['multi_trigger'])
+                d_multi_trigger = bool(dc['multi_trigger'])
             d_group_name=None
             if 'group_name' in dc:
                 d_group_name = dc['group_name']
+            d_meter_iot_topic = None
+            if 'meter_iot_topic' in dc:
+                d_meter_iot_topic = dc['meter_iot_topic']
+            d_meter_reading_unit_precision = None
+            if 'meter_reading_unit_precision' in dc:
+                d_meter_reading_unit_precision = int(dc['meter_reading_unit_precision'])
+            d_meter_low_limit = None
+            if 'meter_low_limit' in dc:
+                d_meter_low_limit = int(dc['meter_low_limit'])
+            d_meter_reset_value = None
+            if 'meter_reset_value' in dc:
+                d_meter_reset_value = int(dc['meter_reset_value'])
+            d_info_notify = None
+            if 'info_notify' in dc:
+                d_info_notify = bool(dc['info_notify'])
+            d_meter_reset_additive = None
+            if 'meter_reset_additive' in dc:
+                d_meter_reset_additive = bool(dc['meter_reset_additive'])
+            d_meter_reading_unit = None
+            if 'meter_reading_unit' in dc:
+                d_meter_reading_unit = dc['meter_reading_unit']
+            d_meter_reading_unit_factor = None
+            if 'meter_reading_unit_factor' in dc:
+                d_meter_reading_unit_factor = int(dc['meter_reading_unit_factor'])
             row = InputConfig(
                 device_key=dk,
                 device_type=d_device_type,
@@ -1252,7 +1306,15 @@ class EventProcessor(MQConnection, Closable):
                 auto_schedule_disable=d_auto_schedule_disable,
                 device_disabled=d_device_disabled,
                 multi_trigger=d_multi_trigger,
-                group_name=d_group_name)
+                group_name=d_group_name,
+                meter_iot_topic=d_meter_iot_topic,
+                meter_reading_unit_precision=d_meter_reading_unit_precision,
+                meter_low_limit=d_meter_low_limit,
+                meter_reset_value=d_meter_reset_value,
+                info_notify=d_info_notify,
+                meter_reset_additive=d_meter_reset_additive,
+                meter_reading_unit=d_meter_reading_unit,
+                meter_reading_unit_factor=d_meter_reading_unit_factor)
             db.session.add(row)
         try:
             db.session.commit()
