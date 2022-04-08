@@ -2,23 +2,23 @@
 {% set active_page = "output_config" %}
 {% block body %}
             <div id="accordion">
-                {% for output_device_key, output_device in outputs|dictsort %}
+                {% for output_device in outputs %}
                 <div class="card">
                     <div class="card-header" id="heading{{loop.index}}">
                         <h4 class="mb-0">
                             <button class="btn btn-link" data-toggle="collapse" data-target="#collapse{{loop.index}}" aria-expanded="true" aria-controls="collapse{{loop.index}}">
-                                {{ output_device['device_label'] }}{% if 'device_params' in output_device %} <span class="badge badge-pill badge-info">Customized</span>{% endif %}
+                                {{ output_device.device_label }}{% if output_device.device_params %} <span class="badge badge-pill badge-info">Customized</span>{% endif %}
                             </button>
                         </h4>
                     </div>
-                    <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if output_device_key == last_saved_device_key or (loop.first and last_saved_device_key is none) %} show{% endif %}" aria-labelledby="heading{{loop.index}}" data-parent="#accordion">
+                    <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if output_device.id == saved_device_id or (loop.first and saved_device_id is none) %} show{% endif %}" aria-labelledby="heading{{loop.index}}" data-parent="#accordion">
                         <div class="card-body">
                             <form role="form" method='POST'>
                                 <div class="form-group">
-                                    <input class="form-control" type="text" name="device_params" placeholder="Parameters" value="{{ output_device['device_params'] }}">
+                                    <input class="form-control" type="text" name="device_params" placeholder="Parameters" value="{{ output_device.device_params }}">
                                 </div>
                                 <div class="form-group">
-                                    <button type="submit" class="btn btn-primary" name="device_key" value="{{ output_device_key }}"><i class="far fa-save"></i> Save</button>
+                                    <button type="submit" class="btn btn-primary" name="device_id" value="{{ output_device.id }}"><i class="far fa-save"></i> Save</button>
                                 </div>
                             </form>
                         </div>

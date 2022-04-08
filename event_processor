@@ -658,23 +658,21 @@ def output_link():
 
 @flask_app.route('/output_config', methods=['GET', 'POST'])
 def output_config():
-    global event_processor
-    device_key = None
+    saved_device_id = None
     if request.method == 'POST':
-        device_key = request.form['device_key']
-        to_save = {}
+        saved_device_id = int(request.form['device_key'])
+        output_config = OutputConfig.query.filter_by(output_device_id=saved_device_id).first()
         device_params = request.form['device_params'].strip()
         if len(device_params) > 0:
-            to_save['device_params'] = device_params
+            output_config.device_params = device_params
         else:
-            to_save['device_params'] = None
-        event_processor.output_config = (
-            device_key,
-            to_save
-        )
+            output_config.device_params = None
+        db.session.add(output_config)
+        db.session.commit()
+    outputs = OutputConfig.query.order_by(OutputConfig.device_key).all()
     return render_template('output_config.html',
-                           outputs=event_processor.output_config,
-                           last_saved_device_key=device_key)
+                           outputs=outputs,
+                           saved_device_id=saved_device_id)
 
 
 def telegram_bot_echo(update: Update, context: TelegramCallbackContext):
