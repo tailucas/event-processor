@@ -155,7 +155,7 @@ class EventLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     input_device = db.Column(db.String(100), index=True)
     output_device = db.Column(db.String(100), index=True)
-    timestamp = db.Column(db.Integer, index=True)
+    timestamp = db.Column(db.DateTime, index=True)
 
 def __init__(self, input_device, output_device, timestamp):
     self.input_device = input_device
