@@ -3,7 +3,7 @@
 {% block body %}
             <div id="accordion">
                 {% for input_device in inputs %}
-                {% if input_device.type in ['Panic Button', 'Dash Button'] %}{% continue %}{% endif %}
+                {% if input_device.device_type in ['Panic Button', 'Dash Button'] %}{% continue %}{% endif %}
                 <div class="card">
                     <div class="card-header" id="heading{{loop.index}}">
                         <h4 class="mb-0">
@@ -18,10 +18,10 @@
                                 <div class="form-group">
                                     <label><input type="checkbox" name="info_notify" value="{{ input_device.device_key }}"{% if input_device.info_notify %} checked{% endif %}>Notifications are informational (daylight hours only)</label>
                                 </div>
-                                {% if input_device.type != 'meter' %}
+                                {% if input_device.device_type != 'meter' %}
                                 <div class="form-group">
                                     <label for="group_name">Group name:</label>
-                                    <input id="group_name" class="form-control" type="text" name="group_name" placeholder="{{ input_device.device_label }}" value="{{ input_device.group_name }}">
+                                    <input id="group_name" class="form-control" type="text" name="group_name" placeholder="{{ input_device.device_label }}" value="{{ input_device.group_name if input_device.group_name }}">
                                 </div>
                                 {% endif %}
                                 <div class="form-group">
@@ -30,9 +30,9 @@
                                 </div>
                                 <div class="form-group">
                                     <label for="latch">Latched as activated for this duration irrespective of ongoing triggers:</label>
-                                    <input id="latch" class="form-control" type="text" name="activation_interval" placeholder="{{ default_activation_interval }} seconds" value="{{ input_device.activation_interval }}">
+                                    <input id="latch" class="form-control" type="text" name="activation_interval" placeholder="{{ default_activation_interval }} seconds" value="{{ input_device.activation_interval if input_device.activation_interval }}">
                                 </div>
-                                {% if input_device.type == 'meter' %}
+                                {% if input_device.device_type == 'meter' %}
                                 <div class="form-group">
                                     <label for="meter_iot_topic">IoT topic:</label>
                                     <input id="meter_iot_topic" class="form-control" type="text" name="meter_iot_topic" value="{{ input_device.meter_iot_topic }}">
