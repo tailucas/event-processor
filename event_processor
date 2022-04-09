@@ -474,61 +474,23 @@ def update_config(event_processor, device_key, request_form):
 
 @flask_app.route('/config', methods=['GET', 'POST'])
 def show_config():
-    device_listing = {}
-    input_labels = {}
-    global event_processor
-    for device_key, device_config in list(event_processor.input_config.items()):
-        # exclude invalid types
-        if 'type' in device_config and 'button' in device_config['type'].lower():
-            continue
-        if 'group_name' not in device_config:
-            device_listing[device_key] = device_config
-        else:
-            group_name = device_config['group_name']
-            if group_name not in device_listing:
-                device_listing[group_name] = {}
-                device_listing[group_name]['grouped_inputs'] = {}
-            device_listing[group_name]['grouped_inputs'][device_key] = device_config
-            if group_name not in input_labels:
-                input_labels[group_name] = []
-            input_labels[group_name].append(device_config['device_label'])
-            # manufacture a device label for the group
-            device_listing[group_name]['device_label'] = group_name
-            # for group checkbox
-            if 'auto_schedule' in device_config and device_config['auto_schedule']:
-                device_listing[group_name]['auto_schedule'] = True
-    device_key = None
+    saved_device_id = None
     if request.method == 'POST':
-        if 'device_key' in request.form:
-            device_key = request.form['device_key']
-            # sync up the device model for page load
-            device_listing[device_key]['auto_schedule'] = request.form.get('auto_schedule')
-            device_listing[device_key]['auto_schedule_enable'] = request.form['auto_schedule_enable']
-            device_listing[device_key]['auto_schedule_disable'] = request.form['auto_schedule_disable']
-            # open IPC
-            with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, socket_type=zmq.PUSH, and_raise=False) as zmq_socket:
-                # update device configuration
-                if 'grouped_inputs' not in device_listing[device_key]:
-                    update_config(
-                        event_processor=event_processor,
-                        device_key=device_key,
-                        request_form=request.form)
-                    # reload auto-scheduler
-                    zmq_socket.send_pyobj([(device_key, event_processor.input_config[device_key])])
-                else:
-                    for grouped_device_key in list(device_listing[device_key]['grouped_inputs'].keys()):
-                        update_config(
-                            event_processor=event_processor,
-                            device_key=grouped_device_key,
-                            request_form=request.form)
-                        # reload auto-scheduler
-                        zmq_socket.send_pyobj([(grouped_device_key, event_processor.input_config[grouped_device_key])])
-        else:
-            log.error('No action associated with this request: {}'.format(request.form))
+        saved_device_id = int(request.form['device_id'])
+        input = InputConfig.query.filter_by(id=saved_device_id).first()
+        # sync up the device model for page load
+        input.auto_schedule = bool(request.form.get('auto_schedule'))
+        input.auto_schedule_enable = request.form['auto_schedule_enable']
+        input.auto_schedule_disable = request.form['auto_schedule_disable']
+        db.session.add(input)
+        db.session.commit()
+        # open IPC
+        with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, socket_type=zmq.PUSH, and_raise=False) as zmq_socket:
+            zmq_socket.send_pyobj((input.device_key, input.auto_schedule, input.auto_schedule_enable, input.auto_schedule_disable))
+    inputs = InputConfig.query.order_by(InputConfig.device_key).all()
     return render_template('config.html',
-                           inputs=device_listing,
-                           input_labels=input_labels,
-                           last_saved_device_key=device_key)
+                           inputs=inputs,
+                           saved_device_id=saved_device_id)
 
 
 @flask_app.route('/input_config', methods=['GET', 'POST'])
@@ -1394,7 +1356,12 @@ class EventProcessor(MQConnection, Closable):
         self.influxdb_ro = self.influxdb.query_api()
         # load auto-scheduler
         with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, socket_type=zmq.PUSH) as zmq_socket:
-            zmq_socket.send_pyobj(self._input_config)
+            for device_key, input_cfg in self._input_config.items():
+                if 'auto_schedule' in input_cfg:
+                    auto_schedule = bool(input_cfg['auto_schedule'])
+                    auto_schedule_enable = input_cfg['auto_schedule_enable']
+                    auto_schedule_disable = input_cfg['auto_schedule_disable']
+                    zmq_socket.send_pyobj((device_key, auto_schedule, auto_schedule_enable, auto_schedule_disable))
         # informational notifications
         # TODO: move to UI configuration
         self.notify_not_before_time = make_timestamp(app_config.get('info_notify', 'not_before_time'))
@@ -2115,37 +2082,31 @@ class AutoScheduler(AppThread, Closable):
                 # trigger any scheduled work
                 schedule.run_pending()
                 # look for device updates
-                device_config = None
+                device_key = None
                 try:
-                    device_config = self.socket.recv_pyobj(flags=zmq.NOBLOCK)
+                    device_key, auto_schedule, auto_schedule_enable, auto_schedule_disable = self.socket.recv_pyobj(flags=zmq.NOBLOCK)
                     next_message = True
                 except ZMQError:
                     # ignore, no data
                     next_message = False
-                if device_config:
-                    devices = device_config
-                    if isinstance(device_config, dict):
-                        devices = list(device_config.items())
-                    log.info('Reloading auto-schedule configuration for {} devices: {}'.format(len(devices), [device[0] for device in devices]))
-                    for device_key, device_config in devices:
-                        # clear any previous schedule
-                        schedule.clear(device_key)
-                        if 'auto_schedule' in device_config and (device_config['auto_schedule'] or device_config['auto_schedule'] == 1):
-                            auto_enable_time = device_config['auto_schedule_enable']
-                            auto_disable_time = device_config['auto_schedule_disable']
-                            log.info('Setting auto-schedule for {} to disable at {} and enable at {}.'.format(
-                                device_key,
-                                auto_disable_time,
-                                auto_enable_time))
-                            # install a new scedule
-                            self._schedule(
-                                device_key=device_key,
-                                schedule_time=auto_disable_time,
-                                device_state=False)
-                            self._schedule(
-                                device_key=device_key,
-                                schedule_time=auto_enable_time,
-                                device_state=True)
+                if device_key:
+                    log.info(f'Reloading auto-schedule configuration for device: {device_key} (on? {auto_schedule}).')
+                    # clear any previous schedule
+                    schedule.clear(device_key)
+                    if auto_schedule:
+                        log.info('Setting auto-schedule for {} to disable at {} and enable at {}.'.format(
+                            device_key,
+                            auto_schedule_disable,
+                            auto_schedule_enable))
+                        # install a new scedule
+                        self._schedule(
+                            device_key=device_key,
+                            schedule_time=auto_schedule_disable,
+                            device_state=False)
+                        self._schedule(
+                            device_key=device_key,
+                            schedule_time=auto_schedule_enable,
+                            device_state=True)
                 # don't spin
                 if not next_message:
                     threads.interruptable_sleep.wait(10)
