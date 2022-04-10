@@ -2110,7 +2110,6 @@ class AutoScheduler(AppThread, Closable):
                     # ignore, no data
                     next_message = False
                 if device_key:
-                    log.info(f'Reloading auto-schedule configuration for device: {device_key} (on? {auto_schedule}).')
                     # clear any previous schedule
                     schedule.clear(device_key)
                     if auto_schedule:
