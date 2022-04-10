@@ -1190,15 +1190,7 @@ class EventProcessor(MQConnection, Closable):
         except Exception:
             log.warning(f'Unable to post measurement {measurement_name} to InfluxDB.', exc_info=True)
 
-    # noinspection PyBroadException
-    def run(self):
-        # connect to AWS services
-        self._ddb_storage = boto3.resource('dynamodb')
-        self._input_config, self._input_config_table = self._load_config_table(
-            table_name=os.environ['CONFIG_TABLE_INPUT'])
-        self._output_config, self._output_config_table = self._load_config_table(
-            table_name=os.environ['CONFIG_TABLE_OUTPUT'])
-        # TODO: remove
+    def _migrate_from_ddb(self):
         db.drop_all()
         # set up the local database
         db.create_all()
@@ -1318,7 +1310,7 @@ class EventProcessor(MQConnection, Closable):
                     try:
                         db.session.commit()
                     except sqlerr.IntegrityError as e:
-                        log.warning(f'Ignoring duplicate output config: {lo}: {e!s}', exc_info=True)
+                        log.debug(f'Ignoring duplicate output config: {lo}: {e!s}', exc_info=True)
                         db.session.rollback()
         # link outputs - step 2 - link outputs
         for dk, dc in list(self._input_config.items()):
@@ -1345,6 +1337,34 @@ class EventProcessor(MQConnection, Closable):
                         linked_device_id=icl.id)
                     db.session.add(row)
                 db.session.commit()
+
+    # noinspection PyBroadException
+    def run(self):
+        # connect to AWS services
+        self._ddb_storage = boto3.resource('dynamodb')
+        self._input_config, self._input_config_table = self._load_config_table(
+            table_name=os.environ['CONFIG_TABLE_INPUT'])
+        self._output_config, self._output_config_table = self._load_config_table(
+            table_name=os.environ['CONFIG_TABLE_OUTPUT'])
+        # TODO: remove
+        self._migrate_from_ddb()
+        input_configs = InputConfig.query.all()
+        for input_config in input_configs:
+            ic_key = input_config.device_key
+            ic_fields = vars(input_config)
+            log.debug(f'DB: {ic_key} fields are {ic_fields!s}')
+            ddb_config = self._input_config[ic_key]
+            log.debug(f'DDB: {ic_key} fields are {ddb_config!s}')
+            for k,v in ic_fields.items():
+                if k.startswith('_'):
+                    continue
+                if k not in ddb_config.keys():
+                    log.debug(f'{ic_key} mismatch {k} not in DDB.')
+                    continue
+                if ddb_config[k] != v:
+                    log.debug(f'{ic_key} mismatch from DDB on {k}: DB says {v}, DDB says {ddb_config[k]}')
+                    continue
+                log.info(f'{ic_key} {k} - DB: {v}, DDB: {ddb_config[k]}')
         # bot
         self.bot.connect(URL_WORKER_TELEGRAM_BOT)
         # influx DB
