@@ -157,10 +157,10 @@ class EventLog(db.Model):
     output_device = db.Column(db.String(100), index=True)
     timestamp = db.Column(db.DateTime, index=True)
 
-def __init__(self, input_device, output_device, timestamp):
-    self.input_device = input_device
-    self.output_device = output_device
-    self.timestamp = timestamp
+    def __init__(self, input_device, output_device, timestamp):
+        self.input_device = input_device
+        self.output_device = output_device
+        self.timestamp = timestamp
 
 
 class InputConfig(db.Model):
@@ -177,57 +177,50 @@ class InputConfig(db.Model):
     device_disabled = db.Column(db.Boolean)
     multi_trigger = db.Column(db.Boolean)
     group_name = db.Column(db.String(100), index=True)
-    meter_iot_topic = db.Column(db.String(100))
-    meter_reading_unit_precision = db.Column(db.Integer)
+    info_notify = db.Column(db.Boolean)
+    links_il = db.relationship('InputLink', backref='input_config', cascade='all, delete-orphan', lazy='dynamic')
+    links_ol = db.relationship('OutputLink', backref='input_config', cascade='all, delete-orphan', lazy='dynamic')
+    links_mc = db.relationship('MeterConfig', backref='input_config', cascade='all, delete-orphan', lazy='dynamic')
+
+    def __init__(self, device_key, device_type, device_label, customized, activation_interval, auto_schedule, auto_schedule_enable, auto_schedule_disable, device_disabled, multi_trigger, group_name, info_notify):
+        self.device_key = device_key
+        self.device_type = device_type
+        self.device_label = device_label
+        self.customized = customized
+        self.activation_interval = activation_interval
+        self.auto_schedule = auto_schedule
+        self.auto_schedule_enable = auto_schedule_enable
+        self.auto_schedule_disable = auto_schedule_disable
+        self.device_disabled = device_disabled
+        self.multi_trigger = multi_trigger
+        self.group_name = group_name
+        self.info_notify = info_notify
+
+
+class MeterConfig(db.Model):
+    __tablename__ = 'meter_config'
+    id = db.Column(db.Integer, primary_key = True, autoincrement=True)
+    input_device_id = db.Column(db.Integer, db.ForeignKey('input_config.id'), index=True, nullable=False)
+    meter_value = db.Column(db.Integer, default=0, nullable=False)
+    register_value = db.Column(db.Integer, default=0, nullable=False)
+    meter_reading = db.Column(db.String, default='0', nullable=False)
+    meter_iot_topic = db.Column(db.String(100), nullable=False)
     meter_low_limit = db.Column(db.Integer)
     meter_reset_value = db.Column(db.Integer)
-    info_notify = db.Column(db.Boolean)
     meter_reset_additive = db.Column(db.Boolean)
     meter_reading_unit = db.Column(db.String(10))
     meter_reading_unit_factor = db.Column(db.Integer)
-    links = db.relationship('InputLink', backref='input_config', cascade='all, delete-orphan', lazy='dynamic')
-    links = db.relationship('OutputLink', backref='input_config', cascade='all, delete-orphan', lazy='dynamic')
+    meter_reading_unit_precision = db.Column(db.Integer)
 
-def __init__(
-    self,
-    device_key,
-    device_type,
-    device_label,
-    customized,
-    activation_interval,
-    auto_schedule,
-    auto_schedule_enable,
-    auto_schedule_disable,
-    device_disabled,
-    multi_trigger,
-    group_name,
-    meter_iot_topic,
-    meter_reading_unit_precision,
-    meter_low_limit,
-    meter_reset_value,
-    info_notify,
-    meter_reset_additive,
-    meter_reading_unit,
-    meter_reading_unit_factor):
-   self.device_key = device_key
-   self.device_type = device_type
-   self.device_label = device_label
-   self.customized = customized
-   self.activation_interval = activation_interval
-   self.auto_schedule = auto_schedule
-   self.auto_schedule_enable = auto_schedule_enable
-   self.auto_schedule_disable = auto_schedule_disable
-   self.device_disabled = device_disabled
-   self.multi_trigger = multi_trigger
-   self.group_name = group_name
-   self.meter_iot_topic = meter_iot_topic
-   self.meter_reading_unit_precision = meter_reading_unit_precision
-   self.meter_low_limit = meter_low_limit
-   self.meter_reset_value = meter_reset_value
-   self.info_notify = info_notify
-   self.meter_reset_additive = meter_reset_additive
-   self.meter_reading_unit = meter_reading_unit
-   self.meter_reading_unit_factor = meter_reading_unit_factor
+    def __init__(self, input_device_id, meter_iot_topic, meter_low_limit, meter_reset_value, meter_reset_additive, meter_reading_unit, meter_reading_unit_factor, meter_reading_unit_precision):
+        self.input_device_id = input_device_id
+        self.meter_iot_topic = meter_iot_topic
+        self.meter_low_limit = meter_low_limit
+        self.meter_reset_value = meter_reset_value
+        self.meter_reset_additive = meter_reset_additive
+        self.meter_reading_unit = meter_reading_unit
+        self.meter_reading_unit_factor = meter_reading_unit_factor
+        self.meter_reading_unit_precision = meter_reading_unit_precision
 
 
 class OutputConfig(db.Model):
@@ -239,11 +232,11 @@ class OutputConfig(db.Model):
     device_params = db.Column(db.Text)
     links = db.relationship('OutputLink', backref='output_config', cascade='all, delete-orphan', lazy='dynamic')
 
-def __init__(self, device_key, device_type, device_label, device_params):
-   self.device_key = device_key
-   self.device_type = device_type
-   self.device_label = device_label
-   self.device_params = device_params
+    def __init__(self, device_key, device_type, device_label, device_params):
+        self.device_key = device_key
+        self.device_type = device_type
+        self.device_label = device_label
+        self.device_params = device_params
 
 
 class InputLink(db.Model):
@@ -251,11 +244,11 @@ class InputLink(db.Model):
     __table_args__ = (UniqueConstraint('input_device_id', 'linked_device_id', name='unique_link'),)
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     input_device_id = db.Column(db.Integer, db.ForeignKey('input_config.id'), index=True, nullable=False)
-    linked_device_id = db.Column(db.Integer, db.ForeignKey('input_config.id'), nullable=False)
+    linked_device_id = db.Column(db.Integer, nullable=False)
 
-def __init__(self, input_device_id, linked_device_id):
-   self.input_device_id = input_device_id
-   self.linked_device_id = linked_device_id
+    def __init__(self, input_device_id, linked_device_id):
+        self.input_device_id = input_device_id
+        self.linked_device_id = linked_device_id
 
 
 class OutputLink(db.Model):
@@ -265,9 +258,9 @@ class OutputLink(db.Model):
     input_device_id = db.Column(db.Integer, db.ForeignKey('input_config.id'), index=True, nullable=False)
     output_device_id = db.Column(db.Integer, db.ForeignKey('output_config.id'), nullable=False)
 
-def __init__(self, input_device_id, output_device_id):
-   self.input_device_id = input_device_id
-   self.output_device_id = output_device_id
+    def __init__(self, input_device_id, output_device_id):
+        self.input_device_id = input_device_id
+        self.output_device_id = output_device_id
 
 
 @flask_app.route('/debug-sentry')
@@ -499,6 +492,9 @@ def input_config():
     if request.method == 'POST':
         saved_device_id = int(request.form['device_key'])
         input_cfg = InputConfig.query.filter_by(id=saved_device_id).first()
+        meter_cfg = None
+        if input_cfg.device_type == 'meter':
+            meter_cfg = MeterConfig.query.filter_by(input_device_id=input_cfg.id).first()
         customized = False
         if 'group_name' in request.form:
             group_name = request.form['group_name'].strip()
@@ -528,55 +524,57 @@ def input_config():
         else:
             input_cfg.trigger_window = None
         if request.form.get('meter_low_limit', None) and len(request.form['meter_low_limit']) > 0:
-            input_cfg.meter_low_limit = int(request.form['meter_low_limit'])
+            meter_cfg.meter_low_limit = int(request.form['meter_low_limit'])
             customized = True
         else:
-            input_cfg.meter_low_limit = None
+            meter_cfg.meter_low_limit = None
         if request.form.get('meter_high_limit', None) and len(request.form['meter_high_limit']) > 0:
-            input_cfg.meter_high_limit = int(request.form['meter_high_limit'])
+            meter_cfg.meter_high_limit = int(request.form['meter_high_limit'])
             customized = True
         else:
-            input_cfg.meter_high_limit = None
+            meter_cfg.meter_high_limit = None
         if request.form.get('meter_reset_value', None) and len(request.form['meter_reset_value']) > 0:
-            input_cfg.meter_reset_value = int(request.form['meter_reset_value'])
+            meter_cfg.meter_reset_value = int(request.form['meter_reset_value'])
             customized = True
         else:
-            input_cfg.meter_reset_value = None
+            meter_cfg.meter_reset_value = None
         if input_cfg.device_key in request.form.getlist('meter_reset_additive'):
-            input_cfg.meter_reset_additive = True
+            meter_cfg.meter_reset_additive = True
             customized = True
         else:
-            input_cfg.meter_reset_additive = None
+            meter_cfg.meter_reset_additive = None
         if request.form.get('meter_iot_topic', None) and len(request.form['meter_iot_topic'].strip()) > 0:
-            input_cfg.meter_iot_topic = request.form['meter_iot_topic'].strip()
+            meter_cfg.meter_iot_topic = request.form['meter_iot_topic'].strip()
             customized = True
         else:
-            input_cfg.meter_iot_topic = None
+            meter_cfg.meter_iot_topic = None
         if request.form.get('meter_reading_unit', None) and len(request.form['meter_reading_unit'].strip()) > 0:
-            input_cfg.meter_reading_unit = request.form['meter_reading_unit'].strip()
+            meter_cfg.meter_reading_unit = request.form['meter_reading_unit'].strip()
             customized = True
         else:
-            input_cfg.meter_reading_unit = None
+            meter_cfg.meter_reading_unit = None
         if request.form.get('meter_reading_unit_factor', None) and \
                 len(request.form['meter_reading_unit_factor']) > 0:
             meter_reading_unit_factor = int(request.form['meter_reading_unit_factor'])
             if 1 <= meter_reading_unit_factor <= 1000000000 and (meter_reading_unit_factor % 10 == 0):
-                input_cfg.meter_reading_unit_factor = meter_reading_unit_factor
+                meter_cfg.meter_reading_unit_factor = meter_reading_unit_factor
                 customized = True
         else:
-            input_cfg.meter_reading_unit_factor = None
+            meter_cfg.meter_reading_unit_factor = None
         if request.form.get('meter_reading_unit_precision', None) and len(
                 request.form['meter_reading_unit_precision']) > 0:
             meter_reading_unit_precision = int(request.form['meter_reading_unit_precision'])
             if 1 <= meter_reading_unit_precision <= 9:
-                input_cfg.meter_reading_unit_precision = meter_reading_unit_precision
+                meter_cfg.meter_reading_unit_precision = meter_reading_unit_precision
                 customized = True
         else:
-            input_cfg.meter_reading_unit_precision = None
+            meter_cfg.meter_reading_unit_precision = None
         input_cfg.customized = customized
         db.session.add(input_cfg)
+        if meter_cfg:
+            db.session.add(meter_cfg)
         db.session.commit()
-    inputs = InputConfig.query.order_by(InputConfig.device_key).all()
+    inputs = InputConfig.query.add_entity(MeterConfig).join(MeterConfig, InputConfig.id==MeterConfig.input_device_id, isouter=True).order_by(InputConfig.device_key).all()
     return render_template('input_config.html',
                            inputs=inputs,
                            saved_device_id=saved_device_id,
@@ -1035,133 +1033,107 @@ class EventProcessor(MQConnection, Closable):
             return 1
         return 0
 
-    def _process_device_event(self, event_origin, timestamp, active_device_key, active_device):
-        if active_device_key in self._input_config and 'linked_outputs' in self._input_config[active_device_key]:
-            output_device_keys = self._input_config[active_device_key]['linked_outputs']
-            log.debug('{} {} => {}'.format(event_origin, active_device_key, output_device_keys))
-            for output_device_key in output_device_keys:
-                output_device_activation = {}
-                if output_device_key not in self.outputs:
-                    log.warning('{} is linked to an unknown output {}'.format(active_device_key,
-                                                                              output_device_key))
+    def _process_device_event(self, input_config, event_origin, timestamp, active_device_key, active_device):
+        output_links = OutputLink.query.filter_by(input_device_id=input_config.id).all()
+        oc_ids = list()
+        for output_link in output_links:
+            oc_ids.append(output_link.output_device_id)
+        output_configs = OutputConfig.query.filter(OutputConfig.id.in_(oc_ids)).order_by(OutputConfig.device_key).all()
+        log.info(f'Input {input_config.device_key} is linked to {len(output_configs)} outputs.')
+        for output_config in output_configs:
+            output_device_key = output_config.device_key
+            if output_device_key not in self.outputs:
+                log.warning(f'{output_device_key} is not in the set of valid outputs: {self.outputs.keys()}')
+                continue
+            output_device_activation = {}
+            # put the event information into the LRU
+            self._device_event_lru[active_device_key] = timestamp
+            # build up the device activation history
+            activation_history = []
+            for device_key, activation_time in list(self._device_event_lru.items()):
+                # filter out the device being activated
+                if device_key == active_device_key:
                     continue
-                if output_device_key not in self._output_origin:
-                    log.warning('{} {} => {} but nowhere to route the response.'.format(event_origin,
-                                                                                        active_device_key,
-                                                                                        output_device_key))
+                # TODO: make this configurable
+                if (timestamp - activation_time).seconds > 5 * 60:
                     continue
-                # put the event information into the LRU
-                self._device_event_lru[active_device_key] = timestamp
-                # build up the device activation history
-                activation_history = []
-                for device_key, activation_time in list(self._device_event_lru.items()):
-                    # filter out the device being activated
-                    if device_key == active_device_key:
-                        continue
-                    try:
-                        input_device_config = self._input_config[device_key]
-                    except KeyError:
-                        del self._device_event_lru[device_key]
-                        continue
-                    # TODO: make this configurable
-                    if (timestamp - activation_time).seconds > 5 * 60:
-                        continue
-                    # TODO: fix
-                    try:
-                        input_device_label = input_device_config['device_label']
-                    except KeyError:
-                        log.warning('No label for device {}'.format(active_device_key))
-                        input_device_label = active_device_key
-                    # list of tuples
-                    activation_history.append((
-                        input_device_label,
-                        (timestamp - activation_time).seconds
-                    ))
-                # get the event destination
-                event_destination = self._output_origin[output_device_key]
-                log.info('{} {} => {} {}'.format(
-                    event_origin,
-                    active_device_key,
-                    event_destination,
-                    output_device_key))
-                # add information about the output device
-                output_device_activation.update(self.outputs[output_device_key])
-                # add output device configuration, if any
-                if output_device_key in self._output_config:
-                    output_device_activation.update(self._output_config[output_device_key])
-                activation_command = {
-                    'trigger_output': output_device_activation,
-                    'input_context': active_device,
-                    'trigger_history': activation_history,
-                }
-                trigger_duration = None
-                if 'activation_interval' in self._input_config[active_device_key]:
-                    trigger_duration = int(
-                        self._input_config[active_device_key]['activation_interval']
-                    )
-                    activation_command['trigger_duration'] = trigger_duration
-                # get the output type
-                output_device_type = output_device_activation['type'].lower()
-                # let the bot know first
-                if output_device_type == 'sms':
-                    self.bot.send_pyobj({
-                        'timestamp': timestamp,
-                        'data': activation_command
-                    })
-                # strip out image data that is no longer needed
-                if 'image' in active_device:
-                    del active_device['image']
-                try:
-                    output_device_label = self._output_config[output_device_key]['device_label']
-                except KeyError:
-                    output_device_label = output_device_key
-                log.debug('Activation command for {} ({}) ({} mapped in {}) is {}'.format(
-                    output_device_key,
-                    output_device_label,
-                    output_device_type,
-                    self._output_type_handlers,
-                    activation_command))
-                # dispatch the event, test SWF binding
-                if output_device_type in self._output_type_handlers:
-                    output_type = self._output_type_handlers[output_device_type]
-                    log.debug('Active device {}: {} with params {}.'.format(
-                        active_device,
-                        output_type,
-                        output_device_activation))
-                    event_payload = None
-                    if output_type == OUTPUT_TYPE_SNAPSHOT:
-                        camera_config = self._output_config[output_device_key]['device_params']
-                        event_payload = (output_device_key, output_device_label, camera_config)
-                    elif output_type in OUTPUT_TYPE_SWITCH:
-                        event_payload=(output_device_key, trigger_duration)
-                    if event_payload:
-                        try:
-                            self._basic_publish(
-                                routing_key=f'event.control.{output_type}',
-                                event_payload=event_payload)
-                        except Exception:
-                            log.warning(self.__class__.__name__, exc_info=True)
-                elif event_destination == device_name:
-                    #TODO: route this properly
-                    log.warning('Not dispatching event to self: {} {} => {}.'.format(event_origin,
-                                                                                     active_device_key,
-                                                                                     output_device_key))
+                # TODO: fix
+                if input_config.device_label:
+                    input_device_label = input_config.device_label
                 else:
-                    log.warning('{} {} => {} but nowhere to route the response.'.format(event_origin,
-                                                                                        active_device_key,
-                                                                                        output_device_key))
-                # add an entry into the event log
-                try:
-                    input_device_label = self._input_config[active_device_key]['device_label']
-                except KeyError:
                     input_device_label = active_device_key
-                db.session.add(EventLog(
-                    input_device=input_device_label,
-                    output_device=output_device_label,
-                    timestamp=timestamp))
-                db.session.commit()
-        else:
-            log.warning('{} is not configured or linked to any output: {}'.format(active_device_key, active_device))
+                # list of tuples
+                activation_history.append((
+                    input_device_label,
+                    (timestamp - activation_time).seconds
+                ))
+            # add basic output config
+            output_device_activation = {
+                output_config.device_key: {
+                'device_label': output_config.device_label,
+                'device_params': output_config.device_params,
+                'type': output_config.device_type
+            }}
+            # add information about the output device
+            output_device_activation.update(self.outputs[output_device_key])
+            activation_command = {
+                'trigger_output': output_device_activation,
+                'input_context': active_device,
+                'trigger_history': activation_history,
+            }
+            trigger_duration = None
+            if input_config.activation_interval:
+                activation_command['trigger_duration'] = input_config.activation_interval
+            # get the output type
+            output_device_type = output_config.device_type.lower()
+            # let the bot know first
+            if output_device_type == 'sms':
+                self.bot.send_pyobj({
+                    'timestamp': timestamp,
+                    'data': activation_command
+                })
+            # strip out image data that is no longer needed
+            if 'image' in active_device:
+                del active_device['image']
+            if output_config.device_label:
+                output_device_label = output_config.device_label
+            else:
+                output_device_label = output_device_key
+            log.debug('Activation command for {} ({}) ({} mapped in {}) is {}'.format(
+                output_device_key,
+                output_device_label,
+                output_device_type,
+                self._output_type_handlers,
+                activation_command))
+            # dispatch the event
+            if output_device_type in self._output_type_handlers:
+                output_type = self._output_type_handlers[output_device_type]
+                log.debug(f'Active device {active_device}: {output_type}.')
+                event_payload = None
+                if output_type == OUTPUT_TYPE_SNAPSHOT:
+                    camera_config = output_config.device_params
+                    event_payload = (output_config.device_key, output_device_label, camera_config)
+                elif output_type in OUTPUT_TYPE_SWITCH:
+                    event_payload=(output_config.device_key, trigger_duration)
+                if event_payload:
+                    try:
+                        self._basic_publish(
+                            routing_key=f'event.control.{output_type}',
+                            event_payload=event_payload)
+                    except Exception:
+                        log.warning(self.__class__.__name__, exc_info=True)
+            else:
+                log.warning(f'{event_origin} {active_device_key} => {output_config.device_key} but nowhere to route the response.')
+            # add an entry into the event log
+            try:
+                input_device_label = input_config.device_label
+            except KeyError:
+                input_device_label = active_device_key
+            db.session.add(EventLog(
+                input_device=input_device_label,
+                output_device=output_device_label,
+                timestamp=timestamp))
+            db.session.commit()
 
     def _load_config_table(self, table_name, primary_key='device_key'):
         log.info("Loading Dynamo table '{}'...".format(table_name))
@@ -1191,6 +1163,13 @@ class EventProcessor(MQConnection, Closable):
             log.warning(f'Unable to post measurement {measurement_name} to InfluxDB.', exc_info=True)
 
     def _migrate_from_ddb(self):
+        # connect to AWS services
+        self._ddb_storage = boto3.resource('dynamodb')
+        self._input_config, self._input_config_table = self._load_config_table(
+            table_name=os.environ['CONFIG_TABLE_INPUT'])
+        self._output_config, self._output_config_table = self._load_config_table(
+            table_name=os.environ['CONFIG_TABLE_OUTPUT'])
+
         db.drop_all()
         # set up the local database
         db.create_all()
@@ -1225,30 +1204,9 @@ class EventProcessor(MQConnection, Closable):
             d_group_name=None
             if 'group_name' in dc:
                 d_group_name = dc['group_name']
-            d_meter_iot_topic = None
-            if 'meter_iot_topic' in dc:
-                d_meter_iot_topic = dc['meter_iot_topic']
-            d_meter_reading_unit_precision = None
-            if 'meter_reading_unit_precision' in dc:
-                d_meter_reading_unit_precision = int(dc['meter_reading_unit_precision'])
-            d_meter_low_limit = None
-            if 'meter_low_limit' in dc:
-                d_meter_low_limit = int(dc['meter_low_limit'])
-            d_meter_reset_value = None
-            if 'meter_reset_value' in dc:
-                d_meter_reset_value = int(dc['meter_reset_value'])
             d_info_notify = None
             if 'info_notify' in dc:
                 d_info_notify = bool(dc['info_notify'])
-            d_meter_reset_additive = None
-            if 'meter_reset_additive' in dc:
-                d_meter_reset_additive = bool(dc['meter_reset_additive'])
-            d_meter_reading_unit = None
-            if 'meter_reading_unit' in dc:
-                d_meter_reading_unit = dc['meter_reading_unit']
-            d_meter_reading_unit_factor = None
-            if 'meter_reading_unit_factor' in dc:
-                d_meter_reading_unit_factor = int(dc['meter_reading_unit_factor'])
             row = InputConfig(
                 device_key=dk,
                 device_type=d_device_type,
@@ -1261,20 +1219,60 @@ class EventProcessor(MQConnection, Closable):
                 device_disabled=d_device_disabled,
                 multi_trigger=d_multi_trigger,
                 group_name=d_group_name,
-                meter_iot_topic=d_meter_iot_topic,
-                meter_reading_unit_precision=d_meter_reading_unit_precision,
-                meter_low_limit=d_meter_low_limit,
-                meter_reset_value=d_meter_reset_value,
-                info_notify=d_info_notify,
-                meter_reset_additive=d_meter_reset_additive,
-                meter_reading_unit=d_meter_reading_unit,
-                meter_reading_unit_factor=d_meter_reading_unit_factor)
+                info_notify=d_info_notify)
+            log.info(f'Adding input config {dk} to DB...')
             db.session.add(row)
         try:
             db.session.commit()
         except sqlerr.IntegrityError as e:
             log.warning(f'Cannot update local database: {e!s}', exc_info=True)
             db.session.rollback()
+        # meter
+        for dk, dc in list(self._input_config.items()):
+            d_device_type=None
+            if 'type' in dc:
+                d_device_type = dc['type']
+            if d_device_type != 'meter':
+                continue
+            d_meter_iot_topic = None
+            if 'meter_iot_topic' in dc:
+                d_meter_iot_topic = dc['meter_iot_topic']
+            d_meter_reading_unit_precision = None
+            if 'meter_reading_unit_precision' in dc:
+                d_meter_reading_unit_precision = int(dc['meter_reading_unit_precision'])
+            d_meter_low_limit = None
+            if 'meter_low_limit' in dc:
+                d_meter_low_limit = int(dc['meter_low_limit'])
+            d_meter_reset_value = None
+            if 'meter_reset_value' in dc:
+                d_meter_reset_value = int(dc['meter_reset_value'])
+            d_meter_reset_additive = None
+            if 'meter_reset_additive' in dc:
+                d_meter_reset_additive = bool(dc['meter_reset_additive'])
+            d_meter_reading_unit = None
+            if 'meter_reading_unit' in dc:
+                d_meter_reading_unit = dc['meter_reading_unit']
+            d_meter_reading_unit_factor = None
+            if 'meter_reading_unit_factor' in dc:
+                d_meter_reading_unit_factor = int(dc['meter_reading_unit_factor'])
+            meter_input_config = InputConfig.query.filter_by(device_key=dk).first()
+            row = MeterConfig(
+                input_device_id=meter_input_config.id,
+                meter_iot_topic=d_meter_iot_topic,
+                meter_low_limit=d_meter_low_limit,
+                meter_reset_value=d_meter_reset_value,
+                meter_reset_additive=d_meter_reset_additive,
+                meter_reading_unit=d_meter_reading_unit,
+                meter_reading_unit_factor=d_meter_reading_unit_factor,
+                meter_reading_unit_precision=d_meter_reading_unit_precision)
+            log.info(f'Adding meter config {meter_input_config.device_key} to DB...')
+            db.session.add(row)
+        try:
+            db.session.commit()
+        except sqlerr.IntegrityError as e:
+            log.warning(f'Cannot update local database: {e!s}', exc_info=True)
+            db.session.rollback()
+        # output
         for dk, dc in list(self._output_config.items()):
             d_device_type=None
             if 'type' in dc:
@@ -1290,6 +1288,7 @@ class EventProcessor(MQConnection, Closable):
                 device_type=d_device_type,
                 device_label=d_device_label,
                 device_params=d_device_params)
+            log.info(f'Adding output config {dk} to DB...')
             db.session.add(row)
         try:
             db.session.commit()
@@ -1306,6 +1305,7 @@ class EventProcessor(MQConnection, Closable):
                         device_type=None,
                         device_label=None,
                         device_params=None)
+                    log.info(f'Adding output config from linked output {lo} to DB...')
                     db.session.add(row)
                     try:
                         db.session.commit()
@@ -1324,6 +1324,7 @@ class EventProcessor(MQConnection, Closable):
                     row = OutputLink(
                         input_device_id=ic.id,
                         output_device_id=oc.id)
+                    log.info(f'Adding output link {dk} to {lo} to DB...')
                     db.session.add(row)
                 db.session.commit()
         # link inputs
@@ -1335,19 +1336,10 @@ class EventProcessor(MQConnection, Closable):
                     row = InputLink(
                         input_device_id=ic.id,
                         linked_device_id=icl.id)
+                    log.info(f'Adding input link {dk} to {li} to DB...')
                     db.session.add(row)
                 db.session.commit()
 
-    # noinspection PyBroadException
-    def run(self):
-        # connect to AWS services
-        self._ddb_storage = boto3.resource('dynamodb')
-        self._input_config, self._input_config_table = self._load_config_table(
-            table_name=os.environ['CONFIG_TABLE_INPUT'])
-        self._output_config, self._output_config_table = self._load_config_table(
-            table_name=os.environ['CONFIG_TABLE_OUTPUT'])
-        # TODO: remove
-        self._migrate_from_ddb()
         input_configs = InputConfig.query.all()
         for input_config in input_configs:
             ic_key = input_config.device_key
@@ -1364,7 +1356,13 @@ class EventProcessor(MQConnection, Closable):
                 if ddb_config[k] != v:
                     log.debug(f'{ic_key} mismatch from DDB on {k}: DB says {v}, DDB says {ddb_config[k]}')
                     continue
-                log.info(f'{ic_key} {k} - DB: {v}, DDB: {ddb_config[k]}')
+                log.debug(f'{ic_key} {k} - DB: {v}, DDB: {ddb_config[k]}')
+
+
+    # noinspection PyBroadException
+    def run(self):
+        # TODO: remove
+        self._migrate_from_ddb()
         # bot
         self.bot.connect(URL_WORKER_TELEGRAM_BOT)
         # influx DB
@@ -1374,14 +1372,17 @@ class EventProcessor(MQConnection, Closable):
             org=creds.influxdb_org)
         self.influxdb_rw = self.influxdb.write_api(write_options=ASYNCHRONOUS)
         self.influxdb_ro = self.influxdb.query_api()
+        # load DB config
+        input_configs = InputConfig.query.all()
         # load auto-scheduler
         with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, socket_type=zmq.PUSH) as zmq_socket:
-            for device_key, input_cfg in self._input_config.items():
-                if 'auto_schedule' in input_cfg:
-                    auto_schedule = bool(input_cfg['auto_schedule'])
-                    auto_schedule_enable = input_cfg['auto_schedule_enable']
-                    auto_schedule_disable = input_cfg['auto_schedule_disable']
-                    zmq_socket.send_pyobj((device_key, auto_schedule, auto_schedule_enable, auto_schedule_disable))
+            for input_config in input_configs:
+                if input_config.auto_schedule:
+                    zmq_socket.send_pyobj((
+                        input_config.device_key,
+                        input_config.auto_schedule,
+                        input_config.auto_schedule_enable,
+                        input_config.auto_schedule_disable))
         # informational notifications
         # TODO: move to UI configuration
         self.notify_not_before_time = make_timestamp(app_config.get('info_notify', 'not_before_time'))
@@ -1394,42 +1395,6 @@ class EventProcessor(MQConnection, Closable):
             output_types = app_config.get('output_types', output_type_handler).lower().split(',')
             for output_type in output_types:
                 self._output_type_handlers[output_type] = output_type_handler
-        # set up the special input for the panic button
-        self._update_device(
-            input_outputs=self.inputs,
-            device_origin=self._input_origin,
-            origin_devices=self._inputs_by_origin,
-            event_origin=device_name,
-            awol_devices=self._awol_inputs,
-            device={
-                'device_key': 'App Panic Button',
-                'device_label': 'Panic Button',
-                'type': 'Panic Button'
-            })
-        # set up the special input for the dash button
-        self._update_device(
-            input_outputs=self.inputs,
-            device_origin=self._input_origin,
-            origin_devices=self._inputs_by_origin,
-            event_origin=device_name,
-            awol_devices=self._awol_inputs,
-            device={
-                'device_key': 'App Dash Button',
-                'device_label': 'Dash Button',
-                'type': 'Dash Button'
-            })
-        # set up special output for SMS (text notifications)
-        self._update_device(
-            input_outputs=self.outputs,
-            device_origin=self._output_origin,
-            origin_devices=self._outputs_by_origin,
-            event_origin=device_name,
-            awol_devices=self._awol_outputs,
-            device={
-                'device_key': 'SMS',
-                'device_label': 'SMS',
-                'type': 'SMS'
-            })
         with exception_handler(closable=self, and_raise=False, shutdown_on_error=True):
             self._setup_channel()
             while not threads.shutting_down:
@@ -1465,14 +1430,10 @@ class EventProcessor(MQConnection, Closable):
                             device_disable = not event_data['device_state']
                             event_processor.flash_info = False
                             log.info('Updating device {}; disable: {}'.format(device_key, device_disable))
-                            try:
-                                event_processor.input_config = (
-                                    device_key,
-                                    {'device_disabled': device_disable}
-                                )
-                            except KeyError:
-                                log.exception('Problem with device {}: {}'.format(device_key, str(event_data)))
-                            event_processor.flash_info = True
+                            input_config = InputConfig.query.filter_by(device_key=device_key).first()
+                            input_config.device_disable = device_disable
+                            db.session.add(input_config)
+                            db.sessoin.commit()
                             # skip further processing because of enable/disable
                             continue
                         if 'sqs' == event_origin:
@@ -1512,9 +1473,9 @@ class EventProcessor(MQConnection, Closable):
                                 event_processor.flash_info = False
                                 devices_updated = 0
                                 for device_description in device_descriptions:
-                                    for device_key, device_config in list(self._input_config.items()):
+                                    for input_config in input_configs:
                                         device_name_match = False
-                                        device_name_test = device_config['device_label'].lower()
+                                        device_name_test = input_config.device_label.lower()
                                         # custom skill
                                         if device_name_test.startswith(device_description.lower()):
                                             device_name_match = True
@@ -1524,8 +1485,8 @@ class EventProcessor(MQConnection, Closable):
                                                 .replace('(', '#')\
                                                 .replace(')', '#') == device_description:
                                             device_name_match = True
-                                        elif 'group_name' in device_config and device_config['group_name']:
-                                            device_name_test = device_config['group_name'].lower()
+                                        elif input_config.group_name:
+                                            device_name_test = input_config.group_name.lower()
                                             if device_name_test.startswith(device_description.lower()):
                                                 device_name_match = True
                                             elif device_name_test\
@@ -1538,15 +1499,9 @@ class EventProcessor(MQConnection, Closable):
                                             log.info(
                                                 'Updating device {} based on matching description {}; '
                                                 'disable: {}'.format(device_key, device_description, device_disable))
-                                            try:
-                                                event_processor.input_config = (
-                                                    device_key,
-                                                    {'device_disabled': device_disable}
-                                                )
-                                                devices_updated += 1
-                                            except KeyError:
-                                                log.exception('Problem with device {}: {}'.format(device_key,
-                                                                                                  str(event_data)))
+                                            input_config.device_disable = True
+                                            db.session.add(input_config)
+                                            db.session.commit()
                                 if devices_updated > 0:
                                     state_change = 'Enabled'
                                     if device_disable is True:
@@ -1609,7 +1564,8 @@ class EventProcessor(MQConnection, Closable):
                                         active_device['storage_url'] = event_data['data']['storage_url']
                                     active_device_key = active_device['device_key']
                                     # input known?
-                                    if active_device_key not in self._input_config:
+                                    input_config = InputConfig.query.filter_by(device_key=active_device_key).first()
+                                    if not input_config:
                                         log.warning(
                                             "Input device '{}' is not configured, ignoring.".format(active_device_key))
                                         continue
@@ -1623,8 +1579,8 @@ class EventProcessor(MQConnection, Closable):
                                             message_age.seconds,
                                             self._max_message_validity_seconds))
                                         continue
-                                    active_device_config = self._input_config[active_device_key]
                                     # always process a fresh meter update
+                                    meter_config = None
                                     if 'type' in active_device and 'meter' in active_device['type'].lower():
                                         meter_value = int(active_device['sample_values']['meter'])
                                         register_value = int(active_device['sample_values']['register'])
@@ -1632,25 +1588,21 @@ class EventProcessor(MQConnection, Closable):
                                             # TODO: reset to knkown value
                                             log.debug('Resetting negative {} meter register value {} to 0.'.format(active_device_key, register_value))
                                             register_value = 0
-                                        meter_reading_unit = ''
-                                        if 'meter_reading_unit' in active_device_config:
-                                            meter_reading_unit = ' ' + active_device_config['meter_reading_unit']
+                                        meter_config = MeterConfig.query.filter_by(input_device_id=input_config.id).first()
+                                        meter_reading_unit = ' ' + meter_config.meter_reading_unit
                                         meter_reading_unit_factor = 1
-                                        if 'meter_reading_unit_factor' in active_device_config:
-                                            meter_reading_unit_factor = active_device_config[
-                                                'meter_reading_unit_factor']
+                                        meter_reading_unit_factor = meter_config.meter_reading_unit_factor
                                         meter_reading_unit_precision = 0
-                                        if 'meter_reading_unit_precision' in active_device_config:
-                                            meter_reading_unit_precision = active_device_config[
-                                                'meter_reading_unit_precision']
+                                        meter_reading_unit_precision = meter_config.meter_reading_unit_precision
                                         number_format_string = "{:." + str(meter_reading_unit_precision) + "f}"
                                         # create normalized values
                                         normalized_register_value = int(register_value) / float(meter_reading_unit_factor)
-                                        # update but do not persist
-                                        active_device_config.update({
-                                            'meter_value': register_value,
-                                            'meter_reading': number_format_string.format(normalized_register_value) + meter_reading_unit
-                                        })
+                                        # update DB
+                                        meter_config.meter_value = meter_value
+                                        meter_config.register_value = register_value
+                                        meter_config.meter_reading = number_format_string.format(normalized_register_value) + meter_reading_unit
+                                        db.session.add(meter_config)
+                                        db.session.commit()
                                         # post metric every n-minutes
                                         now = time.time()
                                         # accumulated meter value
@@ -1673,24 +1625,21 @@ class EventProcessor(MQConnection, Closable):
                                                 field_value=normalized_register_value)
                                             self._metric_last_posted_register_value = now
                                     # input disabled?
-                                    if 'device_disabled' in active_device_config:
+                                    if input_config.device_disabled:
                                         continue
                                     # only consider a meter active if the value is out of bounds
                                     if 'type' in active_device and 'meter' in active_device['type'].lower():
                                         out_of_range = False
-                                        if 'meter_low_limit' in active_device_config:
-                                            if meter_value < active_device_config['meter_low_limit']:
-                                                out_of_range = True
-                                        if 'meter_high_limit' in active_device_config:
-                                            if meter_value > active_device_config['meter_high_limit']:
-                                                out_of_range = True
+                                        if meter_config.meter_low_limit and meter_value < meter_config.meter_low_limit:
+                                            out_of_range = True
+                                        if meter_config.meter_high_limit and meter_value > meter_config.meter_high_limit:
+                                            out_of_range = True
                                         if not out_of_range:
                                             continue
                                     # multi-trigger
-                                    if 'multi_trigger' in active_device_config:
-                                        if 'trigger_window' in active_device_config:
-                                            trigger_window = active_device_config['trigger_window']
-                                        else:
+                                    if input_config.multi_trigger:
+                                        trigger_window = input_config.trigger_window
+                                        if trigger_window is None:
                                             trigger_window = int(app_config.get('config', 'default_trigger_window'))
                                         # if not in the trigger history, treat as never activated
                                         if active_device_key not in self._input_trigger_history:
@@ -1714,13 +1663,11 @@ class EventProcessor(MQConnection, Closable):
                                     # debounce
                                     if active_device_key in self._input_active_history:
                                         # debounce this input
-                                        if active_device_key in self._input_config and 'activation_interval' in active_device_config:
-                                            activation_interval = active_device_config['activation_interval']
+                                        if input_config.activation_interval:
+                                            activation_interval = input_config.activation_interval
                                         else:
-                                            activation_interval = int(
-                                                app_config.get('config', 'default_activation_interval'))
-                                        input_last_active, last_event_detail = self._input_active_history[
-                                            active_device_key]
+                                            activation_interval = int(app_config.get('config', 'default_activation_interval'))
+                                        input_last_active, last_event_detail = self._input_active_history[active_device_key]
                                         if last_event_detail == event_detail:
                                             last_activated = time.time() - input_last_active
                                             if last_activated < activation_interval:
@@ -1742,7 +1689,7 @@ class EventProcessor(MQConnection, Closable):
                                         device=active_device)
                                     # informational event?
                                     # TODO: move to _process_device_event
-                                    if 'info_notify' in active_device_config:
+                                    if input_config.info_notify:
                                         # make a future date that is relative (after) now time.
                                         now = datetime.now().replace(tzinfo=tz.tzlocal())
                                         not_before = now.replace(
@@ -1768,6 +1715,7 @@ class EventProcessor(MQConnection, Closable):
                                                 defer_until))
                                             continue
                                     self._process_device_event(
+                                        input_config=input_config,
                                         event_origin=event_origin,
                                         timestamp=timestamp,
                                         active_device_key=active_device_key,
