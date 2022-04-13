@@ -1358,7 +1358,6 @@ class EventProcessor(MQConnection, Closable):
                     continue
                 log.debug(f'{ic_key} {k} - DB: {v}, DDB: {ddb_config[k]}')
 
-
     # noinspection PyBroadException
     def run(self):
         # TODO: remove
@@ -1395,6 +1394,42 @@ class EventProcessor(MQConnection, Closable):
             output_types = app_config.get('output_types', output_type_handler).lower().split(',')
             for output_type in output_types:
                 self._output_type_handlers[output_type] = output_type_handler
+        # set up the special input for the panic button
+        self._update_device(
+            input_outputs=self.inputs,
+            device_origin=self._input_origin,
+            origin_devices=self._inputs_by_origin,
+            event_origin=device_name,
+            awol_devices=self._awol_inputs,
+            device={
+                'device_key': 'App Panic Button',
+                'device_label': 'Panic Button',
+                'type': 'Panic Button'
+            })
+        # set up the special input for the dash button
+        self._update_device(
+            input_outputs=self.inputs,
+            device_origin=self._input_origin,
+            origin_devices=self._inputs_by_origin,
+            event_origin=device_name,
+            awol_devices=self._awol_inputs,
+            device={
+                'device_key': 'App Dash Button',
+                'device_label': 'Dash Button',
+                'type': 'Dash Button'
+            })
+        # set up special output for SMS (text notifications)
+        self._update_device(
+            input_outputs=self.outputs,
+            device_origin=self._output_origin,
+            origin_devices=self._outputs_by_origin,
+            event_origin=device_name,
+            awol_devices=self._awol_outputs,
+            device={
+                'device_key': 'SMS',
+                'device_label': 'SMS',
+                'type': 'SMS'
+            })
         with exception_handler(closable=self, and_raise=False, shutdown_on_error=True):
             self._setup_channel()
             while not threads.shutting_down:
