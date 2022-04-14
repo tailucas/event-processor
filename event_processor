@@ -1468,7 +1468,7 @@ class EventProcessor(MQConnection, Closable):
                             input_config = InputConfig.query.filter_by(device_key=device_key).first()
                             input_config.device_disable = device_disable
                             db.session.add(input_config)
-                            db.sessoin.commit()
+                            db.session.commit()
                             # skip further processing because of enable/disable
                             continue
                         if 'sqs' == event_origin:
