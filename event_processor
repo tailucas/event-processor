@@ -315,7 +315,7 @@ class InputConfigCollection(object):
 
     @property
     def input_config(self):
-        return self._input_configs.items()
+        return self._input_configs
 
     @input_config.setter
     def input_config(self, input_config):
