@@ -2,25 +2,27 @@
 {% set active_page = "index" %}
 {% block body %}
 <ul class="list-group">
-  {% for input_device_key, input_device in inputs|dictsort %}
-  {% if input_device['type'] in ['Panic Button', 'Dash Button'] %}{% continue %}{% endif %}
-  {% with strike_thru = input_device_key in awol_inputs %}
-  <a class="list-group-item{% if not input_device['device_disabled'] %} active{% endif %}"><!-- {% if 'grouped_inputs' in input_device %}<span class="badge">{{ input_device['grouped_inputs']|count }}</span>{% endif %} -->
+  {% for input_device_label, input_device in inputs|dictsort %}
+  {% if input_device.device_type in ['Panic Button', 'Dash Button'] %}{% continue %}{% endif %}
+  <a class="list-group-item{% if not input_device.device_disabled %} active{% endif %}">
     <form class="form-horizontal" role="form" method='POST'>
-      <button type="submit" class="btn btn-{% if input_device['mixed_disabled'] %}warning{% else %}success{% endif %}" name="device_key" value="{{ input_device_key }}">{% if strike_thru %}<del>{% endif %}{{ input_device['device_label'] }}{% if strike_thru %}</del>{% endif %} <i class="fas fa-volume-{% if not input_device['device_disabled'] %}up{% elif input_device['mixed_disabled'] %}down{% else %}off{% endif %}"></i></button>
-      {% if input_device['type'] == 'meter' %}
-        {% if 'meter_iot_topic' in input_device %}
-        <button type="button" data-bb="prompt" data-prompt-val="{{ input_device['meter_reset_value'] }}" class="btn btn-warning" name="meter_reset" value="{{ input_device_key }}">Reset{% if 'meter_reading' in input_device %} <span class="badge badge-pill badge-info">{{ input_device['meter_reading'] }}</span>{% endif %}</button>
-        {% endif %}
+      <button type="submit" class="btn btn-success" name="device_key" value="{{ input_device_label }}">{{ input_device.device_label }} <i class="fas fa-volume-{% if not input_device.device_disabled %}up{% else %}off{% endif %}"></i></button>
+      {% if input_device.device_type == 'meter' %}
+      {% if input_device.id in meters %}
+      {% with meter = meters[input_device.id] %}
+      {% if meter.meter_iot_topic %}
+      <button type="button" data-bb="prompt" data-prompt-val="{{ meter.meter_reset_value }}" class="btn btn-warning" name="meter_reset" value="{{ input_device_label }}">Reset{% if meter.meter_reading %} <span class="badge badge-pill badge-info">{{ meter.meter_reading }}</span>{% endif %}</button>
+      {% endif %}
+      {% endwith %}
+      {% endif %}
       {% endif %}
     </form>
-    {% for grouped_input_label in input_labels[input_device_key]|sort %}
-    {% with strike_thru = grouped_input_label in awol_input_labels %}
-    <p class="list-group-item-text">{% if strike_thru %}<del>{% endif %}{{ grouped_input_label }}{% if strike_thru %}</del>{% endif %}</p>
-    {% endwith %}
+    {% if input_device.device_type == 'group' %}
+    {% for grouped_input in input_device.input_config %}
+    <p class="list-group-item-text">{{ grouped_input.device_label }}</p>
     {% endfor %}
+    {% endif %}
   </a>
-  {% endwith %}
   {% endfor %}
   <div class="well">
     <form class="form-horizontal" role="form" method='POST'>

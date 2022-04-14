@@ -263,6 +263,74 @@ class OutputLink(db.Model):
         self.output_device_id = output_device_id
 
 
+class InputConfigWrapper(object):
+
+    def __init__(self):
+        self._input_config = None
+        self._device_label = None
+        self._device_type = None
+        self._device_disabled = False
+
+    @property
+    def device_label(self):
+        if isinstance(self._input_config, InputConfig):
+            return self._input_config.device_label
+        return self._device_label
+
+    @property
+    def device_type(self):
+        if isinstance(self._input_config, InputConfig):
+            return self._input_config.device_type
+        return self._device_type
+
+    @property
+    def device_disabled(self):
+        if isinstance(self._input_config, InputConfig):
+            return self._input_config.device_disabled
+        return self._device_disabled
+
+    @property
+    def input_config(self):
+        return self._input_config
+
+    @input_config.setter
+    def input_config(self, input_config):
+        if input_config.group_name:
+            self._device_label = input_config.group_name
+            self._device_type = 'group'
+            # disable group if any input is disabled
+            if input_config.device_disabled is not None:
+                self._device_disabled &= input_config.device_disabled
+            if self._input_config is None:
+                self._input_config = list()
+            self._input_config.append(input_config)
+        else:
+            self._input_config = input_config
+
+
+class InputConfigCollection(object):
+
+    def __init__(self):
+        self._input_configs = dict()
+
+    @property
+    def input_config(self):
+        return self._input_configs.items()
+
+    @input_config.setter
+    def input_config(self, input_config):
+        input_device_key = input_config.device_key
+        if input_config.group_name:
+            input_device_key = input_config.group_name
+        ic_wrapper = None
+        if input_device_key not in self._input_configs.keys():
+            ic_wrapper = InputConfigWrapper()
+            self._input_configs[input_device_key] = ic_wrapper
+        else:
+            ic_wrapper = self._input_configs[input_device_key]
+        ic_wrapper.input_config = input_config
+
+
 @flask_app.route('/debug-sentry')
 def trigger_error():
     1 / 0
@@ -284,40 +352,6 @@ def internal_server_error(e):
 
 @flask_app.route('/', methods=['GET', 'POST'])
 def index():
-    meter_history = {}
-    group_disabled = {}
-    device_listing = {}
-    input_labels = {}
-    awol_input_labels = set()
-    global event_processor
-    awol_inputs = event_processor.awol_inputs
-    if len(awol_inputs) > 0:
-        flash(message='{} devices are unavailable right now.'.format(len(awol_inputs)), category='danger')
-    for device_key, device_config in list(event_processor.input_config.items()):
-        if device_key in awol_inputs:
-            awol_input_labels.add(device_config['device_label'])
-        if 'group_name' not in device_config:
-            device_listing[device_key] = device_config
-        else:
-            group_name = device_config['group_name']
-            if group_name not in device_listing:
-                device_listing[group_name] = {}
-                device_listing[group_name]['grouped_inputs'] = {}
-            device_listing[group_name]['grouped_inputs'][device_key] = device_config
-            if group_name not in input_labels:
-                input_labels[group_name] = []
-            input_labels[group_name].append(device_config['device_label'])
-            # manufacture a device label for the group
-            device_listing[group_name]['device_label'] = group_name
-            # check for enabled/disabled disparity
-            if 'device_disabled' in device_config:
-                device_listing[group_name]['device_disabled'] = device_config['device_disabled']
-                if group_name not in group_disabled:
-                    group_disabled[group_name] = device_config['device_disabled']
-                elif group_disabled[group_name] != device_config['device_disabled']:
-                    device_listing[group_name]['mixed_disabled'] = True
-            elif group_name in group_disabled and group_disabled[group_name]:
-                device_listing[group_name]['mixed_disabled'] = True
     if request.method == 'POST':
         if 'panic_button' in request.form:
             log.info('Panic button pressed.')
@@ -365,15 +399,6 @@ def index():
                     app_config.get('mqtt', 'meter_reset_topic'),
                     json.dumps(iot_message)
                 ))
-        elif 'meter_history' in request.form:
-            scheme = None
-            if 'X-Forwarded-Proto' in request.headers:
-                scheme = request.headers['X-Forwarded-Proto']
-            return redirect(url_for(
-                'show_metrics',
-                meter=request.form['meter_history'],
-                _external=True,
-                _scheme=scheme))
         elif 'device_key' in request.form:
             device_key = request.form['device_key']
             if 'grouped_inputs' not in device_listing[device_key]:
@@ -412,13 +437,19 @@ def index():
                 event_processor.flash_info = True
         else:
             log.error('No action associated with this request: {}'.format(request.form))
+
+    input_configs = InputConfig.query.order_by(InputConfig.device_key).all()
+    inputs = InputConfigCollection()
+    for input_config in input_configs:
+        inputs.input_config = input_config
+    meters = dict()
+    meter_configs = MeterConfig.query.all()
+    for meter_config in meter_configs:
+        meters[meter_config.input_device_id] = meter_config
     render_timestamp = make_timestamp(timestamp=None, as_tz=tz.tzlocal(), make_string=True)
     return render_template('index.html',
-                           inputs=device_listing,
-                           input_labels=input_labels,
-                           awol_inputs=awol_inputs,
-                           awol_input_labels=awol_input_labels,
-                           meter_history=meter_history,
+                           inputs=inputs.input_config,
+                           meters=meters,
                            server_context=device_name,
                            render_timestamp=render_timestamp,
                            healthchecks_badges=event_processor.healthchecks_badge_uris)
