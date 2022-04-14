@@ -2396,10 +2396,11 @@ if __name__ == "__main__":
             server.start()
             telegram_updater.start_polling()
             # get supporting services going
-            exec_cmd_log(['sudo', 'systemctl', 'enable', 'ngrok'])
-            exec_cmd_log(['sudo', 'systemctl', 'start', 'ngrok'])
-            # discover ngrok callback URL
-            CallbackUrlDiscovery().start()
+            if app_config.getboolean('ngrok', 'enabled'):
+                exec_cmd_log(['sudo', 'systemctl', 'enable', 'ngrok'])
+                exec_cmd_log(['sudo', 'systemctl', 'start', 'ngrok'])
+                # discover ngrok callback URL
+                CallbackUrlDiscovery().start()
             nanny.start()
             log.info('Startup complete.')
             # hang around until something goes wrong
@@ -2407,8 +2408,9 @@ if __name__ == "__main__":
         finally:
             die()
             message = "Shutting down {}..."
-            log.info(message.format('ngrok tunnel'))
-            exec_cmd_log(['sudo', 'systemctl', 'stop', 'ngrok'])
+            if app_config.getboolean('ngrok', 'enabled'):
+                log.info(message.format('ngrok tunnel'))
+                exec_cmd_log(['sudo', 'systemctl', 'stop', 'ngrok'])
             log.info(message.format('Telegram bot'))
             telegram_updater.stop()
             log.info(message.format('Main event processor'))
