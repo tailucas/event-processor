@@ -4,8 +4,11 @@ log_format: json
 log: false
 web_addr: 0.0.0.0:NGROK_CLIENT_API_PORT
 tunnels:
-  NGROK_TUNNEL_NAME:
-    proto: http
-    bind_tls: true
-    addr: APP_FLASK_HTTP_PORT
-    auth: "FRONTEND_USER:FRONTEND_PASSWORD"
+    frontend:
+        proto: http
+        schemes:
+            - https
+        addr: APP_FLASK_HTTP_PORT
+        basic_auth:
+            - "FRONTEND_USER:FRONTEND_PASSWORD"
+version: "2"

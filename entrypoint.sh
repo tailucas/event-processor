@@ -46,6 +46,9 @@ cat /opt/app/config/ngrok_frontend.yml \
   > /opt/app/ngrok_frontend.yml
 unset FRONTEND_USER
 unset FRONTEND_PASSWORD
+# check and opportunistically upgrade configuration
+./opt/app/ngrok config check --config /opt/app/ngrok.yml || ./opt/app/ngrok config upgrade --config /opt/app/ngrok.yml
+./opt/app/ngrok config check --config /opt/app/ngrok_frontend.yml || ./opt/app/ngrok config upgrade --config /opt/app/ngrok_frontend.yml
 
 # aws code commit
 if [ -n "${AWS_REPO_SSH_KEY_ID:-}" ]; then
