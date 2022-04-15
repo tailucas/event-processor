@@ -734,63 +734,13 @@ def telegram_bot_cmd(update: Update, context: TelegramCallbackContext):
                             text=f'[Dashboard]({ngrok_tunnel_url_with_bauth})',
                             parse_mode='Markdown')
         # status update
-        if update.effective_message.text.startswith('/report'):
+        if update.effective_message.text.startswith('/'):
             with exception_handler(connect_url=URL_WORKER_APP, socket_type=zmq.PUSH, and_raise=False) as zmq_socket:
                 zmq_socket.send_pyobj({
-                    device_name: {
-                        'data': {
-                            'active_devices': [
-                                {
-                                    'device_key': 'App Dash Button',
-                                    'device_label': 'Dash Button',
-                                    'type': 'Dash Button'
-                                }
-                            ]
-                        }
+                    'bot': {
+                        'command': update.effective_message.text
                     }
                 })
-    except Exception:
-        log.exception('bot handler')
-        capture_exception()
-
-
-def telegram_bot_inline(update: Update, context: TelegramCallbackContext):
-    global ngrok_tunnel_url
-    try:
-        authorized_users = app_config.get('telegram', 'authorized_users').split(',')
-        if str(update.inline_query.from_user.id) not in authorized_users:
-            log.warning('Unauthorized message {}'.format(str(update)))
-            return
-
-        log.info('Telegram Bot {} got inline query {} from {} {} (location: {}).'.format(context.bot.username,
-                                                                                         update.inline_query.query,
-                                                                                         update.inline_query.from_user.first_name,
-                                                                                         update.inline_query.from_user.last_name,
-                                                                                         update.inline_query.location))
-
-        query = update.inline_query.query
-        if not query:
-            return
-        results = [
-            InlineQueryResultArticle(
-                id=uuid4(),
-                title="Dashboard",
-                url=ngrok_tunnel_url,
-                input_message_content=InputTextMessageContent(
-                    query.upper())),
-            InlineQueryResultArticle(
-                id=uuid4(),
-                title="Report",
-                input_message_content=InputTextMessageContent(
-                    "*{}*".format(escape_markdown(query)),
-                    parse_mode=ParseMode.MARKDOWN)),
-            InlineQueryResultArticle(
-                id=uuid4(),
-                title="Panic",
-                input_message_content=InputTextMessageContent(
-                    "_{}_".format(escape_markdown(query)),
-                    parse_mode=ParseMode.MARKDOWN))]
-        update.inline_query.answer(results)
     except Exception:
         log.exception('bot handler')
         capture_exception()
@@ -1501,6 +1451,8 @@ class EventProcessor(MQConnection, Closable):
                             db.session.commit()
                             # skip further processing because of enable/disable
                             continue
+                        if 'bot' == event_origin:
+                            log.info(f'Got bot command: {event_data!s}')
                         if 'sqs' == event_origin:
                             device_disable = None
                             if 'enable' in event_data:
@@ -2359,8 +2311,6 @@ if __name__ == "__main__":
                 'report',
                 telegram_bot_cmd,
                 pass_args=True))
-        telegram_dispatcher.add_handler(
-            TelegramInlineHandler(telegram_bot_inline))
         telegram_dispatcher.add_handler(
             TelegramMessageHandler(
                 TelegramFilters.text,
