@@ -2303,12 +2303,17 @@ if __name__ == "__main__":
         telegram_dispatcher = telegram_updater.dispatcher
         telegram_dispatcher.add_handler(
             TelegramCommandHandler(
-                'start',
+                'report',
                 telegram_bot_cmd,
                 pass_args=True))
         telegram_dispatcher.add_handler(
             TelegramCommandHandler(
-                'report',
+                'enable',
+                telegram_bot_cmd,
+                pass_args=True))
+        telegram_dispatcher.add_handler(
+            TelegramCommandHandler(
+                'disable',
                 telegram_bot_cmd,
                 pass_args=True))
         telegram_dispatcher.add_handler(
