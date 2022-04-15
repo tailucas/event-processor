@@ -4,9 +4,9 @@
 <ul class="list-group">
   {% for input_device_label, input_device in inputs|dictsort %}
   {% if input_device.device_type in ['Panic Button', 'Dash Button'] %}{% continue %}{% endif %}
-  <a class="list-group-item{% if not input_device.device_disabled %} active{% endif %}">
+  <a class="list-group-item{% if input_device.device_enabled %} active{% endif %}">
     <form class="form-horizontal" role="form" method='POST'>
-      <button type="submit" class="btn btn-success" name="device_key" value="{{ input_device_label }}">{{ input_device.device_label }} <i class="fas fa-volume-{% if not input_device.device_disabled %}up{% else %}off{% endif %}"></i></button>
+      <button type="submit" class="btn btn-success" name="device_key" value="{{ input_device_label }}">{{ input_device.device_label }} <i class="fas fa-volume-{% if input_device.device_enabled %}up{% else %}off{% endif %}"></i></button>
       {% if input_device.device_type == 'meter' %}
       {% if input_device.id in meters.keys() %}
       {% with meter = meters[input_device.id] %}

@@ -174,7 +174,7 @@ class InputConfig(db.Model):
     auto_schedule = db.Column(db.Boolean)
     auto_schedule_enable = db.Column(db.String(5))
     auto_schedule_disable = db.Column(db.String(5))
-    device_disabled = db.Column(db.Boolean)
+    device_enabled = db.Column(db.Boolean)
     multi_trigger = db.Column(db.Boolean)
     group_name = db.Column(db.String(100), index=True)
     info_notify = db.Column(db.Boolean)
@@ -182,7 +182,7 @@ class InputConfig(db.Model):
     links_ol = db.relationship('OutputLink', backref='input_config', cascade='all, delete-orphan', lazy='dynamic')
     links_mc = db.relationship('MeterConfig', backref='input_config', cascade='all, delete-orphan', lazy='dynamic')
 
-    def __init__(self, device_key, device_type, device_label, customized, activation_interval, auto_schedule, auto_schedule_enable, auto_schedule_disable, device_disabled, multi_trigger, group_name, info_notify):
+    def __init__(self, device_key, device_type, device_label, customized, activation_interval, auto_schedule, auto_schedule_enable, auto_schedule_disable, device_enabled, multi_trigger, group_name, info_notify):
         self.device_key = device_key
         self.device_type = device_type
         self.device_label = device_label
@@ -191,7 +191,7 @@ class InputConfig(db.Model):
         self.auto_schedule = auto_schedule
         self.auto_schedule_enable = auto_schedule_enable
         self.auto_schedule_disable = auto_schedule_disable
-        self.device_disabled = device_disabled
+        self.device_enabled = device_enabled
         self.multi_trigger = multi_trigger
         self.group_name = group_name
         self.info_notify = info_notify
@@ -269,7 +269,7 @@ class InputConfigWrapper(object):
         self._input_config = None
         self._device_label = None
         self._device_type = None
-        self._device_disabled = False
+        self._device_enabled = False
 
     @property
     def id(self):
@@ -290,18 +290,18 @@ class InputConfigWrapper(object):
         return self._device_type
 
     @property
-    def device_disabled(self):
+    def device_enabled(self):
         if isinstance(self._input_config, InputConfig):
-            return self._input_config.device_disabled
-        return self._device_disabled
+            return self._input_config.device_enabled
+        return self._device_enabled
 
-    @device_disabled.setter
-    def device_disabled(self, disabled):
+    @device_enabled.setter
+    def device_enabled(self, enabled):
         if isinstance(self._input_config, InputConfig):
-            self.input_config.device_disabled = disabled
+            self.input_config.device_enabled = enabled
         else:
             for input_config in self._input_config:
-                input_config.disabled = disabled
+                input_config.enabled = enabled
 
     @property
     def input_config(self):
@@ -313,8 +313,10 @@ class InputConfigWrapper(object):
             self._device_label = input_config.group_name
             self._device_type = 'group'
             # disable group if any input is disabled
-            if input_config.device_disabled is not None:
-                self._device_disabled &= input_config.device_disabled
+            if input_config.device_enabled is not None:
+                self._device_enabled &= input_config.device_enabled
+            else:
+                self._device_enabled = False
             if self._input_config is None:
                 self._input_config = list()
             self._input_config.append(input_config)
@@ -424,17 +426,29 @@ def index():
         elif 'device_key' in request.form:
             device_key = request.form['device_key']
             input_cfg = inputs.input_config[device_key]
-            input_disabled = input_cfg.device_disabled
-            if not input_disabled:
-                input_disabled = True
+            input_enabled = input_cfg.device_enabled
+            # null or false => enabled
+            if not input_enabled:
+                # therefore, toggle to enabled
+                input_enabled = True
             else:
-                input_disabled = False
-            input_cfg.device_disabled = input_disabled
-            if isinstance(input_cfg, InputConfig):
+                input_enabled = False
+            input_cfg.device_enabled = input_enabled
+            # dereference and unwrap
+            input_cfgs = list()
+            unwrapped_inputs = input_cfg.input_config
+            if isinstance(unwrapped_inputs, InputConfig):
+                input_cfgs.append(unwrapped_inputs)
+            elif isinstance(unwrapped_inputs, list):
+                # collect grouped inputs
+                input_cfgs.extend(unwrapped_inputs)
+            # toggle all real inputs
+            for input_cfg in input_cfgs:
+                state = 'enabled'
+                if not input_cfg.device_enabled:
+                    state = 'disabled'
+                log.info(f'{input_cfg.device_key} (group {input_cfg.group_name}) is now {state}.')
                 db.session.add(input_cfg)
-            elif input_cfg.device_type == 'group':
-                for input_config in input_cfg:
-                    db.session.add(input_config)
             db.session.commit()
         else:
             log.error('No action associated with this request: {}'.format(request.form))
@@ -1175,9 +1189,9 @@ class EventProcessor(MQConnection, Closable):
             d_auto_schedule_disable=None
             if 'auto_schedule_disable' in dc:
                 d_auto_schedule_disable = dc['auto_schedule_disable']
-            d_device_disabled=None
-            if 'device_disabled' in dc:
-                d_device_disabled = bool(dc['device_disabled'])
+            d_device_enabled=None
+            if 'device_enabled' in dc:
+                d_device_enabled = not bool(dc['device_disabled'])
             d_multi_trigger=None
             if 'multi_trigger' in dc:
                 d_multi_trigger = bool(dc['multi_trigger'])
@@ -1196,7 +1210,7 @@ class EventProcessor(MQConnection, Closable):
                 auto_schedule=d_auto_schedule,
                 auto_schedule_enable=d_auto_schedule_enable,
                 auto_schedule_disable=d_auto_schedule_disable,
-                device_disabled=d_device_disabled,
+                device_enabled=d_device_enabled,
                 multi_trigger=d_multi_trigger,
                 group_name=d_group_name,
                 info_notify=d_info_notify)
@@ -1641,8 +1655,8 @@ class EventProcessor(MQConnection, Closable):
                                                 field_name='register',
                                                 field_value=normalized_register_value)
                                             self._metric_last_posted_register_value = now
-                                    # input disabled?
-                                    if input_config.device_disabled:
+                                    # input enabled?
+                                    if not input_config.device_enabled:
                                         continue
                                     # only consider a meter active if the value is out of bounds
                                     if 'type' in active_device and 'meter' in active_device['type'].lower():
