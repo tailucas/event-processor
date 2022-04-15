@@ -272,6 +272,12 @@ class InputConfigWrapper(object):
         self._device_disabled = False
 
     @property
+    def id(self):
+        if isinstance(self._input_config, InputConfig):
+            return self._input_config.id
+        return None
+
+    @property
     def device_label(self):
         if isinstance(self._input_config, InputConfig):
             return self._input_config.device_label
@@ -288,6 +294,14 @@ class InputConfigWrapper(object):
         if isinstance(self._input_config, InputConfig):
             return self._input_config.device_disabled
         return self._device_disabled
+
+    @device_disabled.setter
+    def device_disabled(self, disabled):
+        if isinstance(self._input_config, InputConfig):
+            self.input_config.device_disabled = disabled
+        else:
+            for input_config in self._input_config:
+                input_config.disabled = disabled
 
     @property
     def input_config(self):
@@ -352,6 +366,10 @@ def internal_server_error(e):
 
 @flask_app.route('/', methods=['GET', 'POST'])
 def index():
+    input_configs = InputConfig.query.order_by(InputConfig.device_key).all()
+    inputs = InputConfigCollection()
+    for input_config in input_configs:
+        inputs.input_config = input_config
     if request.method == 'POST':
         if 'panic_button' in request.form:
             log.info('Panic button pressed.')
@@ -371,9 +389,11 @@ def index():
                 })
         elif 'meter_reset' in request.form:
             device_key = request.form['meter_reset']
+            input_cfg = InputConfig.query.filter_by(device_label=device_key).first()
+            meter_cfg = MeterConfig.query.filter_by(input_device_id=input_cfg).first()
             reset_value = 0
-            if 'meter_reset_value' in device_listing[device_key]:
-                reset_value = device_listing[device_key]['meter_reset_value']
+            if meter_cfg.meter_reset_value:
+                reset_value = meter_cfg.meter_reset_value
             # override with the prompt value if specified
             if 'prompt_val' in request.form:
                 try:
@@ -382,9 +402,9 @@ def index():
                     # oh well
                     pass
             # pylint: disable=unused-variable
-            if 'meter_reset_additive' in device_listing[device_key]:
+            if meter_cfg.meter_reset_additive:
                 iot_message = {'adjust_register': reset_value}
-                meter_value = device_listing[device_key]['meter_value']
+                meter_value = meter_cfg.meter_value
                 meter_value += reset_value
                 # override the reset value
                 reset_value = meter_value
@@ -392,56 +412,32 @@ def index():
                 iot_message = {'set_register': reset_value}
             # update the in memory model
             #TODO: correctly update 'meter_reading'
-            device_listing[device_key]['meter_value'] = reset_value
+            meter_cfg.meter_value = reset_value
             # send IoT message
             with exception_handler(connect_url=URL_WORKER_MQTT_PUBLISH, socket_type=zmq.PUSH, and_raise=False) as zmq_socket:
                 zmq_socket.send_pyobj((
                     app_config.get('mqtt', 'meter_reset_topic'),
                     json.dumps(iot_message)
                 ))
+            db.session.add(meter_cfg)
+            db.session.commit()
         elif 'device_key' in request.form:
             device_key = request.form['device_key']
-            if 'grouped_inputs' not in device_listing[device_key]:
-                if 'device_disabled' not in device_listing[device_key]:
-                    disable = True
-                    device_listing[device_key]['device_disabled'] = True
-                else:
-                    disable = None
-                    del device_listing[device_key]['device_disabled']
-                event_processor.flash_info = False
-                event_processor.input_config = (
-                    device_key,
-                    {'device_disabled': disable}
-                )
-                event_processor.flash_info = True
+            input_cfg = inputs[device_key]
+            input_disabled = input_cfg.device_disabled
+            if not input_disabled:
+                input_disabled = True
             else:
-                # ambiguity => enabled
-                if 'mixed_disabled' in device_listing[device_key]:
-                    disable = None
-                    # ambiguity resolved
-                    del device_listing[device_key]['mixed_disabled']
-                    del device_listing[device_key]['device_disabled']
-                elif 'device_disabled' not in device_listing[device_key]:
-                    disable = True
-                    device_listing[device_key]['device_disabled'] = True
-                else:
-                    disable = None
-                    del device_listing[device_key]['device_disabled']
-                event_processor.flash_info = False
-                for grouped_device_key, grouped_device in list(device_listing[device_key]['grouped_inputs'].items()):
-                    grouped_device['device_disabled'] = disable
-                    event_processor.input_config = (
-                        grouped_device_key,
-                        {'device_disabled': disable}
-                    )
-                event_processor.flash_info = True
+                input_disabled = False
+            input_cfg.device_disabled = input_disabled
+            if isinstance(input_cfg, InputConfig):
+                db.session.add(input_cfg)
+            elif input_cfg.device_type == 'group':
+                for input_config in input_cfg:
+                    db.session.add(input_config)
+            db.session.commit()
         else:
             log.error('No action associated with this request: {}'.format(request.form))
-
-    input_configs = InputConfig.query.order_by(InputConfig.device_key).all()
-    inputs = InputConfigCollection()
-    for input_config in input_configs:
-        inputs.input_config = input_config
     meters = dict()
     meter_configs = MeterConfig.query.all()
     for meter_config in meter_configs:
