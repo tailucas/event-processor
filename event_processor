@@ -705,10 +705,12 @@ def telegram_bot_echo(update: Update, context: TelegramCallbackContext):
                                                                         update.effective_message.chat_id))
 
         group_info = context.bot.get_chat(chat_id=app_config.getint('telegram', 'chat_room_id'))
-        bot_response = "I am in the [{}]({}) group.".format(group_info.title, group_info.invite_link)
-        dashboard_link = '[Dashboard]({})'.format(ngrok_tunnel_url)
+        bot_response = f'I am in the [{group_info.title}]({group_info.invite_link}) group.'
+        if ngrok_tunnel_url:
+            dashboard_link = f'[Dashboard]({ngrok_tunnel_url})'
+            bot_response += "\n" + dashboard_link
         context.bot.send_message(chat_id=update.effective_message.chat_id,
-                         text=bot_response + "\n" + dashboard_link,
+                         text=bot_response,
                          parse_mode='Markdown')
     except Exception:
         log.exception('bot handler')
@@ -727,9 +729,10 @@ def telegram_bot_cmd(update: Update, context: TelegramCallbackContext):
                                                                                      update.effective_message.text,
                                                                                      str(context.args),
                                                                                      update.effective_message.chat_id))
-        context.bot.send_message(chat_id=update.effective_message.chat_id,
-                        text='[Dashboard]({})'.format(ngrok_tunnel_url_with_bauth),
-                        parse_mode='Markdown')
+        if ngrok_tunnel_url_with_bauth:
+            context.bot.send_message(chat_id=update.effective_message.chat_id,
+                            text=f'[Dashboard]({ngrok_tunnel_url_with_bauth})',
+                            parse_mode='Markdown')
         # status update
         if update.effective_message.text.startswith('/report'):
             with exception_handler(connect_url=URL_WORKER_APP, socket_type=zmq.PUSH, and_raise=False) as zmq_socket:
@@ -1841,7 +1844,7 @@ class TBot(AppThread, Closable):
                 image_data = None
                 if 'message' in event:
                     notification_message = event['message']
-                    if 'add_tunnel_url' in event:
+                    if 'add_tunnel_url' in event and ngrok_tunnel_url_with_bauth:
                         notification_message = '[{}]({})'.format(notification_message, ngrok_tunnel_url_with_bauth)
                 elif 'data' in event:
                     event_data = event['data']
