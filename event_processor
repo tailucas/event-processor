@@ -301,7 +301,7 @@ class InputConfigWrapper(object):
             self.input_config.device_enabled = enabled
         else:
             for input_config in self._input_config:
-                input_config.enabled = enabled
+                input_config.device_enabled = enabled
 
     @property
     def input_config(self):
@@ -314,9 +314,7 @@ class InputConfigWrapper(object):
             self._device_type = 'group'
             # disable group if any input is disabled
             if input_config.device_enabled is not None:
-                self._device_enabled &= input_config.device_enabled
-            else:
-                self._device_enabled = False
+                self._device_enabled |= input_config.device_enabled
             if self._input_config is None:
                 self._input_config = list()
             self._input_config.append(input_config)
@@ -427,7 +425,7 @@ def index():
             device_key = request.form['device_key']
             input_cfg = inputs.input_config[device_key]
             input_enabled = input_cfg.device_enabled
-            # null or false => enabled
+            # null or false => disabled
             if not input_enabled:
                 # therefore, toggle to enabled
                 input_enabled = True
