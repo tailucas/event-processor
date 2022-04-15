@@ -423,7 +423,7 @@ def index():
             db.session.commit()
         elif 'device_key' in request.form:
             device_key = request.form['device_key']
-            input_cfg = inputs[device_key]
+            input_cfg = inputs.input_config[device_key]
             input_disabled = input_cfg.device_disabled
             if not input_disabled:
                 input_disabled = True
