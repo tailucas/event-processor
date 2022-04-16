@@ -615,9 +615,14 @@ def input_config():
         if meter_cfg:
             db.session.add(meter_cfg)
         db.session.commit()
-    inputs = InputConfig.query.add_entity(MeterConfig).join(MeterConfig, InputConfig.id==MeterConfig.input_device_id, isouter=True).order_by(InputConfig.device_key).all()
+    inputs = InputConfig.query.order_by(InputConfig.device_key).all()
+    meters = dict()
+    meter_configs = MeterConfig.query.all()
+    for meter_config in meter_configs:
+        meters[meter_config.input_device_id] = meter_config
     return render_template('input_config.html',
                            inputs=inputs,
+                           meters=meters,
                            saved_device_id=saved_device_id,
                            default_trigger_window=int(app_config.get('config', 'default_trigger_window')),
                            default_activation_interval=int(app_config.get('config', 'default_activation_interval')))
@@ -1513,13 +1518,17 @@ class EventProcessor(MQConnection, Closable):
                                         log.info(f'{state.title()} {len(input_config)} devices...')
                                         input_configs.extend(input_config)
                                 # process all collected inputs
+                                inputs_updated = 0
                                 if len(input_configs) > 0:
                                     for ic in input_configs:
-                                        log.info(f'{state.title()} {ic.device_key} (group {ic.group_name})')
-                                        ic.device_enabled = device_enable
-                                        db.session.add(ic)
-                                    db.session.commit()
-                                    message = f'{len(input_configs)} devices set to {state}.'
+                                        if ic.device_enabled != device_enable:
+                                            inputs_updated += 1
+                                            log.info(f'{state.title()} {ic.device_key} (group {ic.group_name})')
+                                            ic.device_enabled = device_enable
+                                            db.session.add(ic)
+                                    if inputs_updated > 0:
+                                        db.session.commit()
+                                    message = f'{inputs_updated} devices changed to {state}.'
                                     log.info(message)
                                     self.bot.send_pyobj({'message': message})
                                 # no further processing needed after enable/disable

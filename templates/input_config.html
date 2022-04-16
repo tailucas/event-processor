@@ -33,37 +33,41 @@
                                     <input id="latch" class="form-control" type="text" name="activation_interval" placeholder="{{ default_activation_interval }} seconds" value="{{ input_device.activation_interval if input_device.activation_interval }}">
                                 </div>
                                 {% if input_device.device_type == 'meter' %}
+                                {% if input_device.id in meters.keys() %}
+                                {% with meter = meters[input_device.id] %}
                                 <div class="form-group">
                                     <label for="meter_iot_topic">IoT topic:</label>
-                                    <input id="meter_iot_topic" class="form-control" type="text" name="meter_iot_topic" value="{{ input_device.meter_iot_topic }}">
+                                    <input id="meter_iot_topic" class="form-control" type="text" name="meter_iot_topic" value="{{ meter.meter_iot_topic }}">
                                 </div>
                                 <div class="form-group">
                                     <label for="meter_reading_unit">Display name for the units of the reading:</label>
-                                    <input id="meter_reading_unit" class="form-control" type="text" name="meter_reading_unit" value="{{ input_device.meter_reading_unit }}">
+                                    <input id="meter_reading_unit" class="form-control" type="text" name="meter_reading_unit" value="{{ meter.meter_reading_unit }}">
                                 </div>
                                 <div class="form-group">
                                     <label for="meter_reading_unit_factor">Unit factor in tens (divide by this amount for display):</label>
-                                    <input id="meter_reading_unit_factor" class="form-control" type="text" name="meter_reading_unit_factor" placeholder="1" value="{{ input_device.meter_reading_unit_factor }}">
+                                    <input id="meter_reading_unit_factor" class="form-control" type="text" name="meter_reading_unit_factor" placeholder="1" value="{{ meter.meter_reading_unit_factor }}">
                                 </div>
                                 <div class="form-group">
                                     <label for="meter_reading_unit_precision">Display decimal places (if factor is not 1):</label>
-                                    <input id="meter_reading_unit_precision" class="form-control" type="text" name="meter_reading_unit_precision" placeholder="0" value="{{ input_device.meter_reading_unit_precision }}">
+                                    <input id="meter_reading_unit_precision" class="form-control" type="text" name="meter_reading_unit_precision" placeholder="0" value="{{ meter.meter_reading_unit_precision }}">
                                 </div>
                                 <div class="form-group">
                                     <label for="meter_reset">Reset value for the meter:</label>
-                                    <input id="meter_reset" class="form-control" type="text" name="meter_reset_value" placeholder="0" value="{{ input_device.meter_reset_value }}">
+                                    <input id="meter_reset" class="form-control" type="text" name="meter_reset_value" placeholder="0" value="{{ meter.meter_reset_value }}">
                                 </div>
                                 <div class="form-group">
-                                    <label><input type="checkbox" name="meter_reset_additive" value="{{ input_device.device_key }}"{% if input_device.meter_reset_additive %} checked{% endif %}>Reset has additive effect</label>
+                                    <label><input type="checkbox" name="meter_reset_additive" value="{{ input_device.device_key }}"{% if meter.meter_reset_additive %} checked{% endif %}>Reset has additive effect</label>
                                 </div>
                                 <div class="form-group">
                                     <label for="meter_low">Active if the metered value is below this value:</label>
-                                    <input id="meter_low" class="form-control" type="text" name="meter_low_limit" placeholder="" value="{{ input_device.meter_low_limit }}">
+                                    <input id="meter_low" class="form-control" type="text" name="meter_low_limit" placeholder="" value="{{ meter.meter_low_limit }}">
                                 </div>
                                 <div class="form-group">
                                     <label for="meter_high">Active if the metered value is above this value:</label>
-                                    <input id="meter_high" class="form-control" type="text" name="meter_high_limit" placeholder="" value="{{ input_device.meter_high_limit }}">
+                                    <input id="meter_high" class="form-control" type="text" name="meter_high_limit" placeholder="" value="{{ meter.meter_high_limit }}">
                                 </div>
+                                {% endwith %}
+                                {% endif %}
                                 {% endif %}
                                 <div class="form-group">
                                     <button type="submit" class="btn btn-primary" name="device_id" value="{{ input_device.id }}"><i class="far fa-save"></i> Save</button>
