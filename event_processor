@@ -812,24 +812,6 @@ class EventProcessor(MQConnection, Closable):
     def origins(self):
         return self._origin_connections.keys()
 
-    @property
-    def input_config(self):
-        devices = copy.deepcopy(self.inputs)
-        devices_config = self._input_config
-        for device_key in list(devices.keys()):
-            if device_key in devices_config:
-                devices[device_key].update(devices_config[device_key])
-        return devices
-
-    @property
-    def output_config(self):
-        devices = copy.deepcopy(self.outputs)
-        devices_config = self._output_config
-        for device_key in list(devices.keys()):
-            if device_key in devices_config:
-                devices[device_key].update(devices_config[device_key])
-        return devices
-
     def _update_devices(self, event_origin, device_info):
         devices_updated = 0
         for input_outputs, device_origin, origin_devices, io in [
@@ -1206,8 +1188,6 @@ class EventProcessor(MQConnection, Closable):
 
     # noinspection PyBroadException
     def run(self):
-        # TODO: remove
-        self._migrate_from_ddb()
         # bot
         self.bot.connect(URL_WORKER_TELEGRAM_BOT)
         # influx DB
@@ -1490,10 +1470,7 @@ class EventProcessor(MQConnection, Closable):
                                         if last_triggered > trigger_window:
                                             # update the history and continue
                                             self._input_trigger_history[active_device_key] = time.time()
-                                            log.debug('Not activating {} because it was triggered '
-                                                      'more than {} seconds ago. ({})'.format(active_device_key,
-                                                                                              trigger_window,
-                                                                                              last_triggered))
+                                            log.debug(f'Not activating {active_device_key} because it was triggered more than {trigger_window} seconds ago. ({last_triggered})')
                                             continue
                                     # get the event detail for debouncing
                                     event_detail = None
@@ -1511,11 +1488,7 @@ class EventProcessor(MQConnection, Closable):
                                             last_activated = time.time() - input_last_active
                                             if last_activated < activation_interval:
                                                 # device is still considered active
-                                                log.debug('Not activating {} ({}) because it was triggered '
-                                                          'less than {} seconds ago. ({})'.format(active_device_key,
-                                                                                                  last_event_detail,
-                                                                                                  activation_interval,
-                                                                                                  last_activated))
+                                                log.debug(f'Not activating {active_device_key} ({last_event_detail}) because it was triggered less than {activation_interval} seconds ago. ({last_activated})')
                                                 continue
                                     self._input_active_history[active_device_key] = (time.time(), event_detail)
                                     # active devices are presently assumed to be inputs
