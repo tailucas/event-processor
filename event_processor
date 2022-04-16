@@ -297,6 +297,8 @@ class InputConfigWrapper(object):
 
     @device_enabled.setter
     def device_enabled(self, enabled):
+        # sync the facade
+        self._device_enabled = enabled
         if isinstance(self._input_config, InputConfig):
             self.input_config.device_enabled = enabled
         else:
@@ -312,7 +314,7 @@ class InputConfigWrapper(object):
         if input_config.group_name:
             self._device_label = input_config.group_name
             self._device_type = 'group'
-            # disable group if any input is disabled
+            # enable group if any input is enable
             if input_config.device_enabled is not None:
                 self._device_enabled |= input_config.device_enabled
             if self._input_config is None:
@@ -1188,7 +1190,7 @@ class EventProcessor(MQConnection, Closable):
             if 'auto_schedule_disable' in dc:
                 d_auto_schedule_disable = dc['auto_schedule_disable']
             d_device_enabled=None
-            if 'device_enabled' in dc:
+            if 'device_disabled' in dc:
                 d_device_enabled = not bool(dc['device_disabled'])
             d_multi_trigger=None
             if 'multi_trigger' in dc:
