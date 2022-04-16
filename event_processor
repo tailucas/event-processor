@@ -479,33 +479,6 @@ def event_log():
                            events=events)
 
 
-# TODO: generify
-def update_config(event_processor, device_key, request_form):
-    try:
-        to_save = {}
-        if request_form.get('auto_schedule'):
-            to_save['auto_schedule'] = True
-        else:
-            to_save['auto_schedule'] = None
-        if len(request_form['auto_schedule_enable']) > 0:
-            to_save['auto_schedule_enable'] = request_form['auto_schedule_enable']
-        else:
-            to_save['auto_schedule_enable'] = None
-        if len(request_form['auto_schedule_disable']) > 0:
-            to_save['auto_schedule_disable'] = request_form['auto_schedule_disable']
-        else:
-            to_save['auto_schedule_disable'] = None
-        event_processor.flash_info = False
-        event_processor.input_config = (
-            device_key,
-            to_save
-        )
-        event_processor.flash_info = True
-    except ValueError as e:
-        exception_msg = "Cannot update '{}'".format(event_processor.input_config[device_key]['device_label'])
-        flash(message='{}: {}'.format(exception_msg, str(e)), category='danger')
-
-
 @flask_app.route('/config', methods=['GET', 'POST'])
 def show_config():
     saved_device_id = None
