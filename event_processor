@@ -300,7 +300,7 @@ class InputConfigWrapper(object):
         # sync the facade
         self._device_enabled = enabled
         if isinstance(self._input_config, InputConfig):
-            self.input_config.device_enabled = enabled
+            self._input_config.device_enabled = enabled
         else:
             for input_config in self._input_config:
                 input_config.device_enabled = enabled
@@ -776,9 +776,6 @@ class EventProcessor(MQConnection, Closable):
         self._inputs_by_origin = {}
         self._outputs_by_origin = {}
 
-        self._awol_inputs = set()
-        self._awol_outputs = set()
-
         self._ddb_storage = None
 
         self._input_config = None
@@ -833,15 +830,11 @@ class EventProcessor(MQConnection, Closable):
                 devices[device_key].update(devices_config[device_key])
         return devices
 
-    @property
-    def awol_inputs(self):
-        return self._awol_inputs
-
     def _update_devices(self, event_origin, device_info):
         devices_updated = 0
-        for input_outputs, device_origin, origin_devices, awol_devices, io in [
-            (self.inputs, self._input_origin, self._inputs_by_origin, self._awol_inputs, 'inputs'),
-            (self.outputs, self._output_origin, self._outputs_by_origin, self._awol_outputs, 'outputs')
+        for input_outputs, device_origin, origin_devices, io in [
+            (self.inputs, self._input_origin, self._inputs_by_origin, 'inputs'),
+            (self.outputs, self._output_origin, self._outputs_by_origin, 'outputs')
         ]:
             # next if only input or output
             if io not in device_info:
@@ -853,14 +846,13 @@ class EventProcessor(MQConnection, Closable):
                         device_origin=device_origin,
                         origin_devices=origin_devices,
                         event_origin=event_origin,
-                        awol_devices=awol_devices,
                         device=device
                     )
                 except RuntimeError:
                     log.exception('Bad device @ {}.'.format(device_origin))
         return devices_updated
 
-    def _update_device(self, input_outputs, device_origin, origin_devices, event_origin, awol_devices, device):
+    def _update_device(self, input_outputs, device_origin, origin_devices, event_origin, device):
         # device_key must always be present
         try:
             device_key = device['device_key']
@@ -874,10 +866,6 @@ class EventProcessor(MQConnection, Closable):
             origin_devices[event_origin] = set()
         if device_key not in origin_devices[event_origin]:
             origin_devices[event_origin].add(device_key)
-        # has this device been awol?
-        if device_key in awol_devices:
-            log.debug("'{}' is no longer AWOL.".format(device_key))
-        awol_devices.discard(device_key)
         # has this device been seen?
         if device_key not in device_origin:
             device_origin[device_key] = event_origin
@@ -1258,7 +1246,6 @@ class EventProcessor(MQConnection, Closable):
             device_origin=self._input_origin,
             origin_devices=self._inputs_by_origin,
             event_origin=device_name,
-            awol_devices=self._awol_inputs,
             device={
                 'device_key': 'App Panic Button',
                 'device_label': 'Panic Button',
@@ -1270,7 +1257,6 @@ class EventProcessor(MQConnection, Closable):
             device_origin=self._input_origin,
             origin_devices=self._inputs_by_origin,
             event_origin=device_name,
-            awol_devices=self._awol_inputs,
             device={
                 'device_key': 'App Dash Button',
                 'device_label': 'Dash Button',
@@ -1282,7 +1268,6 @@ class EventProcessor(MQConnection, Closable):
             device_origin=self._output_origin,
             origin_devices=self._outputs_by_origin,
             event_origin=device_name,
-            awol_devices=self._awol_outputs,
             device={
                 'device_key': 'SMS',
                 'device_label': 'SMS',
@@ -1397,32 +1382,7 @@ class EventProcessor(MQConnection, Closable):
                             device_status = "unknown"
                             if 'device_status' in event_data:
                                 device_status = event_data['device_status']
-                            # check if there are any inputs or outputs configured for this origin
-                            for _, origin_devices, awol_devices in [
-                                (self.inputs, self._inputs_by_origin, self._awol_inputs),
-                                (self.outputs, self._outputs_by_origin, self._awol_outputs)
-                            ]:
-                                new_awol = 0
-                                if event_origin in origin_devices and len(origin_devices[event_origin]) > 0:
-                                    log.debug("'{}' last checked-in: {} in an '{}' state.".format(
-                                        event_origin,
-                                        stale_heartbeat,
-                                        device_status.lower()))
-                                    for device_key in origin_devices[event_origin]:
-                                        if device_key not in awol_devices:
-                                            awol_devices.add(device_key)
-                                            new_awol += 1
-                                if new_awol > 0:
-                                    log.warning(
-                                        "{} devices are unavailable because '{}' has gone AWOL. "
-                                        "{} devices: {}. Last seen: {}, status: {}".format(
-                                            len(awol_devices),
-                                            event_origin,
-                                            new_awol,
-                                            str(awol_devices),
-                                            stale_heartbeat,
-                                            device_status
-                                        ))
+                            log.warning(f'{event_origin} status {device_status}: {stale_heartbeat}')
                         if 'max_heartbeat_age' in event_data:
                             heartbeat_age = int(event_data['max_heartbeat_age'])
                             post_count_metric(
@@ -1564,7 +1524,6 @@ class EventProcessor(MQConnection, Closable):
                                         device_origin=self._input_origin,
                                         origin_devices=self._inputs_by_origin,
                                         event_origin=event_origin,
-                                        awol_devices=self._awol_inputs,
                                         device=active_device)
                                     # informational event?
                                     # TODO: move to _process_device_event
