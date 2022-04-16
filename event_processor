@@ -42,7 +42,7 @@ from sentry_sdk.integrations.flask import FlaskIntegration
 from sentry_sdk.integrations.logging import ignore_logger
 from simplejson.scanner import JSONDecodeError
 from socket import gaierror
-from sqlalchemy import UniqueConstraint, exc as sqlerr
+from sqlalchemy import or_, UniqueConstraint, exc as sqlerr
 from traceback import StackSummary
 from telegram import Bot as TelegramBot, \
     InlineQueryResultArticle, InputTextMessageContent, \
@@ -1458,7 +1458,7 @@ class EventProcessor(MQConnection, Closable):
                             device_key = event_data['device_key']
                             device_disable = not event_data['device_state']
                             event_processor.flash_info = False
-                            log.info('Updating device {}; disable: {}'.format(device_key, device_disable))
+                            log.info(f'Updating device {device_key}; disable: {device_disable}')
                             input_config = InputConfig.query.filter_by(device_key=device_key).first()
                             input_config.device_disable = device_disable
                             db.session.add(input_config)
@@ -1466,16 +1466,14 @@ class EventProcessor(MQConnection, Closable):
                             # skip further processing because of enable/disable
                             continue
                         if 'bot' == event_origin:
-                            log.info(f'Got bot command: {event_data!s}')
-                        if 'sqs' == event_origin:
-                            device_disable = None
-                            if 'enable' in event_data:
-                                device_disable = False
-                            elif 'disable' in event_data:
-                                device_disable = True
-                            # dash button
-                            if 'dash_button' in event_data:
-                                log.info('Dash button event: {}'.format(event_data['dash_button']))
+                            log.debug(f'Got bot command: {event_data!s}')
+                            bot_command = event_data['command'].split()
+                            bot_command_base = bot_command[0]
+                            bot_command_args = None
+                            if len(bot_command) > 0:
+                                bot_command_args = bot_command[1:]
+                            device_enable = None
+                            if bot_command_base.startswith('/report'):
                                 # splice in a new event
                                 event_origin = device_name
                                 event_data.update({
@@ -1484,65 +1482,47 @@ class EventProcessor(MQConnection, Closable):
                                             {
                                                 'device_key': 'App Dash Button',
                                                 'device_label': 'Dash Button',
-                                                'type': 'Dash Button',
-                                                'dash_button': event_data['dash_button']
+                                                'type': 'Dash Button'
                                             }
                                         ]
                                     }
                                 })
-                                # splice in device descriptions
-                                #TODO: configurable somehow
-                                event_data['device_description'] = ['House Security']
-                            if device_disable is not None:
-                                # this is a fuzzy name that refers to either a group or specific device
-                                device_descriptions = None
-                                if 'device_description' in event_data:
-                                    device_descriptions = event_data['device_description']
-                                if device_descriptions is None:
-                                    log.warning('No valid device description found in SQS message: {}'.format(event_data))
-                                    continue
-                                event_processor.flash_info = False
-                                devices_updated = 0
-                                for device_description in device_descriptions:
-                                    for input_config in input_configs:
-                                        device_name_match = False
-                                        device_name_test = input_config.device_label.lower()
-                                        # custom skill
-                                        if device_name_test.startswith(device_description.lower()):
-                                            device_name_match = True
-                                        # smart home skill device ID
-                                        elif device_name_test\
-                                                .replace(' ', '_')\
-                                                .replace('(', '#')\
-                                                .replace(')', '#') == device_description:
-                                            device_name_match = True
-                                        elif input_config.group_name:
-                                            device_name_test = input_config.group_name.lower()
-                                            if device_name_test.startswith(device_description.lower()):
-                                                device_name_match = True
-                                            elif device_name_test\
-                                                    .replace(' ', '_')\
-                                                    .replace('(', '#')\
-                                                    .replace(')', '#') == device_description:
-                                                device_name_match = True
-                                        if device_name_match:
-                                            # device matches our description
-                                            log.info(
-                                                'Updating device {} based on matching description {}; '
-                                                'disable: {}'.format(device_key, device_description, device_disable))
-                                            input_config.device_disable = True
-                                            db.session.add(input_config)
-                                            db.session.commit()
-                                if devices_updated > 0:
-                                    state_change = 'Enabled'
-                                    if device_disable is True:
-                                        state_change = 'Disabled'
-                                    self.bot.send_pyobj({
-                                        'message': '{} notifications for {} devices.'.format(state_change,
-                                                                                             devices_updated),
-                                    })
-                                event_processor.flash_info = True
-                                # skip further processing because of enable/disable
+                            elif bot_command_base.startswith('/enable'):
+                                device_enable = True
+                            elif bot_command_base.startswith('/disable'):
+                                device_enable = False
+                            if device_enable is not None:
+                                state = 'enable'
+                                if not device_enable:
+                                    state = 'disable'
+                                input_configs = list()
+                                if bot_command_args:
+                                    for bot_command_arg in bot_command_args:
+                                        input_config = InputConfig.query.filter(
+                                            or_(
+                                                InputConfig.device_key.like(bot_command_arg),
+                                                InputConfig.device_label.like(bot_command_arg),
+                                                InputConfig.group_name.like(bot_command_arg)
+                                            )).order_by(InputConfig.device_key).all()
+                                        if len(input_config) > 0:
+                                            log.info(f'{state.title()} {len(input_config)} devices matching "{bot_command_arg}"...')
+                                            input_configs.extend(input_config)
+                                else:
+                                    input_config = InputConfig.query.order_by(InputConfig.device_key).all()
+                                    if len(input_config) > 0:
+                                        log.info(f'{state.title()} {len(input_config)} devices...')
+                                        input_configs.extend(input_config)
+                                # process all collected inputs
+                                if len(input_configs) > 0:
+                                    for ic in input_configs:
+                                        log.info(f'{state.title()} {ic.device_key} (group {ic.group_name})')
+                                        ic.device_enabled = device_enable
+                                        db.session.add(ic)
+                                    db.session.commit()
+                                    message = f'{len(input_configs)} devices set to {state}.'
+                                    log.info(message)
+                                    self.bot.send_pyobj({'message': message})
+                                # no further processing needed after enable/disable
                                 continue
                         if 'stale_heartbeat' in event_data:
                             stale_heartbeat = event_data['stale_heartbeat']
@@ -2310,7 +2290,9 @@ if __name__ == "__main__":
             f'{mq_exchange_name}_control')
         # connect ZMQ IPC clients next
         event_source_discovery = EventSourceDiscovery()
-        sqs_listener = SQSListener()
+        sqs_listener = None
+        if app_config.getboolean('app', 'sns_control_enabled'):
+            sqs_listener = SQSListener()
         telegram_bot = TBot()
         # start Telegram integration
         telegram_updater = TelegramUpdater(token=creds.telegram_bot_api_token, use_context=True)
@@ -2357,7 +2339,8 @@ if __name__ == "__main__":
             event_source_discovery.start()
             mqtt_subscriber.start()
             auto_scheduler.start()
-            sqs_listener.start()
+            if sqs_listener:
+                sqs_listener.start()
             telegram_bot.start()
             mq_listener.start()
             # Flask UI
