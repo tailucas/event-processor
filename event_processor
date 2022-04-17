@@ -1309,7 +1309,9 @@ class TBot(AppThread, Closable):
 
         self.bot = None
         self.chat_id = app_config.getint('telegram', 'chat_room_id')
-        self.sns = boto3.client('sns')
+        self.sns = None
+        if app_config.getboolean('telegram', 'sms_fallback_enabled'):
+            self.sns = boto3.client('sns')
 
     def build_message(self, timestamp, event_data, max_length=160, build_sms=False):
         global ngrok_tunnel_url
@@ -1371,20 +1373,22 @@ class TBot(AppThread, Closable):
                 # send the message
                 try:
                     if image_data:
-                        log.debug("Bot sends image to {} with caption '{}'".format(str(self.chat_id),
-                                                                                   notification_message))
+                        if app_config.getboolean('telegram', 'image_send_only_with_people') and 'person' not in notification_message:
+                            log.warning(f'Discarding image message without person data, as configured.')
+                            continue
+                        log.debug(f'Bot sends image to {self.chat_id!s} with caption "{notification_message}"')
                         self.bot.send_photo(chat_id=self.chat_id,
                                             photo=image_data,
                                             caption=notification_message,
                                             parse_mode='Markdown')
                     else:
-                        log.debug("Bot says to {}: '{}'".format(str(self.chat_id), notification_message))
+                        log.debug(f'Bot sends message to {self.chat_id!s} with caption "{notification_message}"')
                         self.bot.send_message(chat_id=self.chat_id,
                                               text=notification_message,
                                               parse_mode='Markdown')
                 except (TimedOut, NetworkError, RetryAfter):
-                    log.warning('Timeout or network problem using Bot. Fallback back to SMS.')
-                    if event_data:
+                    if event_data and self.sns:
+                        log.warning('Timeout or network problem using Bot. Fallback back to SMS.')
                         # rebuild the message for SMS
                         notification_message = self.build_message(timestamp=timestamp,
                                                                   event_data=event_data,
@@ -1394,14 +1398,15 @@ class TBot(AppThread, Closable):
                         recipients = event_data['trigger_output']['device_params'].strip().split(',')
                         for recipient in recipients:
                             name_number = recipient.split(';')
-                            log.info("SMS {} ({}) '{}'".format(name_number[0], name_number[1], notification_message))
+                            log.info(f'SMS {name_number[0]} ({name_number[1]}) "{notification_message}"')
                             try:
                                 resp = self.sns.publish(PhoneNumber=name_number[1], Message=notification_message)
-                                log.info('SMS sent: {}'.format(str(resp)))
+                                log.info(f'SMS sent: {resp!s}')
                             except Exception:
-                                log.exception('Cannot send SMS {}: {}'.format(name_number[1], notification_message))
+                                log.exception(f'Cannot send SMS {name_number[1]}: {notification_message}')
                     else:
-                        log.error('No viable method to send notification for event: {}'.format(notification_message))
+                        log.warning(f'No viable method to send notification for event: {notification_message}', exc_info=True)
+                        threads.interruptable_sleep.wait(10)
 
 
 class MqttSubscriber(AppThread, Closable):
