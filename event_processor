@@ -767,22 +767,11 @@ class EventProcessor(MQConnection, Closable):
         self._input_trigger_history = {}
         self._input_active_history = {}
 
-        self._origin_connections = {}
-        self._origin_pull_connections = {}
-
         self._input_origin = {}
         self._output_origin = {}
 
         self._inputs_by_origin = {}
         self._outputs_by_origin = {}
-
-        self._ddb_storage = None
-
-        self._input_config = None
-        self._input_config_table = None
-
-        self._output_config = None
-        self._output_config_table = None
 
         self._output_type_handlers = None
 
@@ -807,10 +796,6 @@ class EventProcessor(MQConnection, Closable):
         self.influxdb = None
         self.influxdb_rw = None
         self.influxdb_ro = None
-
-    @property
-    def origins(self):
-        return self._origin_connections.keys()
 
     def _update_devices(self, event_origin, device_info):
         devices_updated = 0
