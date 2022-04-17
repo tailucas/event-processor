@@ -867,13 +867,21 @@ class EventProcessor(MQConnection, Closable):
         for output_link in output_links:
             oc_ids.append(output_link.output_device_id)
         output_configs = OutputConfig.query.filter(OutputConfig.id.in_(oc_ids)).order_by(OutputConfig.device_key).all()
-        log.info(f'Input {input_config.device_key} is linked to {len(output_configs)} outputs.')
+        log.info(f'Input {input_config.device_key} is linked to {len(output_configs)}.')
         for output_config in output_configs:
             output_device_key = output_config.device_key
             if output_device_key not in self.outputs:
                 log.warning(f'{output_device_key} is not in the set of valid outputs: {self.outputs.keys()}')
                 continue
-            output_device_activation = {}
+            # device labels
+            if input_config.device_label:
+                input_device_label = input_config.device_label
+            else:
+                input_device_label = active_device_key
+            if output_config.device_label:
+                output_device_label = output_config.device_label
+            else:
+                output_device_label = output_device_key
             # put the event information into the LRU
             self._device_event_lru[active_device_key] = timestamp
             # build up the device activation history
@@ -885,16 +893,12 @@ class EventProcessor(MQConnection, Closable):
                 # TODO: make this configurable
                 if (timestamp - activation_time).seconds > 5 * 60:
                     continue
-                # TODO: fix
-                if input_config.device_label:
-                    input_device_label = input_config.device_label
-                else:
-                    input_device_label = active_device_key
                 # list of tuples
                 activation_history.append((
                     input_device_label,
                     (timestamp - activation_time).seconds
                 ))
+            log.info(f'Input {input_device_label} triggers {output_device_label}...')
             # add basic output config
             output_device_activation = {
                 output_config.device_key: {
@@ -909,7 +913,6 @@ class EventProcessor(MQConnection, Closable):
                 'input_context': active_device,
                 'trigger_history': activation_history,
             }
-            trigger_duration = None
             if input_config.activation_interval:
                 activation_command['trigger_duration'] = input_config.activation_interval
             # get the output type
@@ -920,13 +923,10 @@ class EventProcessor(MQConnection, Closable):
                     'timestamp': timestamp,
                     'data': activation_command
                 })
+                continue
             # strip out image data that is no longer needed
             if 'image' in active_device:
                 del active_device['image']
-            if output_config.device_label:
-                output_device_label = output_config.device_label
-            else:
-                output_device_label = output_device_key
             log.debug('Activation command for {} ({}) ({} mapped in {}) is {}'.format(
                 output_device_key,
                 output_device_label,
@@ -942,7 +942,8 @@ class EventProcessor(MQConnection, Closable):
                     camera_config = output_config.device_params
                     event_payload = (output_config.device_key, output_device_label, camera_config)
                 elif output_type in OUTPUT_TYPE_SWITCH:
-                    event_payload=(output_config.device_key, trigger_duration)
+                    # use default trigger duration
+                    event_payload=(output_config.device_key, None)
                 if event_payload:
                     try:
                         self._basic_publish(
@@ -951,12 +952,8 @@ class EventProcessor(MQConnection, Closable):
                     except Exception:
                         log.warning(self.__class__.__name__, exc_info=True)
             else:
-                log.warning(f'{event_origin} {active_device_key} => {output_config.device_key} but nowhere to route the response.')
+                log.warning(f'{event_origin} {active_device_key} => {output_config.device_key} but nowhere to route the event.')
             # add an entry into the event log
-            try:
-                input_device_label = input_config.device_label
-            except KeyError:
-                input_device_label = active_device_key
             db.session.add(EventLog(
                 input_device=input_device_label,
                 output_device=output_device_label,
