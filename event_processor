@@ -799,6 +799,8 @@ class EventProcessor(MQConnection, Closable):
         self.influxdb_rw = None
         self.influxdb_ro = None
 
+        self._outputs_enabled = True
+
     def _update_devices(self, event_origin, device_info):
         devices_updated = 0
         for input_outputs, device_origin, origin_devices, io in [
@@ -972,7 +974,8 @@ class EventProcessor(MQConnection, Closable):
                             bot_command_args = None
                             if len(bot_command) > 0:
                                 bot_command_args = bot_command[1:]
-                            device_enable = None
+                            bot_reply = None
+                            input_enable = None
                             if bot_command_base.startswith('/report'):
                                 # splice in a new event
                                 event_origin = device_name
@@ -987,13 +990,19 @@ class EventProcessor(MQConnection, Closable):
                                         ]
                                     }
                                 })
-                            elif bot_command_base.startswith('/enable'):
-                                device_enable = True
-                            elif bot_command_base.startswith('/disable'):
-                                device_enable = False
-                            if device_enable is not None:
+                            elif bot_command_base.startswith('/enable-outputs'):
+                                self._outputs_enabled = True
+                                bot_reply = f'Outputs enabled.'
+                            elif bot_command_base.startswith('/disable-outputs'):
+                                self._outputs_enabled = False
+                                bot_reply = f'Outputs on log-only until the next application restart.'
+                            elif bot_command_base.startswith('/enable-inputs'):
+                                input_enable = True
+                            elif bot_command_base.startswith('/disable-inputs'):
+                                input_enable = False
+                            if input_enable is not None:
                                 state = 'enable'
-                                if not device_enable:
+                                if not input_enable:
                                     state = 'disable'
                                 input_configs = list()
                                 if bot_command_args:
@@ -1008,26 +1017,31 @@ class EventProcessor(MQConnection, Closable):
                                             log.info(f'{state.title()} {len(input_config)} devices matching "{bot_command_arg}"...')
                                             input_configs.extend(input_config)
                                 else:
-                                    input_config = InputConfig.query.order_by(InputConfig.device_key).all()
+                                    input_config = InputConfig.query.filter_by(auto_schedule=True).order_by(InputConfig.device_key).all()
                                     if len(input_config) > 0:
                                         log.info(f'{state.title()} {len(input_config)} devices...')
                                         input_configs.extend(input_config)
+                                    else:
+                                        log.warning('No auto-schedule inputs are configured so none can be changed.')
                                 # process all collected inputs
                                 inputs_updated = 0
                                 if len(input_configs) > 0:
                                     for ic in input_configs:
-                                        if ic.device_enabled != device_enable:
+                                        if ic.device_enabled != input_enable:
                                             inputs_updated += 1
                                             log.info(f'{state.title()} {ic.device_key} (group {ic.group_name})')
-                                            ic.device_enabled = device_enable
+                                            ic.device_enabled = input_enable
                                             db.session.add(ic)
                                     if inputs_updated > 0:
                                         db.session.commit()
-                                    message = f'{inputs_updated} devices changed to {state}.'
-                                    log.info(message)
-                                    self.bot.send_pyobj({'message': message})
-                                # no further processing needed after enable/disable
-                                continue
+                                    bot_reply = f'{inputs_updated} devices changed to {state}.'
+                                else:
+                                    log.warning(f'No devices matched to {state}.')
+                            if bot_reply:
+                                log.info(bot_reply)
+                                self.bot.send_pyobj({'message': bot_reply})
+                            # no further processing needed after enable/disable
+                            continue
                         if 'stale_heartbeat' in event_data:
                             stale_heartbeat = event_data['stale_heartbeat']
                             device_status = "unknown"
@@ -1224,6 +1238,9 @@ class EventProcessor(MQConnection, Closable):
                 output_device_label = output_config.device_label
             else:
                 output_device_label = output_device_key
+            if not self._outputs_enabled:
+                log.warning(f'Supressing trigger of {output_device_label} because all outputs are disabled.')
+                continue
             # put the event information into the LRU
             self._device_event_lru[active_device_key] = timestamp
             # build up the device activation history
