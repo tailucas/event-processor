@@ -990,15 +990,15 @@ class EventProcessor(MQConnection, Closable):
                                         ]
                                     }
                                 })
-                            elif bot_command_base.startswith('/enable-outputs'):
+                            elif bot_command_base.startswith('/outputson'):
                                 self._outputs_enabled = True
                                 bot_reply = f'Outputs enabled.'
-                            elif bot_command_base.startswith('/disable-outputs'):
+                            elif bot_command_base.startswith('/outputsoff'):
                                 self._outputs_enabled = False
                                 bot_reply = f'Outputs on log-only until the next application restart.'
-                            elif bot_command_base.startswith('/enable-inputs'):
+                            elif bot_command_base.startswith('/inputon'):
                                 input_enable = True
-                            elif bot_command_base.startswith('/disable-inputs'):
+                            elif bot_command_base.startswith('/inputoff'):
                                 input_enable = False
                             if input_enable is not None:
                                 state = 'enable'
@@ -1896,22 +1896,22 @@ if __name__ == "__main__":
                 pass_args=True))
         telegram_dispatcher.add_handler(
             TelegramCommandHandler(
-                'enable-inputs',
+                'inputon',
                 telegram_bot_cmd,
                 pass_args=True))
         telegram_dispatcher.add_handler(
             TelegramCommandHandler(
-                'enable-outputs',
+                'inputoff',
                 telegram_bot_cmd,
                 pass_args=True))
         telegram_dispatcher.add_handler(
             TelegramCommandHandler(
-                'disable-inputs',
+                'outputson',
                 telegram_bot_cmd,
                 pass_args=True))
         telegram_dispatcher.add_handler(
             TelegramCommandHandler(
-                'disable-outputs',
+                'outputsoff',
                 telegram_bot_cmd,
                 pass_args=True))
         telegram_dispatcher.add_handler(
