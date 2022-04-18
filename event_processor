@@ -1225,9 +1225,8 @@ class EventProcessor(MQConnection, Closable):
                                             continue
                                     # multi-trigger
                                     if input_config.multi_trigger:
-                                        trigger_window = input_config.trigger_window
-                                        if trigger_window is None:
-                                            trigger_window = int(app_config.get('config', 'default_trigger_window'))
+                                        # TODO: make configurable
+                                        trigger_window = int(app_config.get('config', 'default_trigger_window'))
                                         # if not in the trigger history, treat as never activated
                                         if active_device_key not in self._input_trigger_history:
                                             self._input_trigger_history[active_device_key] = time.time()
