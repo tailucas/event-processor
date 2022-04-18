@@ -206,16 +206,18 @@ class MeterConfig(db.Model):
     meter_reading = db.Column(db.String, default='0', nullable=False)
     meter_iot_topic = db.Column(db.String(100), nullable=False)
     meter_low_limit = db.Column(db.Integer)
+    meter_high_limit = db.Column(db.Integer)
     meter_reset_value = db.Column(db.Integer)
     meter_reset_additive = db.Column(db.Boolean)
     meter_reading_unit = db.Column(db.String(10))
     meter_reading_unit_factor = db.Column(db.Integer)
     meter_reading_unit_precision = db.Column(db.Integer)
 
-    def __init__(self, input_device_id, meter_iot_topic, meter_low_limit, meter_reset_value, meter_reset_additive, meter_reading_unit, meter_reading_unit_factor, meter_reading_unit_precision):
+    def __init__(self, input_device_id, meter_iot_topic, meter_low_limit, meter_high_limit, meter_reset_value, meter_reset_additive, meter_reading_unit, meter_reading_unit_factor, meter_reading_unit_precision):
         self.input_device_id = input_device_id
         self.meter_iot_topic = meter_iot_topic
         self.meter_low_limit = meter_low_limit
+        self.meter_high_limit = meter_high_limit
         self.meter_reset_value = meter_reset_value
         self.meter_reset_additive = meter_reset_additive
         self.meter_reading_unit = meter_reading_unit
