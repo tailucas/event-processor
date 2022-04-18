@@ -392,7 +392,7 @@ def index():
         elif 'meter_reset' in request.form:
             device_key = request.form['meter_reset']
             input_cfg = InputConfig.query.filter_by(device_label=device_key).first()
-            meter_cfg = MeterConfig.query.filter_by(input_device_id=input_cfg).first()
+            meter_cfg = MeterConfig.query.filter_by(input_device_id=input_cfg.id).first()
             reset_value = 0
             if meter_cfg.meter_reset_value:
                 reset_value = meter_cfg.meter_reset_value
