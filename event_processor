@@ -1053,11 +1053,11 @@ class EventProcessor(MQConnection, Closable):
                             continue
                         if 'auto-scheduler' == event_origin:
                             device_key = event_data['device_key']
-                            device_disable = not event_data['device_state']
+                            device_enable = event_data['device_state']
                             event_processor.flash_info = False
-                            log.info(f'Updating device {device_key}; disable: {device_disable}')
+                            log.info(f'Updating device {device_key}; enable: {device_enable}')
                             input_config = InputConfig.query.filter_by(device_key=device_key).first()
-                            input_config.device_disable = device_disable
+                            input_config.device_enabled = device_enable
                             db.session.add(input_config)
                             db.session.commit()
                             # skip further processing because of enable/disable
