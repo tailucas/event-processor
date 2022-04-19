@@ -977,6 +977,8 @@ class EventProcessor(MQConnection, Closable):
                             bot_reply = None
                             input_enable = None
                             if bot_command_base.startswith('/report'):
+                                device_type = 'Dash Button'
+                                log.info(f'Synthesizing {device_type} event...')
                                 # splice in a new event
                                 event_origin = device_name
                                 event_data.update({
@@ -985,7 +987,7 @@ class EventProcessor(MQConnection, Closable):
                                             {
                                                 'device_key': 'App Dash Button',
                                                 'device_label': 'Dash Button',
-                                                'type': 'Dash Button'
+                                                'type': device_type
                                             }
                                         ]
                                     }
@@ -1226,7 +1228,7 @@ class EventProcessor(MQConnection, Closable):
         for output_link in output_links:
             oc_ids.append(output_link.output_device_id)
         output_configs = OutputConfig.query.filter(OutputConfig.id.in_(oc_ids)).order_by(OutputConfig.device_key).all()
-        log.info(f'Input {input_config.device_key} is linked to {len(output_configs)}.')
+        log.info(f'Input {input_config.device_key} is linked to {len(output_configs)} outputs.')
         for output_config in output_configs:
             output_device_key = output_config.device_key
             if output_device_key not in self.outputs:
@@ -1378,6 +1380,7 @@ class TBot(AppThread, Closable):
                 else:
                     timestamp = make_timestamp().astimezone(tz=tz.tzlocal())
                 event_data = None
+                input_context = event_data['input_context']
                 # build the message
                 image_data = None
                 if 'message' in event:
@@ -1389,13 +1392,16 @@ class TBot(AppThread, Closable):
                     notification_message = self.build_message(timestamp=timestamp,
                                                               event_data=event_data,
                                                               max_length=200)
-                    if 'image' in event_data['input_context']:
-                        image_data = BytesIO(event_data['input_context']['image'])
+                    if 'image' in input_context:
+                        image_data = BytesIO(input_context['image'])
 
                 # send the message
                 try:
                     if image_data:
-                        if app_config.getboolean('telegram', 'image_send_only_with_people') and 'person' not in notification_message:
+                        button_input = False
+                        if 'type' in input_context and 'button' in input_context['type'].lower():
+                            button_input = True
+                        if app_config.getboolean('telegram', 'image_send_only_with_people') and 'person' not in notification_message and not button_input:
                             log.warning(f'Discarding image message without person data, as configured.')
                             continue
                         log.debug(f'Bot sends image to {self.chat_id!s} with caption "{notification_message}"')
