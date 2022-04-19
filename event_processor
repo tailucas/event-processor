@@ -1019,7 +1019,7 @@ class EventProcessor(MQConnection, Closable):
                                         if len(input_config) > 0:
                                             input_configs.extend(input_config)
                                 else:
-                                    input_config = InputConfig.query.filter_by(InputConfig.auto_schedule.isnot(None)).order_by(InputConfig.device_key).all()
+                                    input_config = InputConfig.query.filter(InputConfig.auto_schedule.isnot(None)).order_by(InputConfig.device_key).all()
                                     log.info(f'{state.title()} {len(input_config)} devices with auto-schedule not null.')
                                     if len(input_config) > 0:
                                         log.info(f'{state.title()} {len(input_config)} devices...')
