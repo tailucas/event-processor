@@ -1041,8 +1041,10 @@ class EventProcessor(MQConnection, Closable):
                             if bot_reply:
                                 log.info(bot_reply)
                                 self.bot.send_pyobj({'message': bot_reply})
-                            # no further processing needed after enable/disable
-                            continue
+                            # stop processing
+                            if not bot_command_base.startswith('/report'):
+                                # no further processing needed after enable/disable
+                                continue
                         if 'stale_heartbeat' in event_data:
                             stale_heartbeat = event_data['stale_heartbeat']
                             device_status = "unknown"
