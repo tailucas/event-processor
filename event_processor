@@ -1380,7 +1380,7 @@ class TBot(AppThread, Closable):
                 else:
                     timestamp = make_timestamp().astimezone(tz=tz.tzlocal())
                 event_data = None
-                input_context = event_data['input_context']
+                input_context = None
                 # build the message
                 image_data = None
                 if 'message' in event:
@@ -1389,6 +1389,7 @@ class TBot(AppThread, Closable):
                         notification_message = '[{}]({})'.format(notification_message, ngrok_tunnel_url_with_bauth)
                 elif 'data' in event:
                     event_data = event['data']
+                    input_context = event_data['input_context']
                     notification_message = self.build_message(timestamp=timestamp,
                                                               event_data=event_data,
                                                               max_length=200)
