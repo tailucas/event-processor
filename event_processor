@@ -1481,7 +1481,10 @@ class MqttSubscriber(AppThread, Closable):
             return
         # ignore any message without a device ID
         if 'device_id' not in msg_data:
-            log.warning('Ignoring {} bytes from topic {} with no device_id set.'.format(len(msg.payload), msg.topic))
+            warning_message = f'Ignoring {len(msg.payload)} bytes from topic {msg.topic} with no device_id set.'
+            if len(msg.payload) <= 100:
+                warning_message += f' Payload: {msg.payload!s}'
+            log.warning(warning_message)
             return
         device_id = msg_data['device_id']
         input_location = msg_data['input_location']
