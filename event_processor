@@ -349,6 +349,28 @@ class InputConfigCollection(object):
         ic_wrapper.input_config = input_config
 
 
+def update_meter_config(input_device_key, meter_config, register_value, meter_value=None):
+    if (register_value < 0):
+        log.debug('Resetting negative {} meter register value {} to 0.'.format(input_device_key, register_value))
+        register_value = 0
+    meter_reading_unit = ' ' + meter_config.meter_reading_unit
+    if meter_config.meter_reading_unit_factor is None:
+        meter_config.meter_reading_unit_factor = 1
+    if meter_config.meter_reading_unit_precision is None:
+        meter_config.meter_reading_unit_precision = 0
+    number_format_string = "{:." + str(meter_config.meter_reading_unit_precision) + "f}"
+    # create normalized values
+    normalized_register_value = int(register_value) / float(meter_config.meter_reading_unit_factor)
+    # update DB
+    if meter_value:
+        meter_config.meter_value = meter_value
+    meter_config.register_value = register_value
+    meter_config.meter_reading = number_format_string.format(normalized_register_value) + meter_reading_unit
+    db.session.add(meter_config)
+    db.session.commit()
+    return normalized_register_value
+
+
 @flask_app.route('/debug-sentry')
 def trigger_error():
     1 / 0
@@ -408,23 +430,20 @@ def index():
             # pylint: disable=unused-variable
             if meter_cfg.meter_reset_additive:
                 iot_message = {'adjust_register': reset_value}
-                meter_value = meter_cfg.meter_value
-                meter_value += reset_value
+                meter_register = meter_cfg.meter_register
+                meter_register += reset_value
                 # override the reset value
-                reset_value = meter_value
+                reset_value = meter_register
             else:
                 iot_message = {'set_register': reset_value}
             # update the in memory model
-            #TODO: correctly update 'meter_reading'
-            meter_cfg.meter_value = reset_value
+            update_meter_config(input_device_key=device_key, meter_config=meter_cfg, register_value=reset_value)
             # send IoT message
             with exception_handler(connect_url=URL_WORKER_MQTT_PUBLISH, socket_type=zmq.PUSH, and_raise=False) as zmq_socket:
                 zmq_socket.send_pyobj((
                     app_config.get('mqtt', 'meter_reset_topic'),
                     json.dumps(iot_message)
                 ))
-            db.session.add(meter_cfg)
-            db.session.commit()
         elif 'device_key' in request.form:
             device_key = request.form['device_key']
             input_cfg = inputs.input_config[device_key]
@@ -1093,25 +1112,12 @@ class EventProcessor(MQConnection, Closable):
                                     if 'type' in active_device and 'meter' in active_device['type'].lower():
                                         meter_value = int(active_device['sample_values']['meter'])
                                         register_value = int(active_device['sample_values']['register'])
-                                        if (register_value < 0):
-                                            # TODO: reset to knkown value
-                                            log.debug('Resetting negative {} meter register value {} to 0.'.format(active_device_key, register_value))
-                                            register_value = 0
                                         meter_config = MeterConfig.query.filter_by(input_device_id=input_config.id).first()
-                                        meter_reading_unit = ' ' + meter_config.meter_reading_unit
-                                        meter_reading_unit_factor = 1
-                                        meter_reading_unit_factor = meter_config.meter_reading_unit_factor
-                                        meter_reading_unit_precision = 0
-                                        meter_reading_unit_precision = meter_config.meter_reading_unit_precision
-                                        number_format_string = "{:." + str(meter_reading_unit_precision) + "f}"
-                                        # create normalized values
-                                        normalized_register_value = int(register_value) / float(meter_reading_unit_factor)
-                                        # update DB
-                                        meter_config.meter_value = meter_value
-                                        meter_config.register_value = register_value
-                                        meter_config.meter_reading = number_format_string.format(normalized_register_value) + meter_reading_unit
-                                        db.session.add(meter_config)
-                                        db.session.commit()
+                                        normalized_register_value = update_meter_config(
+                                            input_device_key=active_device_key,
+                                            meter_config=meter_config,
+                                            register_value=register_value,
+                                            meter_value=meter_value)
                                         # post metric every n-minutes
                                         now = time.time()
                                         # accumulated meter value
@@ -1120,7 +1126,7 @@ class EventProcessor(MQConnection, Closable):
                                                 bucket='meter',
                                                 active_device_key=active_device_key,
                                                 field_name='metered',
-                                                field_value=int(self._metric_meter_value_accumulator) / float(meter_reading_unit_factor))
+                                                field_value=int(self._metric_meter_value_accumulator) / float(meter_config.meter_reading_unit_factor))
                                             self._metric_last_posted_meter_value = now
                                             self._metric_meter_value_accumulator = 0
                                         else:
@@ -1139,9 +1145,9 @@ class EventProcessor(MQConnection, Closable):
                                     # only consider a meter active if the value is out of bounds
                                     if 'type' in active_device and 'meter' in active_device['type'].lower():
                                         out_of_range = False
-                                        if meter_config.meter_low_limit and meter_value < meter_config.meter_low_limit:
+                                        if meter_config.meter_low_limit and register_value < meter_config.meter_low_limit:
                                             out_of_range = True
-                                        if meter_config.meter_high_limit and meter_value > meter_config.meter_high_limit:
+                                        if meter_config.meter_high_limit and register_value > meter_config.meter_high_limit:
                                             out_of_range = True
                                         if not out_of_range:
                                             continue
