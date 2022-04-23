@@ -430,7 +430,7 @@ def index():
             # pylint: disable=unused-variable
             if meter_cfg.meter_reset_additive:
                 iot_message = {'adjust_register': reset_value}
-                meter_register = meter_cfg.meter_register
+                meter_register = meter_cfg.register_value
                 meter_register += reset_value
                 # override the reset value
                 reset_value = meter_register
