@@ -16,6 +16,9 @@ python -m pip install --upgrade setuptools
 # work around wheel stupidity
 python -m pip install --upgrade wheel
 
+# system tool
+python -m pip install tzupdate
+
 # virtual-env updates
 
 python -m venv --system-site-packages /opt/app/

@@ -2,18 +2,12 @@
 set -eu
 set -o pipefail
 
-# host heartbeat, must fail if variable is unset
-echo "Installing heartbeat to ${HC_PING_URL}"
-cp /opt/app/config/healthchecks_heartbeat /etc/cron.d/healthchecks_heartbeat
+# host heartbeat
+if [ -n "${HC_PING_URL:-}" ]; then
+  echo "Installing heartbeat to ${HC_PING_URL}"
+  cp /opt/app/config/healthchecks_heartbeat /etc/cron.d/healthchecks_heartbeat
+fi
 
-while [ -n "${STAY_DOWN:-}" ]; do
-  echo "${BALENA_DEVICE_NAME_AT_INIT} (${BALENA_DEVICE_ARCH} ${BALENA_DEVICE_TYPE}) is in StayDown (unset STAY_DOWN variable to start)."
-  curl -s -X GET --header "Content-Type:application/json" "${BALENA_SUPERVISOR_ADDRESS}/v1/device?apikey=${BALENA_SUPERVISOR_API_KEY}" | jq
-  sleep 3600
-done
-
-# Resin API key (prefer override from application/device environment)
-export RESIN_API_KEY="${API_KEY_RESIN:-$RESIN_API_KEY}"
 # root user access, prefer key
 mkdir -p /root/.ssh/
 
@@ -34,7 +28,7 @@ mkdir -p /run/sshd
 service ssh reload
 
 # ngrok
-./opt/app/ngrok authtoken --config /opt/app/ngrok.yml $(/opt/app/bin/python /opt/app/pylib/cred_tool <<< '{"s": {"opitem": "ngrok", "opfield": ".password"}}')
+/opt/app/ngrok authtoken --config /opt/app/ngrok.yml $(/opt/app/bin/python /opt/app/pylib/cred_tool <<< '{"s": {"opitem": "ngrok", "opfield": ".password"}}')
 FRONTEND_USER="$(/opt/app/bin/python /opt/app/pylib/cred_tool <<< '{"s": {"opitem": "Frontend", "opfield": ".username"}}')"
 FRONTEND_PASSWORD="$(/opt/app/bin/python /opt/app/pylib/cred_tool <<< '{"s": {"opitem": "Frontend", "opfield": ".password"}}')"
 cat /opt/app/config/ngrok_frontend.yml \
@@ -47,8 +41,8 @@ cat /opt/app/config/ngrok_frontend.yml \
 unset FRONTEND_USER
 unset FRONTEND_PASSWORD
 # check and opportunistically upgrade configuration
-./opt/app/ngrok config check --config /opt/app/ngrok.yml || ./opt/app/ngrok config upgrade --config /opt/app/ngrok.yml
-./opt/app/ngrok config check --config /opt/app/ngrok_frontend.yml || ./opt/app/ngrok config upgrade --config /opt/app/ngrok_frontend.yml
+/opt/app/ngrok config check --config /opt/app/ngrok.yml || ./opt/app/ngrok config upgrade --config /opt/app/ngrok.yml
+/opt/app/ngrok config check --config /opt/app/ngrok_frontend.yml || ./opt/app/ngrok config upgrade --config /opt/app/ngrok_frontend.yml
 
 # aws code commit
 if [ -n "${AWS_REPO_SSH_KEY_ID:-}" ]; then
@@ -89,6 +83,7 @@ groupadd -f -r "${APP_GROUP}"
 id -u "${APP_USER}" || useradd -r -g "${APP_GROUP}" "${APP_USER}"
 
 # sudoers
+mkdir -p /etc/sudoers.d
 cp /opt/app/config/sudoers /etc/sudoers.d/app
 chmod 0440 /etc/sudoers.d/app
 
@@ -99,14 +94,6 @@ if [ -h "$TZ_CACHE" ] && [ -e "$TZ_CACHE" ]; then
 fi
 # set the timezone
 (tzupdate && cp -a /etc/localtime "$TZ_CACHE") || [ -e "$TZ_CACHE" ]
-
-# reset hostname (in a way that works)
-# https://forums.resin.io/t/read-only-file-system-when-calling-setstatichostname-via-dbus/1578/10
-curl -X PATCH --header "Content-Type:application/json" \
-  --data '{"network": {"hostname": "'${RESIN_DEVICE_NAME_AT_INIT}'"}}' \
-  "$RESIN_SUPERVISOR_ADDRESS/v1/device/host-config?apikey=$RESIN_SUPERVISOR_API_KEY"
-echo "$RESIN_DEVICE_NAME_AT_INIT" > /etc/hostname
-echo "127.0.1.1 ${RESIN_DEVICE_NAME_AT_INIT}" >> /etc/hosts
 
 # rsyslog
 if [ -n "${RSYSLOG_SERVER:-}" ]; then
@@ -137,17 +124,8 @@ if find /etc/rsyslog.d/ -mindepth 1 -print -quit 2>/dev/null | grep -q .; then
   service rsyslog restart
 fi
 
-# configuration update
-for iface in wlan0 eth0; do
-  export ETH0_IP="$(/sbin/ifconfig ${iface} | grep 'inet' | awk '{ print $2 }' | cut -f2 -d ':')"
-  if [ -n "$ETH0_IP" ]; then
-    break
-  fi
-done
 # application configuration (no tee for secrets)
 cat /opt/app/config/app.conf | /opt/app/pylib/config_interpol > "/opt/app/${APP_NAME}.conf"
-unset ETH0_IP
-
 cat /opt/app/config/backup_db | sed "s~__APP_USER__~${APP_USER}~g" > /etc/cron.d/backup_db
 
 # Load app environment, overriding HOME and USER
@@ -192,15 +170,6 @@ done
 systemctl enable app
 # disable these unless leader
 systemctl disable ngrok
-
-# quiet down brcmfmac loaded by supervisor
-WIFI_USED=$(/sbin/ifconfig -s | cut -f1 -d ' ' | grep -s wlan || true)
-if [ -z "${WIFI_USED:-}" ]; then
-  export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/host/run/dbus/system_bus_socket
-  nmcli radio
-  nmcli radio wifi off
-  nmcli radio
-fi
 
 # replace this entrypoint with systemd init scope
 exec env DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket SYSTEMD_LOG_LEVEL=info /lib/systemd/systemd quiet systemd.show_status=0
