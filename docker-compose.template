@@ -4,6 +4,7 @@ services:
     build: .
     cap_add:
       - SYS_ADMIN
+    hostname: event-processor-a
     ports:
       - "4040:4040"
     volumes:
