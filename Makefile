@@ -1,5 +1,5 @@
-PYTHON := python3
 APP := event_processor
+DOCKER_APP := event-processor
 
 all: help
 
@@ -13,10 +13,10 @@ setup: docker-compose.yml
 run:
 	docker-compose up
 
-shell:
-	docker-compose run app bash
+connect:
+	./connect_to_app.sh $(DOCKER_APP)
 
 clean:
 	rm docker-compose.yml
 
-.PHONY: all help setup run clean
+.PHONY: all help setup run connect clean
