@@ -44,20 +44,6 @@ unset FRONTEND_PASSWORD
 /opt/app/ngrok config check --config /opt/app/ngrok.yml || ./opt/app/ngrok config upgrade --config /opt/app/ngrok.yml
 /opt/app/ngrok config check --config /opt/app/ngrok_frontend.yml || ./opt/app/ngrok config upgrade --config /opt/app/ngrok_frontend.yml
 
-# aws code commit
-if [ -n "${AWS_REPO_SSH_KEY_ID:-}" ]; then
-  # ssh
-  echo "$AWS_REPO_SSH_PRIVATE_KEY" | base64 -d > /root/.ssh/codecommit_rsa
-  chmod 600 /root/.ssh/codecommit_rsa
-  cat << EOF >> /root/.ssh/config
-StrictHostKeyChecking=no
-Host git-codecommit.*.amazonaws.com
-  User $AWS_REPO_SSH_KEY_ID
-  IdentityFile /root/.ssh/codecommit_rsa
-EOF
-  chmod 600 /root/.ssh/config
-fi
-
 # Create /etc/docker.env
 if [ ! -e /etc/docker.env ]; then
   # https://github.com/balena-io-library/base-images/blob/b4fc5c21dd1e28c21e5661f65809c90ed7605fe6/examples/INITSYSTEM/systemd/systemd/entry.sh
@@ -67,11 +53,6 @@ if [ ! -e /etc/docker.env ]; then
 fi
 
 set -x
-
-# attempt to remove these kernel modules
-for module in "${REMOVE_KERNEL_MODULES:-}"; do
-  rmmod $module || true
-done
 
 # Run user
 export APP_USER="${APP_USER:-app}"
