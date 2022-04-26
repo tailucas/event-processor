@@ -22,6 +22,7 @@ RUN apt clean && apt update && apt install -y --no-install-recommends \
     libssl-dev \
     network-manager \
     patch \
+    procps \
     python3-certifi \
     python3-dbus \
     python3 \
