@@ -62,6 +62,22 @@ COPY pylib ./pylib
 COPY pylib/pylib ./lib
 COPY event_processor .
 
+# systemd masks for containers
+# https://github.com/balena-io-library/base-images/blob/master/examples/INITSYSTEM/systemd/systemd.v230/Dockerfile
+RUN systemctl mask \
+    dev-hugepages.mount \
+    sys-fs-fuse-connections.mount \
+    sys-kernel-config.mount \
+    display-manager.service \
+    getty@.service \
+    systemd-logind.service \
+    systemd-remount-fs.service \
+    getty.target \
+    graphical.target \
+    kmod-static-nodes.service \
+    NetworkManager.service \
+    wpa_supplicant.service
+
 STOPSIGNAL 37
 # ssh, http, zmq, ngrok
 EXPOSE 22 5000 5556 5558 4040 8080

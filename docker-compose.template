@@ -10,7 +10,7 @@ services:
     - /run/lock
     hostname: event-processor-a
     ports:
-      - "4040:4040"
+      - "4041:8080"
     volumes:
       - ./data:/data
       - /sys/fs/cgroup/:/sys/fs/cgroup:ro
