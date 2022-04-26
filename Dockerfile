@@ -7,7 +7,7 @@ LABEL Description="event_processor" Vendor="tglucas" Version="1.0"
 ENV DEBIAN_FRONTEND noninteractive
 ENV DEBCONF_NONINTERACTIVE_SEEN true
 
-RUN apt clean && apt update && apt install -y --no-install-recommends \
+RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     ca-certificates \
     cron \
