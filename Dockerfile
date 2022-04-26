@@ -56,6 +56,7 @@ COPY config ./config
 COPY static ./static
 COPY templates ./templates
 COPY backup_db.sh .
+COPY healthchecks_heartbeat.sh .
 COPY entrypoint.sh .
 COPY pylib ./pylib
 COPY pylib/pylib ./lib
