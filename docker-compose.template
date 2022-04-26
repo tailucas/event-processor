@@ -4,6 +4,10 @@ services:
     build: .
     cap_add:
       - SYS_ADMIN
+    tmpfs:
+    - /run
+    - /tmp
+    - /run/lock
     hostname: event-processor-a
     ports:
       - "4040:4040"
