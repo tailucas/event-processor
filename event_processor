@@ -1871,16 +1871,18 @@ if __name__ == "__main__":
     log.setLevel(logging.INFO)
     # ensure proper signal handling; must be main thread
     signal_handler = SignalHandler()
-    # determine leadership
-    leader_election = Leader(
-        mq_server_address=app_config.get('rabbitmq', 'server_address').split(','),
-        mq_exchange_name=app_config.get('rabbitmq', 'mq_exchange'))
-    leader_election.start()
-    try:
-        leader_election.yield_to_leader()
-    except (KeyboardInterrupt, RuntimeWarning) as e:
-        # interrupted startup
-        log.debug(f'{e!s}', exc_info=True)
+    leader_election = None
+    if app_config.getboolean('app', 'leader_election_enabled'):
+        # determine leadership
+        leader_election = Leader(
+            mq_server_address=app_config.get('rabbitmq', 'server_address').split(','),
+            mq_exchange_name=app_config.get('rabbitmq', 'mq_exchange'))
+        leader_election.start()
+        try:
+            leader_election.yield_to_leader()
+        except (KeyboardInterrupt, RuntimeWarning) as e:
+            # interrupted startup
+            log.debug(f'{e!s}', exc_info=True)
     if not threads.shutting_down:
         log.info('Creating application threads...')
         # bind listeners first
@@ -1991,7 +1993,8 @@ if __name__ == "__main__":
             server.shutdown()
             log.info(message.format('Rabbit MQ listener'))
             mq_listener.stop()
-            # stop sending heartbeats as leader
-            leader_election.stop()
+            if leader_election:
+                # stop sending heartbeats as leader
+                leader_election.stop()
             zmq_term()
     log.info('Shutdown complete.')
