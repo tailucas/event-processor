@@ -8,25 +8,6 @@ if [ -n "${HC_PING_URL:-}" ]; then
   cp /opt/app/config/healthchecks_heartbeat /etc/cron.d/healthchecks_heartbeat
 fi
 
-# root user access, prefer key
-mkdir -p /root/.ssh/
-
-AUTH_KEYS_FILE="/root/.ssh/authorized_keys"
-echo "$(/opt/app/bin/python /opt/app/pylib/cred_tool <<< '{"s": {"opitem": "SSH", "opfield": ".password"}}')" > "${AUTH_KEYS_FILE}"
-[ -e "${AUTH_KEYS_FILE}" ] && grep -q '[^[:space:]]' "${AUTH_KEYS_FILE}"
-chmod 600 "${AUTH_KEYS_FILE}"
-unset AUTH_KEYS_FILE
-if [ -n "${ROOT_PASSWORD:-}" ]; then
-  echo "root:${ROOT_PASSWORD}" | chpasswd
-  sed -i 's/PermitRootLogin without-password/PermitRootLogin yes/' /etc/ssh/sshd_config
-  # SSH login fix. Otherwise user is kicked off after login
-  sed 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' -i /etc/pam.d/sshd
-fi
-# https://bugs.launchpad.net/ubuntu/+source/openssh/+bug/45234
-mkdir -p /run/sshd
-# reload sshd
-service ssh reload
-
 # ngrok
 /opt/app/ngrok authtoken --config /opt/app/ngrok.yml $(/opt/app/bin/python /opt/app/pylib/cred_tool <<< '{"s": {"opitem": "ngrok", "opfield": ".password"}}')
 FRONTEND_USER="$(/opt/app/bin/python /opt/app/pylib/cred_tool <<< '{"s": {"opitem": "Frontend", "opfield": ".username"}}')"
@@ -63,7 +44,7 @@ groupadd -f -r "${APP_GROUP}"
 # non-root users
 id -u "${APP_USER}" || useradd -r -g "${APP_GROUP}" "${APP_USER}"
 
-# sudoers
+# sudoers for systemctl (ngrok)
 mkdir -p /etc/sudoers.d
 cp /opt/app/config/sudoers /etc/sudoers.d/app
 chmod 0440 /etc/sudoers.d/app
@@ -99,10 +80,6 @@ if [ -n "${RSYSLOG_LOGENTRIES:-}" ]; then
   unset RSYSLOG_LOGENTRIES_TOKEN
   echo "*.*          @@${RSYSLOG_LOGENTRIES_SERVER}${RSYSLOG_TEMPLATE:-}" >> /etc/rsyslog.d/logentries.conf
   set -x
-fi
-# bounce rsyslog for the new data
-if find /etc/rsyslog.d/ -mindepth 1 -print -quit 2>/dev/null | grep -q .; then
-  service rsyslog restart
 fi
 
 # application configuration (no tee for secrets)

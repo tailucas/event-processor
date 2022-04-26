@@ -21,7 +21,6 @@ RUN apt clean && apt update && apt install -y --no-install-recommends \
     # for rust build of Python cryptography
     libssl-dev \
     network-manager \
-    openssh-server \
     patch \
     python3-certifi \
     python3-dbus \
