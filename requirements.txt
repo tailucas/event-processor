@@ -6,7 +6,6 @@ botoflow
 blinker
 influxdb-client
 msgpack
-netifaces
 onepasswordconnectsdk
 paho-mqtt
 pathtools

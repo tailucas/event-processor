@@ -20,7 +20,6 @@ RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommend
     libffi-dev \
     # for rust build of Python cryptography
     libssl-dev \
-    network-manager \
     patch \
     procps \
     python3-certifi \
