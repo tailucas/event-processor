@@ -10,8 +10,8 @@ export AWS_ACCESS_KEY_ID="$(/opt/app/bin/python /opt/app/pylib/cred_tool <<< "${
 SAK="{\"s\": {\"opitem\": \"AWS\", \"opfield\": \"${AWS_DEFAULT_REGION}.sak\"}}"
 export AWS_SECRET_ACCESS_KEY="$(/opt/app/bin/python /opt/app/pylib/cred_tool <<< "${SAK}")"
 if [ -f "${TABLESPACE_PATH}" ]; then
-  # only if currently the leader
-  if [ -f "/data/is_leader" ]; then
+  # only if currently the leader and leader election is enabled
+  if [ -f "/data/is_leader" ] || [ "${LEADER_ELECTION_ENABLED:-false}" == "false" ]; then
     # create backup process
     sqlite3 "${TABLESPACE_PATH}" ".backup /tmp/${APP_NAME}.db"
     aws s3 cp "/tmp/${APP_NAME}.db" "s3://tailucas-automation/${APP_NAME}.db" --only-show-errors
