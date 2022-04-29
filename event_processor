@@ -1094,8 +1094,7 @@ class EventProcessor(MQConnection, Closable):
                                     # input known?
                                     input_config = InputConfig.query.filter_by(device_key=active_device_key).first()
                                     if not input_config:
-                                        log.warning(
-                                            "Input device '{}' is not configured, ignoring.".format(active_device_key))
+                                        log.warning(f'Input device {active_device_key} is not configured, ignoring.')
                                         continue
                                     # message stale?
                                     message_age = make_timestamp() - timestamp
