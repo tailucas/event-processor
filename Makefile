@@ -17,6 +17,11 @@ pydeps:
 	python -m pip install --upgrade -r "requirements.txt"
 	python -m pip install --upgrade -r "./pylib/requirements.txt"
 
+build:
+	sudo chown $(USER) data/.bash_history
+	sudo chown $(USER) data/.viminfo
+	docker-compose build
+
 run:
 	docker-compose up
 
