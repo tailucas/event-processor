@@ -18,6 +18,7 @@ python -m pip install --upgrade wheel
 
 # system tool
 python -m pip install tzupdate
+python -m pip install supervisor
 
 # virtual-env updates
 

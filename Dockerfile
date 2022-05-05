@@ -33,7 +33,6 @@ RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommend
     rsyslog \
     strace \
     sqlite3 \
-    systemd \
     tree \
     unzip \
     vim \
@@ -53,6 +52,7 @@ COPY ngrok_setup.sh .
 RUN /opt/app/ngrok_setup.sh
 
 COPY config ./config
+COPY supervisord.conf .
 COPY static ./static
 COPY templates ./templates
 COPY backup_db.sh .

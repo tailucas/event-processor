@@ -44,11 +44,6 @@ groupadd -f -r "${APP_GROUP}"
 # non-root users
 id -u "${APP_USER}" || useradd -r -g "${APP_GROUP}" "${APP_USER}"
 
-# sudoers for systemctl (ngrok)
-mkdir -p /etc/sudoers.d
-cp /opt/app/config/sudoers /etc/sudoers.d/app
-chmod 0440 /etc/sudoers.d/app
-
 TZ_CACHE=/data/localtime
 # a valid symlink
 if [ -h "$TZ_CACHE" ] && [ -e "$TZ_CACHE" ]; then
@@ -86,12 +81,6 @@ fi
 cat /opt/app/config/app.conf | /opt/app/pylib/config_interpol > "/opt/app/${APP_NAME}.conf"
 cat /opt/app/config/backup_db | sed "s~__APP_USER__~${APP_USER}~g" > /etc/cron.d/backup_db
 
-# Load app environment, overriding HOME and USER
-# https://www.freedesktop.org/software/systemd/man/systemd.exec.html
-cat /etc/docker.env | egrep -v "^HOME|^USER" > /opt/app/environment.env
-echo "HOME=/data/" >> /opt/app/environment.env
-echo "USER=${APP_USER}" >> /opt/app/environment.env
-
 # Refresh local SQLite
 if [ ! -f "${TABLESPACE_PATH}" ]; then
   /opt/app/backup_db.sh
@@ -118,16 +107,5 @@ patch -f -u "$PY_BASE_WORKER" -i /opt/app/config/base_worker.patch || true
 # Bash history
 echo "export HISTFILE=/data/.bash_history" >> /etc/bash.bashrc
 
-# systemd configuration
-for systemdsvc in app ngrok; do
-  if [ ! -e "/etc/systemd/system/${systemdsvc}.service" ]; then
-    cat "/opt/app/config/systemd.${systemdsvc}.service" | /opt/app/pylib/config_interpol | tee "/etc/systemd/system/${systemdsvc}.service"
-    chmod 664 "/etc/systemd/system/${systemdsvc}.service"
-  fi
-done
-systemctl enable app
-# disable these unless leader
-systemctl disable ngrok
-
-# replace this entrypoint with systemd init scope
-exec env DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket SYSTEMD_LOG_LEVEL=info /lib/systemd/systemd quiet systemd.show_status=0
+# replace this entrypoint with supervisord
+exec env supervisord -c /opt/app/supervisord.conf
