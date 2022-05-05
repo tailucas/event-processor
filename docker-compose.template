@@ -4,6 +4,8 @@ services:
     build: .
     cap_add:
       - SYS_ADMIN
+    logging:
+      driver: syslog
     tmpfs:
     - /run
     - /tmp
