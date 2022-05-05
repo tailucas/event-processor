@@ -16,6 +16,7 @@ RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommend
     html-xml-utils \
     htop \
     jq \
+    less \
     lsof \
     libffi-dev \
     # for rust build of Python cryptography
