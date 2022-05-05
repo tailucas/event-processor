@@ -1,5 +1,0 @@
-%app ALL= NOPASSWD: /bin/systemctl start ngrok
-%app ALL= NOPASSWD: /bin/systemctl stop ngrok
-%app ALL= NOPASSWD: /bin/systemctl enable ngrok
-%app ALL= NOPASSWD: /bin/systemctl disable ngrok
-

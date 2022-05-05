@@ -25,14 +25,6 @@ unset FRONTEND_PASSWORD
 /opt/app/ngrok config check --config /opt/app/ngrok.yml || ./opt/app/ngrok config upgrade --config /opt/app/ngrok.yml
 /opt/app/ngrok config check --config /opt/app/ngrok_frontend.yml || ./opt/app/ngrok config upgrade --config /opt/app/ngrok_frontend.yml
 
-# Create /etc/docker.env
-if [ ! -e /etc/docker.env ]; then
-  # https://github.com/balena-io-library/base-images/blob/b4fc5c21dd1e28c21e5661f65809c90ed7605fe6/examples/INITSYSTEM/systemd/systemd/entry.sh
-  for var in $(compgen -e); do
-    printf '%q=%q\n' "$var" "${!var}"
-  done > /etc/docker.env
-fi
-
 set -x
 
 # Run user
@@ -52,34 +44,10 @@ fi
 # set the timezone
 (tzupdate && cp -a /etc/localtime "$TZ_CACHE") || [ -e "$TZ_CACHE" ]
 
-# rsyslog
-if [ -n "${RSYSLOG_SERVER:-}" ]; then
-  cat << EOF > /etc/rsyslog.d/custom.conf
-\$PreserveFQDN on
-\$ActionQueueFileName queue
-\$ActionQueueMaxDiskSpace 1g
-\$ActionQueueSaveOnShutdown on
-\$ActionQueueType LinkedList
-\$ActionResumeRetryCount -1
-*.* @${RSYSLOG_SERVER}${RSYSLOG_TEMPLATE:-}
-EOF
-fi
-# logentries
-if [ -n "${RSYSLOG_LOGENTRIES:-}" ]; then
-  set +x
-  RSYSLOG_LOGENTRIES_TOKEN="$(/opt/app/bin/python /opt/app/pylib/cred_tool <<< '{"s": {"opitem": "Logentries", "opfield": "${APP_NAME}.token"}}')"
-  if [ -n "${RSYSLOG_LOGENTRIES_TOKEN:-}" ] && ! grep -q "$RSYSLOG_LOGENTRIES_TOKEN" /etc/rsyslog.d/logentries.conf; then
-    echo "\$template LogentriesFormat,\"${RSYSLOG_LOGENTRIES_TOKEN} %HOSTNAME% %syslogtag%%msg%\n\"" >> /etc/rsyslog.d/logentries.conf
-    RSYSLOG_TEMPLATE=";LogentriesFormat"
-  fi
-  unset RSYSLOG_LOGENTRIES_TOKEN
-  echo "*.*          @@${RSYSLOG_LOGENTRIES_SERVER}${RSYSLOG_TEMPLATE:-}" >> /etc/rsyslog.d/logentries.conf
-  set -x
-fi
-
 # application configuration (no tee for secrets)
 cat /opt/app/config/app.conf | /opt/app/pylib/config_interpol > "/opt/app/${APP_NAME}.conf"
 cat /opt/app/config/backup_db | sed "s~__APP_USER__~${APP_USER}~g" > /etc/cron.d/backup_db
+cat /opt/app/config/supervisord.conf | /opt/app/pylib/config_interpol > /opt/app/supervisord.conf
 
 # Refresh local SQLite
 if [ ! -f "${TABLESPACE_PATH}" ]; then
