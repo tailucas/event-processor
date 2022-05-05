@@ -62,7 +62,6 @@ COPY pylib ./pylib
 COPY pylib/pylib ./lib
 COPY event_processor .
 
-STOPSIGNAL 37
 # ssh, http, zmq, ngrok
 EXPOSE 22 5000 5556 5558 4040 8080
 CMD ["/opt/app/entrypoint.sh"]
