@@ -2,7 +2,7 @@
 set -e
 set -o pipefail
 
-. <(cat /opt/app/environment.env | sed 's/^/export /')
+. <(cat /etc/environment | sed 's/^/export /')
 # pip-installed aws cli
 . /opt/app/bin/activate
 AKID="{\"s\": {\"opitem\": \"AWS\", \"opfield\": \"${AWS_DEFAULT_REGION}.akid\"}}"

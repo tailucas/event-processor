@@ -75,5 +75,9 @@ patch -f -u "$PY_BASE_WORKER" -i /opt/app/config/base_worker.patch || true
 # Bash history
 echo "export HISTFILE=/data/.bash_history" >> /etc/bash.bashrc
 
+env > /etc/environment
+echo "HOME=/data/" >> /etc/environment
+echo "USER=${APP_USER}" >> /etc/environment
+
 # replace this entrypoint with supervisord
 exec env /usr/local/bin/supervisord -n -c /opt/app/supervisord.conf
