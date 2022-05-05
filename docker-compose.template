@@ -2,20 +2,16 @@ version: "3.8"
 services:
   app:
     build: .
-    cap_add:
-      - SYS_ADMIN
     logging:
       driver: syslog
     tmpfs:
-    - /run
     - /tmp
-    - /run/lock
     hostname: event-processor-a
     ports:
       - "4041:4040"
       - "80:8080"
     volumes:
       - ./data:/data
-      - /sys/fs/cgroup/:/sys/fs/cgroup:ro
+      - /dev/log:/dev/log
     environment:
       FLASK_ENV: development
