@@ -67,6 +67,7 @@ from time import sleep
 from urllib.parse import urlparse
 from uuid import uuid4
 from flask import Flask, g, flash, request, render_template, url_for, redirect
+from flask.logging import default_handler
 from flask_compress import Compress
 from werkzeug.serving import make_server
 from zmq.error import ZMQError, ContextTerminated, Again
@@ -101,7 +102,8 @@ from lib import app_config, \
     creds, \
     device_name, \
     device_name_base, \
-    log
+    log, \
+    log_handler
 
 from lib.datetime import is_list, \
     make_timestamp, \
@@ -1842,6 +1844,8 @@ class FlaskThread(Thread):
     def __init__(self, app, compress):
         super(FlaskThread, self).__init__(name=self.__class__.__name__)
         # start frontend
+        app.logger.removeHandler(default_handler)
+        app.logger.addHandler(log_handler)
         app.secret_key = creds.flask_secret_key
         app.jinja_env.add_extension('jinja2.ext.loopcontrols')
         app.jinja_env.filters.update({
