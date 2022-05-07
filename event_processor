@@ -73,7 +73,7 @@ from werkzeug.serving import make_server
 from zmq.error import ZMQError, ContextTerminated, Again
 
 import paho.mqtt.client as mqtt
-from paho.mqtt.client import MQTT_ERR_SUCCESS
+from paho.mqtt.client import MQTT_ERR_SUCCESS, MQTT_ERR_NO_CONN
 
 import os.path
 
@@ -1461,6 +1461,8 @@ class MqttSubscriber(AppThread, Closable):
             self._mqtt_subscribe_topics.append((mqtt_source, 0))
         self._source_subscribers = dict()
 
+        self._disconnected = False
+
     def close(self):
         Closable.close(self)
         try:
@@ -1477,6 +1479,7 @@ class MqttSubscriber(AppThread, Closable):
 
     def on_disconnect(self, client, userdata, rc):
         log.info('MQTT client has disconnected.')
+        self._disconnected = True
 
     def on_message(self, client, userdata, msg):
         log.debug('{} received {} bytes.'.format(msg.topic, len(msg.payload)))
@@ -1576,7 +1579,9 @@ class MqttSubscriber(AppThread, Closable):
         self._mqtt_client.connect(self._mqtt_server_address)
         with exception_handler(closable=self):
             while not threads.shutting_down:
-                self._mqtt_client.loop()
+                rc = self._mqtt_client.loop()
+                if rc == MQTT_ERR_NO_CONN or self._disconnected:
+                    raise ResourceWarning(f'No connection to MQTT broker at {self._mqtt_server_address} (disconnected? {self._disconnected})')
                 # check for messages to publish
                 try:
                     mqtt_pub_topic, message_data = self.socket.recv_pyobj(flags=zmq.NOBLOCK)
