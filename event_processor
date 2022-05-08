@@ -1577,7 +1577,7 @@ class MqttSubscriber(AppThread, Closable):
         self._mqtt_client.on_disconnect = self.on_disconnect
         self._mqtt_client.on_message = self.on_message
         self._mqtt_client.connect(self._mqtt_server_address)
-        with exception_handler(closable=self):
+        with exception_handler(closable=self, and_raise=False, shutdown_on_error=True):
             while not threads.shutting_down:
                 rc = self._mqtt_client.loop()
                 if rc == MQTT_ERR_NO_CONN or self._disconnected:
