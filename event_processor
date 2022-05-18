@@ -1058,15 +1058,15 @@ class EventProcessor(MQConnection, Closable):
                                             ic.device_enabled = input_enable
                                             # update the database
                                             db.session.add(ic)
-                                            if input.auto_schedule is not None:
+                                            if ic.auto_schedule is not None:
                                                 # update the auto-scheduler task
                                                 with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, socket_type=zmq.PUSH, and_raise=False) as zmq_socket:
                                                     if input_enable:
                                                         # restore auto-schedule actions
-                                                        zmq_socket.send_pyobj((input.device_key, input.auto_schedule, input.auto_schedule_enable, input.auto_schedule_disable))
+                                                        zmq_socket.send_pyobj((ic.device_key, ic.auto_schedule, ic.auto_schedule_enable, ic.auto_schedule_disable))
                                                     else:
                                                         # disable runtime auto-scheduling actions
-                                                        zmq_socket.send_pyobj((input.device_key, None, None, None))
+                                                        zmq_socket.send_pyobj((ic.device_key, None, None, None))
                                     if inputs_updated > 0:
                                         db.session.commit()
                                     bot_reply = f'{inputs_updated} devices changed to {state}.'
