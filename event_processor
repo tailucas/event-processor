@@ -1042,6 +1042,7 @@ class EventProcessor(MQConnection, Closable):
                                         if len(input_config) > 0:
                                             input_configs.extend(input_config)
                                 else:
+                                    # wildcard action is constrained to devices where auto-scheduling is enabled
                                     input_config = InputConfig.query.filter(InputConfig.auto_schedule.isnot(None)).order_by(InputConfig.device_key).all()
                                     log.info(f'{state.title()} {len(input_config)} devices with auto-schedule not null.')
                                     if len(input_config) > 0:
@@ -1055,7 +1056,17 @@ class EventProcessor(MQConnection, Closable):
                                             inputs_updated += 1
                                             log.info(f'{state.title()} {ic.device_key} (group {ic.group_name})')
                                             ic.device_enabled = input_enable
+                                            # update the database
                                             db.session.add(ic)
+                                            if input.auto_schedule is not None:
+                                                # update the auto-scheduler task
+                                                with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, socket_type=zmq.PUSH, and_raise=False) as zmq_socket:
+                                                    if input_enable:
+                                                        # restore auto-schedule actions
+                                                        zmq_socket.send_pyobj((input.device_key, input.auto_schedule, input.auto_schedule_enable, input.auto_schedule_disable))
+                                                    else:
+                                                        # disable runtime auto-scheduling actions
+                                                        zmq_socket.send_pyobj((input.device_key, None, None, None))
                                     if inputs_updated > 0:
                                         db.session.commit()
                                     bot_reply = f'{inputs_updated} devices changed to {state}.'
@@ -1689,10 +1700,7 @@ class AutoScheduler(AppThread, Closable):
                     # clear any previous schedule
                     schedule.clear(device_key)
                     if auto_schedule:
-                        log.info('Setting auto-schedule for {} to disable at {} and enable at {}.'.format(
-                            device_key,
-                            auto_schedule_disable,
-                            auto_schedule_enable))
+                        log.info(f'Setting auto-schedule for {device_key} to disable at {auto_schedule_disable} and enable at {auto_schedule_enable}.')
                         # install a new scedule
                         self._schedule(
                             device_key=device_key,
@@ -1702,6 +1710,8 @@ class AutoScheduler(AppThread, Closable):
                             device_key=device_key,
                             schedule_time=auto_schedule_enable,
                             device_state=True)
+                    else:
+                        log.warning(f'Disabled auto-schedule for {device_key}.')
                 # don't spin
                 if not next_message:
                     threads.interruptable_sleep.wait(10)
