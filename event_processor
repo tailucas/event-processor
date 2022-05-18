@@ -497,7 +497,7 @@ def show_metrics():
 def event_log():
     events = {}
     if request.method == 'GET':
-        events = EventLog.query.all()
+        events = EventLog.query.order_by(EventLog.timestamp.desc()).limit(100).all()
     return render_template('event_log.html',
                            events=events)
 
