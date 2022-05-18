@@ -5,6 +5,13 @@ set -o pipefail
 . <(cat /etc/environment | sed 's/^/export /')
 # pip-installed aws cli
 . /opt/app/bin/activate
+
+BACKUP_FILENAME_SUFFIX=""
+if [ -n "${1:-}" ]; then
+  BACKUP_FILENAME_SUFFIX="_${1}"
+fi
+BACKUP_FILENAME="${APP_NAME}${BACKUP_FILENAME_SUFFIX}.db"
+
 AKID="{\"s\": {\"opitem\": \"AWS\", \"opfield\": \"${AWS_DEFAULT_REGION}.akid\"}}"
 export AWS_ACCESS_KEY_ID="$(/opt/app/bin/python /opt/app/pylib/cred_tool <<< "${AKID}")"
 SAK="{\"s\": {\"opitem\": \"AWS\", \"opfield\": \"${AWS_DEFAULT_REGION}.sak\"}}"
@@ -14,7 +21,7 @@ if [ -f "${TABLESPACE_PATH}" ]; then
   if [ -f "/data/is_leader" ] || [ "${LEADER_ELECTION_ENABLED:-false}" == "false" ]; then
     # create backup process
     sqlite3 "${TABLESPACE_PATH}" ".backup /tmp/${APP_NAME}.db"
-    aws s3 cp "/tmp/${APP_NAME}.db" "s3://tailucas-automation/${APP_NAME}.db" --only-show-errors
+    aws s3 cp "/tmp/${APP_NAME}.db" "s3://tailucas-automation/${BACKUP_FILENAME}" --only-show-errors
   fi
 else
   # only if the tablespace does not exist
