@@ -82,7 +82,12 @@ app_name = Path(__file__).stem
 builtins.APP_NAME = app_name
 builtins.SENTRY_EXTRAS = [FlaskIntegration()]
 AWS_REGION = os.environ['AWS_DEFAULT_REGION']
+<<<<<<< HEAD
 influx_creds_section='local'
+=======
+
+
+>>>>>>> dc67969 (PEP formatting.)
 class CredsConfig:
     sentry_dsn: f'opitem:"Sentry" opfield:{app_name}.dsn' = None # type: ignore
     cronitor_token: f'opitem:"cronitor" opfield:.password' = None # type: ignore
@@ -97,6 +102,8 @@ class CredsConfig:
     influxdb_token: f'opitem:"InfluxDB" opfield:{influx_creds_section}.token' = None # type: ignore
     influxdb_url: f'opitem:"InfluxDB" opfield:{influx_creds_section}.url' = None # type: ignore
     grafana_url: f'opitem:"Grafana" opfield:dashboard.URL' = None # type: ignore
+
+
 # instantiate class
 builtins.creds_config = CredsConfig()
 
