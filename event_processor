@@ -82,6 +82,7 @@ app_name = Path(__file__).stem
 builtins.APP_NAME = app_name
 builtins.SENTRY_EXTRAS = [FlaskIntegration()]
 AWS_REGION = os.environ['AWS_DEFAULT_REGION']
+influx_creds_section='local'
 class CredsConfig:
     sentry_dsn: f'opitem:"Sentry" opfield:{app_name}.dsn' = None # type: ignore
     cronitor_token: f'opitem:"cronitor" opfield:.password' = None # type: ignore
@@ -92,8 +93,9 @@ class CredsConfig:
     telegram_bot_api_token: f'opitem:"Telegram" opfield:{app_name}.token' = None # type: ignore
     aws_akid: f'opitem:"AWS" opfield:{AWS_REGION}.akid' = None # type: ignore
     aws_sak: f'opitem:"AWS" opfield:{AWS_REGION}.sak' = None # type: ignore
-    influxdb_org: f'opitem:"InfluxDB" opfield:automation.org' = None # type: ignore
-    influxdb_token: f'opitem:"InfluxDB" opfield:automation.token' = None # type: ignore
+    influxdb_org: f'opitem:"InfluxDB" opfield:{influx_creds_section}.org' = None # type: ignore
+    influxdb_token: f'opitem:"InfluxDB" opfield:{influx_creds_section}.token' = None # type: ignore
+    influxdb_url: f'opitem:"InfluxDB" opfield:{influx_creds_section}.url' = None # type: ignore
     grafana_url: f'opitem:"Grafana" opfield:dashboard.URL' = None # type: ignore
 # instantiate class
 builtins.creds_config = CredsConfig()
@@ -819,6 +821,7 @@ class EventProcessor(MQConnection, Closable):
         self.influxdb = None
         self.influxdb_rw = None
         self.influxdb_ro = None
+        self.influxdb_bucket = app_config.get('influxdb', 'bucket')
 
         self._outputs_enabled = True
 
@@ -886,7 +889,7 @@ class EventProcessor(MQConnection, Closable):
         self.bot.connect(URL_WORKER_TELEGRAM_BOT)
         # influx DB
         self.influxdb = InfluxDBClient(
-            url=app_config.get('influxdb', 'url'),
+            url=creds.influxdb_url,
             token=creds.influxdb_token,
             org=creds.influxdb_org)
         self.influxdb_rw = self.influxdb.write_api(write_options=ASYNCHRONOUS)
@@ -1135,7 +1138,7 @@ class EventProcessor(MQConnection, Closable):
                                         # accumulated meter value
                                         if now - self._metric_last_posted_meter_value > 5*60:
                                             self._influxdb_write(
-                                                bucket='meter',
+                                                bucket=self.influxdb_bucket,
                                                 active_device_key=active_device_key,
                                                 field_name='metered',
                                                 field_value=int(self._metric_meter_value_accumulator) / float(meter_config.meter_reading_unit_factor))
@@ -1146,7 +1149,7 @@ class EventProcessor(MQConnection, Closable):
                                         # register values
                                         if now - self._metric_last_posted_register_value > 5*60:
                                             self._influxdb_write(
-                                                bucket='meter',
+                                                bucket=self.influxdb_bucket,
                                                 active_device_key=active_device_key,
                                                 field_name='register',
                                                 field_value=normalized_register_value)
