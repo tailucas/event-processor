@@ -1,10 +1,8 @@
 #!/usr/bin/env python
-import logging
 import logging.handlers
 
 import builtins
 import boto3
-import copy
 import os
 import re
 import requests
@@ -14,58 +12,30 @@ import threading
 import time
 import zmq
 
-from base64 import b64decode, b64encode
 from collections import OrderedDict
-from botocore.exceptions import EndpointConnectionError as bcece, \
-    ConnectionClosedError as bccce, \
-    ConnectionError as bce
-from boto3.dynamodb.conditions import Attr
-from bs4 import BeautifulSoup
-from configparser import ConfigParser
+from botocore.exceptions import EndpointConnectionError as bcece
 from datetime import datetime, timedelta
 from dateutil import tz
-from decimal import Decimal
 from flask_sqlalchemy import SQLAlchemy
 from io import BytesIO
-from msgpack.exceptions import UnpackException
-from onepasswordconnectsdk.client import Client as CredsClient
-from operator import itemgetter
 from pathlib import Path
-from pika.exceptions import StreamLostError, \
-    ConnectionClosedByBroker, \
-    AMQPChannelError, \
-    AMQPConnectionError
 from pylru import lrucache
 from requests.exceptions import ConnectionError
 from sentry_sdk import capture_exception, last_event_id
 from sentry_sdk.integrations.flask import FlaskIntegration
 from sentry_sdk.integrations.logging import ignore_logger
 from simplejson.scanner import JSONDecodeError
-from socket import gaierror
-from sqlalchemy import or_, UniqueConstraint, exc as sqlerr
-from traceback import StackSummary
-from telegram import Bot as TelegramBot, \
-    InlineQueryResultArticle, InputTextMessageContent, \
-    ParseMode, Update
-from telegram.error import TelegramError, \
-    Unauthorized, \
-    BadRequest, \
-    TimedOut, \
-    ChatMigrated, \
-    NetworkError, \
-    RetryAfter
+from sqlalchemy import or_, UniqueConstraint
+from telegram import Bot as TelegramBot, Update
+from telegram.error import TelegramError, NetworkError, RetryAfter
 from telegram.ext import Updater as TelegramUpdater, \
     CommandHandler as TelegramCommandHandler, \
     MessageHandler as TelegramMessageHandler, \
     Filters as TelegramFilters, \
-    InlineQueryHandler as TelegramInlineHandler, \
     CallbackContext as TelegramCallbackContext
-from telegram.utils.helpers import escape_markdown
 from telegram.utils.request import TimedOut
 from threading import Thread
-from time import sleep
 from urllib.parse import urlparse
-from uuid import uuid4
 from flask import Flask, g, flash, request, render_template, url_for, redirect
 from flask.logging import default_handler
 from flask_compress import Compress
@@ -736,6 +706,8 @@ def telegram_bot_echo(update: Update, context: TelegramCallbackContext):
         context.bot.send_message(chat_id=update.effective_message.chat_id,
                          text=bot_response,
                          parse_mode='Markdown')
+    except NetworkError:
+        log.warning('bot handler', exc_info=True)
     except Exception:
         log.exception('bot handler')
         capture_exception()
@@ -765,6 +737,8 @@ def telegram_bot_cmd(update: Update, context: TelegramCallbackContext):
                         'command': update.effective_message.text
                     }
                 })
+    except NetworkError:
+        log.warning('bot handler', exc_info=True)
     except Exception:
         log.exception('bot handler')
         capture_exception()
@@ -1970,10 +1944,10 @@ if __name__ == "__main__":
         telegram_dispatcher.add_error_handler(telegram_error_handler)
         # start the nanny
         nanny = threading.Thread(
+            daemon=True,
             name='nanny',
             target=thread_nanny,
             args=(signal_handler,))
-        nanny.setDaemon(True)
         # not tracked by nanny because this is used for Flask bootstrap
         server = FlaskThread(
             app=flask_app,

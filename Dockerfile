@@ -1,67 +1,33 @@
-FROM debian:buster
-ENV INITSYSTEM on
-ENV container docker
-
-LABEL Description="event_processor" Vendor="tglucas" Version="1.0"
-
-ENV DEBIAN_FRONTEND noninteractive
-ENV DEBCONF_NONINTERACTIVE_SEEN true
-
-RUN apt-get clean && apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    ca-certificates \
-    cron \
-    curl \
-    dbus \
-    html-xml-utils \
-    htop \
-    jq \
-    less \
-    lsof \
-    libffi-dev \
-    # for rust build of Python cryptography
-    libssl-dev \
-    patch \
-    procps \
-    python3-certifi \
-    python3-dbus \
-    python3 \
-    python3-dev \
-    python3-pip \
-    python3-setuptools \
-    python3-venv \
-    python3-wheel \
-    rsyslog \
-    strace \
-    sqlite3 \
-    tree \
-    unzip \
-    vim \
-    wget
-
-# python3 default
-RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 1
-
-# setup
-WORKDIR /opt/app
+FROM tailucas/base-app:20221228
+USER root
+# override dependencies
 COPY requirements.txt .
-COPY pylib/requirements.txt ./pylib/requirements.txt
-COPY app_setup.sh .
+# apply override
 RUN /opt/app/app_setup.sh
+# override configuration
+COPY config/app.conf ./config/app.conf
+COPY config/backup_db ./config/backup_db
+COPY config/ngrok_frontend.yml ./config/ngrok_frontend.yml
+COPY static ./static
+COPY templates ./templates
+COPY backup_db.sh .
+COPY app_entrypoint.sh .
+
+# cron jobs
+ADD config/backup_db /etc/cron.d/backup_db
+RUN crontab -u app /etc/cron.d/backup_db
+RUN chmod 0600 /etc/cron.d/backup_db
+
 # ngrok
 COPY ngrok_setup.sh .
 RUN /opt/app/ngrok_setup.sh
 
-COPY config ./config
-COPY static ./static
-COPY templates ./templates
-COPY backup_db.sh .
-COPY healthchecks_heartbeat.sh .
-COPY entrypoint.sh .
-COPY pylib ./pylib
-COPY pylib/pylib ./lib
+# remove base_app
+RUN rm -f /opt/app/base_app
+# add the project application
 COPY event_processor .
-
-# ssh, http, zmq, ngrok
-EXPOSE 22 5000 5556 5558 4040 8080
+# override entrypoint
+COPY app_entrypoint.sh .
+# switch to user
+USER app
 CMD ["/opt/app/entrypoint.sh"]

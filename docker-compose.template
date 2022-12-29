@@ -6,7 +6,7 @@ services:
       driver: syslog
     tmpfs:
     - /tmp
-    hostname: event-processor-a
+    hostname: __DOCKER_HOSTNAME__
     ports:
       - "4041:4040"
       - "80:8080"
