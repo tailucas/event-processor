@@ -18,7 +18,6 @@ COPY config/ngrok_frontend.yml ./config/ngrok_frontend.yml
 COPY static ./static
 COPY templates ./templates
 COPY backup_db.sh .
-COPY app_entrypoint.sh .
 # ngrok
 COPY ngrok_setup.sh .
 RUN /opt/app/ngrok_setup.sh
