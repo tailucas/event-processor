@@ -27,7 +27,4 @@ stderr_logfile=/dev/stderr
 EOF
 
 # Refresh local SQLite
-if [ ! -f "${TABLESPACE_PATH}" ]; then
-  /opt/app/backup_db.sh
-  chown "${APP_USER}:${APP_GROUP}" "${TABLESPACE_PATH}"
-fi
+/opt/app/backup_db.sh
