@@ -1,4 +1,4 @@
-FROM tailucas/base-app:20221228
+FROM tailucas/base-app:20221231
 # for system/site packages
 USER root
 # override dependencies
