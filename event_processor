@@ -1318,18 +1318,39 @@ class TBot(AppThread, Closable):
 
     def __init__(self):
         AppThread.__init__(self, name=self.__class__.__name__)
+        self.application = None
+
+    @property.getter
+    def application(self):
+        return self.application
+
+    # noinspection PyBroadException
+    def run(self):
+        # create an event loop for this thread for Telegram
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        self.application = TelegramApp.builder().token(creds.telegram_bot_api_token).build()
+        self.application.add_handler(TelegramCommandHandler(command='report', callback=telegram_bot_cmd))
+        self.application.add_handler(TelegramCommandHandler(command='inputon', callback=telegram_bot_cmd))
+        self.application.add_handler(TelegramCommandHandler(command='inputoff', callback=telegram_bot_cmd))
+        self.application.add_handler(TelegramCommandHandler(command='outputson', callback=telegram_bot_cmd))
+        self.application.add_handler(TelegramCommandHandler(command='outputsoff', callback=telegram_bot_cmd))
+        self.application.add_handler(TelegramMessageHandler(filters.TEXT & ~filters.COMMAND, telegram_bot_echo))
+        self.application.add_error_handler(callback=telegram_error_handler)
+        self.application.run_polling()
+
+
+class TBotRelay(AppThread, Closable):
+
+    def __init__(self, tbot):
+        AppThread.__init__(self, name=self.__class__.__name__)
         Closable.__init__(self, connect_url=URL_WORKER_TELEGRAM_BOT)
 
-        self.application = None
+        self.tbot = tbot
         self.chat_id = app_config.getint('telegram', 'chat_room_id')
         self.sns = None
         if app_config.getboolean('telegram', 'sms_fallback_enabled'):
             self.sns = boto3.client('sns')
-
-    def stop(self):
-        if self.application is not None:
-            self.application.stop()
-        Closable.close(self)
 
     def build_message(self, timestamp, event_data, max_length=160, build_sms=False):
         global ngrok_tunnel_url
@@ -1362,18 +1383,6 @@ class TBot(AppThread, Closable):
     # noinspection PyBroadException
     def run(self):
         global ngrok_tunnel_url_with_bauth
-        # create an event loop for this thread for Telegram
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        self.application = TelegramApp.builder().token(creds.telegram_bot_api_token).build()
-        self.application.add_handler(TelegramCommandHandler(command='report', callback=telegram_bot_cmd))
-        self.application.add_handler(TelegramCommandHandler(command='inputon', callback=telegram_bot_cmd))
-        self.application.add_handler(TelegramCommandHandler(command='inputoff', callback=telegram_bot_cmd))
-        self.application.add_handler(TelegramCommandHandler(command='outputson', callback=telegram_bot_cmd))
-        self.application.add_handler(TelegramCommandHandler(command='outputsoff', callback=telegram_bot_cmd))
-        self.application.add_handler(TelegramMessageHandler(filters.TEXT & ~filters.COMMAND, telegram_bot_echo))
-        self.application.add_error_handler(callback=telegram_error_handler)
-        self.application.start()
         with exception_handler(closable=self):
             while not threads.shutting_down:
                 event = self.socket.recv_pyobj()
@@ -1410,13 +1419,13 @@ class TBot(AppThread, Closable):
                             log.warning(f'Discarding image message without person data, as configured.')
                             continue
                         log.debug(f'Bot sends image to {self.chat_id!s} with caption "{notification_message}"')
-                        self.application.bot.send_photo(chat_id=self.chat_id,
+                        self.tbot.application.bot.send_photo(chat_id=self.chat_id,
                                             photo=image_data,
                                             caption=notification_message,
                                             parse_mode='Markdown')
                     else:
                         log.debug(f'Bot sends message to {self.chat_id!s} with caption "{notification_message}"')
-                        self.application.bot.send_message(chat_id=self.chat_id,
+                        self.tbot.application.bot.send_message(chat_id=self.chat_id,
                                               text=notification_message,
                                               parse_mode='Markdown')
                 except (TimedOut, NetworkError, RetryAfter):
@@ -1911,6 +1920,7 @@ if __name__ == "__main__":
         if app_config.getboolean('app', 'sns_control_enabled'):
             sqs_listener = SQSListener()
         telegram_bot = TBot()
+        telegram_bot_relay = TBotRelay(tbot=telegram_bot)
         # start the nanny
         nanny = threading.Thread(
             daemon=True,
@@ -1936,6 +1946,7 @@ if __name__ == "__main__":
             if sqs_listener:
                 sqs_listener.start()
             telegram_bot.start()
+            telegram_bot_relay.start()
             mq_listener.start()
             # Flask UI
             server.start()
@@ -1950,8 +1961,6 @@ if __name__ == "__main__":
         finally:
             die()
             message = "Shutting down {}..."
-            log.info(message.format('Telegram bot'))
-            telegram_bot.stop()
             log.info(message.format('Main event processor'))
             event_processor.stop()
             log.info(message.format('Web server'))
