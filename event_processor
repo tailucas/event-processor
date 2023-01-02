@@ -1320,7 +1320,7 @@ class TBot(AppThread, Closable):
         AppThread.__init__(self, name=self.__class__.__name__)
         self.application = None
 
-    @property.getter
+    @property
     def application(self):
         return self.application
 
