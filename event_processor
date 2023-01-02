@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import logging.handlers
 
+import asyncio
 import builtins
 import boto3
 import os
@@ -1361,6 +1362,9 @@ class TBot(AppThread, Closable):
     # noinspection PyBroadException
     def run(self):
         global ngrok_tunnel_url_with_bauth
+        # create an event loop for this thread for Telegram
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         self.application = TelegramApp.builder().token(creds.telegram_bot_api_token).build()
         self.application.add_handler(TelegramCommandHandler(command='report', callback=telegram_bot_cmd))
         self.application.add_handler(TelegramCommandHandler(command='inputon', callback=telegram_bot_cmd))
@@ -1887,8 +1891,8 @@ if __name__ == "__main__":
         log.info('Creating application threads...')
         # bind listeners first
         heartbeat_filter = HeartbeatFilter()
-        mq_server_address=app_config.get('rabbitmq', 'server_address').split(',')
-        mq_exchange_name=app_config.get('rabbitmq', 'mq_exchange')
+        mq_server_address = app_config.get('rabbitmq', 'server_address').split(',')
+        mq_exchange_name = app_config.get('rabbitmq', 'mq_exchange')
         mq_listener = ZMQListener(
             zmq_url=URL_WORKER_HEARTBEAT_NANNY,
             mq_server_address=mq_server_address,
