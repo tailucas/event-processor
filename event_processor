@@ -1314,7 +1314,7 @@ class EventProcessor(MQConnection, Closable):
             db.session.commit()
 
 
-class TBot(AppThread, Closable):
+class TBot(AppThread):
 
     def __init__(self):
         AppThread.__init__(self, name=self.__class__.__name__)
@@ -1337,7 +1337,11 @@ class TBot(AppThread, Closable):
         self.app.add_handler(TelegramCommandHandler(command='outputsoff', callback=telegram_bot_cmd))
         self.app.add_handler(TelegramMessageHandler(filters.TEXT & ~filters.COMMAND, telegram_bot_echo))
         self.app.add_error_handler(callback=telegram_error_handler)
-        self.app.run_polling()
+        async with self.app:
+            await self.app.start()
+            while not threads.shutting_down:
+                threads.interruptable_sleep.wait(10)
+            await self.app.stop()
 
 
 class TBotRelay(AppThread, Closable):
