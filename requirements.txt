@@ -1,11 +1,14 @@
 awscli
+boto3
 influxdb-client
 paho-mqtt
 pylru
 python-telegram-bot==13.*
+pyzmq
 requests
 schedule
 sentry-sdk[flask]
+simplejson
 Flask
 Flask-Compress
 Flask-SQLAlchemy
