@@ -4,4 +4,6 @@ docker-compose.yml
 .vscode/
 .balena-app
 data/
+.venv/
 venv/
+*.code-workspace
