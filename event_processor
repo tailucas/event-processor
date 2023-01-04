@@ -26,13 +26,14 @@ from sentry_sdk.integrations.flask import FlaskIntegration
 from sentry_sdk.integrations.logging import ignore_logger
 from simplejson.scanner import JSONDecodeError
 from sqlalchemy import or_, UniqueConstraint
-from telegram import ForceReply, Update
-from telegram.ext import Application as TelegramApp, \
+from telegram import Bot as TelegramBot, Update
+from telegram.error import TelegramError, NetworkError, RetryAfter
+from telegram.ext import Updater as TelegramUpdater, \
     CommandHandler as TelegramCommandHandler, \
-    ContextTypes as TelegramContextTypes, \
     MessageHandler as TelegramMessageHandler, \
-    filters
-from telegram.error import TelegramError, NetworkError, RetryAfter, TimedOut
+    Filters as TelegramFilters, \
+    CallbackContext as TelegramCallbackContext
+from telegram.utils.request import TimedOut
 from threading import Thread
 from urllib.parse import urlparse
 from flask import Flask, g, flash, request, render_template, url_for, redirect
@@ -95,6 +96,10 @@ from lib.handler import exception_handler
 
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import ASYNCHRONOUS
+
+
+# Reduce Sentry noise
+ignore_logger('telegram.ext.updater')
 
 
 flask_app = Flask(app_name)
@@ -676,7 +681,7 @@ def output_config():
                            saved_device_id=saved_device_id)
 
 
-async def telegram_bot_echo(update: Update, context: TelegramContextTypes.DEFAULT_TYPE) -> None:
+def telegram_bot_echo(update: Update, context: TelegramCallbackContext):
     global ngrok_tunnel_url
     try:
         authorized_users = app_config.get('telegram', 'authorized_users').split(',')
@@ -693,7 +698,9 @@ async def telegram_bot_echo(update: Update, context: TelegramContextTypes.DEFAUL
         if ngrok_tunnel_url:
             dashboard_link = f'[Dashboard]({ngrok_tunnel_url})'
             bot_response += "\n" + dashboard_link
-        await update.message.reply_markdown(text=bot_response)
+        context.bot.send_message(chat_id=update.effective_message.chat_id,
+                         text=bot_response,
+                         parse_mode='Markdown')
     except NetworkError:
         log.warning('bot handler', exc_info=True)
     except Exception:
@@ -701,7 +708,7 @@ async def telegram_bot_echo(update: Update, context: TelegramContextTypes.DEFAUL
         capture_exception()
 
 
-async def telegram_bot_cmd(update: Update, context: TelegramContextTypes.DEFAULT_TYPE) -> None:
+def telegram_bot_cmd(update: Update, context: TelegramCallbackContext):
     global ngrok_tunnel_url_with_bauth
     try:
         authorized_users = app_config.get('telegram', 'authorized_users').split(',')
@@ -714,7 +721,9 @@ async def telegram_bot_cmd(update: Update, context: TelegramContextTypes.DEFAULT
                                                                                      str(context.args),
                                                                                      update.effective_message.chat_id))
         if ngrok_tunnel_url_with_bauth:
-            await update.message.reply_markdown(text=f'[Dashboard]({ngrok_tunnel_url_with_bauth})')
+            context.bot.send_message(chat_id=update.effective_message.chat_id,
+                            text=f'[Dashboard]({ngrok_tunnel_url_with_bauth})',
+                            parse_mode='Markdown')
         # status update
         if update.effective_message.text.startswith('/'):
             with exception_handler(connect_url=URL_WORKER_APP, socket_type=zmq.PUSH, and_raise=False) as zmq_socket:
@@ -730,7 +739,7 @@ async def telegram_bot_cmd(update: Update, context: TelegramContextTypes.DEFAULT
         capture_exception()
 
 
-async def telegram_error_handler(update: Update, context: TelegramContextTypes.DEFAULT_TYPE) -> None:
+def telegram_error_handler(update: Update, context: TelegramCallbackContext):
     try:
         raise context.error
     except (NetworkError, TelegramError):
@@ -1319,16 +1328,11 @@ class TBot(AppThread, Closable):
         AppThread.__init__(self, name=self.__class__.__name__)
         Closable.__init__(self, connect_url=URL_WORKER_TELEGRAM_BOT)
 
-        self.application = None
+        self.bot = None
         self.chat_id = app_config.getint('telegram', 'chat_room_id')
         self.sns = None
         if app_config.getboolean('telegram', 'sms_fallback_enabled'):
             self.sns = boto3.client('sns')
-
-    def stop(self):
-        if self.application is not None:
-            self.application.stop()
-        Closable.close(self)
 
     def build_message(self, timestamp, event_data, max_length=160, build_sms=False):
         global ngrok_tunnel_url
@@ -1361,15 +1365,8 @@ class TBot(AppThread, Closable):
     # noinspection PyBroadException
     def run(self):
         global ngrok_tunnel_url_with_bauth
-        self.application = TelegramApp.builder().token(creds.telegram_bot_api_token).build()
-        self.application.add_handler(TelegramCommandHandler(command='report', callback=telegram_bot_cmd))
-        self.application.add_handler(TelegramCommandHandler(command='inputon', callback=telegram_bot_cmd))
-        self.application.add_handler(TelegramCommandHandler(command='inputoff', callback=telegram_bot_cmd))
-        self.application.add_handler(TelegramCommandHandler(command='outputson', callback=telegram_bot_cmd))
-        self.application.add_handler(TelegramCommandHandler(command='outputsoff', callback=telegram_bot_cmd))
-        self.application.add_handler(TelegramMessageHandler(filters.TEXT & ~filters.COMMAND, telegram_bot_echo))
-        self.application.add_error_handler(callback=telegram_error_handler)
-        self.application.start()
+        # connect to Telegram
+        self.bot = TelegramBot(token=creds.telegram_bot_api_token)
         with exception_handler(closable=self):
             while not threads.shutting_down:
                 event = self.socket.recv_pyobj()
@@ -1406,13 +1403,13 @@ class TBot(AppThread, Closable):
                             log.warning(f'Discarding image message without person data, as configured.')
                             continue
                         log.debug(f'Bot sends image to {self.chat_id!s} with caption "{notification_message}"')
-                        self.application.bot.send_photo(chat_id=self.chat_id,
+                        self.bot.send_photo(chat_id=self.chat_id,
                                             photo=image_data,
                                             caption=notification_message,
                                             parse_mode='Markdown')
                     else:
                         log.debug(f'Bot sends message to {self.chat_id!s} with caption "{notification_message}"')
-                        self.application.bot.send_message(chat_id=self.chat_id,
+                        self.bot.send_message(chat_id=self.chat_id,
                                               text=notification_message,
                                               parse_mode='Markdown')
                 except (TimedOut, NetworkError, RetryAfter):
@@ -1907,6 +1904,39 @@ if __name__ == "__main__":
         if app_config.getboolean('app', 'sns_control_enabled'):
             sqs_listener = SQSListener()
         telegram_bot = TBot()
+        # start Telegram integration
+        telegram_updater = TelegramUpdater(token=creds.telegram_bot_api_token, use_context=True)
+        telegram_dispatcher = telegram_updater.dispatcher
+        telegram_dispatcher.add_handler(
+            TelegramCommandHandler(
+                'report',
+                telegram_bot_cmd,
+                pass_args=True))
+        telegram_dispatcher.add_handler(
+            TelegramCommandHandler(
+                'inputon',
+                telegram_bot_cmd,
+                pass_args=True))
+        telegram_dispatcher.add_handler(
+            TelegramCommandHandler(
+                'inputoff',
+                telegram_bot_cmd,
+                pass_args=True))
+        telegram_dispatcher.add_handler(
+            TelegramCommandHandler(
+                'outputson',
+                telegram_bot_cmd,
+                pass_args=True))
+        telegram_dispatcher.add_handler(
+            TelegramCommandHandler(
+                'outputsoff',
+                telegram_bot_cmd,
+                pass_args=True))
+        telegram_dispatcher.add_handler(
+            TelegramMessageHandler(
+                TelegramFilters.text,
+                telegram_bot_echo))
+        telegram_dispatcher.add_error_handler(telegram_error_handler)
         # start the nanny
         nanny = threading.Thread(
             daemon=True,
@@ -1935,6 +1965,7 @@ if __name__ == "__main__":
             mq_listener.start()
             # Flask UI
             server.start()
+            telegram_updater.start_polling()
             # get supporting services going
             if app_config.getboolean('ngrok', 'enabled'):
                 # discover ngrok callback URL
@@ -1947,7 +1978,7 @@ if __name__ == "__main__":
             die()
             message = "Shutting down {}..."
             log.info(message.format('Telegram bot'))
-            telegram_bot.stop()
+            telegram_updater.stop()
             log.info(message.format('Main event processor'))
             event_processor.stop()
             log.info(message.format('Web server'))
