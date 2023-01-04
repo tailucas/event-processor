@@ -2,7 +2,7 @@ awscli
 influxdb-client
 paho-mqtt
 pylru
-python-telegram-bot
+python-telegram-bot==13.*
 requests
 schedule
 sentry-sdk[flask]
