@@ -1318,26 +1318,26 @@ class TBot(AppThread, Closable):
 
     def __init__(self):
         AppThread.__init__(self, name=self.__class__.__name__)
-        self.app = None
+        self.application = None
 
     @property
     def application(self):
-        return self.app
+        return self.application
 
     # noinspection PyBroadException
     def run(self):
         # create an event loop for this thread for Telegram
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        self.app = TelegramApp.builder().token(creds.telegram_bot_api_token).build()
-        self.app.add_handler(TelegramCommandHandler(command='report', callback=telegram_bot_cmd))
-        self.app.add_handler(TelegramCommandHandler(command='inputon', callback=telegram_bot_cmd))
-        self.app.add_handler(TelegramCommandHandler(command='inputoff', callback=telegram_bot_cmd))
-        self.app.add_handler(TelegramCommandHandler(command='outputson', callback=telegram_bot_cmd))
-        self.app.add_handler(TelegramCommandHandler(command='outputsoff', callback=telegram_bot_cmd))
-        self.app.add_handler(TelegramMessageHandler(filters.TEXT & ~filters.COMMAND, telegram_bot_echo))
-        self.app.add_error_handler(callback=telegram_error_handler)
-        self.app.run_polling()
+        self.application = TelegramApp.builder().token(creds.telegram_bot_api_token).build()
+        self.application.add_handler(TelegramCommandHandler(command='report', callback=telegram_bot_cmd))
+        self.application.add_handler(TelegramCommandHandler(command='inputon', callback=telegram_bot_cmd))
+        self.application.add_handler(TelegramCommandHandler(command='inputoff', callback=telegram_bot_cmd))
+        self.application.add_handler(TelegramCommandHandler(command='outputson', callback=telegram_bot_cmd))
+        self.application.add_handler(TelegramCommandHandler(command='outputsoff', callback=telegram_bot_cmd))
+        self.application.add_handler(TelegramMessageHandler(filters.TEXT & ~filters.COMMAND, telegram_bot_echo))
+        self.application.add_error_handler(callback=telegram_error_handler)
+        self.application.run_polling()
 
 
 class TBotRelay(AppThread, Closable):
