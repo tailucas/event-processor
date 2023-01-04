@@ -106,7 +106,7 @@ flask_app = Flask(app_name)
 db_tablespace = app_config.get('sqlite', 'tablespace_path')
 flask_app.config["SQLALCHEMY_DATABASE_URI"] = f'sqlite:///{db_tablespace}'
 flask_app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-db = SQLAlchemy(flask_app)
+db = SQLAlchemy(app=flask_app)
 
 OUTPUT_TYPE_BLUETOOTH = 'bluetooth'
 OUTPUT_TYPE_SWITCH = 'ioboard'
@@ -870,6 +870,8 @@ class EventProcessor(MQConnection, Closable):
             org=creds.influxdb_org)
         self.influxdb_rw = self.influxdb.write_api(write_options=ASYNCHRONOUS)
         self.influxdb_ro = self.influxdb.query_api()
+        # https://flask-sqlalchemy.palletsprojects.com/en/3.0.x/quickstart/#create-the-tables
+        flask_app.app_context().push()
         # load DB config
         input_configs = InputConfig.query.all()
         # load auto-scheduler
