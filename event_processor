@@ -20,6 +20,7 @@ from flask_sqlalchemy import SQLAlchemy
 from io import BytesIO
 from pathlib import Path
 from pylru import lrucache
+from pytz import timezone
 from requests.exceptions import ConnectionError
 from sentry_sdk import capture_exception, last_event_id
 from sentry_sdk.integrations.flask import FlaskIntegration
@@ -101,7 +102,7 @@ from influxdb_client.client.write_api import ASYNCHRONOUS
 # Reduce Sentry noise
 ignore_logger('telegram.ext.updater')
 
-
+user_tz = timezone(app_config.get('app', 'user_tz'))
 flask_app = Flask(app_name)
 db_tablespace = app_config.get('sqlite', 'tablespace_path')
 flask_app.config["SQLALCHEMY_DATABASE_URI"] = f'sqlite:///{db_tablespace}'
@@ -453,7 +454,7 @@ def index():
     meter_configs = MeterConfig.query.all()
     for meter_config in meter_configs:
         meters[meter_config.input_device_id] = meter_config
-    render_timestamp = make_timestamp(timestamp=None, as_tz=tz.tzlocal(), make_string=True)
+    render_timestamp = make_timestamp(timestamp=None, as_tz=user_tz, make_string=True)
     return render_template('index.html',
                            inputs=inputs.input_config,
                            meters=meters,
@@ -885,8 +886,8 @@ class EventProcessor(MQConnection, Closable):
                         input_config.auto_schedule_disable))
         # informational notifications
         # TODO: move to UI configuration
-        self.notify_not_before_time = make_timestamp(app_config.get('info_notify', 'not_before_time'))
-        self.notify_not_after_time = make_timestamp(app_config.get('info_notify', 'not_after_time'))
+        self.notify_not_before_time = make_timestamp(timestamp=app_config.get('info_notify', 'not_before_time'))
+        self.notify_not_after_time = make_timestamp(timestamp=app_config.get('info_notify', 'not_after_time'))
         # message validity
         self._max_message_validity_seconds = int(app_config.get('app', 'max_message_validity_seconds'))
         # output type handlers
@@ -1375,9 +1376,9 @@ class TBot(AppThread, Closable):
                 #TODO: fix me for small payloads
                 #log.debug(event)
                 if 'timestamp' in event:
-                    timestamp = parse_datetime(value=event['timestamp'], as_tz=tz.tzlocal())
+                    timestamp = parse_datetime(value=event['timestamp'], az_tz=user_tz)
                 else:
-                    timestamp = make_timestamp().astimezone(tz=tz.tzlocal())
+                    timestamp = make_timestamp(az_tz=user_tz)
                 event_data = None
                 input_context = None
                 # build the message

@@ -4,6 +4,7 @@ influxdb-client
 paho-mqtt
 pylru
 python-telegram-bot==13.*
+pytz
 pyzmq
 requests
 schedule
