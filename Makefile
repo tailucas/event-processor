@@ -13,7 +13,7 @@ user:
 	mkdir -p ./data/
 	sudo chown $(USER_ID):$(GROUP_ID) ./data/
 	sudo chmod 755 ./data/
-	sudo chmod g+s ./data/
+	sudo chmod g+rws ./data/
 
 setup: docker-compose.template
 	@echo "Generating docker-compose.yml"
