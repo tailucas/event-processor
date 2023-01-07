@@ -1376,9 +1376,9 @@ class TBot(AppThread, Closable):
                 #TODO: fix me for small payloads
                 #log.debug(event)
                 if 'timestamp' in event:
-                    timestamp = parse_datetime(value=event['timestamp'], az_tz=user_tz)
+                    timestamp = parse_datetime(value=event['timestamp'], as_tz=user_tz)
                 else:
-                    timestamp = make_timestamp(az_tz=user_tz)
+                    timestamp = make_timestamp(as_tz=user_tz)
                 event_data = None
                 input_context = None
                 # build the message
