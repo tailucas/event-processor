@@ -1324,17 +1324,17 @@ class EventProcessor(MQConnection, Closable):
 
 class TBot(AppThread, Closable):
 
-    def __init__(self):
+    def __init__(self, t_app):
         AppThread.__init__(self, name=self.__class__.__name__)
         Closable.__init__(self, connect_url=URL_WORKER_TELEGRAM_BOT)
 
-        self.bot = None
+        self.t_app = t_app
         self.chat_id = app_config.getint('telegram', 'chat_room_id')
         self.sns = None
         if app_config.getboolean('telegram', 'sms_fallback_enabled'):
             self.sns = boto3.client('sns')
 
-    def build_message(self, timestamp, event_data, max_length=160, build_sms=False):
+    def build_message(timestamp, event_data, max_length=160, build_sms=False):
         global ngrok_tunnel_url
         device_label = event_data['input_context']['device_label']
         event_detail = ""
@@ -1362,14 +1362,11 @@ class TBot(AppThread, Closable):
         notification_message += footer
         return notification_message
 
-    # noinspection PyBroadException
-    def run(self):
+    async def tbot_run(t_app: TelegramApp, chat_id, closable, zmq_socket, sns):
         global ngrok_tunnel_url_with_bauth
-        # connect to Telegram
-        self.bot = TelegramBot(token=creds.telegram_bot_api_token)
-        with exception_handler(closable=self):
+        with exception_handler(closable=closable):
             while not threads.shutting_down:
-                event = self.socket.recv_pyobj()
+                event = zmq_socket.recv_pyobj()
                 #TODO: fix me for small payloads
                 #log.debug(event)
                 if 'timestamp' in event:
@@ -1387,7 +1384,7 @@ class TBot(AppThread, Closable):
                 elif 'data' in event:
                     event_data = event['data']
                     input_context = event_data['input_context']
-                    notification_message = self.build_message(timestamp=timestamp,
+                    notification_message = TBot.build_message(timestamp=timestamp,
                                                               event_data=event_data,
                                                               max_length=200)
                     if 'image' in input_context:
@@ -1402,21 +1399,21 @@ class TBot(AppThread, Closable):
                         if app_config.getboolean('telegram', 'image_send_only_with_people') and 'person' not in notification_message and not button_input:
                             log.warning(f'Discarding image message without person data, as configured.')
                             continue
-                        log.debug(f'Bot sends image to {self.chat_id!s} with caption "{notification_message}"')
-                        self.bot.send_photo(chat_id=self.chat_id,
+                        log.debug(f'Bot sends image to {chat_id!s} with caption "{notification_message}"')
+                        await t_app.bot.send_photo(chat_id=chat_id,
                                             photo=image_data,
                                             caption=notification_message,
                                             parse_mode='Markdown')
                     else:
-                        log.debug(f'Bot sends message to {self.chat_id!s} with caption "{notification_message}"')
-                        self.bot.send_message(chat_id=self.chat_id,
+                        log.debug(f'Bot sends message to {chat_id!s} with caption "{notification_message}"')
+                        await t_app.bot.send_message(chat_id=chat_id,
                                               text=notification_message,
                                               parse_mode='Markdown')
                 except (TimedOut, NetworkError, RetryAfter):
-                    if event_data and self.sns:
+                    if event_data and sns is not None:
                         log.warning('Timeout or network problem using Bot. Fallback back to SMS.')
                         # rebuild the message for SMS
-                        notification_message = self.build_message(timestamp=timestamp,
+                        notification_message = TBot.build_message(timestamp=timestamp,
                                                                   event_data=event_data,
                                                                   build_sms=True)
                         if 'device_params' not in event_data['trigger_output']:
@@ -1426,13 +1423,24 @@ class TBot(AppThread, Closable):
                             name_number = recipient.split(';')
                             log.info(f'SMS {name_number[0]} ({name_number[1]}) "{notification_message}"')
                             try:
-                                resp = self.sns.publish(PhoneNumber=name_number[1], Message=notification_message)
+                                resp = sns.publish(PhoneNumber=name_number[1], Message=notification_message)
                                 log.info(f'SMS sent: {resp!s}')
                             except Exception:
                                 log.exception(f'Cannot send SMS {name_number[1]}: {notification_message}')
                     else:
                         log.warning(f'No viable method to send notification for event: {notification_message}', exc_info=True)
                         threads.interruptable_sleep.wait(10)
+
+    def run(self):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(self.tbot_run(
+            t_app=self.t_app,
+            chat_id=self.chat_id,
+            closable=self,
+            zmq_socket=self.socket,
+            sns=self.sns))
+        loop.close()
 
 
 class MqttSubscriber(AppThread, Closable):
@@ -1917,7 +1925,7 @@ if __name__ == "__main__":
             sqs_listener = SQSListener()
         # configure Telegram bot
         telegram_application = setup_telegram()
-        telegram_bot = TBot()
+        telegram_bot = TBot(t_app=telegram_application)
         # start the nanny
         nanny = threading.Thread(
             daemon=True,
@@ -1931,7 +1939,6 @@ if __name__ == "__main__":
         # startup completed
         # back to INFO logging
         log.setLevel(logging.INFO)
-        event_loop = None
         try:
             log.info('Starting application threads...')
             # start the binders
@@ -1955,7 +1962,7 @@ if __name__ == "__main__":
             log.info('Startup complete.')
             telegram_application.run_polling()
             # hang around until something goes wrong
-            threads.interruptable_sleep.wait()
+            #threads.interruptable_sleep.wait()
         finally:
             die()
             message = "Shutting down {}..."
