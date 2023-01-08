@@ -1324,11 +1324,12 @@ class EventProcessor(MQConnection, Closable):
 
 class TBot(AppThread, Closable):
 
-    def __init__(self, t_app):
+    def __init__(self, t_app, event_loop):
         AppThread.__init__(self, name=self.__class__.__name__)
         Closable.__init__(self, connect_url=URL_WORKER_TELEGRAM_BOT)
 
         self.t_app = t_app
+        self.loop = event_loop
         self.chat_id = app_config.getint('telegram', 'chat_room_id')
         self.sns = None
         if app_config.getboolean('telegram', 'sms_fallback_enabled'):
@@ -1363,6 +1364,8 @@ class TBot(AppThread, Closable):
         return notification_message
 
     async def tbot_run(t_app: TelegramApp, chat_id, closable, zmq_socket, sns):
+        # FIXME
+        log.info('TBOT thread got callback for tbot_run')
         global ngrok_tunnel_url_with_bauth
         with exception_handler(closable=closable):
             while not threads.shutting_down:
@@ -1432,15 +1435,18 @@ class TBot(AppThread, Closable):
                         threads.interruptable_sleep.wait(10)
 
     def run(self):
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(self.tbot_run(
-            t_app=self.t_app,
-            chat_id=self.chat_id,
-            closable=self,
-            zmq_socket=self.socket,
-            sns=self.sns))
-        loop.close()
+        asyncio.run_coroutine_threadsafe(
+            TBot.tbot_run(
+                t_app=self.t_app,
+                chat_id=self.chat_id,
+                closable=self,
+                zmq_socket=self.socket,
+                sns=self.sns),
+            self.loop)
+        while not threads.shutting_down:
+            # FIXME
+            log.debug('DEBUG: tbot thread waiting around')
+            threads.interruptable_sleep.wait(10)
 
 
 class MqttSubscriber(AppThread, Closable):
@@ -1924,8 +1930,10 @@ if __name__ == "__main__":
         if app_config.getboolean('app', 'sns_control_enabled'):
             sqs_listener = SQSListener()
         # configure Telegram bot
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         telegram_application = setup_telegram()
-        telegram_bot = TBot(t_app=telegram_application)
+        telegram_bot = TBot(t_app=telegram_application, event_loop=loop)
         # start the nanny
         nanny = threading.Thread(
             daemon=True,
@@ -1961,6 +1969,7 @@ if __name__ == "__main__":
             nanny.start()
             log.info('Startup complete.')
             telegram_application.run_polling()
+            # FIXME
             # hang around until something goes wrong
             #threads.interruptable_sleep.wait()
         finally:
