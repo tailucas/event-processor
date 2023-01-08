@@ -14,6 +14,7 @@ import time
 import zmq
 
 from collections import OrderedDict
+from concurrent import futures
 from botocore.exceptions import EndpointConnectionError as bcece
 from datetime import datetime, timedelta
 from dateutil import tz
@@ -1364,8 +1365,6 @@ class TBot(AppThread, Closable):
         return notification_message
 
     async def tbot_run(t_app: TelegramApp, chat_id, closable, zmq_socket, sns):
-        # FIXME
-        log.info('TBOT thread got callback for tbot_run')
         global ngrok_tunnel_url_with_bauth
         with exception_handler(closable=closable):
             while not threads.shutting_down:
@@ -1435,7 +1434,7 @@ class TBot(AppThread, Closable):
                         threads.interruptable_sleep.wait(10)
 
     def run(self):
-        asyncio.run_coroutine_threadsafe(
+        outcome = asyncio.run_coroutine_threadsafe(
             TBot.tbot_run(
                 t_app=self.t_app,
                 chat_id=self.chat_id,
@@ -1443,10 +1442,7 @@ class TBot(AppThread, Closable):
                 zmq_socket=self.socket,
                 sns=self.sns),
             self.loop)
-        while not threads.shutting_down:
-            # FIXME
-            log.debug('DEBUG: tbot thread waiting around')
-            threads.interruptable_sleep.wait(10)
+        futures.wait(outcome)
 
 
 class MqttSubscriber(AppThread, Closable):
@@ -1878,18 +1874,6 @@ class FlaskThread(Thread):
         log.warning('Flask server shutdown complete: {}'.format(self.__class__.__name__))
 
 
-def setup_telegram() -> TelegramApp:
-    application = TelegramApp.builder().token(creds.telegram_bot_api_token).build()
-    application.add_handler(TelegramCommandHandler(command='report', callback=telegram_bot_cmd))
-    application.add_handler(TelegramCommandHandler(command='inputon', callback=telegram_bot_cmd))
-    application.add_handler(TelegramCommandHandler(command='inputoff', callback=telegram_bot_cmd))
-    application.add_handler(TelegramCommandHandler(command='outputson', callback=telegram_bot_cmd))
-    application.add_handler(TelegramCommandHandler(command='outputsoff', callback=telegram_bot_cmd))
-    application.add_handler(TelegramMessageHandler(filters.TEXT & ~filters.COMMAND, telegram_bot_echo))
-    application.add_error_handler(callback=telegram_error_handler)
-    return application
-
-
 if __name__ == "__main__":
     log.setLevel(logging.INFO)
     # ensure proper signal handling; must be main thread
@@ -1932,7 +1916,14 @@ if __name__ == "__main__":
         # configure Telegram bot
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        telegram_application = setup_telegram()
+        telegram_application = TelegramApp.builder().token(creds.telegram_bot_api_token).build()
+        telegram_application.add_handler(TelegramCommandHandler(command='report', callback=telegram_bot_cmd))
+        telegram_application.add_handler(TelegramCommandHandler(command='inputon', callback=telegram_bot_cmd))
+        telegram_application.add_handler(TelegramCommandHandler(command='inputoff', callback=telegram_bot_cmd))
+        telegram_application.add_handler(TelegramCommandHandler(command='outputson', callback=telegram_bot_cmd))
+        telegram_application.add_handler(TelegramCommandHandler(command='outputsoff', callback=telegram_bot_cmd))
+        telegram_application.add_handler(TelegramMessageHandler(filters.TEXT & ~filters.COMMAND, telegram_bot_echo))
+        telegram_application.add_error_handler(callback=telegram_error_handler)
         telegram_bot = TBot(t_app=telegram_application, event_loop=loop)
         # start the nanny
         nanny = threading.Thread(
@@ -1969,9 +1960,6 @@ if __name__ == "__main__":
             nanny.start()
             log.info('Startup complete.')
             telegram_application.run_polling()
-            # FIXME
-            # hang around until something goes wrong
-            #threads.interruptable_sleep.wait()
         finally:
             die()
             message = "Shutting down {}..."
