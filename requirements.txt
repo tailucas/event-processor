@@ -3,7 +3,7 @@ boto3
 influxdb-client
 paho-mqtt
 pylru
-python-telegram-bot==13.*
+python-telegram-bot
 pytz
 pyzmq
 requests
