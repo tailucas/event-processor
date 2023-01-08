@@ -1434,7 +1434,7 @@ class TBot(AppThread, Closable):
                         threads.interruptable_sleep.wait(10)
 
     def run(self):
-        asyncio.run_coroutine_threadsafe(
+        outcome = asyncio.run_coroutine_threadsafe(
             TBot.tbot_run(
                 t_app=self.t_app,
                 chat_id=self.chat_id,
@@ -1442,8 +1442,9 @@ class TBot(AppThread, Closable):
                 zmq_socket=self.socket,
                 sns=self.sns),
             self.loop)
-        while not threads.shutting_down:
-            threads.interruptable_sleep.wait(60)
+        exc = outcome.exception()
+        if exc is not None:
+            log.warning('Completed with exception.', exc)
 
 
 class MqttSubscriber(AppThread, Closable):
