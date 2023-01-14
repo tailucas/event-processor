@@ -696,7 +696,7 @@ async def telegram_bot_echo(update: Update, context: TelegramContextTypes.DEFAUL
                                                                         update.effective_message.text,
                                                                         update.effective_message.chat_id))
 
-        group_info = context.bot.get_chat(chat_id=app_config.getint('telegram', 'chat_room_id'))
+        group_info = await context.bot.get_chat(chat_id=app_config.getint('telegram', 'chat_room_id'))
         bot_response = f'I am in the [{group_info.title}]({group_info.invite_link}) group.'
         if ngrok_tunnel_url:
             dashboard_link = f'[Dashboard]({ngrok_tunnel_url})'
