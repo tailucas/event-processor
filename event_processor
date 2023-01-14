@@ -739,13 +739,9 @@ async def telegram_bot_cmd(update: Update, context: TelegramContextTypes.DEFAULT
 
 
 async def telegram_error_handler(update: Update, context: TelegramContextTypes.DEFAULT_TYPE) -> None:
-    try:
-        raise context.error
-    except (NetworkError, TelegramError):
-        log.warning(f'Problem with {context.bot}: {update}', exc_info=True)
-    except Exception:
-        log.exception('bot')
-        capture_exception()
+    log.exception(msg="Telegram Bot Exception while handling an update:", exc_info=context.error)
+    # capture for analysis later
+    capture_exception(error=context.error)
 
 
 class EventProcessor(MQConnection, Closable):
@@ -1367,6 +1363,7 @@ class TBot(AppThread, Closable):
     async def tbot_run(t_app: TelegramApp, chat_id, closable, zmq_socket, sns):
         global ngrok_tunnel_url_with_bauth
         with exception_handler(closable=closable):
+            log.info(f'Waiting for events to forward to Telegram bot on chat ID {chat_id}...')
             while not threads.shutting_down:
                 event = zmq_socket.recv_pyobj()
                 #TODO: fix me for small payloads
@@ -1432,6 +1429,10 @@ class TBot(AppThread, Closable):
                     else:
                         log.warning(f'No viable method to send notification for event: {notification_message}', exc_info=True)
                         threads.interruptable_sleep.wait(10)
+        try:
+            t_app.shutdown()
+        except Exception:
+            log.warning(f'Error shutting down Telegram application.', exc_info=True)
 
     def run(self):
         outcome = asyncio.run_coroutine_threadsafe(
@@ -1975,4 +1976,12 @@ if __name__ == "__main__":
                 # stop sending heartbeats as leader
                 leader_election.stop()
             zmq_term()
-    log.info('Shutdown complete.')
+    exit_code = 0
+    exit_cause = threads.trigger_exception
+    exit_message = f'Shutdown complete.'
+    if exit_cause is not None:
+        exit_message += f' Exception was {exit_cause.__name__}.'
+        exit_code = 1
+    exit_message += f' Exiting with code {exit_code}.'
+    log.info(exit_message)
+    exit(code=exit_code)
