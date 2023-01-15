@@ -12,6 +12,7 @@ import simplejson as json
 import threading
 import time
 import zmq
+import zmq.asyncio
 
 from collections import OrderedDict
 from concurrent import futures
@@ -91,7 +92,7 @@ from lib.leader import Leader
 from lib.process import SignalHandler, exec_cmd_log
 from lib.rabbit import MQConnection, ZMQListener
 from lib import threads
-from lib.threads import thread_nanny, die
+from lib.threads import thread_nanny, die, bye
 from lib.app import AppThread, ZmqRelay
 from lib.zmq import zmq_term, Closable
 from lib.handler import exception_handler
@@ -1319,18 +1320,14 @@ class EventProcessor(MQConnection, Closable):
             db.session.commit()
 
 
-class TBot(AppThread, Closable):
+class TBot(AppThread):
 
-    def __init__(self, t_app, event_loop):
+    def __init__(self, t_app, event_loop, chat_id, sns_fallback=False):
         AppThread.__init__(self, name=self.__class__.__name__)
-        Closable.__init__(self, connect_url=URL_WORKER_TELEGRAM_BOT)
-
         self.t_app = t_app
         self.loop = event_loop
-        self.chat_id = app_config.getint('telegram', 'chat_room_id')
-        self.sns = None
-        if app_config.getboolean('telegram', 'sms_fallback_enabled'):
-            self.sns = boto3.client('sns')
+        self.chat_id = chat_id
+        self.sns_fallback = sns_fallback
 
     def build_message(timestamp, event_data, max_length=160, build_sms=False):
         global ngrok_tunnel_url
@@ -1360,12 +1357,15 @@ class TBot(AppThread, Closable):
         notification_message += footer
         return notification_message
 
-    async def tbot_run(t_app: TelegramApp, chat_id, closable, zmq_socket, sns):
+    async def tbot_run(t_app: TelegramApp, chat_id, sns_fallback):
         global ngrok_tunnel_url_with_bauth
-        with exception_handler(closable=closable):
+        zmq_ctx = zmq.asyncio.Context()
+        zmq_socket = zmq_ctx.socket(zmq.PULL)
+        zmq_socket.bind(URL_WORKER_TELEGRAM_BOT)
+        with exception_handler(shutdown_on_error=True, and_raise=False):
             log.info(f'Waiting for events to forward to Telegram bot on chat ID {chat_id}...')
             while not threads.shutting_down:
-                event = zmq_socket.recv_pyobj()
+                event = await zmq_socket.recv_pyobj()
                 #TODO: fix me for small payloads
                 #log.debug(event)
                 if 'timestamp' in event:
@@ -1409,7 +1409,8 @@ class TBot(AppThread, Closable):
                                               text=notification_message,
                                               parse_mode='Markdown')
                 except (TimedOut, NetworkError, RetryAfter):
-                    if event_data and sns is not None:
+                    if event_data and sns_fallback:
+                        sns = boto3.client('sns')
                         log.warning('Timeout or network problem using Bot. Fallback back to SMS.')
                         # rebuild the message for SMS
                         notification_message = TBot.build_message(timestamp=timestamp,
@@ -1429,6 +1430,11 @@ class TBot(AppThread, Closable):
                     else:
                         log.warning(f'No viable method to send notification for event: {notification_message}', exc_info=True)
                         threads.interruptable_sleep.wait(10)
+        log.info('Closing ZMQ async socket and Telegram application.')
+        try:
+            zmq_socket.close()
+        except ZMQError:
+            log.warning(f'Error closing ZMQ socket.', exc_info=True)
         try:
             t_app.shutdown()
         except Exception:
@@ -1439,9 +1445,7 @@ class TBot(AppThread, Closable):
             TBot.tbot_run(
                 t_app=self.t_app,
                 chat_id=self.chat_id,
-                closable=self,
-                zmq_socket=self.socket,
-                sns=self.sns),
+                sns_fallback=self.sns_fallback),
             self.loop)
         exc = outcome.exception()
         if exc is not None:
@@ -1927,7 +1931,11 @@ if __name__ == "__main__":
         telegram_application.add_handler(TelegramCommandHandler(command='outputsoff', callback=telegram_bot_cmd))
         telegram_application.add_handler(TelegramMessageHandler(filters.TEXT & ~filters.COMMAND, telegram_bot_echo))
         telegram_application.add_error_handler(callback=telegram_error_handler)
-        telegram_bot = TBot(t_app=telegram_application, event_loop=loop)
+        telegram_bot = TBot(
+            t_app=telegram_application,
+            event_loop=loop,
+            chat_id=app_config.getint('telegram', 'chat_room_id'),
+            sns_fallback=app_config.getboolean('telegram', 'sns_fallback_enabled'))
         # start the nanny
         nanny = threading.Thread(
             daemon=True,
@@ -1946,13 +1954,13 @@ if __name__ == "__main__":
             # start the binders
             event_processor.start()
             heartbeat_filter.start()
+            telegram_bot.start()
             # start the connectors
             event_source_discovery.start()
             mqtt_subscriber.start()
             auto_scheduler.start()
             if sqs_listener:
                 sqs_listener.start()
-            telegram_bot.start()
             mq_listener.start()
             # Flask UI
             server.start()
@@ -1976,12 +1984,4 @@ if __name__ == "__main__":
                 # stop sending heartbeats as leader
                 leader_election.stop()
             zmq_term()
-    exit_code = 0
-    exit_cause = threads.trigger_exception
-    exit_message = f'Shutdown complete.'
-    if exit_cause is not None:
-        exit_message += f' Exception was {exit_cause.__name__}.'
-        exit_code = 1
-    exit_message += f' Exiting with code {exit_code}.'
-    log.info(exit_message)
-    exit(code=exit_code)
+        bye()
