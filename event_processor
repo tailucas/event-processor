@@ -1359,7 +1359,9 @@ class TBot(AppThread):
 
     async def tbot_run(t_app: TelegramApp, chat_id, sns_fallback):
         global ngrok_tunnel_url_with_bauth
-        zmq_ctx = zmq.asyncio.Context()
+        # FIXME: https://github.com/zeromq/pyzmq/issues/940
+        from lib.zmq import zmq_context
+        zmq_ctx = zmq.asyncio.Context.shadow(zmq_context.underlying)
         zmq_socket = zmq_ctx.socket(zmq.PULL)
         zmq_socket.bind(URL_WORKER_TELEGRAM_BOT)
         with exception_handler(shutdown_on_error=True, and_raise=False):
