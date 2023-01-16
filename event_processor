@@ -505,7 +505,7 @@ def show_config():
 def input_config():
     saved_device_id = None
     if request.method == 'POST':
-        saved_device_id = int(request.form['device_key'])
+        saved_device_id = int(request.form['device_id'])
         input_cfg = InputConfig.query.filter_by(id=saved_device_id).first()
         meter_cfg = None
         if input_cfg.device_type == 'meter':
@@ -670,7 +670,7 @@ def output_link():
 def output_config():
     saved_device_id = None
     if request.method == 'POST':
-        saved_device_id = int(request.form['device_key'])
+        saved_device_id = int(request.form['device_id'])
         output_config = OutputConfig.query.filter_by(id=saved_device_id).first()
         device_params = request.form['device_params'].strip()
         if len(device_params) > 0:
