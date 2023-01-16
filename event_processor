@@ -538,52 +538,53 @@ def input_config():
             customized = True
         else:
             input_cfg.trigger_window = None
-        if request.form.get('meter_low_limit', None) and len(request.form['meter_low_limit']) > 0:
-            meter_cfg.meter_low_limit = int(request.form['meter_low_limit'])
-            customized = True
-        else:
-            meter_cfg.meter_low_limit = None
-        if request.form.get('meter_high_limit', None) and len(request.form['meter_high_limit']) > 0:
-            meter_cfg.meter_high_limit = int(request.form['meter_high_limit'])
-            customized = True
-        else:
-            meter_cfg.meter_high_limit = None
-        if request.form.get('meter_reset_value', None) and len(request.form['meter_reset_value']) > 0:
-            meter_cfg.meter_reset_value = int(request.form['meter_reset_value'])
-            customized = True
-        else:
-            meter_cfg.meter_reset_value = None
-        if input_cfg.device_key in request.form.getlist('meter_reset_additive'):
-            meter_cfg.meter_reset_additive = True
-            customized = True
-        else:
-            meter_cfg.meter_reset_additive = None
-        if request.form.get('meter_iot_topic', None) and len(request.form['meter_iot_topic'].strip()) > 0:
-            meter_cfg.meter_iot_topic = request.form['meter_iot_topic'].strip()
-            customized = True
-        else:
-            meter_cfg.meter_iot_topic = None
-        if request.form.get('meter_reading_unit', None) and len(request.form['meter_reading_unit'].strip()) > 0:
-            meter_cfg.meter_reading_unit = request.form['meter_reading_unit'].strip()
-            customized = True
-        else:
-            meter_cfg.meter_reading_unit = None
-        if request.form.get('meter_reading_unit_factor', None) and \
-                len(request.form['meter_reading_unit_factor']) > 0:
-            meter_reading_unit_factor = int(request.form['meter_reading_unit_factor'])
-            if 1 <= meter_reading_unit_factor <= 1000000000 and (meter_reading_unit_factor % 10 == 0):
-                meter_cfg.meter_reading_unit_factor = meter_reading_unit_factor
+        if meter_cfg:
+            if request.form.get('meter_low_limit', None) and len(request.form['meter_low_limit']) > 0:
+                meter_cfg.meter_low_limit = int(request.form['meter_low_limit'])
                 customized = True
-        else:
-            meter_cfg.meter_reading_unit_factor = None
-        if request.form.get('meter_reading_unit_precision', None) and len(
-                request.form['meter_reading_unit_precision']) > 0:
-            meter_reading_unit_precision = int(request.form['meter_reading_unit_precision'])
-            if 1 <= meter_reading_unit_precision <= 9:
-                meter_cfg.meter_reading_unit_precision = meter_reading_unit_precision
+            else:
+                meter_cfg.meter_low_limit = None
+            if request.form.get('meter_high_limit', None) and len(request.form['meter_high_limit']) > 0:
+                meter_cfg.meter_high_limit = int(request.form['meter_high_limit'])
                 customized = True
-        else:
-            meter_cfg.meter_reading_unit_precision = None
+            else:
+                meter_cfg.meter_high_limit = None
+            if request.form.get('meter_reset_value', None) and len(request.form['meter_reset_value']) > 0:
+                meter_cfg.meter_reset_value = int(request.form['meter_reset_value'])
+                customized = True
+            else:
+                meter_cfg.meter_reset_value = None
+            if input_cfg.device_key in request.form.getlist('meter_reset_additive'):
+                meter_cfg.meter_reset_additive = True
+                customized = True
+            else:
+                meter_cfg.meter_reset_additive = None
+            if request.form.get('meter_iot_topic', None) and len(request.form['meter_iot_topic'].strip()) > 0:
+                meter_cfg.meter_iot_topic = request.form['meter_iot_topic'].strip()
+                customized = True
+            else:
+                meter_cfg.meter_iot_topic = None
+            if request.form.get('meter_reading_unit', None) and len(request.form['meter_reading_unit'].strip()) > 0:
+                meter_cfg.meter_reading_unit = request.form['meter_reading_unit'].strip()
+                customized = True
+            else:
+                meter_cfg.meter_reading_unit = None
+            if request.form.get('meter_reading_unit_factor', None) and \
+                    len(request.form['meter_reading_unit_factor']) > 0:
+                meter_reading_unit_factor = int(request.form['meter_reading_unit_factor'])
+                if 1 <= meter_reading_unit_factor <= 1000000000 and (meter_reading_unit_factor % 10 == 0):
+                    meter_cfg.meter_reading_unit_factor = meter_reading_unit_factor
+                    customized = True
+            else:
+                meter_cfg.meter_reading_unit_factor = None
+            if request.form.get('meter_reading_unit_precision', None) and len(
+                    request.form['meter_reading_unit_precision']) > 0:
+                meter_reading_unit_precision = int(request.form['meter_reading_unit_precision'])
+                if 1 <= meter_reading_unit_precision <= 9:
+                    meter_cfg.meter_reading_unit_precision = meter_reading_unit_precision
+                    customized = True
+            else:
+                meter_cfg.meter_reading_unit_precision = None
         input_cfg.customized = customized
         db.session.add(input_cfg)
         if meter_cfg:
