@@ -1799,6 +1799,7 @@ class EventSourceDiscovery(AppThread, Closable):
         self._mdash_api_key = creds.mdash_api_key
         self._mdash_devices_url = app_config.get('mdash', 'base_url')
         self._app_config_mqtt_pub_topic = app_config.get('mdash', 'app_config_mqtt_pub_topic')
+        self._device_tags = app_config.get('mdash', 'device_tags').split(',')
 
     def run(self):
         self.processor.connect(URL_WORKER_APP)
@@ -1809,17 +1810,34 @@ class EventSourceDiscovery(AppThread, Closable):
         with exception_handler(closable=self):
             # register MQTT inputs
             mdash_devices = None
-            log.info('Requesting mDash device listing from {}'.format(self._mdash_devices_url))
+            log.info(f'Requesting mDash device listing from {self._mdash_devices_url}')
             # get listing of all applications
             mdash_devices = requests.get(
                 url=self._mdash_devices_url,
                 params={
                     "access_token": self._mdash_api_key
                 }).json()
-            log.info('mDash returns {} devices.'.format(len(mdash_devices)))
+            log.info(f'mDash returns {len(mdash_devices)} devices.')
             for device in mdash_devices:
                 device_id = device['id']
-                log.info('Retrieving mDash information for device {}'.format(device_id))
+                device_online = device['online']
+                if 'shadow' not in device.keys():
+                    log.warning(f'Ignoring mDash device {device_id} with missing shadow configuration.')
+                    continue
+                device_shadow = device['shadow']
+                if 'tags' not in device_shadow or 'labels' not in device_shadow['tags']:
+                    log.warning(f'mDash device {device_id} is missing tagging information for inclusion.')
+                    continue
+                tag_supported = False
+                device_tags = device_shadow['tags']['labels'].split(',')
+                for device_tag in device_tags:
+                    if device_tag in self._device_tags:
+                        tag_supported = True
+                        break
+                if not tag_supported:
+                    log.warning(f'mDash device {device_id} ({device_tags=}) not in supported tags: {self._device_tags!s}.')
+                    continue
+                log.info(f'Retrieving mDash information for device {device_id} ({device_tags!s}) ({device_online=})')
                 # retrieve specific configuration item
                 mqtt_pub_topic = requests.post(
                     url='{}/{}/rpc/Config.Get'.format(
@@ -1832,7 +1850,7 @@ class EventSourceDiscovery(AppThread, Closable):
                         "access_token": self._mdash_api_key
                     })
                 # strip double-quotes from topic name
-                mqtt_pub_topic_name = mqtt_pub_topic.text.replace('"', '')
+                mqtt_pub_topic_name = mqtt_pub_topic.text.replace('"', '').rstrip()
                 log.info(f"MQTT topic for {device_id} is '{mqtt_pub_topic_name}'")
                 self.processor.send_pyobj({'register_mqtt_origin': {mqtt_pub_topic_name: device_id}})
 
