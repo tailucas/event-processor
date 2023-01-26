@@ -1,11 +1,12 @@
-#!/bin/bash
+#!/usr/bin/env sh
 set -eu
 set -o pipefail
 
 # ngrok
-/opt/app/ngrok authtoken --config /opt/app/ngrok.yml $(/opt/app/bin/python /opt/app/pylib/cred_tool <<< '{"s": {"opitem": "ngrok", "opfield": ".password"}}')
-FRONTEND_USER="$(/opt/app/bin/python /opt/app/pylib/cred_tool <<< '{"s": {"opitem": "Frontend", "opfield": ".username"}}')"
-FRONTEND_PASSWORD="$(/opt/app/bin/python /opt/app/pylib/cred_tool <<< '{"s": {"opitem": "Frontend", "opfield": ".password"}}')"
+NGROK_AUTH_TOKEN="$(echo '{"s": {"opitem": "ngrok", "opfield": ".password"}}'|/opt/app/bin/python /opt/app/pylib/cred_tool)"
+/opt/app/ngrok authtoken --config /opt/app/ngrok.yml "${NGROK_AUTH_TOKEN}"
+FRONTEND_USER="$(echo '{"s": {"opitem": "Frontend", "opfield": ".username"}}' | /opt/app/bin/python /opt/app/pylib/cred_tool)"
+FRONTEND_PASSWORD="$(echo '{"s": {"opitem": "Frontend", "opfield": ".password"}}' | /opt/app/bin/python /opt/app/pylib/cred_tool)"
 cat /opt/app/config/ngrok_frontend.yml \
   | sed 's@APP_FLASK_HTTP_PORT@'"$APP_FLASK_HTTP_PORT"'@' \
   | sed 's@FRONTEND_USER@'"$FRONTEND_USER"'@' \

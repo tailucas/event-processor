@@ -1,8 +1,7 @@
-#!/usr/bin/env bash
+#!/usr/bin/env sh
 set -e
 set -o pipefail
 
-. <(cat /opt/app/cron.env | sed 's/^/export /')
 # pip-installed aws cli
 . /opt/app/bin/activate
 
@@ -13,9 +12,9 @@ fi
 BACKUP_FILENAME="${APP_NAME}${BACKUP_FILENAME_SUFFIX}.db"
 
 AKID="{\"s\": {\"opitem\": \"AWS\", \"opfield\": \"${AWS_DEFAULT_REGION}.akid\"}}"
-export AWS_ACCESS_KEY_ID="$(/opt/app/bin/python /opt/app/pylib/cred_tool <<< "${AKID}")"
+export AWS_ACCESS_KEY_ID="$(echo "${AKID}" | /opt/app/bin/python /opt/app/pylib/cred_tool)"
 SAK="{\"s\": {\"opitem\": \"AWS\", \"opfield\": \"${AWS_DEFAULT_REGION}.sak\"}}"
-export AWS_SECRET_ACCESS_KEY="$(/opt/app/bin/python /opt/app/pylib/cred_tool <<< "${SAK}")"
+export AWS_SECRET_ACCESS_KEY="$(echo "${SAK}" | /opt/app/bin/python /opt/app/pylib/cred_tool)"
 if [ -f "${TABLESPACE_PATH}" ]; then
   # only if currently the leader and leader election is enabled
   if [ -f "/data/is_leader" ] || [ "${LEADER_ELECTION_ENABLED:-false}" == "false" ]; then
