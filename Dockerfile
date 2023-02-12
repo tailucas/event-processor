@@ -1,4 +1,4 @@
-FROM tailucas/base-app:20230126_2
+FROM tailucas/base-app:20230212_3
 # for system/site packages
 USER root
 # system setup
@@ -10,8 +10,6 @@ COPY backup_db.sh .
 # cron jobs
 RUN rm -f ./config/cron/base_job
 COPY config/cron/backup_db ./config/cron/
-# override dependencies
-COPY requirements.txt .
 # apply override
 RUN /opt/app/app_setup.sh
 # ngrok
@@ -24,10 +22,10 @@ COPY config/app.conf ./config/app.conf
 COPY config/ngrok_frontend.yml ./config/ngrok_frontend.yml
 COPY static ./static
 COPY templates ./templates
-# remove base_app
-RUN rm -f /opt/app/base_app
+COPY poetry.lock pyproject.toml ./
+RUN /opt/app/python_setup.sh
 # add the project application
-COPY event_processor .
+COPY app/__main.py__ ./app/
 # override entrypoint
 COPY app_entrypoint.sh .
 CMD ["/opt/app/entrypoint.sh"]

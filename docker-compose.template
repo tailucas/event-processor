@@ -1,6 +1,7 @@
 version: "3.8"
 services:
   app:
+    image: "tailucas/event-processor"
     build: .
     restart: unless-stopped
     logging:

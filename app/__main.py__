@@ -51,19 +51,18 @@ from paho.mqtt.client import MQTT_ERR_SUCCESS, MQTT_ERR_NO_CONN
 import os.path
 
 # setup builtins used by pylib init
-app_name = Path(__file__).stem
-builtins.APP_NAME = app_name
 builtins.SENTRY_EXTRAS = [FlaskIntegration()]
 AWS_REGION = os.environ['AWS_DEFAULT_REGION']
 influx_creds_section = 'local'
+from . import APP_NAME
 class CredsConfig:
-    sentry_dsn: f'opitem:"Sentry" opfield:{app_name}.dsn' = None # type: ignore
+    sentry_dsn: f'opitem:"Sentry" opfield:{APP_NAME}.dsn' = None # type: ignore
     cronitor_token: f'opitem:"cronitor" opfield:.password' = None # type: ignore
     flask_secret_key: f'opitem:"Frontend" opfield:Flask.secret_key' = None # type: ignore
     flask_basic_auth_username: f'opitem:"Frontend" opfield:.username' = None # type: ignore
     flask_basic_auth_password: f'opitem:"Frontend" opfield:.password' = None # type: ignore
     mdash_api_key: f'opitem:"mdash" opfield:.password' = None # type: ignore
-    telegram_bot_api_token: f'opitem:"Telegram" opfield:{app_name}.token' = None # type: ignore
+    telegram_bot_api_token: f'opitem:"Telegram" opfield:{APP_NAME}.token' = None # type: ignore
     aws_akid: f'opitem:"AWS" opfield:{AWS_REGION}.akid' = None # type: ignore
     aws_sak: f'opitem:"AWS" opfield:{AWS_REGION}.sak' = None # type: ignore
     influxdb_org: f'opitem:"InfluxDB" opfield:{influx_creds_section}.org' = None # type: ignore
@@ -75,27 +74,27 @@ class CredsConfig:
 # instantiate class
 builtins.creds_config = CredsConfig()
 
-from lib import app_config, \
+from pylib import app_config, \
     creds, \
     device_name, \
     device_name_base, \
     log, \
     log_handler
 
-from lib.datetime import is_list, \
+from pylib.datetime import is_list, \
     make_timestamp, \
     make_unix_timestamp, \
     parse_datetime, \
     ISO_DATE_FORMAT
-from lib.aws.metrics import post_count_metric
-from lib.leader import Leader
-from lib.process import SignalHandler, exec_cmd_log
-from lib.rabbit import MQConnection, ZMQListener
-from lib import threads
-from lib.threads import thread_nanny, die, bye
-from lib.app import AppThread, ZmqRelay
-from lib.zmq import zmq_term, Closable
-from lib.handler import exception_handler
+from pylib.aws.metrics import post_count_metric
+from pylib.leader import Leader
+from pylib.process import SignalHandler, exec_cmd_log
+from pylib.rabbit import MQConnection, ZMQListener
+from pylib import threads
+from pylib.threads import thread_nanny, die, bye
+from pylib.app import AppThread, ZmqRelay
+from pylib.zmq import zmq_term, Closable
+from pylib.handler import exception_handler
 
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import ASYNCHRONOUS
@@ -107,7 +106,7 @@ from influxdb_client.client.write_api import ASYNCHRONOUS
 ignore_logger('asyncio')
 
 user_tz = timezone(app_config.get('app', 'user_tz'))
-flask_app = Flask(app_name)
+flask_app = Flask(APP_NAME)
 db_tablespace = app_config.get('sqlite', 'tablespace_path')
 flask_app.config["SQLALCHEMY_DATABASE_URI"] = f'sqlite:///{db_tablespace}'
 flask_app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
@@ -853,7 +852,7 @@ class EventProcessor(MQConnection, Closable):
         try:
             self.influxdb_rw.write(
                 bucket=bucket,
-                record=Point(measurement_name).tag("application", app_name).tag("device", device_name_base).field(field_name, field_value))
+                record=Point(measurement_name).tag("application", APP_NAME).tag("device", device_name_base).field(field_name, field_value))
         except Exception:
             log.warning(f'Unable to post measurement {measurement_name} to InfluxDB.', exc_info=True)
 
@@ -1924,7 +1923,7 @@ class FlaskThread(Thread):
         log.warning('Flask server shutdown complete: {}'.format(self.__class__.__name__))
 
 
-if __name__ == "__main__":
+def main():
     log.setLevel(logging.INFO)
     # ensure proper signal handling; must be main thread
     signal_handler = SignalHandler()
@@ -1981,7 +1980,7 @@ if __name__ == "__main__":
         # back to INFO logging
         log.setLevel(logging.INFO)
         try:
-            log.info('Starting application threads...')
+            log.info(f'Starting {APP_NAME} threads...')
             # start the binders
             event_processor.start()
             heartbeat_filter.start()
@@ -2019,3 +2018,7 @@ if __name__ == "__main__":
                 leader_election.stop()
             zmq_term()
         bye()
+
+
+if __name__ == "__main__":
+    main()
