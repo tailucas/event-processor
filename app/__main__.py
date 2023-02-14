@@ -101,8 +101,7 @@ from influxdb_client.client.write_api import ASYNCHRONOUS
 
 
 # Reduce Sentry noise
-# FIXME: unfilter after testing PTBv20
-#ignore_logger('telegram.ext')
+ignore_logger('telegram.ext')
 ignore_logger('asyncio')
 
 user_tz = timezone(app_config.get('app', 'user_tz'))
@@ -741,9 +740,8 @@ async def telegram_bot_cmd(update: Update, context: TelegramContextTypes.DEFAULT
 
 
 async def telegram_error_handler(update: Update, context: TelegramContextTypes.DEFAULT_TYPE) -> None:
-    log.exception(msg="Telegram Bot Exception while handling an update:", exc_info=context.error)
-    # capture for analysis later
-    capture_exception(error=context.error)
+    # do not capture because there's nothing to handle
+    log.warning(msg="Telegram Bot Exception while handling an update:", exc_info=context.error)
 
 
 class EventProcessor(MQConnection, Closable):
