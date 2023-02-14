@@ -124,7 +124,6 @@ URL_WORKER_TELEGRAM_BOT = 'inproc://telegram-bot'
 URL_WORKER_MQTT_PUBLISH = 'inproc://mqtt-publish'
 URL_WORKER_AUTO_SCHEDULER = 'inproc://auto-scheduler'
 
-event_processor = None
 ngrok_tunnel_url = None
 ngrok_tunnel_url_with_bauth = None
 
@@ -771,8 +770,6 @@ class EventProcessor(MQConnection, Closable):
 
         self._output_type_handlers = None
 
-        self.flash_info = True
-
         self._max_message_validity_seconds = None
 
         self._device_event_lru = lrucache(100)
@@ -954,7 +951,6 @@ class EventProcessor(MQConnection, Closable):
                         if 'auto-scheduler' == event_origin:
                             device_key = event_data['device_key']
                             device_enable = event_data['device_state']
-                            event_processor.flash_info = False
                             log.info(f'Updating device {device_key}; enable: {device_enable}')
                             input_config = InputConfig.query.filter_by(device_key=device_key).first()
                             input_config.device_enabled = device_enable
@@ -1355,7 +1351,7 @@ class TBot(AppThread):
     async def tbot_run(t_app: TelegramApp, chat_id, sns_fallback):
         global ngrok_tunnel_url_with_bauth
         # FIXME: https://github.com/zeromq/pyzmq/issues/940
-        from lib.zmq import zmq_context
+        from pylib.zmq import zmq_context
         zmq_ctx = zmq.asyncio.Context.shadow(zmq_context.underlying)
         zmq_socket = zmq_ctx.socket(zmq.PULL)
         zmq_socket.bind(URL_WORKER_TELEGRAM_BOT)
