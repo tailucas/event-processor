@@ -3,10 +3,10 @@ set -eu
 set -o pipefail
 
 # ngrok
-NGROK_AUTH_TOKEN="$(echo '{"s": {"opitem": "ngrok", "opfield": ".password"}}'|/opt/app/bin/python /opt/app/pylib/cred_tool)"
+NGROK_AUTH_TOKEN="$(echo '{"s": {"opitem": "ngrok", "opfield": ".password"}}'| poetry run /opt/app/pylib/cred_tool)"
 /opt/app/ngrok authtoken --config /opt/app/ngrok.yml "${NGROK_AUTH_TOKEN}"
-FRONTEND_USER="$(echo '{"s": {"opitem": "Frontend", "opfield": ".username"}}' | /opt/app/bin/python /opt/app/pylib/cred_tool)"
-FRONTEND_PASSWORD="$(echo '{"s": {"opitem": "Frontend", "opfield": ".password"}}' | /opt/app/bin/python /opt/app/pylib/cred_tool)"
+FRONTEND_USER="$(echo '{"s": {"opitem": "Frontend", "opfield": ".username"}}' | poetry run /opt/app/pylib/cred_tool)"
+FRONTEND_PASSWORD="$(echo '{"s": {"opitem": "Frontend", "opfield": ".password"}}' | poetry run /opt/app/pylib/cred_tool)"
 cat /opt/app/config/ngrok_frontend.yml \
   | sed 's@APP_FLASK_HTTP_PORT@'"$APP_FLASK_HTTP_PORT"'@' \
   | sed 's@FRONTEND_USER@'"$FRONTEND_USER"'@' \
