@@ -463,7 +463,7 @@ def index():
                            meters=meters,
                            server_context=device_name,
                            render_timestamp=render_timestamp,
-                           healthchecks_badges=event_processor.healthchecks_badge_uris)
+                           healthchecks_badges=app_config.get('app', 'healthchecks_badges').split(','))
 
 
 @flask_app.route('/metrics', methods=['GET', 'POST'])
@@ -788,8 +788,6 @@ class EventProcessor(MQConnection, Closable):
         self._metric_last_posted_meter_value = 0
         self._metric_meter_value_accumulator = 0
         self._metric_last_posted_register_value = 0
-
-        self.healthchecks_badge_uris = app_config.get('app', 'healthchecks_badges').split(',')
 
         self.influxdb = None
         self.influxdb_rw = None
