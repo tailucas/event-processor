@@ -101,7 +101,7 @@ from influxdb_client.client.write_api import ASYNCHRONOUS
 
 
 # Reduce Sentry noise
-ignore_logger('telegram.ext')
+ignore_logger('telegram.ext._updater')
 ignore_logger('asyncio')
 
 user_tz = timezone(app_config.get('app', 'user_tz'))
