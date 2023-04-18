@@ -1,6 +1,7 @@
 #!/usr/bin/env sh
 set -e
 set -o pipefail
+cd "$(dirname "$0")"
 
 BACKUP_FILENAME_SUFFIX=""
 if [ -n "${1:-}" ]; then
