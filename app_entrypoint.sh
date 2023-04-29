@@ -3,7 +3,7 @@ set -eu
 set -o pipefail
 
 # ngrok
-NGROK_AUTH_TOKEN="$(echo '{"s": {"opitem": "ngrok", "opfield": ".password"}}'| poetry run /opt/app/pylib/cred_tool)"
+NGROK_AUTH_TOKEN="$(echo '{"s": {"opitem": "ngrok", "opfield": "event_processor.token"}}'| poetry run /opt/app/pylib/cred_tool)"
 /opt/app/ngrok authtoken --config /opt/app/ngrok.yml "${NGROK_AUTH_TOKEN}"
 FRONTEND_USER="$(echo '{"s": {"opitem": "Frontend", "opfield": ".username"}}' | poetry run /opt/app/pylib/cred_tool)"
 FRONTEND_PASSWORD="$(echo '{"s": {"opitem": "Frontend", "opfield": ".password"}}' | poetry run /opt/app/pylib/cred_tool)"
@@ -19,13 +19,16 @@ unset FRONTEND_PASSWORD
 # check and opportunistically upgrade configuration
 /opt/app/ngrok config check --config /opt/app/ngrok.yml || ./opt/app/ngrok config upgrade --config /opt/app/ngrok.yml
 /opt/app/ngrok config check --config /opt/app/ngrok_frontend.yml || ./opt/app/ngrok config upgrade --config /opt/app/ngrok_frontend.yml
-cat << EOF >> /opt/app/supervisord.conf
+
+if [ "${NGROK_ENABLED:-}" = "true" ]; then
+  cat << EOF >> /opt/app/supervisord.conf
 [program:ngrok]
 command=/opt/app/ngrok start --config /opt/app/ngrok.yml --config /opt/app/ngrok_frontend.yml frontend
 autorestart=false
 startretries=0
 stderr_logfile=/dev/stderr
 EOF
+fi
 
 # Refresh local SQLite
 /opt/app/backup_db.sh
