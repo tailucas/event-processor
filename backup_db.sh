@@ -18,11 +18,11 @@ if [ -f "${TABLESPACE_PATH}" ]; then
   if [ -f "/data/is_leader" ] || [ "${LEADER_ELECTION_ENABLED:-false}" == "false" ]; then
     # create backup process
     sqlite3 "${TABLESPACE_PATH}" ".backup /tmp/${APP_NAME}.db"
-    poetry run aws s3 cp "/tmp/${APP_NAME}.db" "s3://tailucas-automation/${BACKUP_FILENAME}" --only-show-errors
+    poetry run aws s3 cp "/tmp/${APP_NAME}.db" "s3://${BACKUP_S3_BUCKET}/${BACKUP_FILENAME}" --only-show-errors
   fi
 else
   # only if the tablespace does not exist
-  poetry run aws s3 cp "s3://tailucas-automation/${APP_NAME}.db" "${TABLESPACE_PATH}" --only-show-errors
+  poetry run aws s3 cp "s3://${BACKUP_S3_BUCKET}/${APP_NAME}.db" "${TABLESPACE_PATH}" --only-show-errors
 fi
 unset AWS_ACCESS_KEY_ID
 unset AWS_SECRET_ACCESS_KEY
