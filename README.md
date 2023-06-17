@@ -90,44 +90,44 @@ Beyond the Python dependencies defined in the [Poetry configuration](pyproject.t
 
 | Variable | Description | Example |
 | --- | --- | --- |
-| APP_FLASK_DEBUG | Web server debug | `false` |
-| APP_FLASK_HTTP_PORT | Web server port | `8080` |
-| APP_NAME | Application name used in logging and metrics | `event_processor` |
-| AWS_CONFIG_FILE | AWS client configuration file | `/home/app/.aws/config` |
-| AWS_DEFAULT_REGION | AWS region | `us-east-1` |
-| BACKUP_S3_BUCKET | Bucket name for database backup | *project specific* |
-| CRONITOR_MONITOR_KEY | [Cronitor][cronitor-url] configuration key | *project specific* |
-| DEVICE_NAME | Used for container host name. | `event-processor-a` |
-| HC_PING_URL | [Healthchecks][healthchecks-url] URL | *project specific* |
-| HEALTHCHECKS_BADGE_CSV | [Healthchecks][healthchecks-url] badge | *project specific* |
-| INFLUXDB_BUCKET | InfluxDB bucket for meter metrics | `meter` |
-| LEADER_ELECTION_ENABLED | Use leader election for other instances of this application | `false` |
-| MDASH_API_BASE_URL | mDash discovery API | `https://mdash.net/api/v2/devices` |
-| MDASH_APP_CONFIG_MQTT_PUB_TOPIC | Application publish topic | `app.mqtt_pub_topic` |
-| MDASH_DEVICE_TAGS_CSV | Only register devices with these mDash tags | `meter,sensor` |
-| MQTT_METER_RESET_TOPIC | Topic to control reset of meter register | `meter/electricity/control` |
-| MQTT_PUB_TOPIC_CSV | MQTT publication topics | `meter/electricity/#,sensor/garage/#` |
-| MQTT_SERVER_ADDRESS | IP address of MQTT broker | *network specific* |
-| NGROK_CLIENT_API_PORT | ngrok management port | `4040` |
-| NGROK_ENABLED | Create ngrok tunnel with container | `true` |
-| NGROK_TUNNEL_NAME | Tunnel name in configuration | `frontend` |
-| OP_CONNECT_SERVER | 1Password connect server URL | *network specific* |
-| OP_CONNECT_TOKEN | 1Password connect server token | *project specific* |
-| OP_VAULT | 1Password vault | *project specific* |
-| OUTPUT_TYPE_BLUETOOTH | Output type representing Bluetooth L2 ping | `l2ping` |
-| OUTPUT_TYPE_SNAPSHOT | Output type for snapshots | `Camera` |
-| OUTPUT_TYPE_SWITCH | Output types for switches | `switch,Buzzer` |
-| OUTPUT_TYPE_TTS | Text-to-speech output type | `TTS` |
-| RABBITMQ_EXCHANGE | Name of RabbitMQ exchange | `home_automation` |
-| RABBITMQ_SERVER_ADDRESS | IP address of RabbitMQ exchange | *network specific* |
-| SNS_CONTROL_ENABLED | Enable control messages from SQS | `false` |
-| SQS_QUEUE | SQS queue name | `automation-control` |
-| TABLESPACE_PATH | SQLite database for configuration | `/data/event_processor.db` |
-| TELEGRAM_CHAT_ROOM | Telegram chat room ID | *project specific* |
-| TELEGRAM_IMAGE_SEND_ONLY_WITH_PEOPLE | Send images only to humans | `true` |
-| TELEGRAM_SMS_FALLBACK_ENABLED | Fall back to AWS SNS (SMS) | `false` |
-| TELEGRAM_USERS_CSV | Permitted Telegram users to interact with bot (CSV) | *project specific* |
-| USER_TZ | Set to override from `pytz.all_timezones` if not UTC. | *project specific* |
+| `APP_FLASK_DEBUG` | Web server debug | `false` |
+| `APP_FLASK_HTTP_PORT` | Web server port | `8080` |
+| `APP_NAME` | Application name used in logging and metrics | `event_processor` |
+| `AWS_CONFIG_FILE` | AWS client configuration file | `/home/app/.aws/config` |
+| `AWS_DEFAULT_REGION` | AWS region | `us-east-1` |
+| `BACKUP_S3_BUCKET` | Bucket name for database backup | *project specific* |
+| `CRONITOR_MONITOR_KEY` | [Cronitor][cronitor-url] configuration key | *project specific* |
+| `DEVICE_NAME` | Used for container host name. | `event-processor-a` |
+| `HC_PING_URL` | [Healthchecks][healthchecks-url] URL | *project specific* |
+| `HEALTHCHECKS_BADGE_CSV` | [Healthchecks][healthchecks-url] badge | *project specific* |
+| `INFLUXDB_BUCKET` | InfluxDB bucket for meter metrics | `meter` |
+| `LEADER_ELECTION_ENABLED` | Use leader election for other instances of this application | `false` |
+| `MDASH_API_BASE_URL` | mDash discovery API | `https://mdash.net/api/v2/devices` |
+| `MDASH_APP_CONFIG_MQTT_PUB_TOPIC` | Application publish topic | `app.mqtt_pub_topic` |
+| `MDASH_DEVICE_TAGS_CSV` | Only register devices with these mDash tags | `meter,sensor` |
+| `MQTT_METER_RESET_TOPIC` | Topic to control reset of meter register | `meter/electricity/control` |
+| `MQTT_PUB_TOPIC_CSV` | MQTT publication topics | `meter/electricity/#,sensor/garage/#` |
+| `MQTT_SERVER_ADDRESS` | IP address of MQTT broker | *network specific* |
+| `NGROK_CLIENT_API_PORT` | ngrok management port | `4040` |
+| `NGROK_ENABLED` | Create ngrok tunnel with container | `true` |
+| `NGROK_TUNNEL_NAME` | Tunnel name in configuration | `frontend` |
+| `OP_CONNECT_SERVER` | 1Password connect server URL | *network specific* |
+| `OP_CONNECT_TOKEN` | 1Password connect server token | *project specific* |
+| `OP_VAULT` | 1Password vault | *project specific* |
+| `OUTPUT_TYPE_BLUETOOTH` | Output type representing Bluetooth L2 ping | `l2ping` |
+| `OUTPUT_TYPE_SNAPSHOT` | Output type for snapshots | `Camera` |
+| `OUTPUT_TYPE_SWITCH` | Output types for switches | `switch,Buzzer` |
+| `OUTPUT_TYPE_TTS` | Text-to-speech output type | `TTS` |
+| `RABBITMQ_EXCHANGE` | Name of RabbitMQ exchange | `home_automation` |
+| `RABBITMQ_SERVER_ADDRESS` | IP address of RabbitMQ exchange | *network specific* |
+| `SNS_CONTROL_ENABLED` | Enable control messages from SQS | `false` |
+| `SQS_QUEUE` | SQS queue name | `automation-control` |
+| `TABLESPACE_PATH` | SQLite database for configuration | `/data/event_processor.db` |
+| `TELEGRAM_CHAT_ROOM` | Telegram chat room ID | *project specific* |
+| `TELEGRAM_IMAGE_SEND_ONLY_WITH_PEOPLE` | Send images only to humans | `true` |
+| `TELEGRAM_SMS_FALLBACK_ENABLED` | Fall back to AWS SNS (SMS) | `false` |
+| `TELEGRAM_USERS_CSV` | Permitted Telegram users to interact with bot (CSV) | *project specific* |
+| `USER_TZ` | Set to override from `pytz.all_timezones` if not UTC. | *project specific* |
 
 With these configured, you are now able to build the application. Any variables referenced in the [application configuration][appconf-url] will be automatically replaced.
 
