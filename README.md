@@ -93,7 +93,7 @@ Beyond the Python dependencies defined in the [Poetry configuration](pyproject.t
 | APP_FLASK_DEBUG | Web server debug | `false` |
 | APP_FLASK_HTTP_PORT | Web server port | `8080` |
 | APP_NAME | Application name used in logging and metrics | `event_processor` |
-| AWS_CONFIG_FILE | AWS configuration file | `/home/app/.aws/config` |
+| AWS_CONFIG_FILE | AWS client configuration file | `/home/app/.aws/config` |
 | AWS_DEFAULT_REGION | AWS region | `us-east-1` |
 | BACKUP_S3_BUCKET | Bucket name for database backup | *project specific* |
 | CRONITOR_MONITOR_KEY | [Cronitor][cronitor-url] configuration key | *project specific* |
