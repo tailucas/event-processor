@@ -3,6 +3,8 @@ set -e
 set -o pipefail
 cd "$(dirname "$0")"
 
+. <(sed 's/^/export /' /opt/app/cron.env)
+
 BACKUP_FILENAME_SUFFIX=""
 if [ -n "${1:-}" ]; then
   BACKUP_FILENAME_SUFFIX="_${1}"
