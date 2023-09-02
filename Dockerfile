@@ -17,7 +17,8 @@ RUN sed -i -e "s/# ${LANG} ${ENCODING}/${LANG} ${ENCODING}/" /etc/locale.gen && 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         html-xml-utils \
-        sqlite3
+        sqlite3 \
+        wget
 # user scripts
 COPY backup_db.sh .
 # cron jobs
