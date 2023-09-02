@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 set -eu
 
 CONTAINER_ID=$(docker ps -qf name="$1")

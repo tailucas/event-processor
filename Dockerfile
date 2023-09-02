@@ -1,10 +1,23 @@
-FROM tailucas/base-app:20230217
+FROM tailucas/base-app:20230831
 # for system/site packages
 USER root
+# generate correct locales
+ARG LANG
+ENV LANG=$LANG
+ARG LANGUAGE
+ENV LANGUAGE=$LANGUAGE
+ARG LC_ALL
+ENV LC_ALL=$LC_ALL
+ARG ENCODING
+ENV ENCODING=$ENCODING
+RUN sed -i -e "s/# ${LANG} ${ENCODING}/${LANG} ${ENCODING}/" /etc/locale.gen && \
+    dpkg-reconfigure --frontend=noninteractive locales && \
+    update-locale LANG=${LANG} && locale
 # system setup
-RUN apk --no-cache add \
-    html-xml-utils \
-    sqlite
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        html-xml-utils \
+        sqlite3
 # user scripts
 COPY backup_db.sh .
 # cron jobs

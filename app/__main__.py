@@ -74,27 +74,27 @@ class CredsConfig:
 # instantiate class
 builtins.creds_config = CredsConfig()
 
-from pylib import app_config, \
+from tailucas_pylib import app_config, \
     creds, \
     device_name, \
     device_name_base, \
     log, \
     log_handler
 
-from pylib.datetime import is_list, \
+from tailucas_pylib.datetime import is_list, \
     make_timestamp, \
     make_unix_timestamp, \
     parse_datetime, \
     ISO_DATE_FORMAT
-from pylib.aws.metrics import post_count_metric
-from pylib.leader import Leader
-from pylib.process import SignalHandler, exec_cmd_log
-from pylib.rabbit import MQConnection, ZMQListener
-from pylib import threads
-from pylib.threads import thread_nanny, die, bye
-from pylib.app import AppThread, ZmqRelay
-from pylib.zmq import zmq_term, Closable
-from pylib.handler import exception_handler
+from tailucas_pylib.aws.metrics import post_count_metric
+from tailucas_pylib.leader import Leader
+from tailucas_pylib.process import SignalHandler, exec_cmd_log
+from tailucas_pylib.rabbit import MQConnection, ZMQListener
+from tailucas_pylib import threads
+from tailucas_pylib.threads import thread_nanny, die, bye
+from tailucas_pylib.app import AppThread, ZmqRelay
+from tailucas_pylib.zmq import zmq_term, Closable
+from tailucas_pylib.handler import exception_handler
 
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import ASYNCHRONOUS
