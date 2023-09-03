@@ -1723,9 +1723,7 @@ class HeartbeatFilter(ZmqRelay):
         ZmqRelay.__init__(self,
             name=self.__class__.__name__,
             source_zmq_url=URL_WORKER_HEARTBEAT_NANNY,
-            source_socket_type=zmq.PULL,
-            sink_zmq_url=URL_WORKER_APP,
-            sink_socket_type=zmq.PUSH)
+            sink_zmq_url=URL_WORKER_APP)
 
         self._heartbeat_report_interval = int(app_config.get('app', 'heartbeat_report_interval_seconds'))
         self._max_heartbeat_delay = int(app_config.get('app', 'max_heartbeat_delay_seconds'))
