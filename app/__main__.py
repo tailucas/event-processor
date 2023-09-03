@@ -93,7 +93,7 @@ from tailucas_pylib.rabbit import MQConnection, ZMQListener
 from tailucas_pylib import threads
 from tailucas_pylib.threads import thread_nanny, die, bye
 from tailucas_pylib.app import AppThread, ZmqRelay
-from tailucas_pylib.zmq import zmq_term, Closable
+from tailucas_pylib.zmq import zmq_term, Closable, zmq_socket, try_close
 from tailucas_pylib.handler import exception_handler
 
 from influxdb_client import InfluxDBClient, Point, WritePrecision
@@ -377,7 +377,7 @@ def index():
     if request.method == 'POST':
         if 'panic_button' in request.form:
             log.info('Panic button pressed.')
-            with exception_handler(connect_url=URL_WORKER_APP, socket_type=zmq.PUSH, and_raise=False) as zmq_socket:
+            with exception_handler(connect_url=URL_WORKER_APP, and_raise=False) as zmq_socket:
                 zmq_socket.send_pyobj({
                     device_name: {
                         'data': {
@@ -491,7 +491,7 @@ def show_config():
         db.session.add(input)
         db.session.commit()
         # open IPC
-        with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, socket_type=zmq.PUSH, and_raise=False) as zmq_socket:
+        with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, and_raise=False) as zmq_socket:
             zmq_socket.send_pyobj((input.device_key, input.auto_schedule, input.auto_schedule_enable, input.auto_schedule_disable))
     inputs = InputConfig.query.order_by(InputConfig.device_key).all()
     return render_template('config.html',
@@ -725,7 +725,7 @@ async def telegram_bot_cmd(update: Update, context: TelegramContextTypes.DEFAULT
             await update.message.reply_markdown(text=f'[Dashboard]({ngrok_tunnel_url_with_bauth})')
         # status update
         if update.effective_message.text.startswith('/'):
-            with exception_handler(connect_url=URL_WORKER_APP, socket_type=zmq.PUSH, and_raise=False) as zmq_socket:
+            with exception_handler(connect_url=URL_WORKER_APP, and_raise=False) as zmq_socket:
                 zmq_socket.send_pyobj({
                     'bot': {
                         'command': update.effective_message.text
@@ -743,7 +743,7 @@ async def telegram_error_handler(update: Update, context: TelegramContextTypes.D
     log.warning(msg="Telegram Bot Exception while handling an update:", exc_info=context.error)
 
 
-class EventProcessor(MQConnection, Closable):
+class EventProcessor(MQConnection):
 
     def __init__(self, mqtt_subscriber, mq_server_address, mq_exchange_name):
         MQConnection.__init__(
@@ -754,7 +754,6 @@ class EventProcessor(MQConnection, Closable):
             mq_exchange_type='direct',
             # no control message should live longer than 90s
             mq_arguments={'x-message-ttl': 90*1000})
-        Closable.__init__(self, connect_url=URL_WORKER_APP)
 
         self.inputs = {}
         self.outputs = {}
@@ -774,9 +773,10 @@ class EventProcessor(MQConnection, Closable):
 
         self._device_event_lru = lrucache(100)
 
-        self.event_log = self.get_socket(zmq.PUSH)
+        # TODO
+        #self.event_log = zmq_socket(zmq.PUSH)
 
-        self.bot = self.get_socket(zmq.PUSH)
+        self.bot = zmq_socket(zmq.PUSH)
 
         self._mqtt_subscriber = mqtt_subscriber
 
@@ -865,7 +865,7 @@ class EventProcessor(MQConnection, Closable):
         # load DB config
         input_configs = InputConfig.query.all()
         # load auto-scheduler
-        with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, socket_type=zmq.PUSH) as zmq_socket:
+        with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, and_raise=False) as zmq_socket:
             for input_config in input_configs:
                 if input_config.auto_schedule:
                     zmq_socket.send_pyobj((
@@ -918,10 +918,10 @@ class EventProcessor(MQConnection, Closable):
                 'device_label': 'SMS',
                 'type': 'SMS'
             })
-        with exception_handler(closable=self, and_raise=False, shutdown_on_error=True):
+        with exception_handler(connect_url=URL_WORKER_APP, socket_type=zmq.PULL, and_raise=False, shutdown_on_error=True) as app_socket:
             self._setup_channel()
             while not threads.shutting_down:
-                event = self.socket.recv_pyobj()
+                event = app_socket.recv_pyobj()
                 log.debug(event)
                 if isinstance(event, dict):
                     for event_origin, event_data in list(event.items()):
@@ -1030,7 +1030,7 @@ class EventProcessor(MQConnection, Closable):
                                             db.session.add(ic)
                                             if ic.auto_schedule is not None:
                                                 # update the auto-scheduler task
-                                                with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, socket_type=zmq.PUSH, and_raise=False) as zmq_socket:
+                                                with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, and_raise=False) as zmq_socket:
                                                     if input_enable:
                                                         # restore auto-schedule actions
                                                         zmq_socket.send_pyobj((ic.device_key, ic.auto_schedule, ic.auto_schedule_enable, ic.auto_schedule_disable))
@@ -1208,7 +1208,7 @@ class EventProcessor(MQConnection, Closable):
                                         timestamp=timestamp,
                                         active_device_key=active_device_key,
                                         active_device=active_device)
-
+        try_close(self.bot)
 
     def _process_device_event(self, input_config, event_origin, timestamp, active_device_key, active_device):
         output_links = OutputLink.query.filter_by(input_device_id=input_config.id).all()
@@ -1350,12 +1350,12 @@ class TBot(AppThread):
 
     async def tbot_run(t_app: TelegramApp, chat_id, sns_fallback):
         global ngrok_tunnel_url_with_bauth
-        # FIXME: https://github.com/zeromq/pyzmq/issues/940
-        from pylib.zmq import zmq_context
-        zmq_ctx = zmq.asyncio.Context.shadow(zmq_context.underlying)
-        zmq_socket = zmq_ctx.socket(zmq.PULL)
-        zmq_socket.bind(URL_WORKER_TELEGRAM_BOT)
-        with exception_handler(shutdown_on_error=True, and_raise=False):
+        with exception_handler(
+            connect_url=URL_WORKER_TELEGRAM_BOT,
+            socket_type=zmq.PULL,
+            shutdown_on_error=True,
+            and_raise=False,
+            is_async=True) as zmq_socket:
             log.info(f'Waiting for events to forward to Telegram bot on chat ID {chat_id}...')
             while not threads.shutting_down:
                 event = await zmq_socket.recv_pyobj()
@@ -1423,11 +1423,6 @@ class TBot(AppThread):
                     else:
                         log.warning(f'No viable method to send notification for event: {notification_message}', exc_info=True)
                         threads.interruptable_sleep.wait(10)
-        log.info('Closing ZMQ async socket...')
-        try:
-            zmq_socket.close()
-        except ZMQError:
-            log.warning(f'Error closing ZMQ socket.', exc_info=True)
 
     def run(self):
         log.info('Creating asyncio event loop...')
@@ -1472,10 +1467,7 @@ class MqttSubscriber(AppThread, Closable):
 
     def __init__(self):
         AppThread.__init__(self, name=self.__class__.__name__)
-        Closable.__init__(self, connect_url=URL_WORKER_MQTT_PUBLISH)
-
-        self.processor = self.get_socket(zmq.PUSH)
-
+        Closable.__init__(self, connect_url=URL_WORKER_HEARTBEAT_NANNY, socket_type=zmq.PUSH)
         self._mqtt_client = None
         self._mqtt_server_address = app_config.get('mqtt', 'server_address')
         self._mqtt_subscribe_topics = list()
@@ -1550,7 +1542,7 @@ class MqttSubscriber(AppThread, Closable):
                             active_devices.append(device_description)
                         else:
                             device_inputs.append(device_description)
-                self.processor.send_pyobj({
+                self.socket.send_pyobj({
                     topic_base: {
                         'data': {
                             'device_info': {'inputs': device_inputs},
@@ -1567,7 +1559,7 @@ class MqttSubscriber(AppThread, Closable):
                 metered = msg_data['last_minute_metered']
                 register = msg_data['register_reading']
                 log.debug('{}: {} ({} of {})'.format(device_id, input_location, metered, register))
-                self.processor.send_pyobj({
+                self.socket.send_pyobj({
                     topic_base: {
                         'data': {
                             'device_info': {
@@ -1593,26 +1585,27 @@ class MqttSubscriber(AppThread, Closable):
 
     # noinspection PyBroadException
     def run(self):
-        self.processor.connect(URL_WORKER_HEARTBEAT_NANNY)
         log.info('Connecting to MQTT server {}...'.format(self._mqtt_server_address))
+        self.get_socket()
         self._mqtt_client = mqtt.Client()
         self._mqtt_client.on_connect = self.on_connect
         self._mqtt_client.on_disconnect = self.on_disconnect
         self._mqtt_client.on_message = self.on_message
         self._mqtt_client.connect(self._mqtt_server_address)
-        with exception_handler(closable=self, and_raise=False, shutdown_on_error=True):
+        with exception_handler(connect_url=URL_WORKER_MQTT_PUBLISH, socket_type=zmq.PULL, and_raise=False, shutdown_on_error=True) as zmq_socket:
             while not threads.shutting_down:
                 rc = self._mqtt_client.loop()
                 if rc == MQTT_ERR_NO_CONN or self._disconnected:
                     raise ResourceWarning(f'No connection to MQTT broker at {self._mqtt_server_address} (disconnected? {self._disconnected})')
                 # check for messages to publish
                 try:
-                    mqtt_pub_topic, message_data = self.socket.recv_pyobj(flags=zmq.NOBLOCK)
+                    mqtt_pub_topic, message_data = zmq_socket.recv_pyobj(flags=zmq.NOBLOCK)
                     log.debug('Publishing {} bytes to topic {}...'.format(len(message_data), mqtt_pub_topic))
                     self._mqtt_client.publish(topic=mqtt_pub_topic, payload=message_data)
-                except ZMQError:
+                except Again:
                     # ignore, no data
                     pass
+        self.close()
 
 
 class EventSourceSubscriber(object):
@@ -1636,13 +1629,10 @@ class MqttEventSourceSubscriber(EventSourceSubscriber):
         return self._device_id
 
 
-class SQSListener(AppThread, Closable):
+class SQSListener(AppThread):
 
     def __init__(self):
         AppThread.__init__(self, name=self.__class__.__name__)
-        Closable.__init__(self)
-
-        self.processor = self.get_socket(zmq.PUSH)
         self._sqs = None
         self._sqs_queue = None
 
@@ -1653,23 +1643,22 @@ class SQSListener(AppThread, Closable):
         # set up notifications
         self._sqs = boto3.resource('sqs')
         self._sqs_queue = self._sqs.get_queue_by_name(QueueName=sqs_queue_name)
-        self.processor.connect(URL_WORKER_APP)
-        with exception_handler(closable=self):
+        with exception_handler(connect_url=URL_WORKER_APP, and_raise=False, shutdown_on_error=True) as zmq_socket:
             while not threads.shutting_down:
                 try:
-                    for sqs_message in self._sqs_queue.receive_messages(WaitTimeSeconds=20):
+                    for sqs_message in self._sqs_queue.receive_messages(WaitTimeSeconds=10):
                         # forward for further processing
                         message_body = sqs_message.body
                         try:
-                            self.processor.send_pyobj({'sqs': json.loads(message_body)})
+                            zmq_socket.send_pyobj({'sqs': json.loads(message_body)})
                         except JSONDecodeError:
                             log.exception('Unstructured SQS message: {}'.format(message_body))
                         # Let the queue know that the message is processed
                         sqs_message.delete()
                     # test for ZMQ shutdown
-                    self.processor.poll(timeout=0)
+                    zmq_socket.poll(timeout=0)
                 except bcece:
-                    log.warning(f'SOS', exc_info=True)
+                    log.warning(f'SQS', exc_info=True)
                     threads.interruptable_sleep.wait(10)
 
 
@@ -1677,13 +1666,11 @@ class AutoScheduler(AppThread, Closable):
 
     def __init__(self):
         AppThread.__init__(self, name=self.__class__.__name__)
-        Closable.__init__(self, connect_url=URL_WORKER_AUTO_SCHEDULER)
-
-        self.processor = self.get_socket(zmq.PUSH)
+        Closable.__init__(self, connect_url=URL_WORKER_APP, socket_type=zmq.PUSH)
 
     def update_device(self, device_key, device_state):
         log.info('Updating {} to enabled={}'.format(device_key, device_state))
-        self.processor.send_pyobj({
+        self.socket.send_pyobj({
             'auto-scheduler': {
                 'device_key': device_key,
                 'device_state': device_state
@@ -1694,8 +1681,8 @@ class AutoScheduler(AppThread, Closable):
 
     # noinspection PyBroadException
     def run(self):
-        self.processor.connect(URL_WORKER_APP)
-        with exception_handler(closable=self):
+        self.get_socket()
+        with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, socket_type=zmq.PULL, and_raise=False, shutdown_on_error=True) as zmq_socket:
             while not threads.shutting_down:
                 next_message = False
                 # trigger any scheduled work
@@ -1703,7 +1690,7 @@ class AutoScheduler(AppThread, Closable):
                 # look for device updates
                 device_key = None
                 try:
-                    device_key, auto_schedule, auto_schedule_enable, auto_schedule_disable = self.socket.recv_pyobj(flags=zmq.NOBLOCK)
+                    device_key, auto_schedule, auto_schedule_enable, auto_schedule_disable = zmq_socket.recv_pyobj(flags=zmq.NOBLOCK)
                     next_message = True
                 except ZMQError:
                     # ignore, no data
@@ -1727,6 +1714,7 @@ class AutoScheduler(AppThread, Closable):
                 # don't spin
                 if not next_message:
                     threads.interruptable_sleep.wait(10)
+        self.close()
 
 
 class HeartbeatFilter(ZmqRelay):
@@ -1780,25 +1768,19 @@ class HeartbeatFilter(ZmqRelay):
         self.socket.send_pyobj({origin: data})
 
 
-class EventSourceDiscovery(AppThread, Closable):
+class EventSourceDiscovery(AppThread):
     def __init__(self):
         AppThread.__init__(self, name=self.__class__.__name__)
-        Closable.__init__(self)
-
-        self.processor = self.get_socket(zmq.PUSH)
-
         self._mdash_api_key = creds.mdash_api_key
         self._mdash_devices_url = app_config.get('mdash', 'base_url')
         self._app_config_mqtt_pub_topic = app_config.get('mdash', 'app_config_mqtt_pub_topic')
         self._device_tags = app_config.get('mdash', 'device_tags').split(',')
 
     def run(self):
-        self.processor.connect(URL_WORKER_APP)
-
         if threads.shutting_down:
             return
 
-        with exception_handler(closable=self):
+        with exception_handler(connect_url=URL_WORKER_APP, and_raise=False, shutdown_on_error=True) as zmq_socket:
             # register MQTT inputs
             mdash_devices = None
             log.info(f'Requesting mDash device listing from {self._mdash_devices_url}')
@@ -1843,7 +1825,7 @@ class EventSourceDiscovery(AppThread, Closable):
                 # strip double-quotes from topic name
                 mqtt_pub_topic_name = mqtt_pub_topic.text.replace('"', '').rstrip()
                 log.info(f"MQTT topic for {device_id} is '{mqtt_pub_topic_name}'")
-                self.processor.send_pyobj({'register_mqtt_origin': {mqtt_pub_topic_name: device_id}})
+                zmq_socket.send_pyobj({'register_mqtt_origin': {mqtt_pub_topic_name: device_id}})
 
         # un-nanny and goodbye
         self.untrack()
@@ -1862,16 +1844,15 @@ class CallbackUrlDiscovery(AppThread):
     def run(self):
         # sudo update
         global ngrok_tunnel_url
-        with exception_handler():
-            while not threads.shutting_down:
-                try:
-                    ngrok_tunnel_url = requests.get(self._discover_url).json()['public_url']
-                except (KeyError, ConnectionError) as e:
-                    log.warning('Still attempting to discover ngrok tunnel URL ({})...'.format(repr(e)))
-                    threads.interruptable_sleep.wait(10)
-                    continue
-                log.info('External call-back URL is {}'.format(ngrok_tunnel_url))
-                break
+        while not threads.shutting_down:
+            try:
+                ngrok_tunnel_url = requests.get(self._discover_url).json()['public_url']
+            except (KeyError, ConnectionError) as e:
+                log.warning('Still attempting to discover ngrok tunnel URL ({})...'.format(repr(e)))
+                threads.interruptable_sleep.wait(10)
+                continue
+            log.info('External call-back URL is {}'.format(ngrok_tunnel_url))
+            break
         purl = urlparse(ngrok_tunnel_url)
         # decorate the URL with basic-auth details
         global ngrok_tunnel_url_with_bauth
