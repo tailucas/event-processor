@@ -1734,8 +1734,8 @@ class HeartbeatFilter(ZmqRelay):
         self._heartbeat_report_due = False
         self._max_reported_heartbeat = -1
 
-    def process_message(self, zmq_socket):
-        event = zmq_socket.recv_pyobj()
+    def process_message(self, sink_socket):
+        event = self.socket.recv_pyobj()
         origin, data = list(event.items())[0]
         now = int(time.time())
         last_time = None
@@ -1763,7 +1763,7 @@ class HeartbeatFilter(ZmqRelay):
             self._last_report = now
             self._max_reported_heartbeat = -1
         # forward the original payload
-        self.socket.send_pyobj({origin: data})
+        sink_socket.send_pyobj({origin: data})
 
 
 class EventSourceDiscovery(AppThread):
