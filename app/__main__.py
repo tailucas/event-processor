@@ -1353,7 +1353,14 @@ class TBot(AppThread, Closable):
         global ngrok_tunnel_url_with_bauth
         log.info(f'Waiting for events to forward to Telegram bot on chat ID {chat_id}...')
         while not threads.shutting_down:
-            event = await zmq_socket.recv_pyobj()
+            event = None
+            try:
+                event = await zmq_socket.recv_pyobj()
+            except ZMQError:
+                log.debug('ZMQ error.', exc_info=True)
+                # never spin
+                threads.interruptable_sleep.wait(1)
+                continue
             #TODO: fix me for small payloads
             #log.debug(event)
             if 'timestamp' in event:
@@ -1443,23 +1450,24 @@ class TBot(AppThread, Closable):
                 sns_fallback=self.sns_fallback),
             loop)
         log.info('Starting Telegram application...')
-        self.t_app.run_polling(stop_signals=None)
+        self.t_app.run_polling(stop_signals=None, close_loop=False)
         log.info('Waiting for coroutine exceptions...')
         exc = outcome.exception()
         if exc is not None:
             log.warning('Completed with exception.', exc)
-        log.info('Closing ZMQ socket...')
-        self.close()
         log.info('Closing event loop...')
         loop.close()
         log.info('Shutdown complete.')
 
     def shutdown(self):
+        log.info('Closing ZMQ socket...')
+        self.close()
         log.info('Closing Telegram application...')
         try:
             self.t_app.shutdown()
         except Exception:
             log.warning(f'Error shutting down Telegram application.', exc_info=True)
+        log.info('Telegram application closed.')
 
 
 class MqttSubscriber(AppThread, Closable):
