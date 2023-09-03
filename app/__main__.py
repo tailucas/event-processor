@@ -1313,10 +1313,11 @@ class EventProcessor(MQConnection):
             db.session.commit()
 
 
-class TBot(AppThread):
+class TBot(AppThread, Closable):
 
     def __init__(self, chat_id, sns_fallback=False):
         AppThread.__init__(self, name=self.__class__.__name__)
+        Closable.__init__(self, connect_url=URL_WORKER_TELEGRAM_BOT, is_async=True)
         self.chat_id = chat_id
         self.sns_fallback = sns_fallback
 
@@ -1348,81 +1349,75 @@ class TBot(AppThread):
         notification_message += footer
         return notification_message
 
-    async def tbot_run(t_app: TelegramApp, chat_id, sns_fallback):
+    async def tbot_run(t_app: TelegramApp, zmq_socket, chat_id, sns_fallback):
         global ngrok_tunnel_url_with_bauth
-        with exception_handler(
-            connect_url=URL_WORKER_TELEGRAM_BOT,
-            socket_type=zmq.PULL,
-            shutdown_on_error=True,
-            and_raise=False,
-            is_async=True) as zmq_socket:
-            log.info(f'Waiting for events to forward to Telegram bot on chat ID {chat_id}...')
-            while not threads.shutting_down:
-                event = await zmq_socket.recv_pyobj()
-                #TODO: fix me for small payloads
-                #log.debug(event)
-                if 'timestamp' in event:
-                    timestamp = parse_datetime(value=event['timestamp'], as_tz=user_tz)
-                else:
-                    timestamp = make_timestamp(as_tz=user_tz)
-                event_data = None
-                input_context = None
-                # build the message
-                image_data = None
-                if 'message' in event:
-                    notification_message = event['message']
-                    if 'add_tunnel_url' in event and ngrok_tunnel_url_with_bauth:
-                        notification_message = '[{}]({})'.format(notification_message, ngrok_tunnel_url_with_bauth)
-                elif 'data' in event:
-                    event_data = event['data']
-                    input_context = event_data['input_context']
-                    notification_message = TBot.build_message(timestamp=timestamp,
-                                                              event_data=event_data,
-                                                              max_length=200)
-                    if 'image' in input_context:
-                        image_data = BytesIO(input_context['image'])
+        log.info(f'Waiting for events to forward to Telegram bot on chat ID {chat_id}...')
+        while not threads.shutting_down:
+            event = await zmq_socket.recv_pyobj()
+            #TODO: fix me for small payloads
+            #log.debug(event)
+            if 'timestamp' in event:
+                timestamp = parse_datetime(value=event['timestamp'], as_tz=user_tz)
+            else:
+                timestamp = make_timestamp(as_tz=user_tz)
+            event_data = None
+            input_context = None
+            # build the message
+            image_data = None
+            if 'message' in event:
+                notification_message = event['message']
+                if 'add_tunnel_url' in event and ngrok_tunnel_url_with_bauth:
+                    notification_message = '[{}]({})'.format(notification_message, ngrok_tunnel_url_with_bauth)
+            elif 'data' in event:
+                event_data = event['data']
+                input_context = event_data['input_context']
+                notification_message = TBot.build_message(timestamp=timestamp,
+                                                            event_data=event_data,
+                                                            max_length=200)
+                if 'image' in input_context:
+                    image_data = BytesIO(input_context['image'])
 
-                # send the message
-                try:
-                    if image_data:
-                        button_input = False
-                        if 'type' in input_context and 'button' in input_context['type'].lower():
-                            button_input = True
-                        if app_config.getboolean('telegram', 'image_send_only_with_people') and 'person' not in notification_message and not button_input:
-                            log.warning(f'Discarding image message without person data, as configured.')
-                            continue
-                        log.debug(f'Bot sends image to {chat_id!s} with caption "{notification_message}"')
-                        await t_app.bot.send_photo(chat_id=chat_id,
-                                            photo=image_data,
-                                            caption=notification_message,
+            # send the message
+            try:
+                if image_data:
+                    button_input = False
+                    if 'type' in input_context and 'button' in input_context['type'].lower():
+                        button_input = True
+                    if app_config.getboolean('telegram', 'image_send_only_with_people') and 'person' not in notification_message and not button_input:
+                        log.warning(f'Discarding image message without person data, as configured.')
+                        continue
+                    log.debug(f'Bot sends image to {chat_id!s} with caption "{notification_message}"')
+                    await t_app.bot.send_photo(chat_id=chat_id,
+                                        photo=image_data,
+                                        caption=notification_message,
+                                        parse_mode='Markdown')
+                else:
+                    log.debug(f'Bot sends message to {chat_id!s} with caption "{notification_message}"')
+                    await t_app.bot.send_message(chat_id=chat_id,
+                                            text=notification_message,
                                             parse_mode='Markdown')
-                    else:
-                        log.debug(f'Bot sends message to {chat_id!s} with caption "{notification_message}"')
-                        await t_app.bot.send_message(chat_id=chat_id,
-                                              text=notification_message,
-                                              parse_mode='Markdown')
-                except (TimedOut, NetworkError, RetryAfter):
-                    if event_data and sns_fallback:
-                        sns = boto3.client('sns')
-                        log.warning('Timeout or network problem using Bot. Fallback back to SMS.')
-                        # rebuild the message for SMS
-                        notification_message = TBot.build_message(timestamp=timestamp,
-                                                                  event_data=event_data,
-                                                                  build_sms=True)
-                        if 'device_params' not in event_data['trigger_output']:
-                            raise RuntimeError('Cannot send SMS because no parameters are configured.')
-                        recipients = event_data['trigger_output']['device_params'].strip().split(',')
-                        for recipient in recipients:
-                            name_number = recipient.split(';')
-                            log.info(f'SMS {name_number[0]} ({name_number[1]}) "{notification_message}"')
-                            try:
-                                resp = sns.publish(PhoneNumber=name_number[1], Message=notification_message)
-                                log.info(f'SMS sent: {resp!s}')
-                            except Exception:
-                                log.exception(f'Cannot send SMS {name_number[1]}: {notification_message}')
-                    else:
-                        log.warning(f'No viable method to send notification for event: {notification_message}', exc_info=True)
-                        threads.interruptable_sleep.wait(10)
+            except (TimedOut, NetworkError, RetryAfter):
+                if event_data and sns_fallback:
+                    sns = boto3.client('sns')
+                    log.warning('Timeout or network problem using Bot. Fallback back to SMS.')
+                    # rebuild the message for SMS
+                    notification_message = TBot.build_message(timestamp=timestamp,
+                                                                event_data=event_data,
+                                                                build_sms=True)
+                    if 'device_params' not in event_data['trigger_output']:
+                        raise RuntimeError('Cannot send SMS because no parameters are configured.')
+                    recipients = event_data['trigger_output']['device_params'].strip().split(',')
+                    for recipient in recipients:
+                        name_number = recipient.split(';')
+                        log.info(f'SMS {name_number[0]} ({name_number[1]}) "{notification_message}"')
+                        try:
+                            resp = sns.publish(PhoneNumber=name_number[1], Message=notification_message)
+                            log.info(f'SMS sent: {resp!s}')
+                        except Exception:
+                            log.exception(f'Cannot send SMS {name_number[1]}: {notification_message}')
+                else:
+                    log.warning(f'No viable method to send notification for event: {notification_message}', exc_info=True)
+                    threads.interruptable_sleep.wait(10)
 
     def run(self):
         log.info('Creating asyncio event loop...')
@@ -1439,9 +1434,11 @@ class TBot(AppThread):
         telegram_application.add_error_handler(callback=telegram_error_handler)
         self.t_app = telegram_application
         log.info('Registering coroutine for ZMQ-Telegram messages...')
+        self.get_socket()
         outcome = asyncio.run_coroutine_threadsafe(
             TBot.tbot_run(
                 t_app=self.t_app,
+                zmq_socket=self.socket,
                 chat_id=self.chat_id,
                 sns_fallback=self.sns_fallback),
             loop)
@@ -1451,6 +1448,8 @@ class TBot(AppThread):
         exc = outcome.exception()
         if exc is not None:
             log.warning('Completed with exception.', exc)
+        log.info('Closing ZMQ socket...')
+        self.close()
         log.info('Closing event loop...')
         loop.close()
         log.info('Shutdown complete.')
