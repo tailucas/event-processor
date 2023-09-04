@@ -101,6 +101,7 @@ from influxdb_client.client.write_api import ASYNCHRONOUS
 
 
 # Reduce Sentry noise
+ignore_logger('telegram.ext.Updater')
 ignore_logger('telegram.ext._updater')
 ignore_logger('asyncio')
 
