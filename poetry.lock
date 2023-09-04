@@ -1492,13 +1492,13 @@ sqlcipher = ["sqlcipher3-binary"]
 
 [[package]]
 name = "tailucas-pylib"
-version = "0.1.1"
+version = "0.1.2"
 description = "Common Python utility modules"
 optional = false
 python-versions = ">=3.10,<4.0"
 files = [
-    {file = "tailucas_pylib-0.1.1-py3-none-any.whl", hash = "sha256:e8df6772ac980181640b2e74bf307e1b80e1096c7e01523a0f9a40426f7f6700"},
-    {file = "tailucas_pylib-0.1.1.tar.gz", hash = "sha256:08adefe01b1e808373bc4e9bce3caf1fa88e7c0dd291742836b9ecf5d8e55678"},
+    {file = "tailucas_pylib-0.1.2-py3-none-any.whl", hash = "sha256:c1e80f05c68138247dd846d927236b82cc72e37de504e3df144deedaf3e28295"},
+    {file = "tailucas_pylib-0.1.2.tar.gz", hash = "sha256:77d23a90b42b43cc98357d3ac20bce16c6f7567994ac4a6a601d4e774508cf92"},
 ]
 
 [package.dependencies]
@@ -1562,4 +1562,4 @@ watchdog = ["watchdog (>=2.3)"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "0aa97a11f8204079d1b92ae442d0fab02e724a4d8f6e87ed42a469581797f61d"
+content-hash = "c71b662f77addf0306450eba3302baf9273cf5a659a420efadedf3d2f4fcd6b8"
