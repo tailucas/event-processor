@@ -84,6 +84,18 @@ Here is some detail about the intended use of this project.
 
 Beyond the Python dependencies defined in the [Poetry configuration](pyproject.toml), the project carries hardcoded dependencies on [Sentry][sentry-url] and [1Password][1p-url] in order to function.
 
+### Required Tools
+Install these tools and make sure that they are on the environment `$PATH`.
+
+* `task` for project build orchestration: https://taskfile.dev/installation/#install-script
+
+* `docker` and `docker-compose` for container builds and execution: https://docs.docker.com/engine/install/
+* `mvn` Maven for Java build orchestration: https://maven.apache.org/download.cgi
+* `poetry` for Python dependency management: https://python-poetry.org/docs/#installation
+
+* `java` and `javac` for Java build and runtime: https://aws.amazon.com/corretto/
+* `python` is `python3` for Python runtime: https://www.python.org/downloa
+
 ### Installation
 
 0. :stop_sign: This project uses [1Password Secrets Automation][1p-url] to store both application key-value pairs as well as runtime secrets. It is assumed that the connect server containers are already running on your environment. If you do not want to use this, then you'll need to fork this package and make the changes as appropriate. It's actually very easy to set up, but note that 1Password is a paid product with a free-tier for secrets automation. Here is an example of how this looks for my application and the generation of the docker-compose.yml relies on this step. Your secrets automation vault must contain an entry called `ENV.event_processor` with these keys:
@@ -144,23 +156,23 @@ In addition to this, [additional runtime configuration](https://github.com/tailu
    ```
 4. Make the Docker runtime user and set directory permissions. :hand: Be sure to first review the Makefile contents for assumptions around user IDs for Docker.
    ```sh
-   make user
+   task user
    ```
 5. Now generate the docker-compose.yml:
    ```sh
-   make setup
+   task setup
    ```
 6. And generate the Docker image:
    ```sh
-   make build
+   task build
    ```
 7. If successful and the local environment is running the 1Password connect containers, run the application. For foreground:
    ```sh
-   make run
+   task run
    ```
    For background:
    ```sh
-   make rund
+   task rund
    ```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>

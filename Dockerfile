@@ -1,4 +1,4 @@
-FROM tailucas/base-app:20230831
+FROM tailucas/base-app:20231119_2
 # for system/site packages
 USER root
 # generate correct locales
@@ -10,9 +10,7 @@ ARG LC_ALL
 ENV LC_ALL=$LC_ALL
 ARG ENCODING
 ENV ENCODING=$ENCODING
-RUN sed -i -e "s/# ${LANG} ${ENCODING}/${LANG} ${ENCODING}/" /etc/locale.gen && \
-    dpkg-reconfigure --frontend=noninteractive locales && \
-    update-locale LANG=${LANG} && locale
+RUN localedef -i ${LANGUAGE} -c -f ${ENCODING} -A /usr/share/locale/locale.alias ${LANG}
 # system setup
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -29,6 +27,8 @@ RUN /opt/app/app_setup.sh
 # ngrok
 COPY ngrok_setup.sh .
 RUN /opt/app/ngrok_setup.sh
+# application
+COPY ./target/*-jar-with-dependencies.jar ./app.jar
 # switch to user
 USER app
 # override configuration

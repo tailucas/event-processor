@@ -1,22 +1,26 @@
 version: "3.8"
 services:
   app:
-    image: "tailucas/event-processor"
+    image: "${DOCKER_IMAGE}"
+    restart: unless-stopped
     build:
       context: .
       args:
         FOO: bar
-    restart: unless-stopped
     logging:
       driver: syslog
+      options:
+        syslog-address: "${SYSLOG_ADDRESS}"
+        syslog-format: "rfc3164"
+        tag: "${DEVICE_NAME}"
     tmpfs:
     - /tmp
-    hostname: __DOCKER_HOSTNAME__
+    hostname: ${DEVICE_NAME}
     ports:
       - "4041:4040"
       - "80:8080"
     volumes:
       - ./data:/data
       - /dev/log:/dev/log
-    environment:
-      FLASK_ENV: development
+    env_file:
+      - .env
