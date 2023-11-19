@@ -32,6 +32,7 @@ from simplejson.scanner import JSONDecodeError
 from sqlalchemy import or_, UniqueConstraint
 from telegram import ForceReply, Update
 from telegram.ext import Application as TelegramApp, \
+    Updater as TelegramUpdater, \
     CommandHandler as TelegramCommandHandler, \
     ContextTypes as TelegramContextTypes, \
     MessageHandler as TelegramMessageHandler, \
@@ -1451,7 +1452,7 @@ class TBot(AppThread, Closable):
                 sns_fallback=self.sns_fallback),
             loop)
         log.info('Starting Telegram application...')
-        self.t_app.run_polling(stop_signals=None, close_loop=False)
+        self.t_app.run_polling(stop_signals=None)
         log.info('Waiting for coroutine exceptions...')
         exc = outcome.exception()
         if exc is not None:
@@ -1461,14 +1462,10 @@ class TBot(AppThread, Closable):
         log.info('Shutdown complete.')
 
     def shutdown(self):
+        # TODO: shut down Telegram bot from external
+        # event loop if stop_signals=None
         log.info('Closing ZMQ socket...')
         self.close()
-        log.info('Closing Telegram application...')
-        try:
-            self.t_app.shutdown()
-        except Exception:
-            log.warning(f'Error shutting down Telegram application.', exc_info=True)
-        log.info('Telegram application closed.')
 
 
 class MqttSubscriber(AppThread, Closable):
