@@ -88,7 +88,6 @@ from tailucas_pylib.datetime import is_list, \
     parse_datetime, \
     ISO_DATE_FORMAT
 from tailucas_pylib.aws.metrics import post_count_metric
-from tailucas_pylib.leader import Leader
 from tailucas_pylib.process import SignalHandler, exec_cmd_log
 from tailucas_pylib.rabbit import MQConnection, ZMQListener
 from tailucas_pylib import threads
@@ -1903,18 +1902,6 @@ def main():
     log.setLevel(logging.INFO)
     # ensure proper signal handling; must be main thread
     signal_handler = SignalHandler()
-    leader_election = None
-    if app_config.getboolean('app', 'leader_election_enabled'):
-        # determine leadership
-        leader_election = Leader(
-            mq_server_address=app_config.get('rabbitmq', 'server_address').split(','),
-            mq_exchange_name=app_config.get('rabbitmq', 'mq_exchange'))
-        leader_election.start()
-        try:
-            leader_election.yield_to_leader()
-        except (KeyboardInterrupt, RuntimeWarning) as e:
-            # interrupted startup
-            log.debug(f'{e!s}', exc_info=True)
     if not threads.shutting_down:
         log.info('Creating application threads...')
         # bind listeners first
@@ -1989,9 +1976,6 @@ def main():
             telegram_bot.shutdown()
             log.info(message.format('Rabbit MQ listener'))
             mq_listener.stop()
-            if leader_election:
-                # stop sending heartbeats as leader
-                leader_election.stop()
             zmq_term()
         bye()
 
