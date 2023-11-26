@@ -17,7 +17,7 @@ import org.zeromq.SocketType;
 import org.ini4j.Ini;
 
 
-public class EventProcessor 
+public class EventProcessor
 {
     private static Logger log = LoggerFactory.getLogger(EventProcessor.class);
 
@@ -45,10 +45,8 @@ public class EventProcessor
         final Map<String, String> envVars = System.getenv();
         log.info("Starting application with env {}", envVars.keySet());
 
-        /*
         OnePassword op = new OnePassword();
         op.getItems();
-        */
 
         final String javaVersion = Runtime.version().toString();
         ZContext context = new ZContext();
@@ -72,7 +70,6 @@ public class EventProcessor
             log.error(e.getMessage(), e);
         }
 
-        /*
         log.info("Starting MQTT client...");
         Mqtt mqtt = new Mqtt();
         mqtt.start();
@@ -83,7 +80,6 @@ public class EventProcessor
 
         MyClass myc = new MyClass("foo");
         myc.getAge();
-        */
 
         try {
             Thread.currentThread().sleep(2000);

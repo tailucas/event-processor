@@ -182,7 +182,6 @@ In addition to this, [additional runtime configuration](https://github.com/tailu
 
 Running the application will:
 
-* Yield to an elected leader coordinated over RabbitMQ, if configured to do so.
 * Start the RabbitMQ client.
 * Start the broker client.
 * Start the auto-scheduler for devices that enable/disable on a desired schedule.
@@ -191,6 +190,15 @@ Running the application will:
 * Start the `asyncio` Telegram bot.
 * Start an [instance](https://github.com/tailucas/pylib/blob/ac05d39592c2264143ec4a37fe76b7e0369515bd/pylib/threads.py#L59) of `pylib.threads.thread_nanny` which will notice and report on any thread death and will also help move the application to debug logging after a prolonged shutdown. Shutdown delay is normally as a result of failure to properly close all ZMQ sockets.
 * Start the Flask web server.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+## Java Configuration
+
+Suggested Java VM arguments to enable JMX profiling:
+```
+-Djava.net.preferIPv4Stack=true -Dcom.sun.management.jmxremote.host=127.0.0.1 -Dcom.sun.management.jmxremote.port=3333 -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.authenticate=false
+```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
