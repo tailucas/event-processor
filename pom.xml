@@ -34,23 +34,14 @@
     <zeromq.version>0.5.4</zeromq.version>
     <slf4j.version>2.0.9</slf4j.version>
 
+    <!-- test dependencies -->
+    <junit.version>5.10.1</junit.version>
+
     <!-- build toolchain -->
-    <maven.assembly.plugin.version>3.6.0</maven.assembly.plugin.version>
-    <maven.compiler.plugin.version>3.11.0</maven.compiler.plugin.version>
     <maven.dependency.plugin.version>3.6.1</maven.dependency.plugin.version>
     <maven.exec.maven.plugin>3.1.1</maven.exec.maven.plugin>
-    <maven.enforcer.plugin.version>3.4.1</maven.enforcer.plugin.version>
-    <maven.resources.plugin.version>3.3.1</maven.resources.plugin.version>
-    <maven.clean.plugin.version>3.3.2</maven.clean.plugin.version>
-    <maven.surefire.plugin.version>3.2.2</maven.surefire.plugin.version>
-    <maven.maven.install.plugin.version>3.1.1</maven.maven.install.plugin.version>
-    <maven.deploy.plugin.version>3.1.1</maven.deploy.plugin.version>
-    <maven.site.plugin.version>3.7.1</maven.site.plugin.version>
-    <maven.project.info.reports.plugin.version>3.5.0</maven.project.info.reports.plugin.version>
-    <maven.jar.plugin.version>3.3.0</maven.jar.plugin.version>
 
     <versions.maven.plugin.version>2.16.2</versions.maven.plugin.version>
-    <junit.version>5.10.1</junit.version>
     <spotbugs-maven-plugin.version>4.8.1.0</spotbugs-maven-plugin.version>
   </properties>
 
@@ -172,52 +163,6 @@
             <cleanupDaemonThreads>false</cleanupDaemonThreads>
           </configuration>
         </plugin>
-        <!-- clean lifecycle, see https://maven.apache.org/ref/current/maven-core/lifecycles.html#clean_Lifecycle -->
-        <plugin>
-          <artifactId>maven-clean-plugin</artifactId>
-          <version>${maven.clean.plugin.version}</version>
-        </plugin>
-        <!-- default lifecycle, jar packaging: see https://maven.apache.org/ref/current/maven-core/default-bindings.html#Plugin_bindings_for_jar_packaging -->
-        <plugin>
-          <artifactId>maven-resources-plugin</artifactId>
-          <version>${maven.resources.plugin.version}</version>
-        </plugin>
-        <plugin>
-          <artifactId>maven-compiler-plugin</artifactId>
-          <version>${maven.compiler.plugin.version}</version>
-        </plugin>
-        <plugin>
-          <artifactId>maven-surefire-plugin</artifactId>
-          <version>${maven.surefire.plugin.version}</version>
-        </plugin>
-        <plugin>
-          <artifactId>maven-install-plugin</artifactId>
-          <version>${maven.maven.install.plugin.version}</version>
-        </plugin>
-        <plugin>
-          <artifactId>maven-deploy-plugin</artifactId>
-          <version>${maven.deploy.plugin.version}</version>
-        </plugin>
-        <!-- site lifecycle, see https://maven.apache.org/ref/current/maven-core/lifecycles.html#site_Lifecycle -->
-        <plugin>
-          <artifactId>maven-site-plugin</artifactId>
-          <version>${maven.site.plugin.version}</version>
-        </plugin>
-        <plugin>
-          <artifactId>maven-project-info-reports-plugin</artifactId>
-          <version>${maven.project.info.reports.plugin.version}</version>
-        </plugin>
-        <plugin>
-          <artifactId>maven-jar-plugin</artifactId>
-          <version>${maven.jar.plugin.version}</version>
-          <configuration>
-            <archive>
-                <manifest>
-                    <mainClass>${project.mainclass}</mainClass>
-                </manifest>
-            </archive>
-          </configuration>
-        </plugin>
         <!-- https://www.mojohaus.org/versions/versions-maven-plugin/usage.html#goals-that-do-not-modify-the-pom-xml -->
         <plugin>
           <groupId>org.codehaus.mojo</groupId>
@@ -230,50 +175,6 @@
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
-      </plugin>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-enforcer-plugin</artifactId>
-        <version>${maven.enforcer.plugin.version}</version>
-        <executions>
-            <execution>
-                <id>enforce</id>
-                <configuration>
-                    <rules>
-                        <dependencyConvergence />
-                    </rules>
-                </configuration>
-                <goals>
-                    <goal>enforce</goal>
-                </goals>
-            </execution>
-        </executions>
-      </plugin>
-      <plugin>
-        <artifactId>maven-assembly-plugin</artifactId>
-        <version>${maven.assembly.plugin.version}</version>
-        <configuration>
-          <descriptorRefs>
-            <descriptorRef>jar-with-dependencies</descriptorRef>
-          </descriptorRefs>
-          <archive>
-            <manifest>
-              <mainClass>${project.mainclass}</mainClass>
-            </manifest>
-            <manifestEntries>
-              <Class-Path>.</Class-Path>
-            </manifestEntries>
-          </archive>
-        </configuration>
-        <executions>
-          <execution>
-            <id>make-assembly</id> <!-- this is used for inheritance merges -->
-            <phase>package</phase> <!-- bind to the packaging phase -->
-            <goals>
-              <goal>single</goal>
-            </goals>
-          </execution>
-        </executions>
       </plugin>
       <plugin>
         <groupId>com.github.spotbugs</groupId>
