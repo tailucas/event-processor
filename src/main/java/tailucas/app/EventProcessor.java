@@ -16,7 +16,10 @@ import org.zeromq.SocketType;
 
 import org.ini4j.Ini;
 
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
 
+@SpringBootApplication
 public class EventProcessor
 {
     private static Logger log = LoggerFactory.getLogger(EventProcessor.class);
@@ -81,6 +84,8 @@ public class EventProcessor
         MyClass myc = new MyClass("foo", 1.0, new String[]{"hello", "world"});
         myc.name();
         myc.score();
+
+        SpringApplication.run(EventProcessor.class, args);
 
         try {
             Thread.currentThread().sleep(2000);
