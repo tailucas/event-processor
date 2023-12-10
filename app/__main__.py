@@ -11,6 +11,7 @@ import schedule
 import simplejson as json
 import threading
 import time
+import uvicorn
 import zmq
 import zmq.asyncio
 
@@ -40,10 +41,16 @@ from telegram.ext import Application as TelegramApp, \
 from telegram.error import TelegramError, NetworkError, RetryAfter, TimedOut
 from threading import Thread
 from urllib.parse import urlparse
+
+from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
+from fastapi.middleware.wsgi import WSGIMiddleware
+
 from flask import Flask, g, flash, request, render_template, url_for, redirect
 from flask.logging import default_handler
 from flask_compress import Compress
 from werkzeug.serving import make_server
+
 from zmq.error import ZMQError, ContextTerminated, Again
 
 import paho.mqtt.client as mqtt
@@ -111,6 +118,22 @@ db_tablespace = app_config.get('sqlite', 'tablespace_path')
 flask_app.config["SQLALCHEMY_DATABASE_URI"] = f'sqlite:///{db_tablespace}'
 flask_app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app=flask_app)
+# set up flask application
+flask_app.logger.removeHandler(default_handler)
+flask_app.logger.addHandler(log_handler)
+flask_app.secret_key = creds.flask_secret_key
+flask_app.jinja_env.add_extension('jinja2.ext.loopcontrols')
+flask_app.jinja_env.filters.update({
+    'is_list': is_list,
+})
+# enable compression
+Compress().init_app(flask_app)
+flask_ctx = flask_app.app_context()
+flask_ctx.push()
+
+api_app = FastAPI()
+api_app.mount("/admin", WSGIMiddleware(flask_app))
+
 
 OUTPUT_TYPE_BLUETOOTH = 'bluetooth'
 OUTPUT_TYPE_SWITCH = 'ioboard'
@@ -348,6 +371,16 @@ def update_meter_config(input_device_key, meter_config, register_value, meter_va
     db.session.add(meter_config)
     db.session.commit()
     return normalized_register_value
+
+
+@api_app.get("/", response_class=RedirectResponse)
+def api_root():
+    return "/admin/"
+
+
+@api_app.get("/api/ping")
+def api_ping():
+    return {"message": "Hello World"}
 
 
 @flask_app.route('/debug-sentry')
@@ -1867,35 +1900,32 @@ class CallbackUrlDiscovery(AppThread):
         self.untrack()
 
 
-class FlaskThread(Thread):
+class ApiServer(Thread):
 
-    def __init__(self, app, compress):
-        super(FlaskThread, self).__init__(name=self.__class__.__name__)
-        # start frontend
-        app.logger.removeHandler(default_handler)
-        app.logger.addHandler(log_handler)
-        app.secret_key = creds.flask_secret_key
-        app.jinja_env.add_extension('jinja2.ext.loopcontrols')
-        app.jinja_env.filters.update({
-            'is_list': is_list,
-        })
-        # enable compression
-        compress.init_app(app)
-        #TODO: how to enable debug mode
-        self.srv = make_server(host='0.0.0.0',
-                               port=int(app_config.get('flask', 'http_port')),
-                               app=app,
-                               threaded=True)
-        self.ctx = app.app_context()
-        self.ctx.push()
+    def __init__(self):
+        super(ApiServer, self).__init__(name=self.__class__.__name__)
+        self.server = None
+
+        config = uvicorn.Config(
+            app="app.__main__:api_app",
+            host='0.0.0.0',
+            port=int(app_config.get('flask', 'http_port')),
+            log_level="info",
+            timeout_graceful_shutdown=1)
+        self.server = uvicorn.Server(config)
 
     def run(self):
-        self.srv.serve_forever()
+        log.warning('Starting API server...')
+        self.server.run()
+        log.warning('API server is finished.')
 
     def shutdown(self):
-        log.warning('Flask server shutting down: {}'.format(self.__class__.__name__))
-        self.srv.shutdown()
-        log.warning('Flask server shutdown complete: {}'.format(self.__class__.__name__))
+        if self.server:
+            log.warning(f'API server shutting down: {self.__class__.__name__}')
+            # emulate signal handler latch in server.handle_exit()
+            self.server.force_exit = True
+            asyncio.run(self.server.shutdown())
+            log.warning(f'API server shutdown complete: {self.__class__.__name__}')
 
 
 def main():
@@ -1936,9 +1966,7 @@ def main():
             target=thread_nanny,
             args=(signal_handler,))
         # not tracked by nanny because this is used for Flask bootstrap
-        server = FlaskThread(
-            app=flask_app,
-            compress=Compress())
+        server = ApiServer()
         # startup completed
         # back to INFO logging
         log.setLevel(logging.INFO)
@@ -1955,7 +1983,7 @@ def main():
             if sqs_listener:
                 sqs_listener.start()
             mq_listener.start()
-            # Flask UI
+            # HTTP APIs
             server.start()
             # get supporting services going
             if app_config.getboolean('ngrok', 'enabled'):
@@ -1968,10 +1996,10 @@ def main():
         finally:
             die()
             message = "Shutting down {}..."
+            log.info(message.format('API server'))
+            server.shutdown()
             log.info(message.format('Main event processor'))
             event_processor.stop()
-            log.info(message.format('Web server'))
-            server.shutdown()
             log.info(message.format('Telegram Bot'))
             telegram_bot.shutdown()
             log.info(message.format('Rabbit MQ listener'))
