@@ -78,8 +78,9 @@ public class EventProcessor
         RabbitMq rabbit = new RabbitMq();
         rabbit.start();
 
-        MyClass myc = new MyClass("foo");
-        myc.getAge();
+        MyClass myc = new MyClass("foo", 1.0, new String[]{"hello", "world"});
+        myc.name();
+        myc.score();
 
         try {
             Thread.currentThread().sleep(2000);
