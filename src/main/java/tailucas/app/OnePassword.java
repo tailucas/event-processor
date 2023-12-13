@@ -7,18 +7,38 @@ import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
+import java.util.List;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.sanctionco.opconnect.OPConnectClient;
+import com.sanctionco.opconnect.OPConnectClientBuilder;
+import com.sanctionco.opconnect.model.Vault;
+
 public class OnePassword {
 
     private static Logger log = LoggerFactory.getLogger(OnePassword.class);
+    private OPConnectClient client = null;
 
-    public void OnePassword() {
+    public OnePassword() {
+        final String opServerAddr = System.getenv("OP_CONNECT_SERVER");
+        final String opToken = System.getenv("OP_CONNECT_TOKEN");
+        client = OPConnectClientBuilder.builder()
+            .withEndpoint(opServerAddr)
+            .withAccessToken(opToken)
+            .build();
+    }
 
+    public void close() {
+        client.close();
+    }
+
+    public void listVaults() {
+        List<Vault> vaults = client.listVaults().join();
+        log.info("1P vaults are {}", vaults);
     }
 
     public static String opRequest(String httpMethod) {

@@ -73,7 +73,8 @@ public class EventProcessor
         log.info("Starting application with env {}", envVars.keySet());
 
         OnePassword op = new OnePassword();
-        op.getItems();
+        //op.getItems();
+        op.listVaults();
 
         final String javaVersion = Runtime.version().toString();
         ZContext context = new ZContext();
@@ -83,8 +84,6 @@ public class EventProcessor
         log.debug("Hello (debug) {} ", javaVersion);
         log.info("Hello (info) {} ", javaVersion);
         log.error("Hello? (error) {}", javaVersion);
-        socket.close();
-        context.close();
         Set<Thread> threadSet = Thread.getAllStackTraces().keySet();
         for (Thread thread : threadSet) {
             log.info(thread + " daemon? " + thread.isDaemon());
@@ -116,5 +115,9 @@ public class EventProcessor
         } catch (InterruptedException e) {
             log.error(e.getMessage(), e);
         }
+
+        socket.close();
+        context.close();
+        op.close();
     }
 }

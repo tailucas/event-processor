@@ -33,6 +33,7 @@
     <json.version>20231013</json.version>
     <zeromq.version>0.5.4</zeromq.version>
     <slf4j.version>2.0.9</slf4j.version>
+    <opconnect-java.version>0.6.1</opconnect-java.version>
 
     <!-- test dependencies -->
     <junit.version>5.10.1</junit.version>
@@ -55,6 +56,12 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>com.sanctionco.opconnect</groupId>
+      <artifactId>opconnect-java</artifactId>
+      <version>${opconnect-java.version}</version>
     </dependency>
 
     <dependency>
