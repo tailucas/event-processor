@@ -90,7 +90,7 @@
 
     <dependency>
       <groupId>org.msgpack</groupId>
-      <artifactId>msgpack-core</artifactId>
+      <artifactId>jackson-dataformat-msgpack</artifactId>
       <version>${msgpack.version}</version>
     </dependency>
 
