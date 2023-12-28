@@ -198,6 +198,8 @@ class InputConfig(db.Model):
         self.group_name = group_name
         self.info_notify = info_notify
 
+    def as_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
 class MeterConfig(db.Model):
     __tablename__ = 'meter_config'
@@ -226,6 +228,9 @@ class MeterConfig(db.Model):
         self.meter_reading_unit_factor = meter_reading_unit_factor
         self.meter_reading_unit_precision = meter_reading_unit_precision
 
+    def as_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
 
 class OutputConfig(db.Model):
     __tablename__  = 'output_config'
@@ -242,6 +247,9 @@ class OutputConfig(db.Model):
         self.device_label = device_label
         self.device_params = device_params
 
+    def as_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
 
 class InputLink(db.Model):
     __tablename__ = 'input_link'
@@ -253,6 +261,9 @@ class InputLink(db.Model):
     def __init__(self, input_device_id, linked_device_id):
         self.input_device_id = input_device_id
         self.linked_device_id = linked_device_id
+
+    def as_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
 
 class OutputLink(db.Model):
@@ -266,6 +277,8 @@ class OutputLink(db.Model):
         self.input_device_id = input_device_id
         self.output_device_id = output_device_id
 
+    def as_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
 class InputConfigWrapper(object):
 
@@ -533,6 +546,30 @@ def show_config():
                            saved_device_id=saved_device_id)
 
 
+@api_app.get("/api/input_config")
+def api_input_config(device_key: str | None = None):
+    with flask_app.app_context():
+        configs = []
+        if device_key:
+            db_config = InputConfig.query.filter_by(device_key=device_key).first()
+            configs.append(db_config.as_dict())
+        else:
+            db_configs = InputConfig.query.all()
+            for db_config in db_configs:
+                configs.append(db_config.as_dict())
+        return json.dumps(configs)
+
+
+@api_app.get("/api/meter_config")
+def api_meter_config(device_key: str):
+    with flask_app.app_context():
+        configs = []
+        db_input_config = InputConfig.query.filter_by(device_label=device_key).first()
+        db_meter_config = MeterConfig.query.filter_by(input_device_id=db_input_config.id).first()
+        configs.append(db_meter_config.as_dict())
+        return json.dumps(configs)
+
+
 @flask_app.route('/input_config', methods=['GET', 'POST'])
 def input_config():
     saved_device_id = None
@@ -666,6 +703,18 @@ def input_link():
                            saved_device_id=saved_device_id)
 
 
+@api_app.get("/api/output_link")
+def api_output_link(device_key: str):
+    with flask_app.app_context():
+        configs = []
+        db_input_config = InputConfig.query.filter_by(device_key=device_key).first()
+        db_output_links = OutputLink.query.filter_by(input_device_id=db_input_config.id).all()
+        for db_output_link in db_output_links:
+            db_output_config = OutputConfig.query.filter_by(id=db_output_link.output_device_id).first()
+            configs.append(db_output_config.as_dict())
+        return json.dumps(configs)
+
+
 @flask_app.route('/output_link', methods=['GET', 'POST'])
 def output_link():
     saved_device_id = None
@@ -697,6 +746,20 @@ def output_link():
                            outputs=outputs,
                            links=links,
                            saved_device_id=saved_device_id)
+
+
+@api_app.get("/api/output_config")
+def api_output_config(device_key: str | None = None):
+    with flask_app.app_context():
+        configs = []
+        if device_key:
+            db_config = OutputConfig.query.filter_by(device_key=device_key).first()
+            configs.append(db_config.as_dict())
+        else:
+            db_configs = OutputConfig.query.all()
+            for db_config in db_configs:
+                configs.append(db_config.as_dict())
+        return json.dumps(configs)
 
 
 @flask_app.route('/output_config', methods=['GET', 'POST'])
