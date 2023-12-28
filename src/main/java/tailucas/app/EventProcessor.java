@@ -75,12 +75,19 @@ public class EventProcessor
     private void shutdown() {
         if (mqttClient != null) {
             try {
+                // this is a race condition but disconnect tends to block indefinitely
+                // irrespective of timeout when a connect is still in progress (bug).
                 if (mqttClient.isConnected()) {
-                    mqttClient.disconnect();
+                    mqttClient.disconnect(10);
                 }
-                mqttClient.close();
             } catch (MqttException e) {
-                log.warn("During shutdown of MQTT client: {}", e.getMessage());
+                log.warn("During disconnect of MQTT client: {}", e.getMessage());
+            } finally {
+                try {
+                    mqttClient.close();
+                } catch (MqttException e) {
+                    log.warn("During closing of MQTT client: {}", e.getMessage());
+                }
             }
         }
         if (rabbitMQChannel != null) {
