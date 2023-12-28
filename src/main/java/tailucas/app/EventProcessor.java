@@ -24,6 +24,8 @@ import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.DeliverCallback;
 
+import jakarta.annotation.PreDestroy;
+
 import org.zeromq.ZContext;
 import org.zeromq.SocketType;
 import org.eclipse.paho.client.mqttv3.IMqttClient;
@@ -36,6 +38,7 @@ import org.msgpack.jackson.dataformat.MessagePackMapper;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.ExitCodeGenerator;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 
@@ -44,26 +47,13 @@ import org.springframework.context.annotation.Bean;
 public class EventProcessor
 {
     private static Logger log = LoggerFactory.getLogger(EventProcessor.class);
-
     private static ExecutorService srv = null;
+    private static IMqttClient mqttClient = null;
+    private static Channel rabbitMQChannel = null;
+    private static int exitCode = 0;
 
-    private static void registerShutdownHook() {
-        final Thread mainThread = Thread.currentThread();
-        Runtime.getRuntime().addShutdownHook(new Thread("shutdown hook") {
-            public void run() {
-                try {
-                    if (srv != null) {
-                        log.info("shutting down executor");
-                        srv.shutdown();
-                    }
-                    log.info("triggered");
-                    mainThread.join();
-                } catch (InterruptedException ex) {
-                    log.error(ex.getMessage(), ex);
-                }
-            }
-        });
-    }
+    private static final int EXIT_CODE_MQTT = 2;
+    private static final int EXIT_CODE_RABBITMQ = 4;
 
     @Bean
 	public CommandLineRunner commandLineRunner(ApplicationContext ctx) {
@@ -76,14 +66,43 @@ public class EventProcessor
 		};
 	}
 
+    @Bean
+    public ExitCodeGenerator exitCodeGenerator() {
+        return () -> exitCode;
+    }
+
+    @PreDestroy
+    private void shutdown() {
+        if (mqttClient != null) {
+            try {
+                if (mqttClient.isConnected()) {
+                    mqttClient.disconnect();
+                }
+                mqttClient.close();
+            } catch (MqttException e) {
+                log.warn("During shutdown of MQTT client: {}", e.getMessage());
+            }
+        }
+        if (rabbitMQChannel != null) {
+            try {
+                rabbitMQChannel.close();
+            } catch (Exception e) {
+                log.warn("During shutdown of RabbitMQ client: {}", e.getMessage());
+            }
+        }
+        if (srv != null) {
+            srv.shutdown();
+        }
+        log.info("Event handler shutdown complete.");
+    }
+
     public static void main( String[] args )
     {
-        SpringApplication.run(EventProcessor.class, args);
+        final ApplicationContext springApp = SpringApplication.run(EventProcessor.class, args);
         Thread.currentThread().setName("main");
         final Locale locale = Locale.getDefault();
         final Map<String, String> envVars = System.getenv();
         log.info("{} starting event processor in working directory {}, locale language {}, country {} and environment {}", Runtime.version().toString(), System.getProperty("user.dir"), locale.getLanguage(), locale.getCountry(), envVars.keySet());
-        registerShutdownHook();
 
         // read application settings
         try {
@@ -93,23 +112,10 @@ public class EventProcessor
             log.error(e.getMessage());
         }
 
-        OnePassword op = new OnePassword();
-        //op.getItems();
-        op.listVaults();
-
-        ZContext context = new ZContext();
-        ZMQ.Socket socket = context.createSocket(SocketType.PUSH);
-        log.info( "Hello (print) {}", "world");
-        log.trace("Hello (trace) {} ", "world");
-        log.debug("Hello (debug) {} ", "world");
-        log.info("Hello (info) {} ", "world");
-        log.error("Hello? (error) {}", "world");
-
         srv = Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("app-event-", 1).factory());
         ThreadFactory appThreadFactory = Thread.ofVirtual().name("app-", 1).factory();
 
         Thread mqttThread = appThreadFactory.newThread(() -> {
-            IMqttClient mqttClient = null;
             try {
                 final String clientId = UUID.randomUUID().toString();
                 mqttClient = new MqttClient("tcp://192.168.0.5:1883", clientId, new MemoryPersistence());
@@ -124,21 +130,22 @@ public class EventProcessor
                     srv.submit(new DeviceEvent(topic, Map.of("mqtt", Collections.singletonMap(topic, payloadString))));
                 });
             } catch (MqttException e) {
-                log.error(e.getMessage(), e);
+                log.error("Problem with MQTT client", e);
+                exitCode |= EXIT_CODE_MQTT;
+                System.exit(SpringApplication.exit(springApp));
             }
         });
 
         Thread rabbitMqThread = appThreadFactory.newThread(() -> {
-            Channel channel = null;
             try {
                 ConnectionFactory factory = new ConnectionFactory();
                 factory.setHost("192.168.0.5");
                 Connection connection = factory.newConnection();
-                channel = connection.createChannel();
+                rabbitMQChannel = connection.createChannel();
                 final String EXCHANGE_NAME = "home_automation";
-                channel.exchangeDeclare(EXCHANGE_NAME, "topic");
-                String queueName = channel.queueDeclare().getQueue();
-                channel.queueBind(queueName, EXCHANGE_NAME, "#");
+                rabbitMQChannel.exchangeDeclare(EXCHANGE_NAME, "topic");
+                String queueName = rabbitMQChannel.queueDeclare().getQueue();
+                rabbitMQChannel.queueBind(queueName, EXCHANGE_NAME, "#");
                 DeliverCallback deliverCallback = (consumerTag, delivery) -> {
                     final byte[] msgBody = delivery.getBody();
                     ObjectMapper objectMapper = new MessagePackMapper();
@@ -146,16 +153,28 @@ public class EventProcessor
                     log.debug("{}", payloadObject);
                     srv.submit(new DeviceEvent(delivery.getEnvelope().getRoutingKey(), payloadObject));
                 };
-                channel.basicConsume(queueName, true, deliverCallback, consumerTag -> { });
-            } catch (IOException e) {
-                log.error(e.getMessage(), e);
-            } catch (TimeoutException e) {
-                log.error(e.getMessage(), e);
+                rabbitMQChannel.basicConsume(queueName, true, deliverCallback, consumerTag -> { });
+            } catch (Exception e) {
+                log.error("Problem with RabbitMQ client", e);
+                exitCode |= EXIT_CODE_RABBITMQ;
+                System.exit(SpringApplication.exit(springApp));
             }
         });
 
         rabbitMqThread.start();
         mqttThread.start();
+
+        OnePassword op = new OnePassword();
+        //op.getItems();
+        op.listVaults();
+
+        ZContext context = new ZContext();
+        ZMQ.Socket socket = context.createSocket(SocketType.PUSH);
+        log.info( "Hello (print) {}", "world");
+        log.trace("Hello (trace) {} ", "world");
+        log.debug("Hello (debug) {} ", "world");
+        log.info("Hello (info) {} ", "world");
+        log.error("Hello? (error) {}", "world");
 
         MyClass myc = new MyClass("foo", 1.0, new String[]{"hello", "world"});
         myc.name();
