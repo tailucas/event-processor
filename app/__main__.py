@@ -425,17 +425,17 @@ def index():
         if 'panic_button' in request.form:
             log.info('Panic button pressed.')
             with exception_handler(connect_url=URL_WORKER_APP, and_raise=False) as zmq_socket:
+                active_devices = [
+                    {
+                        'device_key': 'App Panic Button',
+                        'device_label': 'Panic Button',
+                        'type': 'Panic Button'
+                    }
+                ]
                 zmq_socket.send_pyobj({
                     device_name: {
-                        'data': {
-                            'active_devices': [
-                                {
-                                    'device_key': 'App Panic Button',
-                                    'device_label': 'Panic Button',
-                                    'type': 'Panic Button'
-                                }
-                            ]
-                        }
+                        'active_devices': active_devices,
+                        'outputs_triggered': active_devices,
                     }
                 })
         elif 'meter_reset' in request.form:
@@ -1034,7 +1034,7 @@ class EventProcessor(MQConnection):
                             timestamp = make_timestamp()
                             log_msg = "Message from {} does not include a 'timestamp' so it can't be filtered if it " \
                                       "is stale. Using {}.".format(event_origin, timestamp.strftime(ISO_DATE_FORMAT))
-                            if 'data' in event_data and 'active_devices' in event_data['data']:
+                            if 'active_devices' in event_data or 'outputs_triggered' in event_data:
                                 log.warning(log_msg)
                             else:
                                 log.debug(log_msg)
@@ -1069,16 +1069,16 @@ class EventProcessor(MQConnection):
                                 log.info(f'Synthesizing {device_type} event...')
                                 # splice in a new event
                                 event_origin = device_name
-                                event_data.update({
-                                    'data': {
-                                        'active_devices': [
-                                            {
-                                                'device_key': 'App Dash Button',
-                                                'device_label': 'Dash Button',
-                                                'type': device_type
-                                            }
-                                        ]
+                                active_devices = [
+                                    {
+                                        'device_key': 'App Dash Button',
+                                        'device_label': 'Dash Button',
+                                        'type': device_type
                                     }
+                                ]
+                                event_data.update({
+                                    'active_devices': active_devices,
+                                    'outputs_triggered': active_devices,
                                 })
                             elif bot_command_base.startswith('/outputson'):
                                 self._outputs_enabled = True
@@ -1158,153 +1158,157 @@ class EventProcessor(MQConnection):
                                 metric_name='Heartbeat Age',
                                 count=heartbeat_age,
                                 unit='Seconds')
-                        if 'data' in event_data:
-                            if 'device_info' in event_data['data']:
-                                devices_updated = self._update_devices(
+                        if 'device_info' in event_data:
+                            devices_updated = self._update_devices(
+                                event_origin=event_origin,
+                                device_info=event_data['device_info'])
+                            if devices_updated > 0:
+                                log.info('{} advertised {} new devices.'.format(event_origin, devices_updated))
+                        active_devices = None
+                        if 'active_devices' in event_data:
+                            active_devices = event_data['active_devices']
+                        elif 'outputs_triggered' in event_data:
+                            active_devices = event_data['outputs_triggered']
+                        if active_devices:
+                            for active_device in active_devices:
+                                # patch in top-level data, if any
+                                if 'storage_url' in event_data:
+                                    active_device['storage_url'] = event_data['storage_url']
+                                active_device_key = active_device['device_key']
+                                # input known?
+                                input_config = InputConfig.query.filter_by(device_key=active_device_key).first()
+                                if not input_config:
+                                    log.warning(f'Input device {active_device_key} is not configured, ignoring.')
+                                    continue
+                                # message stale?
+                                message_age = make_timestamp() - timestamp
+                                if message_age > timedelta(seconds=self._max_message_validity_seconds):
+                                    log.warning('Skipping further processing of {} from {} due to message age '
+                                                '{} exceeding {} seconds.'.format(
+                                        active_device_key,
+                                        event_origin,
+                                        message_age.seconds,
+                                        self._max_message_validity_seconds))
+                                    continue
+                                # always process a fresh meter update
+                                meter_config = None
+                                if 'type' in active_device and 'meter' in active_device['type'].lower():
+                                    meter_value = int(active_device['sample_values']['meter'])
+                                    register_value = int(active_device['sample_values']['register'])
+                                    meter_config = MeterConfig.query.filter_by(input_device_id=input_config.id).first()
+                                    normalized_register_value = update_meter_config(
+                                        input_device_key=active_device_key,
+                                        meter_config=meter_config,
+                                        register_value=register_value,
+                                        meter_value=meter_value)
+                                    # post metric every n-minutes
+                                    now = time.time()
+                                    # accumulated meter value
+                                    if now - self._metric_last_posted_meter_value > 5*60:
+                                        self._influxdb_write(
+                                            bucket=self.influxdb_bucket,
+                                            active_device_key=active_device_key,
+                                            field_name='metered',
+                                            field_value=int(self._metric_meter_value_accumulator) / float(meter_config.meter_reading_unit_factor))
+                                        self._metric_last_posted_meter_value = now
+                                        self._metric_meter_value_accumulator = 0
+                                    else:
+                                        self._metric_meter_value_accumulator += meter_value
+                                    # register values
+                                    if now - self._metric_last_posted_register_value > 5*60:
+                                        self._influxdb_write(
+                                            bucket=self.influxdb_bucket,
+                                            active_device_key=active_device_key,
+                                            field_name='register',
+                                            field_value=normalized_register_value)
+                                        self._metric_last_posted_register_value = now
+                                # input enabled?
+                                if not input_config.device_enabled:
+                                    continue
+                                # only consider a meter active if the value is out of bounds
+                                if 'type' in active_device and 'meter' in active_device['type'].lower():
+                                    out_of_range = False
+                                    if meter_config.meter_low_limit and register_value < meter_config.meter_low_limit:
+                                        out_of_range = True
+                                    if meter_config.meter_high_limit and register_value > meter_config.meter_high_limit:
+                                        out_of_range = True
+                                    if not out_of_range:
+                                        continue
+                                # multi-trigger
+                                if input_config.multi_trigger:
+                                    # TODO: make configurable
+                                    trigger_window = int(app_config.get('config', 'default_trigger_window'))
+                                    # if not in the trigger history, treat as never activated
+                                    if active_device_key not in self._input_trigger_history:
+                                        self._input_trigger_history[active_device_key] = time.time()
+                                        continue
+                                    input_last_triggered = self._input_trigger_history[active_device_key]
+                                    # the device must have been considered active within the trigger window
+                                    last_triggered = time.time() - input_last_triggered
+                                    if last_triggered > trigger_window:
+                                        # update the history and continue
+                                        self._input_trigger_history[active_device_key] = time.time()
+                                        log.debug(f'Not activating {active_device_key} because it was triggered more than {trigger_window} seconds ago. ({last_triggered})')
+                                        continue
+                                # get the event detail for debouncing
+                                event_detail = None
+                                if 'event_detail' in active_device:
+                                    event_detail = active_device['event_detail']
+                                # debounce
+                                if active_device_key in self._input_active_history:
+                                    # debounce this input
+                                    if input_config.activation_interval:
+                                        activation_interval = input_config.activation_interval
+                                    else:
+                                        activation_interval = int(app_config.get('config', 'default_activation_interval'))
+                                    input_last_active, last_event_detail = self._input_active_history[active_device_key]
+                                    if last_event_detail == event_detail:
+                                        last_activated = time.time() - input_last_active
+                                        if last_activated < activation_interval:
+                                            # device is still considered active
+                                            log.debug(f'Not activating {active_device_key} ({last_event_detail}) because it was triggered less than {activation_interval} seconds ago. ({last_activated})')
+                                            continue
+                                self._input_active_history[active_device_key] = (time.time(), event_detail)
+                                # active devices are presently assumed to be inputs
+                                self._update_device(
+                                    input_outputs=self.inputs,
+                                    device_origin=self._input_origin,
+                                    origin_devices=self._inputs_by_origin,
                                     event_origin=event_origin,
-                                    device_info=event_data['data']['device_info'])
-                                if devices_updated > 0:
-                                    log.info('{} advertised {} new devices.'.format(event_origin, devices_updated))
-                            if 'active_devices' in event_data['data']:
-                                for active_device in event_data['data']['active_devices']:
-                                    # patch in top-level data, if any
-                                    if 'storage_url' in event_data['data']:
-                                        active_device['storage_url'] = event_data['data']['storage_url']
-                                    active_device_key = active_device['device_key']
-                                    # input known?
-                                    input_config = InputConfig.query.filter_by(device_key=active_device_key).first()
-                                    if not input_config:
-                                        log.warning(f'Input device {active_device_key} is not configured, ignoring.')
-                                        continue
-                                    # message stale?
-                                    message_age = make_timestamp() - timestamp
-                                    if message_age > timedelta(seconds=self._max_message_validity_seconds):
-                                        log.warning('Skipping further processing of {} from {} due to message age '
-                                                 '{} exceeding {} seconds.'.format(
+                                    device=active_device)
+                                # informational event?
+                                # TODO: move to _process_device_event
+                                if input_config.info_notify:
+                                    # make a future date that is relative (after) now time.
+                                    now = datetime.now().replace(tzinfo=tz.tzlocal())
+                                    not_before = now.replace(
+                                        hour=self.notify_not_before_time.hour,
+                                        minute=self.notify_not_before_time.minute,
+                                        second=0,
+                                        microsecond=0)
+                                    not_after = now.replace(
+                                        hour=self.notify_not_after_time.hour,
+                                        minute=self.notify_not_after_time.minute,
+                                        second=0,
+                                        microsecond=0)
+                                    defer_until = None
+                                    if now < not_before:
+                                        defer_until = not_before
+                                    if now >= not_after:
+                                        # the not-before time may not be on the same day
+                                        defer_until = not_before + timedelta(days=1)
+                                    if defer_until:
+                                        # defer the notification
+                                        log.info("Deferring notification for '{}' until {}".format(
                                             active_device_key,
-                                            event_origin,
-                                            message_age.seconds,
-                                            self._max_message_validity_seconds))
+                                            defer_until))
                                         continue
-                                    # always process a fresh meter update
-                                    meter_config = None
-                                    if 'type' in active_device and 'meter' in active_device['type'].lower():
-                                        meter_value = int(active_device['sample_values']['meter'])
-                                        register_value = int(active_device['sample_values']['register'])
-                                        meter_config = MeterConfig.query.filter_by(input_device_id=input_config.id).first()
-                                        normalized_register_value = update_meter_config(
-                                            input_device_key=active_device_key,
-                                            meter_config=meter_config,
-                                            register_value=register_value,
-                                            meter_value=meter_value)
-                                        # post metric every n-minutes
-                                        now = time.time()
-                                        # accumulated meter value
-                                        if now - self._metric_last_posted_meter_value > 5*60:
-                                            self._influxdb_write(
-                                                bucket=self.influxdb_bucket,
-                                                active_device_key=active_device_key,
-                                                field_name='metered',
-                                                field_value=int(self._metric_meter_value_accumulator) / float(meter_config.meter_reading_unit_factor))
-                                            self._metric_last_posted_meter_value = now
-                                            self._metric_meter_value_accumulator = 0
-                                        else:
-                                            self._metric_meter_value_accumulator += meter_value
-                                        # register values
-                                        if now - self._metric_last_posted_register_value > 5*60:
-                                            self._influxdb_write(
-                                                bucket=self.influxdb_bucket,
-                                                active_device_key=active_device_key,
-                                                field_name='register',
-                                                field_value=normalized_register_value)
-                                            self._metric_last_posted_register_value = now
-                                    # input enabled?
-                                    if not input_config.device_enabled:
-                                        continue
-                                    # only consider a meter active if the value is out of bounds
-                                    if 'type' in active_device and 'meter' in active_device['type'].lower():
-                                        out_of_range = False
-                                        if meter_config.meter_low_limit and register_value < meter_config.meter_low_limit:
-                                            out_of_range = True
-                                        if meter_config.meter_high_limit and register_value > meter_config.meter_high_limit:
-                                            out_of_range = True
-                                        if not out_of_range:
-                                            continue
-                                    # multi-trigger
-                                    if input_config.multi_trigger:
-                                        # TODO: make configurable
-                                        trigger_window = int(app_config.get('config', 'default_trigger_window'))
-                                        # if not in the trigger history, treat as never activated
-                                        if active_device_key not in self._input_trigger_history:
-                                            self._input_trigger_history[active_device_key] = time.time()
-                                            continue
-                                        input_last_triggered = self._input_trigger_history[active_device_key]
-                                        # the device must have been considered active within the trigger window
-                                        last_triggered = time.time() - input_last_triggered
-                                        if last_triggered > trigger_window:
-                                            # update the history and continue
-                                            self._input_trigger_history[active_device_key] = time.time()
-                                            log.debug(f'Not activating {active_device_key} because it was triggered more than {trigger_window} seconds ago. ({last_triggered})')
-                                            continue
-                                    # get the event detail for debouncing
-                                    event_detail = None
-                                    if 'event_detail' in active_device:
-                                        event_detail = active_device['event_detail']
-                                    # debounce
-                                    if active_device_key in self._input_active_history:
-                                        # debounce this input
-                                        if input_config.activation_interval:
-                                            activation_interval = input_config.activation_interval
-                                        else:
-                                            activation_interval = int(app_config.get('config', 'default_activation_interval'))
-                                        input_last_active, last_event_detail = self._input_active_history[active_device_key]
-                                        if last_event_detail == event_detail:
-                                            last_activated = time.time() - input_last_active
-                                            if last_activated < activation_interval:
-                                                # device is still considered active
-                                                log.debug(f'Not activating {active_device_key} ({last_event_detail}) because it was triggered less than {activation_interval} seconds ago. ({last_activated})')
-                                                continue
-                                    self._input_active_history[active_device_key] = (time.time(), event_detail)
-                                    # active devices are presently assumed to be inputs
-                                    self._update_device(
-                                        input_outputs=self.inputs,
-                                        device_origin=self._input_origin,
-                                        origin_devices=self._inputs_by_origin,
-                                        event_origin=event_origin,
-                                        device=active_device)
-                                    # informational event?
-                                    # TODO: move to _process_device_event
-                                    if input_config.info_notify:
-                                        # make a future date that is relative (after) now time.
-                                        now = datetime.now().replace(tzinfo=tz.tzlocal())
-                                        not_before = now.replace(
-                                            hour=self.notify_not_before_time.hour,
-                                            minute=self.notify_not_before_time.minute,
-                                            second=0,
-                                            microsecond=0)
-                                        not_after = now.replace(
-                                            hour=self.notify_not_after_time.hour,
-                                            minute=self.notify_not_after_time.minute,
-                                            second=0,
-                                            microsecond=0)
-                                        defer_until = None
-                                        if now < not_before:
-                                            defer_until = not_before
-                                        if now >= not_after:
-                                            # the not-before time may not be on the same day
-                                            defer_until = not_before + timedelta(days=1)
-                                        if defer_until:
-                                            # defer the notification
-                                            log.info("Deferring notification for '{}' until {}".format(
-                                                active_device_key,
-                                                defer_until))
-                                            continue
-                                    self._process_device_event(
-                                        input_config=input_config,
-                                        event_origin=event_origin,
-                                        timestamp=timestamp,
-                                        active_device_key=active_device_key,
-                                        active_device=active_device)
+                                self._process_device_event(
+                                    input_config=input_config,
+                                    event_origin=event_origin,
+                                    timestamp=timestamp,
+                                    active_device_key=active_device_key,
+                                    active_device=active_device)
         try_close(self.bot)
 
     def _process_device_event(self, input_config, event_origin, timestamp, active_device_key, active_device):
@@ -1368,10 +1372,9 @@ class EventProcessor(MQConnection):
             output_device_type = output_config.device_type.lower()
             # let the bot know first
             if output_device_type == 'sms':
-                self.bot.send_pyobj({
-                    'timestamp': timestamp,
-                    'data': activation_command
-                })
+                payload = {'timestamp': timestamp}
+                payload.update(activation_command)
+                self.bot.send_pyobj(payload)
                 continue
             # strip out image data that is no longer needed
             if 'image' in active_device:
@@ -1464,7 +1467,6 @@ class TBot(AppThread, Closable):
                 timestamp = parse_datetime(value=event['timestamp'], as_tz=user_tz)
             else:
                 timestamp = make_timestamp(as_tz=user_tz)
-            event_data = None
             input_context = None
             # build the message
             image_data = None
@@ -1472,15 +1474,12 @@ class TBot(AppThread, Closable):
                 notification_message = event['message']
                 if 'add_tunnel_url' in event and ngrok_tunnel_url_with_bauth:
                     notification_message = '[{}]({})'.format(notification_message, ngrok_tunnel_url_with_bauth)
-            elif 'data' in event:
-                event_data = event['data']
-                input_context = event_data['input_context']
-                notification_message = TBot.build_message(timestamp=timestamp,
-                                                            event_data=event_data,
-                                                            max_length=200)
-                if 'image' in input_context:
-                    image_data = BytesIO(input_context['image'])
-
+            else:
+                notification_message = TBot.build_message(timestamp=timestamp, event_data=event, max_length=200)
+                if 'input_context' in event:
+                    input_context = event['input_context']
+                    if 'image' in input_context:
+                        image_data = BytesIO(input_context['image'])
             # send the message
             try:
                 if image_data:
@@ -1501,16 +1500,14 @@ class TBot(AppThread, Closable):
                                             text=notification_message,
                                             parse_mode='Markdown')
             except (TimedOut, NetworkError, RetryAfter):
-                if event_data and sns_fallback:
+                if event and sns_fallback:
                     sns = boto3.client('sns')
                     log.warning('Timeout or network problem using Bot. Fallback back to SMS.')
                     # rebuild the message for SMS
-                    notification_message = TBot.build_message(timestamp=timestamp,
-                                                                event_data=event_data,
-                                                                build_sms=True)
-                    if 'device_params' not in event_data['trigger_output']:
+                    notification_message = TBot.build_message(timestamp=timestamp, event_data=event, build_sms=True)
+                    if 'device_params' not in event['trigger_output']:
                         raise RuntimeError('Cannot send SMS because no parameters are configured.')
-                    recipients = event_data['trigger_output']['device_params'].strip().split(',')
+                    recipients = event['trigger_output']['device_params'].strip().split(',')
                     for recipient in recipients:
                         name_number = recipient.split(';')
                         log.info(f'SMS {name_number[0]} ({name_number[1]}) "{notification_message}"')
@@ -1644,10 +1641,10 @@ class MqttSubscriber(AppThread, Closable):
                             device_inputs.append(device_description)
                 self.socket.send_pyobj({
                     topic_base: {
-                        'data': {
-                            'device_info': {'inputs': device_inputs},
-                            'active_devices': active_devices
-                        },
+                        'device_info': {'inputs': device_inputs},
+                        'inputs': device_inputs,
+                        'active_devices': active_devices,
+                        'outputs_triggered': active_devices,
                         'timestamp': event_timestamp
                     }
                 })
@@ -1659,24 +1656,24 @@ class MqttSubscriber(AppThread, Closable):
                 metered = msg_data['last_minute_metered']
                 register = msg_data['register_reading']
                 log.debug('{}: {} ({} of {})'.format(device_id, input_location, metered, register))
+                active_devices = [{
+                    'device_key': device_key,
+                    'type': 'meter',
+                    'sample_values': {
+                        'meter': metered,
+                        'register': register
+                    }
+                }]
                 self.socket.send_pyobj({
                     topic_base: {
-                        'data': {
-                            'device_info': {
-                                'inputs': [{
-                                    'device_key': device_key,
-                                    'type': 'meter'
-                                }]
-                            },
-                            'active_devices': [{
+                        'device_info': {
+                            'inputs': [{
                                 'device_key': device_key,
-                                'type': 'meter',
-                                'sample_values': {
-                                    'meter': metered,
-                                    'register': register
-                                }
+                                'type': 'meter'
                             }]
                         },
+                        'active_devices': active_devices,
+                        'outputs_triggered': active_devices,
                         'timestamp': event_timestamp
                     }
                 })
