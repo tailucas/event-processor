@@ -4,21 +4,25 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.TimeoutException;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.zeromq.ZMQ;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectReader;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
@@ -132,9 +136,20 @@ public class EventProcessor
                 options.setConnectionTimeout(10);
                 mqttClient.connect(options);
                 mqttClient.subscribe("#", (topic, msg) -> {
-                    final byte[] payload = msg.getPayload();
-                    final String payloadString = new String(payload);
-                    srv.submit(new DeviceEvent(topic, Map.of("mqtt", Collections.singletonMap(topic, payloadString))));
+                    try {
+                        final byte[] payload = msg.getPayload();
+                        DeviceEvent deviceEvent = null;
+                        if (payload.length == 2 && payload[0] == 'O' && payload[1] == 'K') {
+                            deviceEvent = new DeviceEvent(topic, DeviceEvent.SourceType.MQTT, payload.toString());
+                        } else {
+                            ObjectMapper mapper = new ObjectMapper();
+                            Map<?,?> mqttUpdate = mapper.readerFor(new TypeReference<LinkedHashMap<?,?>>() { }).readValue(payload);
+                            deviceEvent = new DeviceEvent(topic, DeviceEvent.SourceType.MQTT, mqttUpdate);
+                        }
+                        srv.submit(deviceEvent);
+                    } catch (Exception e) {
+                        log.warn(e.getMessage());
+                    }
                 });
             } catch (MqttException e) {
                 log.error("Problem with MQTT client", e);
@@ -154,11 +169,22 @@ public class EventProcessor
                 String queueName = rabbitMQChannel.queueDeclare().getQueue();
                 rabbitMQChannel.queueBind(queueName, EXCHANGE_NAME, "#");
                 DeliverCallback deliverCallback = (consumerTag, delivery) -> {
-                    final byte[] msgBody = delivery.getBody();
-                    ObjectMapper objectMapper = new MessagePackMapper();
-                    var payloadObject = objectMapper.readValue(msgBody, new TypeReference<Map<String, Object>>() {});
-                    log.debug("{}", payloadObject);
-                    srv.submit(new DeviceEvent(delivery.getEnvelope().getRoutingKey(), payloadObject));
+                    try {
+                        final String source = delivery.getEnvelope().getRoutingKey();
+                        final byte[] msgBody = delivery.getBody();
+                        ObjectMapper mapper = new MessagePackMapper();
+                        mapper.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+                        DeviceUpdate deviceUpdate = mapper.readerFor(new TypeReference<DeviceUpdate>() { }).readValue(msgBody);
+                        if (deviceUpdate.outputs_triggered() != null) {
+                            deviceUpdate.outputs_triggered().forEach(device -> {
+                                srv.submit(new DeviceEvent(source, DeviceEvent.SourceType.RABBITMQ, device, deviceUpdate));
+                            });
+                        } else {
+                            srv.submit(new DeviceEvent(source, DeviceEvent.SourceType.RABBITMQ, deviceUpdate));
+                        }
+                    } catch (Exception e) {
+                        log.warn(e.getMessage());
+                    }
                 };
                 rabbitMQChannel.basicConsume(queueName, true, deliverCallback, consumerTag -> { });
             } catch (Exception e) {
