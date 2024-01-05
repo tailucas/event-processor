@@ -3,9 +3,6 @@ package tailucas.app;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
@@ -17,18 +14,13 @@ import org.slf4j.LoggerFactory;
 
 import org.zeromq.ZMQ;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.ObjectReader;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
-import com.rabbitmq.client.DeliverCallback;
-
 import jakarta.annotation.PreDestroy;
+import tailucas.app.message.Mqtt;
+import tailucas.app.message.RabbitMq;
+import tailucas.app.provider.OnePassword;
 
 import org.zeromq.ZContext;
 import org.zeromq.SocketType;
@@ -38,7 +30,6 @@ import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttException;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.ini4j.Ini;
-import org.msgpack.jackson.dataformat.MessagePackMapper;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.CommandLineRunner;
@@ -135,22 +126,7 @@ public class EventProcessor
                 options.setCleanSession(true);
                 options.setConnectionTimeout(10);
                 mqttClient.connect(options);
-                mqttClient.subscribe("#", (topic, msg) -> {
-                    try {
-                        final byte[] payload = msg.getPayload();
-                        DeviceEvent deviceEvent = null;
-                        if (payload.length == 2 && payload[0] == 'O' && payload[1] == 'K') {
-                            deviceEvent = new DeviceEvent(topic, DeviceEvent.SourceType.MQTT, payload.toString());
-                        } else {
-                            ObjectMapper mapper = new ObjectMapper();
-                            Map<?,?> mqttUpdate = mapper.readerFor(new TypeReference<LinkedHashMap<?,?>>() { }).readValue(payload);
-                            deviceEvent = new DeviceEvent(topic, DeviceEvent.SourceType.MQTT, mqttUpdate);
-                        }
-                        srv.submit(deviceEvent);
-                    } catch (Exception e) {
-                        log.warn(e.getMessage());
-                    }
-                });
+                mqttClient.subscribe("#", new Mqtt(srv));
             } catch (MqttException e) {
                 log.error("Problem with MQTT client", e);
                 exitCode |= EXIT_CODE_MQTT;
@@ -168,25 +144,7 @@ public class EventProcessor
                 rabbitMQChannel.exchangeDeclare(EXCHANGE_NAME, "topic");
                 String queueName = rabbitMQChannel.queueDeclare().getQueue();
                 rabbitMQChannel.queueBind(queueName, EXCHANGE_NAME, "#");
-                DeliverCallback deliverCallback = (consumerTag, delivery) -> {
-                    try {
-                        final String source = delivery.getEnvelope().getRoutingKey();
-                        final byte[] msgBody = delivery.getBody();
-                        ObjectMapper mapper = new MessagePackMapper();
-                        mapper.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
-                        DeviceUpdate deviceUpdate = mapper.readerFor(new TypeReference<DeviceUpdate>() { }).readValue(msgBody);
-                        if (deviceUpdate.outputs_triggered() != null) {
-                            deviceUpdate.outputs_triggered().forEach(device -> {
-                                srv.submit(new DeviceEvent(source, DeviceEvent.SourceType.RABBITMQ, device, deviceUpdate));
-                            });
-                        } else {
-                            srv.submit(new DeviceEvent(source, DeviceEvent.SourceType.RABBITMQ, deviceUpdate));
-                        }
-                    } catch (Exception e) {
-                        log.warn(e.getMessage());
-                    }
-                };
-                rabbitMQChannel.basicConsume(queueName, true, deliverCallback, consumerTag -> { });
+                rabbitMQChannel.basicConsume(queueName, true, new RabbitMq(srv), consumerTag -> { });
             } catch (Exception e) {
                 log.error("Problem with RabbitMQ client", e);
                 exitCode |= EXIT_CODE_RABBITMQ;
@@ -208,10 +166,6 @@ public class EventProcessor
         log.debug("Hello (debug) {} ", "world");
         log.info("Hello (info) {} ", "world");
         log.error("Hello? (error) {}", "world");
-
-        MyClass myc = new MyClass("foo", 1.0, new String[]{"hello", "world"});
-        myc.name();
-        myc.score();
 
         socket.close();
         context.close();

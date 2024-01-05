@@ -1,4 +1,4 @@
-package tailucas.app;
+package tailucas.app.api;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;

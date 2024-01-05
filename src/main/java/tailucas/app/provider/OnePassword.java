@@ -1,4 +1,4 @@
-package tailucas.app;
+package tailucas.app.provider;
 
 import java.io.BufferedReader;
 import java.io.IOException;
