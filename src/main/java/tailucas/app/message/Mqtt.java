@@ -26,9 +26,11 @@ public class Mqtt implements IMqttMessageListener {
     private static Logger log = LoggerFactory.getLogger(Mqtt.class);
 
     private ExecutorService srv = null;
+    private ObjectMapper mapper = null;
 
     public Mqtt(ExecutorService srv) {
         this.srv = srv;
+        this.mapper = new ObjectMapper();
     }
 
     @Override
@@ -41,7 +43,6 @@ public class Mqtt implements IMqttMessageListener {
             } else if (payload.length == 2 && payload[0] == 'O' && payload[1] == 'K') {
                 srv.submit(new Event(topic, new String(payload)));
             } else {
-                ObjectMapper mapper = new ObjectMapper();
                 JsonNode root = mapper.readTree(payload);
                 final List<Device> inputs = new ArrayList<>();
                 final List<Device> outputs_triggered = new ArrayList<>();
@@ -82,7 +83,8 @@ public class Mqtt implements IMqttMessageListener {
                         final String deviceName = topicParts[1];
                         meter.device_key = StringUtils.capitalize(String.format("%s %s", deviceName, deviceTypeString));
                         inputs.add(meter);
-                        // meters are always "active"
+                        // meters are always "active", thresholds computed
+                        // against configuration.
                         outputs_triggered.add(meter);
                     } else {
                         log.warn("Unknown inferred device type from topic {}", topic);

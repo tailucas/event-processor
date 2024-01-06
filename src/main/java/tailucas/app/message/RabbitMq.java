@@ -20,9 +20,11 @@ public class RabbitMq implements DeliverCallback {
     private static Logger log = LoggerFactory.getLogger(RabbitMq.class);
 
     private ExecutorService srv = null;
+    private ObjectMapper mapper = null;
 
     public RabbitMq(ExecutorService srv) {
         this.srv = srv;
+        this.mapper = new MessagePackMapper();
     }
 
     @Override
@@ -30,7 +32,6 @@ public class RabbitMq implements DeliverCallback {
         try {
             final String source = message.getEnvelope().getRoutingKey();
             final byte[] msgBody = message.getBody();
-            ObjectMapper mapper = new MessagePackMapper();
             State deviceUpdate = mapper.readerFor(new TypeReference<State>() { }).readValue(msgBody);
             if (deviceUpdate.outputs_triggered != null) {
                 deviceUpdate.outputs_triggered.forEach(device -> {
