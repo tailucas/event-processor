@@ -547,7 +547,7 @@ def show_config():
 
 
 @api_app.get("/api/input_config")
-def api_input_config(device_key: str | None = None):
+def api_input_config(device_key: str | None = None) -> list[dict]:
     with flask_app.app_context():
         configs = []
         if device_key:
@@ -557,17 +557,17 @@ def api_input_config(device_key: str | None = None):
             db_configs = InputConfig.query.all()
             for db_config in db_configs:
                 configs.append(db_config.as_dict())
-        return json.dumps(configs)
+        return configs
 
 
 @api_app.get("/api/meter_config")
-def api_meter_config(device_key: str):
+def api_meter_config(device_key: str) -> list[dict]:
     with flask_app.app_context():
         configs = []
         db_input_config = InputConfig.query.filter_by(device_label=device_key).first()
         db_meter_config = MeterConfig.query.filter_by(input_device_id=db_input_config.id).first()
         configs.append(db_meter_config.as_dict())
-        return json.dumps(configs)
+        return configs
 
 
 @flask_app.route('/input_config', methods=['GET', 'POST'])
@@ -704,7 +704,7 @@ def input_link():
 
 
 @api_app.get("/api/output_link")
-def api_output_link(device_key: str):
+def api_output_link(device_key: str) -> list[dict]:
     with flask_app.app_context():
         configs = []
         db_input_config = InputConfig.query.filter_by(device_key=device_key).first()
@@ -712,7 +712,7 @@ def api_output_link(device_key: str):
         for db_output_link in db_output_links:
             db_output_config = OutputConfig.query.filter_by(id=db_output_link.output_device_id).first()
             configs.append(db_output_config.as_dict())
-        return json.dumps(configs)
+        return configs
 
 
 @flask_app.route('/output_link', methods=['GET', 'POST'])
@@ -749,7 +749,7 @@ def output_link():
 
 
 @api_app.get("/api/output_config")
-def api_output_config(device_key: str | None = None):
+def api_output_config(device_key: str | None = None) -> list[dict]:
     with flask_app.app_context():
         configs = []
         if device_key:
@@ -759,7 +759,7 @@ def api_output_config(device_key: str | None = None):
             db_configs = OutputConfig.query.all()
             for db_config in db_configs:
                 configs.append(db_config.as_dict())
-        return json.dumps(configs)
+        return configs
 
 
 @flask_app.route('/output_config', methods=['GET', 'POST'])
