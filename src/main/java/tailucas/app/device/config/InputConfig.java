@@ -1,10 +1,6 @@
 package tailucas.app.device.config;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
-
-public class Input extends Config {
-    @JsonIgnore
-    public Integer id;
+public class InputConfig extends Config {
     public String device_key;
     public String device_type;
     public String device_label;

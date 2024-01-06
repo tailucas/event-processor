@@ -18,7 +18,10 @@ import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 
 import tailucas.app.device.config.Config;
-import tailucas.app.device.config.Input;
+import tailucas.app.device.config.InputConfig;
+import tailucas.app.device.config.MeterConfig;
+import tailucas.app.device.config.OutputConfig;
+import tailucas.app.device.config.Config.ConfigType;
 import zmq.ZError.IOException;
 
 public class Event implements Runnable {
@@ -26,11 +29,6 @@ public class Event implements Runnable {
     public enum DeviceType {
         SENSOR,
         METER
-    }
-
-    public enum ConfigApi {
-        INPUT_CONFIG,
-        OUTPUT_CONFIG
     }
 
     private static Logger log = LoggerFactory.getLogger(Event.class);
@@ -65,14 +63,12 @@ public class Event implements Runnable {
         this(source, null, null, deviceUpdate);
     }
 
-    protected Config fetchDeviceConfiguration(ConfigApi api, String deviceKey) throws Exception {
-        ObjectReader objectReader = switch (api) {
-            case ConfigApi.INPUT_CONFIG -> objectReader = mapper.readerFor(Input.class);
-            default -> null;
-        };
-        if (objectReader == null) {
+    protected Config fetchDeviceConfiguration(ConfigType api, String deviceKey) throws Exception {
+        var clazz = Config.getConfigClass(api);
+        if (clazz == null) {
             return null;
         }
+        ObjectReader objectReader = mapper.readerFor(clazz);
         try {
             final String apiName = api.toString().toLowerCase();
             UriComponents uriComponents = UriComponentsBuilder.newInstance()
@@ -86,9 +82,13 @@ public class Event implements Runnable {
             log.debug("HTTP request {} for {} is: {}", apiName, deviceKey, uriComponents.toUriString());
             HttpRequest request = HttpRequest.newBuilder().GET().uri(uriComponents.toUri()).build();
             HttpResponse<String> response = httpClient.send(request, BodyHandlers.ofString());
-            // FIXME
-            final String responseString = response.body().replaceAll("\\\\","").replaceAll("^\"|\"$", "");
-            return objectReader.readValue(responseString);
+            final int responseCode = response.statusCode();
+            final String responseBody = response.body();
+            if (responseCode % 200 != 0) {
+                log.error("HTTP {} from {} for {}: {}", responseCode, apiName, deviceKey, responseBody);
+                return null;
+            }
+            return objectReader.readValue(responseBody);
         }
         catch (IOException exp) {
             log.error("HTTP client problem", exp);
@@ -109,8 +109,18 @@ public class Event implements Runnable {
                 if (deviceUpdate.inputs != null) {
                     deviceUpdate.inputs.forEach(device -> {
                         try {
-                            Config config = fetchDeviceConfiguration(ConfigApi.INPUT_CONFIG, device.getDeviceKey());
-                            log.info("Config: {}", config);
+                            Config config = fetchDeviceConfiguration(ConfigType.INPUT_CONFIG, device.getDeviceKey());
+                            log.info("{} input: {}", source, config);
+                        } catch (Exception e) {
+                            log.error(e.getMessage(), e);
+                        }
+                    });
+                }
+                if (deviceUpdate.outputs != null) {
+                    deviceUpdate.outputs.forEach(device -> {
+                        try {
+                            Config config = fetchDeviceConfiguration(ConfigType.OUTPUT_CONFIG, device.getDeviceKey());
+                            log.info("{} output: {}", source, config);
                         } catch (Exception e) {
                             log.error(e.getMessage(), e);
                         }
