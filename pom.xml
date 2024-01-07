@@ -27,7 +27,7 @@
     <!-- runtime dependencies -->
     <apache-commons.version>3.14.0</apache-commons.version>
     <ini4j.version>0.5.4</ini4j.version>
-    <sentry.version>6.31.0</sentry.version>
+    <sentry.version>7.1.0</sentry.version>
     <rabbitmq.version>5.20.0</rabbitmq.version>
     <paho.version>1.2.5</paho.version>
     <msgpack.version>0.9.6</msgpack.version>
@@ -80,7 +80,7 @@
 
     <dependency>
       <groupId>io.sentry</groupId>
-      <artifactId>sentry</artifactId>
+      <artifactId>sentry-spring-boot-starter-jakarta</artifactId>
       <version>${sentry.version}</version>
     </dependency>
 

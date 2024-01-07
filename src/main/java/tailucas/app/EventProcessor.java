@@ -17,6 +17,12 @@ import org.zeromq.ZMQ;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
+
+import io.sentry.ISpan;
+import io.sentry.ITransaction;
+import io.sentry.MeasurementUnit;
+import io.sentry.Sentry;
+import io.sentry.SpanStatus;
 import jakarta.annotation.PreDestroy;
 import tailucas.app.message.Mqtt;
 import tailucas.app.message.RabbitMq;
@@ -56,7 +62,7 @@ public class EventProcessor
 			String[] beanNames = ctx.getBeanDefinitionNames();
 			Arrays.sort(beanNames);
 			for (String beanName : beanNames) {
-				log.debug(beanName);
+				log.info(beanName);
 			}
 		};
 	}
@@ -170,5 +176,20 @@ public class EventProcessor
         socket.close();
         context.close();
         op.close();
+
+        log.info("Sentry enabled {}, healthy {}, ", Sentry.isEnabled(), Sentry.isHealthy());
+
+        ITransaction transaction = Sentry.startTransaction("meh", "task");
+        try {
+            throw new Exception("This is a test.");
+        } catch (Exception e) {
+            Sentry.captureException(e);
+        }
+        final ISpan span = transaction.getLatestActiveSpan();
+        if (span != null) {
+            span.setMeasurement("meh", 123);
+        }
+        transaction.setMeasurement("hello", 12);
+        transaction.finish();
     }
 }
