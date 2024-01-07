@@ -60,6 +60,7 @@ import os.path
 
 # setup builtins used by pylib init
 builtins.SENTRY_EXTRAS = [FlaskIntegration()]
+builtins.SENTRY_ENVIRONMENT = 'python'
 AWS_REGION = os.environ['AWS_DEFAULT_REGION']
 influx_creds_section = 'local'
 from . import APP_NAME
