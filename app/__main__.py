@@ -42,7 +42,7 @@ from telegram.error import TelegramError, NetworkError, RetryAfter, TimedOut
 from threading import Thread
 from urllib.parse import urlparse
 
-from fastapi import FastAPI
+from fastapi import FastAPI, status, HTTPException
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.wsgi import WSGIMiddleware
 
@@ -559,6 +559,8 @@ def api_input_config(device_key: str | None = None) -> list[dict]:
             db_configs = InputConfig.query.all()
             for db_config in db_configs:
                 configs.append(db_config.as_dict())
+        if len(configs) == 0:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No input configuration found for {device_key}")
         return configs
 
 
@@ -571,6 +573,8 @@ def api_meter_config(device_key: str) -> list[dict]:
             db_meter_config = MeterConfig.query.filter_by(input_device_id=db_input_config.id).first()
             if db_meter_config:
                 configs.append(db_meter_config.as_dict())
+        if len(configs) == 0:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No meter configuration found for {device_key}")
         return configs
 
 
@@ -717,6 +721,8 @@ def api_output_link(device_key: str) -> list[dict]:
             for db_output_link in db_output_links:
                 db_output_config = OutputConfig.query.filter_by(id=db_output_link.output_device_id).first()
                 configs.append(db_output_config.as_dict())
+        if len(configs) == 0:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No output link configuration found for {device_key}")
         return configs
 
 
@@ -765,6 +771,8 @@ def api_output_config(device_key: str | None = None) -> list[dict]:
             db_configs = OutputConfig.query.all()
             for db_config in db_configs:
                 configs.append(db_config.as_dict())
+        if len(configs) == 0:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No output configuration found for {device_key}")
         return configs
 
 
