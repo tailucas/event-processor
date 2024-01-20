@@ -553,7 +553,8 @@ def api_input_config(device_key: str | None = None) -> list[dict]:
         configs = []
         if device_key:
             db_config = InputConfig.query.filter_by(device_key=device_key).first()
-            configs.append(db_config.as_dict())
+            if db_config:
+                configs.append(db_config.as_dict())
         else:
             db_configs = InputConfig.query.all()
             for db_config in db_configs:
@@ -566,8 +567,10 @@ def api_meter_config(device_key: str) -> list[dict]:
     with flask_app.app_context():
         configs = []
         db_input_config = InputConfig.query.filter_by(device_label=device_key).first()
-        db_meter_config = MeterConfig.query.filter_by(input_device_id=db_input_config.id).first()
-        configs.append(db_meter_config.as_dict())
+        if db_input_config:
+            db_meter_config = MeterConfig.query.filter_by(input_device_id=db_input_config.id).first()
+            if db_meter_config:
+                configs.append(db_meter_config.as_dict())
         return configs
 
 
@@ -709,10 +712,11 @@ def api_output_link(device_key: str) -> list[dict]:
     with flask_app.app_context():
         configs = []
         db_input_config = InputConfig.query.filter_by(device_key=device_key).first()
-        db_output_links = OutputLink.query.filter_by(input_device_id=db_input_config.id).all()
-        for db_output_link in db_output_links:
-            db_output_config = OutputConfig.query.filter_by(id=db_output_link.output_device_id).first()
-            configs.append(db_output_config.as_dict())
+        if db_input_config:
+            db_output_links = OutputLink.query.filter_by(input_device_id=db_input_config.id).all()
+            for db_output_link in db_output_links:
+                db_output_config = OutputConfig.query.filter_by(id=db_output_link.output_device_id).first()
+                configs.append(db_output_config.as_dict())
         return configs
 
 
@@ -755,7 +759,8 @@ def api_output_config(device_key: str | None = None) -> list[dict]:
         configs = []
         if device_key:
             db_config = OutputConfig.query.filter_by(device_key=device_key).first()
-            configs.append(db_config.as_dict())
+            if db_config:
+                configs.append(db_config.as_dict())
         else:
             db_configs = OutputConfig.query.all()
             for db_config in db_configs:
