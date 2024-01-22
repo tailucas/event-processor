@@ -16,4 +16,13 @@ public class MeterConfig extends Config {
     public String meter_reading_unit;
     public Integer meter_reading_unit_factor;
     public Integer meter_reading_unit_precision;
+    @Override
+    public String toString() {
+        return "MeterConfig [meter_value=" + meter_value + ", register_value=" + register_value + ", meter_reading="
+                + meter_reading + ", meter_iot_topic=" + meter_iot_topic + ", meter_low_limit=" + meter_low_limit
+                + ", meter_high_limit=" + meter_high_limit + ", meter_reset_value=" + meter_reset_value
+                + ", meter_reset_additive=" + meter_reset_additive + ", meter_reading_unit=" + meter_reading_unit
+                + ", meter_reading_unit_factor=" + meter_reading_unit_factor + ", meter_reading_unit_precision="
+                + meter_reading_unit_precision + "]";
+    }
 }

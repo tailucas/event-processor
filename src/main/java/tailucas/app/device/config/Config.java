@@ -12,10 +12,6 @@ public class Config {
     @JsonIgnore
     public Integer id;
     public Config() { }
-    @Override
-    public String toString() {
-        return "Config []";
-    }
     public static Class<? extends Config> getConfigClass(ConfigType configType) {
         var clazz = switch (configType) {
             case ConfigType.INPUT_CONFIG -> InputConfig.class;

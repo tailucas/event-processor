@@ -4,23 +4,22 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
-import org.msgpack.jackson.dataformat.MessagePackMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.util.UriComponents;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.ObjectReader;
-import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.databind.type.CollectionType;
 
 import tailucas.app.device.config.Config;
-import tailucas.app.device.config.InputConfig;
-import tailucas.app.device.config.MeterConfig;
-import tailucas.app.device.config.OutputConfig;
 import tailucas.app.device.config.Config.ConfigType;
 import zmq.ZError.IOException;
 
@@ -40,6 +39,7 @@ public class Event implements Runnable {
     protected String deviceUpdateString;
 
     private ObjectMapper mapper = null;
+    private Map<ConfigType, CollectionType> collectionTypes = null;
 
     public Event(String source, Device device, State deviceUpdate, String deviceUpdateString) {
         this.source = source;
@@ -47,8 +47,8 @@ public class Event implements Runnable {
         this.deviceUpdate = deviceUpdate;
         this.deviceUpdateString = deviceUpdateString;
         mapper = new ObjectMapper();
-        mapper.enable(DeserializationFeature.UNWRAP_SINGLE_VALUE_ARRAYS);
         mapper.enable(DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT);
+        this.collectionTypes = new HashMap<>(4);
     }
 
     public Event(String source, Device device, State deviceUpdate) {
@@ -63,12 +63,15 @@ public class Event implements Runnable {
         this(source, null, null, deviceUpdate);
     }
 
-    protected Config fetchDeviceConfiguration(ConfigType api, String deviceKey) throws Exception {
-        var clazz = Config.getConfigClass(api);
-        if (clazz == null) {
-            return null;
-        }
-        ObjectReader objectReader = mapper.readerFor(clazz);
+    private CollectionType getCollectionType(ConfigType api) {
+        return collectionTypes.computeIfAbsent(api, s -> {
+            return mapper.getTypeFactory().constructCollectionType(
+                List.class,
+                Config.getConfigClass(api));
+        });
+    }
+
+    protected List<Config> fetchDeviceConfiguration(ConfigType api, String deviceKey) throws Exception {
         try {
             final String apiName = api.toString().toLowerCase();
             UriComponents uriComponents = UriComponentsBuilder.newInstance()
@@ -85,10 +88,18 @@ public class Event implements Runnable {
             final int responseCode = response.statusCode();
             final String responseBody = response.body();
             if (responseCode % 200 != 0) {
-                log.error("HTTP {} from {} for {}: {}", responseCode, apiName, deviceKey, responseBody);
+                String responseDetail = null;
+                try {
+                    Map<String, String> jsonResponse = mapper.readValue(responseBody, new TypeReference<Map<String,String>>() {});
+                    responseDetail = jsonResponse.get("detail");
+                } catch (JsonProcessingException e) {
+                    log.debug("Ignoring JSON processing error with response body {}", responseBody);
+                    responseDetail = responseBody;
+                }
+                log.error("HTTP {} from {} for {}: {}", responseCode, apiName, deviceKey, responseDetail);
                 return null;
             }
-            return objectReader.readValue(responseBody);
+            return mapper.readValue(responseBody, getCollectionType(api));
         }
         catch (IOException exp) {
             log.error("HTTP client problem", exp);
@@ -108,9 +119,16 @@ public class Event implements Runnable {
                 log.info("{} {} {}", Thread.currentThread(), source, deviceUpdate);
                 if (deviceUpdate.inputs != null) {
                     deviceUpdate.inputs.forEach(device -> {
+                        final String deviceKey = device.getDeviceKey();
                         try {
-                            Config config = fetchDeviceConfiguration(ConfigType.INPUT_CONFIG, device.getDeviceKey());
-                            log.info("{} input: {}", source, config);
+                            List<Config> inputConfig = fetchDeviceConfiguration(ConfigType.INPUT_CONFIG, deviceKey);
+                            if (inputConfig != null) {
+                                log.info("{} input: {}", source, inputConfig.getFirst());
+                            }
+                            List<Config> outputConfig = fetchDeviceConfiguration(ConfigType.OUTPUT_LINK, deviceKey);
+                            if (outputConfig.size() > 0) {
+                                log.info("{} linked outputs {}", deviceKey, outputConfig);
+                            }
                         } catch (Exception e) {
                             log.error(e.getMessage(), e);
                         }
@@ -119,8 +137,10 @@ public class Event implements Runnable {
                 if (deviceUpdate.outputs != null) {
                     deviceUpdate.outputs.forEach(device -> {
                         try {
-                            Config config = fetchDeviceConfiguration(ConfigType.OUTPUT_CONFIG, device.getDeviceKey());
-                            log.info("{} output: {}", source, config);
+                            List<Config> outputConfig = fetchDeviceConfiguration(ConfigType.OUTPUT_CONFIG, device.getDeviceKey());
+                            if (outputConfig != null) {
+                                log.info("{} output: {}", source, outputConfig.getFirst());
+                            }
                         } catch (Exception e) {
                             log.error(e.getMessage(), e);
                         }
