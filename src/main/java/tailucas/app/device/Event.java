@@ -110,13 +110,12 @@ public class Event implements Runnable {
     @Override
     public void run() {
         try {
-            log.debug("{} {}", Thread.currentThread(), source);
+            log.debug("{}", source);
             if (device != null) {
-                log.info("{} {} {}", Thread.currentThread(), source, device);
-            } else if (deviceUpdateString != null) {
-                log.info("{} {} {}", Thread.currentThread(), source, deviceUpdateString);
-            } else if (deviceUpdate != null) {
-                log.info("{} {} {}", Thread.currentThread(), source, deviceUpdate);
+                log.info("{} {}", source, device);
+            }
+            if (deviceUpdate != null) {
+                log.info("{} {}", source, deviceUpdate);
                 if (deviceUpdate.inputs != null) {
                     deviceUpdate.inputs.forEach(device -> {
                         final String deviceKey = device.getDeviceKey();
@@ -146,6 +145,10 @@ public class Event implements Runnable {
                         }
                     });
                 }
+            }
+            if (deviceUpdateString != null) {
+                // mutually exclusive with device and device updates
+                log.info("{} {}", source, deviceUpdateString);
             }
         } catch (Exception e) {
             log.error(String.format("Problem processing event data from %s.", source), e);
