@@ -9,11 +9,11 @@ public class Meter extends Device {
     public Integer pulse_discards;
     public Integer register_reading;
     @Override
-    public String toString() {
-        return "MeterDevice [" + getDeviceKey() + " (" + device_id + ")]";
-    }
-    @Override
     public boolean mustTriggerOutput(Config deviceConfig) {
         return true;
+    }
+    @Override
+    public String toString() {
+        return "MeterDevice [" + getDeviceLabel() + " (" + device_id + ")]";
     }
 }

@@ -30,22 +30,39 @@ public class Device implements Trigger {
     public Double uptime;
 
     public Device() { }
+    @JsonIgnore
     public String getDeviceKey() {
         return device_key;
     }
+    @JsonIgnore
+    public String getDeviceLabel() {
+        if (device_label != null) {
+            return device_label;
+        }
+        return device_key;
+    }
+    @JsonIgnore
     public Instant getTimestamp() {
         if (timestamp == null) {
             return Instant.now();
         }
         return Instant.ofEpochSecond(timestamp.longValue());
     }
+    @JsonIgnore
     public long getUptimeSeconds() {
         return Double.valueOf(timestamp - uptime).longValue();
     }
     @Override
-    public String toString() {
-        return "Device [" + getDeviceKey() + "]";
+    public boolean mustTriggerOutput(Config deviceConfig) {
+        throw new UnsupportedOperationException("Unimplemented method 'triggerOutput'");
     }
+    @Override
+    public String toString() {
+        return "Device [" + getDeviceLabel() + "]";
+    }
+    /*
+     * Legacy message fields not used here
+     */
     @JsonIgnore
     public Object input_1;
     @JsonIgnore
@@ -54,9 +71,4 @@ public class Device implements Trigger {
     public Object input_3;
     @JsonIgnore
     public Object input_4;
-
-    @Override
-    public boolean mustTriggerOutput(Config deviceConfig) {
-        throw new UnsupportedOperationException("Unimplemented method 'triggerOutput'");
-    }
 }

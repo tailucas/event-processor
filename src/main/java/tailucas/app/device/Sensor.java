@@ -14,17 +14,18 @@ public class Sensor extends Device {
         this.input_location = device.input_location;
         this.timestamp = device.timestamp;
         this.uptime = device.uptime;
+        this.type = device.type;
     }
     @Override
     public String getDeviceKey() {
         return StringUtils.capitalize(String.format("%s %s", input_location, input_label));
     }
     @Override
-    public String toString() {
-        return "Sensor [" + getDeviceKey() + " (" + device_id + ")]";
-    }
-    @Override
     public boolean mustTriggerOutput(Config deviceConfig) {
         return false;
+    }
+    @Override
+    public String toString() {
+        return "Sensor [" + getDeviceLabel() + " (" + device_id + ")]";
     }
 }

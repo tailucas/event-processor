@@ -83,11 +83,8 @@ public class DeviceConfig {
             return null;
         }
         List<Config> outputConfig = fetchDeviceConfiguration(ConfigType.OUTPUT_LINK, inputConfig.device_key);
-        if (outputConfig == null) {
+        if (outputConfig == null || outputConfig.size() == 0) {
             return null;
-        }
-        if (outputConfig.size() > 0) {
-            log.info("{} linked outputs {}", inputConfig, outputConfig);
         }
         List<OutputConfig> outputConfigs = new ArrayList<>();
         outputConfig.forEach(config -> {
@@ -127,7 +124,9 @@ public class DeviceConfig {
             return null;
         }
         List<Config> configs = mapper.readValue(responseBody, getCollectionType(api));
-        configCache.put(cacheKey, configs);
+        if (configs.size() > 0) {
+            configCache.put(cacheKey, configs);
+        }
         return configs;
     }
 

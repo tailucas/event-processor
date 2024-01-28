@@ -8,6 +8,10 @@ import java.util.Map;
 import org.apache.commons.lang3.function.Failable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
 import tailucas.app.device.config.InputConfig;
 import tailucas.app.device.config.OutputConfig;
 import tailucas.app.provider.DeviceConfig;
@@ -26,6 +30,7 @@ public class Event implements Runnable {
     protected State deviceUpdate;
     protected String deviceUpdateString;
     protected DeviceConfig configProvider;
+    protected ObjectMapper mapper;
 
     public Event(String source, Device device, State deviceUpdate, String deviceUpdateString) {
         this.source = source;
@@ -33,6 +38,7 @@ public class Event implements Runnable {
         this.deviceUpdate = deviceUpdate;
         this.deviceUpdateString = deviceUpdateString;
         configProvider = DeviceConfig.getInstance();
+        mapper = new ObjectMapper();
     }
 
     public Event(String source, Device device, State deviceUpdate) {
@@ -53,21 +59,35 @@ public class Event implements Runnable {
         try {
             final Map<String, OutputConfig> processedOutputs = new HashMap<>(10);
             if (device != null) {
-                log.info("{} {}", source, device);
+                final String deviceLabel = device.getDeviceLabel();
+                log.info("{} references {}", source, deviceLabel);
                 final String deviceKey = device.getDeviceKey();
                 InputConfig deviceConfig = configProvider.fetchInputDeviceConfig(deviceKey);
                 if (deviceConfig == null) {
-                    log.warn("No input device configuration found for active {}.", deviceKey);
+                    log.warn("No input device configuration found for active {}.", deviceLabel);
                     return;
                 }
                 List<OutputConfig> linkedOutputs = configProvider.getLinkedOutputs(deviceConfig);
                 if (linkedOutputs == null) {
-                    log.warn("No output device configuration found for active {}.", deviceKey);
+                    log.warn("No output device configuration found for active {}.", deviceLabel);
                     return;
                 }
-                log.info("{} is linked to {} outputs {}", deviceKey, linkedOutputs.size(), linkedOutputs);
+                log.info("{} is linked to {} outputs.", deviceLabel, linkedOutputs.size());
                 if (device.mustTriggerOutput(deviceConfig)) {
-                    log.info("{} triggers {} outputs {}", deviceKey, linkedOutputs.size(), linkedOutputs);
+                    linkedOutputs.forEach(Failable.asConsumer(outputConfig -> {
+                        final String outputDeviceLabel = outputConfig.getDeviceLabel();
+                        log.info("{} triggers {}.", deviceLabel, outputDeviceLabel);
+                        ObjectNode root = mapper.createObjectNode();
+                        try {
+                            root.putPOJO("active_input", device);
+                            root.putPOJO("input_config", deviceConfig);
+                            root.putPOJO("output_triggered", outputConfig);
+                            final String jsonCommand = mapper.writeValueAsString(root);
+                            log.info("{} triggers {} using {}", deviceLabel, outputDeviceLabel, jsonCommand);
+                        } catch (Exception e) {
+                            log.error(e.getMessage(), e);
+                        }
+                    }));
                 }
                 linkedOutputs.forEach(Failable.asConsumer(linkedOutput -> {
                     processedOutputs.put(linkedOutput.getDeviceKey(), linkedOutput);
