@@ -21,4 +21,10 @@ public class InputConfig extends Config {
                 + auto_schedule_disable + ", device_enabled=" + device_enabled + ", multi_trigger=" + multi_trigger
                 + ", group_name=" + group_name + ", info_notify=" + info_notify + "]";
     }
+    public String getDeviceLabel() {
+        if (device_label != null) {
+            return device_label;
+        }
+        return device_key;
+    }
 }

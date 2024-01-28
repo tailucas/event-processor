@@ -17,12 +17,13 @@ import tailucas.app.device.State;
 
 public class RabbitMq implements DeliverCallback {
 
-    private static Logger log = LoggerFactory.getLogger(RabbitMq.class);
+    private static Logger log = null;
 
     private ExecutorService srv = null;
     private ObjectMapper mapper = null;
 
     public RabbitMq(ExecutorService srv) {
+        log = LoggerFactory.getLogger(RabbitMq.class);
         this.srv = srv;
         this.mapper = new MessagePackMapper();
     }

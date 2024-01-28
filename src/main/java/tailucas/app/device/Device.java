@@ -4,7 +4,9 @@ import java.time.Instant;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
-public class Device {
+import tailucas.app.device.config.Config;
+
+public class Device implements Trigger {
 
     public enum Type {
         BASE,
@@ -52,4 +54,9 @@ public class Device {
     public Object input_3;
     @JsonIgnore
     public Object input_4;
+
+    @Override
+    public boolean mustTriggerOutput(Config deviceConfig) {
+        throw new UnsupportedOperationException("Unimplemented method 'triggerOutput'");
+    }
 }

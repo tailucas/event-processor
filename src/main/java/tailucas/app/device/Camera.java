@@ -1,9 +1,14 @@
 package tailucas.app.device;
 
-public class Camera extends Device {
+import tailucas.app.device.config.Config;
 
+public class Camera extends Device {
     @Override
     public String toString() {
         return "Camera [" + getDeviceKey() + "]";
+    }
+    @Override
+    public boolean mustTriggerOutput(Config deviceConfig) {
+        return false;
     }
 }

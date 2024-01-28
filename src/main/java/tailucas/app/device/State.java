@@ -13,7 +13,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 
 public class State {
 
-    private static Logger log = LoggerFactory.getLogger(State.class);
+    private static Logger log = null;
 
     public static final DateTimeFormatter DATE_TIME_FORMATTER = new DateTimeFormatterBuilder().appendPattern("yyyy-MM-dd'T'HH:mm:ss.SSSSSSZ").toFormatter();
 
@@ -21,21 +21,31 @@ public class State {
     public List<Device> inputs;
     public List<Device> outputs;
     public List<Device> outputs_triggered;
-    public State() { }
+
+    protected Instant createdTime;
+
+    public State() {
+        log = LoggerFactory.getLogger(State.class);
+    }
     public State(List<Device> inputs, List<Device> outputs_triggered) {
+        this();
         this.inputs = inputs;
         this.outputs_triggered = outputs_triggered;
+        this.createdTime = null;
     }
     public Instant getTimestamp() {
-        Instant time = Instant.now();
+        if (createdTime != null) {
+            return createdTime;
+        }
+        Instant createdTime = Instant.now();
         if (timestamp != null) {
             try {
-                time = Instant.from(DATE_TIME_FORMATTER.parse(timestamp));
+                createdTime = Instant.from(DATE_TIME_FORMATTER.parse(timestamp));
             } catch (DateTimeParseException e) {
                 log.warn("Cannot parse timestamp {}, using now.", timestamp);
             }
         }
-        return time;
+        return createdTime;
     }
     @Override
     public String toString() {

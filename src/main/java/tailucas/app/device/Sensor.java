@@ -2,6 +2,8 @@ package tailucas.app.device;
 
 import org.apache.commons.lang3.StringUtils;
 
+import tailucas.app.device.config.Config;
+
 public class Sensor extends Device {
     public Integer normal_value;
     public Double sample_value;
@@ -20,5 +22,9 @@ public class Sensor extends Device {
     @Override
     public String toString() {
         return "Sensor [" + getDeviceKey() + " (" + device_id + ")]";
+    }
+    @Override
+    public boolean mustTriggerOutput(Config deviceConfig) {
+        return false;
     }
 }

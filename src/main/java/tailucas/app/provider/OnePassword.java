@@ -20,10 +20,11 @@ import com.sanctionco.opconnect.model.Vault;
 
 public class OnePassword {
 
-    private static Logger log = LoggerFactory.getLogger(OnePassword.class);
+    private static Logger log = null;
     private OPConnectClient client = null;
 
     public OnePassword() {
+        log = LoggerFactory.getLogger(OnePassword.class);
         final String opServerAddr = System.getenv("OP_CONNECT_SERVER");
         final String opToken = System.getenv("OP_CONNECT_TOKEN");
         client = OPConnectClientBuilder.builder()

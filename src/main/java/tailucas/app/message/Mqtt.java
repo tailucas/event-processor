@@ -23,12 +23,13 @@ import tailucas.app.device.State;
 
 public class Mqtt implements IMqttMessageListener {
 
-    private static Logger log = LoggerFactory.getLogger(Mqtt.class);
+    private static Logger log = null;
 
     private ExecutorService srv = null;
     private ObjectMapper mapper = null;
 
     public Mqtt(ExecutorService srv) {
+        log = LoggerFactory.getLogger(Mqtt.class);
         this.srv = srv;
         this.mapper = new ObjectMapper();
     }
@@ -83,8 +84,7 @@ public class Mqtt implements IMqttMessageListener {
                         final String deviceName = topicParts[1];
                         meter.device_key = StringUtils.capitalize(String.format("%s %s", deviceName, deviceTypeString));
                         inputs.add(meter);
-                        // meters are always "active", thresholds computed
-                        // against configuration.
+                        // meters are always "active", thresholds are computed against configuration.
                         outputs_triggered.add(meter);
                     } else {
                         log.warn("Unknown inferred device type from topic {}", topic);

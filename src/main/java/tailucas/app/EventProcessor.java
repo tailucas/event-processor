@@ -20,12 +20,11 @@ import com.rabbitmq.client.ConnectionFactory;
 
 import io.sentry.ISpan;
 import io.sentry.ITransaction;
-import io.sentry.MeasurementUnit;
 import io.sentry.Sentry;
-import io.sentry.SpanStatus;
 import jakarta.annotation.PreDestroy;
 import tailucas.app.message.Mqtt;
 import tailucas.app.message.RabbitMq;
+import tailucas.app.provider.DeviceConfig;
 import tailucas.app.provider.OnePassword;
 
 import org.zeromq.ZContext;
@@ -101,7 +100,8 @@ public class EventProcessor
         if (srv != null) {
             srv.shutdown();
         }
-        log.info("Event handler shutdown complete.");
+        DeviceConfig.getInstance().close();
+        log.info("Full shutdown complete.");
     }
 
     public static void main( String[] args )
