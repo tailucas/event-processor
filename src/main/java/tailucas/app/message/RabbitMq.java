@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.DeliverCallback;
 import com.rabbitmq.client.Delivery;
 
@@ -20,11 +21,13 @@ public class RabbitMq implements DeliverCallback {
     private static Logger log = null;
 
     private ExecutorService srv = null;
+    private Connection connection = null;
     private ObjectMapper mapper = null;
 
-    public RabbitMq(ExecutorService srv) {
+    public RabbitMq(ExecutorService srv, Connection connection) {
         log = LoggerFactory.getLogger(RabbitMq.class);
         this.srv = srv;
+        this.connection = connection;
         this.mapper = new MessagePackMapper();
     }
 
@@ -36,10 +39,10 @@ public class RabbitMq implements DeliverCallback {
             State deviceUpdate = mapper.readerFor(new TypeReference<State>() { }).readValue(msgBody);
             if (deviceUpdate.outputs_triggered != null) {
                 deviceUpdate.outputs_triggered.forEach(device -> {
-                    srv.submit(new Event(source, device, deviceUpdate));
+                    srv.submit(new Event(connection, source, device, deviceUpdate));
                 });
             } else {
-                srv.submit(new Event(source, deviceUpdate));
+                srv.submit(new Event(connection, source, deviceUpdate));
             }
         } catch (Exception e) {
             log.warn(e.getMessage());

@@ -5,12 +5,15 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.commons.lang3.NotImplementedException;
 import org.apache.commons.lang3.function.Failable;
+import org.msgpack.jackson.dataformat.MessagePackMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.rabbitmq.client.Connection;
 
 import tailucas.app.device.config.InputConfig;
 import tailucas.app.device.config.OutputConfig;
@@ -23,34 +26,41 @@ public class Event implements Runnable {
         METER
     }
 
-    private static Logger log = LoggerFactory.getLogger(Event.class);
+    private static Logger log = null;
 
+    protected Connection connection;
     protected String source;
     protected Device device;
     protected State deviceUpdate;
     protected String deviceUpdateString;
     protected DeviceConfig configProvider;
-    protected ObjectMapper mapper;
+    protected MessagePackMapper mapper;
 
-    public Event(String source, Device device, State deviceUpdate, String deviceUpdateString) {
+    public Event(Connection connection, String source, Device device, State deviceUpdate, String deviceUpdateString) {
+        log = LoggerFactory.getLogger(Event.class);
+        this.connection = connection;
         this.source = source;
         this.device = device;
         this.deviceUpdate = deviceUpdate;
         this.deviceUpdateString = deviceUpdateString;
         configProvider = DeviceConfig.getInstance();
-        mapper = new ObjectMapper();
+        mapper = new MessagePackMapper();
     }
 
-    public Event(String source, Device device, State deviceUpdate) {
-        this(source, device, deviceUpdate, null);
+    public Event(Connection connection, String source, Device device, State deviceUpdate) {
+        this(connection, source, device, deviceUpdate, null);
     }
 
-    public Event(String source, State deviceUpdate) {
-        this(source, null, deviceUpdate, null);
+    public Event(Connection connection, String source, State deviceUpdate) {
+        this(connection, source, null, deviceUpdate, null);
     }
 
-    public Event(String source, String deviceUpdate) {
-        this(source, null, null, deviceUpdate);
+    public Event(Connection connection, String source, String deviceUpdate) {
+        this(connection, source, null, null, deviceUpdate);
+    }
+
+    protected void sendResponse(String topic, byte[] payload) {
+        log.info("Responding to {} with {} bytes.", topic, payload.length);
     }
 
     @Override
@@ -79,11 +89,12 @@ public class Event implements Runnable {
                         log.info("{} triggers {}.", deviceLabel, outputDeviceLabel);
                         ObjectNode root = mapper.createObjectNode();
                         try {
+                            // TODO: timestamp
                             root.putPOJO("active_input", device);
-                            root.putPOJO("input_config", deviceConfig);
+                            //root.putPOJO("input_config", deviceConfig);
                             root.putPOJO("output_triggered", outputConfig);
-                            final String jsonCommand = mapper.writeValueAsString(root);
-                            log.info("{} triggers {} using {}", deviceLabel, outputDeviceLabel, jsonCommand);
+                            final byte[] wireCommand = mapper.writeValueAsBytes(root);
+                            log.info("{} triggers {} ({} bytes on the wire).", deviceLabel, outputDeviceLabel, wireCommand.length);
                         } catch (Exception e) {
                             log.error(e.getMessage(), e);
                         }

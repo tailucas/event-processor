@@ -9,6 +9,7 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,7 +50,9 @@ public class EventProcessor
     private static Logger log = LoggerFactory.getLogger(EventProcessor.class);
     private static ExecutorService srv = null;
     private static IMqttClient mqttClient = null;
-    private static Channel rabbitMQChannel = null;
+    private static Channel rabbitMqChannel = null;
+    private static Connection rabbitMqConnection = null;
+    private static ZContext zmqContext = null;
     private static int exitCode = 0;
 
     private static final int EXIT_CODE_MQTT = 2;
@@ -73,6 +76,27 @@ public class EventProcessor
 
     @PreDestroy
     private void shutdown() {
+        if (zmqContext != null) {
+            try {
+                zmqContext.close();
+            } catch (Exception e) {
+                log.warn("During shutdown of ZeroMQ context: {}", e.getMessage());
+            }
+        }
+        if (rabbitMqChannel != null) {
+            try {
+                rabbitMqChannel.close();
+            } catch (Exception e) {
+                log.warn("During shutdown of RabbitMQ channel: {}", e.getMessage());
+            }
+        }
+        if (rabbitMqConnection != null) {
+            try {
+                rabbitMqConnection.close();
+            } catch (Exception e) {
+                log.warn("During shutdown of RabbitMQ connection: {}", e.getMessage());
+            }
+        }
         if (mqttClient != null) {
             try {
                 // this is a race condition but disconnect tends to block indefinitely
@@ -88,13 +112,6 @@ public class EventProcessor
                 } catch (MqttException e) {
                     log.warn("During closing of MQTT client: {}", e.getMessage());
                 }
-            }
-        }
-        if (rabbitMQChannel != null) {
-            try {
-                rabbitMQChannel.close();
-            } catch (Exception e) {
-                log.warn("During shutdown of RabbitMQ client: {}", e.getMessage());
             }
         }
         if (srv != null) {
@@ -123,7 +140,34 @@ public class EventProcessor
         srv = Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("app-event-", 1).factory());
         ThreadFactory appThreadFactory = Thread.ofVirtual().name("app-", 1).factory();
 
+        ConnectionFactory rabbitMqConnectionFactory = new ConnectionFactory();
+        rabbitMqConnectionFactory.setHost("192.168.0.5");
+        try {
+            rabbitMqConnection = rabbitMqConnectionFactory.newConnection(srv);
+        } catch (Exception e) {
+            log.error("Problem with RabbitMQ client", e);
+            exitCode |= EXIT_CODE_RABBITMQ;
+            System.exit(SpringApplication.exit(springApp));
+        }
+
+        Thread rabbitMqThread = appThreadFactory.newThread(() -> {
+            try {
+                rabbitMqChannel = rabbitMqConnection.createChannel();
+                final String EXCHANGE_NAME = "home_automation";
+                rabbitMqChannel.exchangeDeclare(EXCHANGE_NAME, "topic");
+                String queueName = rabbitMqChannel.queueDeclare().getQueue();
+                rabbitMqChannel.queueBind(queueName, EXCHANGE_NAME, "#");
+                rabbitMqChannel.basicConsume(queueName, true, new RabbitMq(srv, rabbitMqConnection), consumerTag -> { });
+            } catch (Exception e) {
+                log.error("Problem with RabbitMQ client", e);
+                exitCode |= EXIT_CODE_RABBITMQ;
+                System.exit(SpringApplication.exit(springApp));
+            }
+        });
+
+        zmqContext = new ZContext();
         Thread mqttThread = appThreadFactory.newThread(() -> {
+            ZMQ.Socket socket = null;
             try {
                 final String clientId = UUID.randomUUID().toString();
                 mqttClient = new MqttClient("tcp://192.168.0.5:1883", clientId, new MemoryPersistence());
@@ -132,29 +176,23 @@ public class EventProcessor
                 options.setCleanSession(true);
                 options.setConnectionTimeout(10);
                 mqttClient.connect(options);
-                mqttClient.subscribe("#", new Mqtt(srv));
+                mqttClient.subscribe("#", new Mqtt(srv, rabbitMqConnection));
+                // use inproc socket in ZMQ to serialize outbound messages
+                // for thread safety
+                socket = zmqContext.createSocket(SocketType.PULL);
+                socket.connect("inproc://mqtt-send");
+                while (!zmqContext.isClosed()) {
+                    final byte[] zmqData = socket.recv();
+                    log.info("ZMQ data received {}", new String(zmqData));
+                }
             } catch (MqttException e) {
                 log.error("Problem with MQTT client", e);
                 exitCode |= EXIT_CODE_MQTT;
                 System.exit(SpringApplication.exit(springApp));
-            }
-        });
-
-        Thread rabbitMqThread = appThreadFactory.newThread(() -> {
-            try {
-                ConnectionFactory factory = new ConnectionFactory();
-                factory.setHost("192.168.0.5");
-                Connection connection = factory.newConnection();
-                rabbitMQChannel = connection.createChannel();
-                final String EXCHANGE_NAME = "home_automation";
-                rabbitMQChannel.exchangeDeclare(EXCHANGE_NAME, "topic");
-                String queueName = rabbitMQChannel.queueDeclare().getQueue();
-                rabbitMQChannel.queueBind(queueName, EXCHANGE_NAME, "#");
-                rabbitMQChannel.basicConsume(queueName, true, new RabbitMq(srv), consumerTag -> { });
-            } catch (Exception e) {
-                log.error("Problem with RabbitMQ client", e);
-                exitCode |= EXIT_CODE_RABBITMQ;
-                System.exit(SpringApplication.exit(springApp));
+            } finally {
+                if (socket != null) {
+                    socket.close();
+                }
             }
         });
 
@@ -165,16 +203,12 @@ public class EventProcessor
         //op.getItems();
         op.listVaults();
 
-        ZContext context = new ZContext();
-        ZMQ.Socket socket = context.createSocket(SocketType.PUSH);
         log.info( "Hello (print) {}", "world");
         log.trace("Hello (trace) {} ", "world");
         log.debug("Hello (debug) {} ", "world");
         log.info("Hello (info) {} ", "world");
         log.error("Hello? (error) {}", "world");
 
-        socket.close();
-        context.close();
         op.close();
 
         log.info("Sentry enabled {}, healthy {}, ", Sentry.isEnabled(), Sentry.isHealthy());

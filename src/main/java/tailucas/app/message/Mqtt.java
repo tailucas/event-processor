@@ -13,10 +13,11 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.rabbitmq.client.Connection;
 
 import tailucas.app.device.Device;
-import tailucas.app.device.Device.Type;
 import tailucas.app.device.Event;
+import tailucas.app.device.Device.Type;
 import tailucas.app.device.Meter;
 import tailucas.app.device.Sensor;
 import tailucas.app.device.State;
@@ -26,11 +27,13 @@ public class Mqtt implements IMqttMessageListener {
     private static Logger log = null;
 
     private ExecutorService srv = null;
+    private Connection rabbitMqConnection = null;
     private ObjectMapper mapper = null;
 
-    public Mqtt(ExecutorService srv) {
+    public Mqtt(ExecutorService srv, Connection rabbitMqConnection) {
         log = LoggerFactory.getLogger(Mqtt.class);
         this.srv = srv;
+        this.rabbitMqConnection = rabbitMqConnection;
         this.mapper = new ObjectMapper();
     }
 
@@ -42,7 +45,7 @@ public class Mqtt implements IMqttMessageListener {
                 log.warn("Ignoring event on topic {}", topic);
                 return;
             } else if (payload.length == 2 && payload[0] == 'O' && payload[1] == 'K') {
-                srv.submit(new Event(topic, new String(payload)));
+                srv.submit(new Event(rabbitMqConnection, topic, new String(payload)));
             } else {
                 JsonNode root = mapper.readTree(payload);
                 final List<Device> inputs = new ArrayList<>();
@@ -96,10 +99,10 @@ public class Mqtt implements IMqttMessageListener {
                 State deviceUpdate = new State(inputs, outputs_triggered);
                 if (outputs_triggered.size() > 0) {
                     outputs_triggered.forEach(device -> {
-                        srv.submit(new Event(topic, device, deviceUpdate));
+                        srv.submit(new Event(rabbitMqConnection, topic, device, deviceUpdate));
                     });
                 } else {
-                    srv.submit(new Event(topic, deviceUpdate));
+                    srv.submit(new Event(rabbitMqConnection, topic, deviceUpdate));
                 }
             }
         } catch (RuntimeException e) {
