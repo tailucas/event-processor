@@ -12,6 +12,10 @@ public class OutputConfig extends Config {
         return device_key;
     }
     @JsonIgnore
+    public String getDeviceType() {
+        return device_type;
+    }
+    @JsonIgnore
     public String getDeviceLabel() {
         if (device_label != null) {
             return device_label;

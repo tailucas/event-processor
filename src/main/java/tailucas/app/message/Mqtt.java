@@ -49,7 +49,7 @@ public class Mqtt implements IMqttMessageListener {
             } else {
                 JsonNode root = mapper.readTree(payload);
                 final List<Device> inputs = new ArrayList<>();
-                final List<Device> outputs_triggered = new ArrayList<>();
+                final List<Device> active_devices = new ArrayList<>();
                 final String[] topicParts = topic.split("/", 2);
                 if (topicParts.length < 2) {
                     throw new AssertionError("Invalid topic path on topic [" + topic + "]");
@@ -74,7 +74,7 @@ public class Mqtt implements IMqttMessageListener {
                                     sensor.updateFrom(common);
                                     inputs.add(sensor);
                                     if (sensor.active) {
-                                        outputs_triggered.add(sensor);
+                                        active_devices.add(sensor);
                                     }
                                 } catch (JsonProcessingException e) {
                                     log.error("During deserialization of field {}: " + e.getMessage(), fieldName);
@@ -88,7 +88,7 @@ public class Mqtt implements IMqttMessageListener {
                         meter.device_key = StringUtils.capitalize(String.format("%s %s", deviceName, deviceTypeString));
                         inputs.add(meter);
                         // meters are always "active", thresholds are computed against configuration.
-                        outputs_triggered.add(meter);
+                        active_devices.add(meter);
                     } else {
                         log.warn("Unknown inferred device type from topic {}", topic);
                     }
@@ -96,9 +96,9 @@ public class Mqtt implements IMqttMessageListener {
                     log.error("During deserialization of {}: " + e.getMessage(), deviceType);
                     throw new RuntimeException(e);
                 }
-                State deviceUpdate = new State(inputs, outputs_triggered);
-                if (outputs_triggered.size() > 0) {
-                    outputs_triggered.forEach(device -> {
+                State deviceUpdate = new State(inputs, active_devices);
+                if (active_devices.size() > 0) {
+                    active_devices.forEach(device -> {
                         srv.submit(new Event(rabbitMqConnection, topic, device, deviceUpdate));
                     });
                 } else {

@@ -5,14 +5,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.commons.lang3.NotImplementedException;
 import org.apache.commons.lang3.function.Failable;
 import org.msgpack.jackson.dataformat.MessagePackMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.rabbitmq.client.BuiltinExchangeType;
+import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 
 import tailucas.app.device.config.InputConfig;
@@ -59,12 +59,18 @@ public class Event implements Runnable {
         this(connection, source, null, null, deviceUpdate);
     }
 
-    protected void sendResponse(String topic, byte[] payload) {
+    protected void sendResponse(String topic, byte[] payload) throws IOException {
         log.info("Responding to {} with {} bytes.", topic, payload.length);
+        Channel rabbitMqChannel = connection.createChannel();
+        final String EXCHANGE_NAME = "home_automation_control";
+        rabbitMqChannel.exchangeDeclare(EXCHANGE_NAME, BuiltinExchangeType.DIRECT);
+        rabbitMqChannel.queueDeclare(topic, false, false, false, null);
+        rabbitMqChannel.basicPublish("", topic, null, payload);
     }
 
     @Override
     public void run() {
+        final long unixTime = System.currentTimeMillis() / 1000L;
         log.debug("{}", source);
         try {
             final Map<String, OutputConfig> processedOutputs = new HashMap<>(10);
@@ -86,15 +92,17 @@ public class Event implements Runnable {
                 if (device.mustTriggerOutput(deviceConfig)) {
                     linkedOutputs.forEach(Failable.asConsumer(outputConfig -> {
                         final String outputDeviceLabel = outputConfig.getDeviceLabel();
+                        final String outputDeviceType = outputConfig.getDeviceType();
                         log.info("{} triggers {}.", deviceLabel, outputDeviceLabel);
                         ObjectNode root = mapper.createObjectNode();
                         try {
-                            // TODO: timestamp
+                            root.put("timestamp", unixTime);
                             root.putPOJO("active_input", device);
-                            //root.putPOJO("input_config", deviceConfig);
                             root.putPOJO("output_triggered", outputConfig);
                             final byte[] wireCommand = mapper.writeValueAsBytes(root);
-                            log.info("{} triggers {} ({} bytes on the wire).", deviceLabel, outputDeviceLabel, wireCommand.length);
+                            final String responseTopic = String.format("event.trigger.%s", outputDeviceType.toLowerCase());
+                            log.info("{} triggers {} {} on topic {} ({} bytes on the wire).", deviceLabel, outputDeviceType, outputDeviceLabel, responseTopic, wireCommand.length);
+                            //sendResponse(responseTopic, wireCommand);
                         } catch (Exception e) {
                             log.error(e.getMessage(), e);
                         }

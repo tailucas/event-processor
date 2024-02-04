@@ -1,7 +1,14 @@
 package tailucas.app;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URI;
+import java.net.URL;
 import java.util.Arrays;
 import java.util.Locale;
 import java.util.Map;
@@ -14,7 +21,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.zeromq.ZMQ;
+import org.zeromq.ZMQException;
 
+import com.rabbitmq.client.BuiltinExchangeType;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
@@ -47,12 +56,15 @@ import org.springframework.context.annotation.Bean;
 @SpringBootApplication
 public class EventProcessor
 {
+    public static final String ZMQ_MQTT_URL = "inproc://mqtt-send";
+
     private static Logger log = LoggerFactory.getLogger(EventProcessor.class);
     private static ExecutorService srv = null;
     private static IMqttClient mqttClient = null;
     private static Channel rabbitMqChannel = null;
     private static Connection rabbitMqConnection = null;
     private static ZContext zmqContext = null;
+    private static OnePassword creds = null;
     private static int exitCode = 0;
 
     private static final int EXIT_CODE_MQTT = 2;
@@ -118,11 +130,21 @@ public class EventProcessor
             srv.shutdown();
         }
         DeviceConfig.getInstance().close();
+        if (creds != null) {
+            creds.close();
+        }
         log.info("Full shutdown complete.");
     }
 
     public static void main( String[] args )
     {
+        creds = new OnePassword();
+        creds.listVaults();
+        final String sentryDsn = System.getenv("SENTRY_DSN");
+        Sentry.init(options -> {
+            options.setDsn(sentryDsn);
+        });
+        log.info("Sentry enabled: {}, healthy: {}.", Sentry.isEnabled(), Sentry.isHealthy());
         final ApplicationContext springApp = SpringApplication.run(EventProcessor.class, args);
         Thread.currentThread().setName("main");
         final Locale locale = Locale.getDefault();
@@ -154,7 +176,7 @@ public class EventProcessor
             try {
                 rabbitMqChannel = rabbitMqConnection.createChannel();
                 final String EXCHANGE_NAME = "home_automation";
-                rabbitMqChannel.exchangeDeclare(EXCHANGE_NAME, "topic");
+                rabbitMqChannel.exchangeDeclare(EXCHANGE_NAME, BuiltinExchangeType.TOPIC);
                 String queueName = rabbitMqChannel.queueDeclare().getQueue();
                 rabbitMqChannel.queueBind(queueName, EXCHANGE_NAME, "#");
                 rabbitMqChannel.basicConsume(queueName, true, new RabbitMq(srv, rabbitMqConnection), consumerTag -> { });
@@ -177,13 +199,18 @@ public class EventProcessor
                 options.setConnectionTimeout(10);
                 mqttClient.connect(options);
                 mqttClient.subscribe("#", new Mqtt(srv, rabbitMqConnection));
-                // use inproc socket in ZMQ to serialize outbound messages
-                // for thread safety
+                // use inproc socket in ZMQ to serialize outbound messages for thread safety
                 socket = zmqContext.createSocket(SocketType.PULL);
-                socket.connect("inproc://mqtt-send");
+                socket.connect(ZMQ_MQTT_URL);
                 while (!zmqContext.isClosed()) {
-                    final byte[] zmqData = socket.recv();
-                    log.info("ZMQ data received {}", new String(zmqData));
+                    try {
+                        final byte[] zmqData = socket.recv();
+                        log.info("ZMQ data received {}", new String(zmqData));
+                    } catch (ZMQException e) {
+                        if (!zmqContext.isClosed()) {
+                            throw e;
+                        }
+                    }
                 }
             } catch (MqttException e) {
                 log.error("Problem with MQTT client", e);
@@ -198,20 +225,6 @@ public class EventProcessor
 
         rabbitMqThread.start();
         mqttThread.start();
-
-        OnePassword op = new OnePassword();
-        //op.getItems();
-        op.listVaults();
-
-        log.info( "Hello (print) {}", "world");
-        log.trace("Hello (trace) {} ", "world");
-        log.debug("Hello (debug) {} ", "world");
-        log.info("Hello (info) {} ", "world");
-        log.error("Hello? (error) {}", "world");
-
-        op.close();
-
-        log.info("Sentry enabled {}, healthy {}, ", Sentry.isEnabled(), Sentry.isHealthy());
 
         ITransaction transaction = Sentry.startTransaction("meh", "task");
         try {
