@@ -93,7 +93,6 @@ public class Event implements Runnable {
                     linkedOutputs.forEach(Failable.asConsumer(outputConfig -> {
                         final String outputDeviceLabel = outputConfig.getDeviceLabel();
                         final String outputDeviceType = outputConfig.getDeviceType();
-                        log.info("{} triggers {}.", deviceLabel, outputDeviceLabel);
                         ObjectNode root = mapper.createObjectNode();
                         try {
                             root.put("timestamp", unixTime);
@@ -101,7 +100,11 @@ public class Event implements Runnable {
                             root.putPOJO("output_triggered", outputConfig);
                             final byte[] wireCommand = mapper.writeValueAsBytes(root);
                             final String responseTopic = String.format("event.trigger.%s", outputDeviceType.toLowerCase());
-                            log.info("{} triggers {} {} on topic {} ({} bytes on the wire).", deviceLabel, outputDeviceType, outputDeviceLabel, responseTopic, wireCommand.length);
+                            String deviceDetail = "";
+                            if (!outputDeviceType.equals(outputDeviceLabel)) {
+                                deviceDetail = String.format(" (%s)", outputDeviceType);
+                            }
+                            log.info("{} triggers {}{} on topic {} ({} bytes on the wire).", deviceLabel, outputDeviceLabel, deviceDetail, responseTopic, wireCommand.length);
                             //sendResponse(responseTopic, wireCommand);
                         } catch (Exception e) {
                             log.error(e.getMessage(), e);

@@ -120,7 +120,8 @@ public class DeviceConfig {
             } catch (JsonProcessingException e) {
                 responseDetail = responseBody;
             }
-            log.error("HTTP {} from {} for {}: {}", responseCode, apiName, deviceKey, responseDetail);
+            log.debug("HTTP {} from {} for {}.", responseCode, apiName, deviceKey);
+            log.error("{}: {}", deviceKey, responseDetail);
             return null;
         }
         List<Config> configs = mapper.readValue(responseBody, getCollectionType(api));
