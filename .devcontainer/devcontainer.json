@@ -15,5 +15,12 @@
         "ghcr.io/devcontainers/features/python:1": {}
     },
     "workspaceFolder": "${localWorkspaceFolder}",
-    "workspaceMount": "source=${localWorkspaceFolder},target=${localWorkspaceFolder},type=bind"
+    "workspaceMount": "source=${localWorkspaceFolder},target=${localWorkspaceFolder},type=bind",
+    "containerEnv": {
+        "SENTRY_DSN": "${localEnv:SENTRY_DSN}",
+        "OP_CONNECT_SERVER": "${localEnv:OP_CONNECT_SERVER}",
+        "OP_CONNECT_TOKEN": "${localEnv:OP_CONNECT_TOKEN}",
+        "GRAFANA_USER": "${localEnv:GRAFANA_USER}",
+        "GRAFANA_TOKEN": "${localEnv:GRAFANA_TOKEN}"
+    }
 }
