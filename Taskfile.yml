@@ -15,12 +15,9 @@ tasks:
   default:
     cmds:
       - task: rund
-  user:
+  datadir:
     desc: Create system user and associate with docker group.
-    preconditions:
-      - test $(getent group docker | cut -f3 -d ':') = "{{.GROUP_ID}}"
     cmds:
-      - id {{.USER_ID}} || (sudo useradd -r -u {{.USER_ID}} -g {{.GROUP_ID}} app && sudo usermod -a -G {{.GROUP_ID}} -u {{.USER_ID}} app)
       - mkdir -p ./data/
       - sudo chown {{.USER_ID}}:{{.GROUP_ID}} ./data/
       - sudo chmod 755 ./data/
@@ -36,7 +33,7 @@ tasks:
     cmds:
       - poetry run python ./cred_tool ENV.{{.APP}} {{.APP}} | jq -r '. | to_entries[] | [.key,.value] | @tsv' | tr '\t' '=' | sed 's/=\(.*\)/="\1"/' > .env
   setup:
-    deps: [create-dot-env]
+    deps: [create-dot-env, datadir]
     desc: Generate a usable docker-compose.yml for Docker build.
     preconditions:
       - poetry -V
