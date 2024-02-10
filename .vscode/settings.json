@@ -2,5 +2,6 @@
     "python.analysis.typeCheckingMode": "off",
     "java.configuration.runtimes": [
         
-    ]
+    ],
+    "java.configuration.updateBuildConfiguration": "automatic"
 }
