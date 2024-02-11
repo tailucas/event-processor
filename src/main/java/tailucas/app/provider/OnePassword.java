@@ -15,7 +15,9 @@ public class OnePassword {
     private OPConnectClient client = null;
 
     public OnePassword() {
-        log = LoggerFactory.getLogger(OnePassword.class);
+        if (log == null) {
+            log = LoggerFactory.getLogger(OnePassword.class);
+        }
         final String opServerAddr = System.getenv("OP_CONNECT_SERVER");
         final String opToken = System.getenv("OP_CONNECT_TOKEN");
         client = OPConnectClientBuilder.builder()

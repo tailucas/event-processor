@@ -22,7 +22,7 @@ public class Sensor extends Device {
     }
     @Override
     public boolean mustTriggerOutput(Config deviceConfig) {
-        return false;
+        return true;
     }
     @Override
     public String toString() {

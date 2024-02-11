@@ -22,10 +22,13 @@ public class RabbitMq implements DeliverCallback {
 
     private ExecutorService srv = null;
     private Connection connection = null;
+
     private ObjectMapper mapper = null;
 
     public RabbitMq(ExecutorService srv, Connection connection) {
-        log = LoggerFactory.getLogger(RabbitMq.class);
+        if (log == null) {
+            log = LoggerFactory.getLogger(RabbitMq.class);
+        }
         this.srv = srv;
         this.connection = connection;
         this.mapper = new MessagePackMapper();

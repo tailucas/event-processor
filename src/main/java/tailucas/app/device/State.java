@@ -14,8 +14,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 public class State {
 
     private static Logger log = null;
-
-    public static final DateTimeFormatter DATE_TIME_FORMATTER = new DateTimeFormatterBuilder().appendPattern("yyyy-MM-dd'T'HH:mm:ss.SSSSSSZ").toFormatter();
+    public static DateTimeFormatter DATE_TIME_FORMATTER = null;
 
     public String timestamp;
     public List<Device> inputs;
@@ -25,7 +24,10 @@ public class State {
     protected Instant createdTime;
 
     public State() {
-        log = LoggerFactory.getLogger(State.class);
+        if (log == null) {
+            log = LoggerFactory.getLogger(State.class);
+            DATE_TIME_FORMATTER = new DateTimeFormatterBuilder().appendPattern("yyyy-MM-dd'T'HH:mm:ss.SSSSSSZ").toFormatter();
+        }
     }
     public State(List<Device> inputs, List<Device> outputs_triggered) {
         this();

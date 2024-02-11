@@ -22,6 +22,10 @@ public class InputConfig extends Config {
         }
         return device_key;
     }
+    @JsonIgnore
+    public boolean isEnabled() {
+        return device_enabled;
+    }
     @Override
     public String toString() {
         return "InputConfig [device_key=" + device_key + ", device_type=" + device_type + ", device_label=" + device_label

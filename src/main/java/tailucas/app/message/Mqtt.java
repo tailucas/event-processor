@@ -31,7 +31,9 @@ public class Mqtt implements IMqttMessageListener {
     private ObjectMapper mapper = null;
 
     public Mqtt(ExecutorService srv, Connection rabbitMqConnection) {
-        log = LoggerFactory.getLogger(Mqtt.class);
+        if (log == null) {
+            log = LoggerFactory.getLogger(Mqtt.class);
+        }
         this.srv = srv;
         this.rabbitMqConnection = rabbitMqConnection;
         this.mapper = new ObjectMapper();
@@ -52,7 +54,7 @@ public class Mqtt implements IMqttMessageListener {
                 final List<Device> active_devices = new ArrayList<>();
                 final String[] topicParts = topic.split("/", 2);
                 if (topicParts.length < 2) {
-                    throw new AssertionError("Invalid topic path on topic [" + topic + "]");
+                    throw new RuntimeException("Invalid topic path on topic [" + topic + "]");
                 }
                 final String deviceTypeString = StringUtils.capitalize(topicParts[0]);
                 Type deviceType = null;

@@ -45,6 +45,17 @@
 
     <versions.maven.plugin.version>[2.16.2,)</versions.maven.plugin.version>
     <spotbugs-maven-plugin.version>[4.8.1.0,)</spotbugs-maven-plugin.version>
+
+    <!-- properties file -->
+    <properties-plugin.version>1.2.1</properties-plugin.version>
+    <app.project-name>${project.name}</app.project-name>
+    <app.message-control-expiry-ms>60000</app.message-control-expiry-ms>
+    <app.message-event-exchange-name>home_automation</app.message-event-exchange-name>
+    <app.message-control-exchange-name>home_automation_control</app.message-control-exchange-name>
+    <sentry.traces-sample-rate>1.0</sentry.traces-sample-rate>
+    <sentry.environment>java</sentry.environment>
+    <spring.threads.virtual.enabled>true</spring.threads.virtual.enabled>
+    <spring.main.keep-alive>true</spring.main.keep-alive>
   </properties>
 
   <dependencies>
@@ -53,6 +64,11 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-web</artifactId>
 		</dependency>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-validation</artifactId>
+    </dependency>
 
     <dependency>
       <groupId>org.springframework.boot</groupId>
@@ -199,6 +215,22 @@
         <groupId>com.github.spotbugs</groupId>
         <artifactId>spotbugs-maven-plugin</artifactId>
         <version>${spotbugs-maven-plugin.version}</version>
+      </plugin>
+      <plugin>
+          <groupId>org.codehaus.mojo</groupId>
+          <artifactId>properties-maven-plugin</artifactId>
+          <version>${properties-plugin.version}</version>
+          <executions>
+              <execution>
+                  <phase>generate-resources</phase>
+                  <goals>
+                      <goal>write-project-properties</goal>
+                  </goals>
+                  <configuration>
+                      <outputFile>${project.build.outputDirectory}/application.properties</outputFile>
+                  </configuration>
+              </execution>
+          </executions>
       </plugin>
     </plugins>
   </build>

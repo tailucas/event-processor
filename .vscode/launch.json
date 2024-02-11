@@ -17,13 +17,6 @@
             "request": "launch",
             "mainClass": "${file}",
             "vmArgs": "-XX:+UseZGC -XX:+ZGenerational -Djava.net.preferIPv4Stack=true -Dcom.sun.management.jmxremote.host=127.0.0.1 -Dcom.sun.management.jmxremote.port=3333 -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.authenticate=false"
-        },
-        {
-            "type": "java",
-            "name": "EventProcessor",
-            "request": "launch",
-            "mainClass": "tailucas.app.EventProcessor",
-            "projectName": "base-app"
         }
     ]
 }

@@ -52,9 +52,8 @@ public class Device implements Trigger {
     public long getUptimeSeconds() {
         return Double.valueOf(timestamp - uptime).longValue();
     }
-    @Override
     public boolean mustTriggerOutput(Config deviceConfig) {
-        throw new UnsupportedOperationException("Unimplemented method 'triggerOutput'");
+        throw new UnsupportedOperationException("Unimplemented method 'mustTriggerOutput'");
     }
     @Override
     public String toString() {

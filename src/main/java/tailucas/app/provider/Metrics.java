@@ -17,7 +17,9 @@ public class Metrics {
     private static Logger log = null;
 
     public Metrics() {
-        log = LoggerFactory.getLogger(Metrics.class);
+        if (log == null) {
+            log = LoggerFactory.getLogger(Metrics.class);
+        }
     }
 
     public void postMetric() {

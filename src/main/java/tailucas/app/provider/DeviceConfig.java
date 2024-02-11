@@ -62,7 +62,7 @@ public class DeviceConfig {
             return null;
         }
         if (deviceConfig.size() != 1) {
-            throw new AssertionError(String.format("Expected exactly 1 configuration item for {}", deviceKey));
+            throw new RuntimeException(String.format("Expected exactly 1 configuration item for {}", deviceKey));
         }
         return (InputConfig) deviceConfig.getFirst();
     }
@@ -73,7 +73,7 @@ public class DeviceConfig {
             return null;
         }
         if (deviceConfig.size() != 1) {
-            throw new AssertionError(String.format("Expected exactly 1 configuration item for {}", deviceKey));
+            throw new RuntimeException(String.format("Expected exactly 1 configuration item for {}", deviceKey));
         }
         return (OutputConfig) deviceConfig.getFirst();
     }
@@ -112,6 +112,7 @@ public class DeviceConfig {
         HttpResponse<String> response = httpClient.send(request, BodyHandlers.ofString());
         final int responseCode = response.statusCode();
         final String responseBody = response.body();
+        List<Config> configs = null;
         if (responseCode % 200 != 0) {
             String responseDetail = null;
             try {
@@ -122,12 +123,10 @@ public class DeviceConfig {
             }
             log.debug("HTTP {} from {} for {}.", responseCode, apiName, deviceKey);
             log.error("{}: {}", deviceKey, responseDetail);
-            return null;
+        } else {
+            configs = mapper.readValue(responseBody, getCollectionType(api));
         }
-        List<Config> configs = mapper.readValue(responseBody, getCollectionType(api));
-        if (configs.size() > 0) {
-            configCache.put(cacheKey, configs);
-        }
+        configCache.put(cacheKey, configs);
         return configs;
     }
 

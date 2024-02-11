@@ -1,14 +1,7 @@
 package tailucas.app;
 
-import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
-import java.net.URI;
-import java.net.URL;
 import java.util.Arrays;
 import java.util.Locale;
 import java.util.Map;
@@ -21,8 +14,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.zeromq.ZMQ;
-import org.zeromq.ZMQException;
-
 import com.rabbitmq.client.BuiltinExchangeType;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
@@ -47,13 +38,16 @@ import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.ini4j.Ini;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.ExitCodeGenerator;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.Environment;
 
 
 @SpringBootApplication
+@EnableConfigurationProperties(AppProperties.class)
 public class EventProcessor
 {
     public static final String ZMQ_MQTT_URL = "inproc://mqtt-send";
@@ -138,6 +132,7 @@ public class EventProcessor
 
     public static void main( String[] args )
     {
+        Thread.currentThread().setName("main");
         creds = new OnePassword();
         creds.listVaults();
         final String sentryDsn = System.getenv("SENTRY_DSN");
@@ -146,11 +141,16 @@ public class EventProcessor
         });
         log.info("Sentry enabled: {}, healthy: {}.", Sentry.isEnabled(), Sentry.isHealthy());
         final ApplicationContext springApp = SpringApplication.run(EventProcessor.class, args);
-        Thread.currentThread().setName("main");
+        final Environment springEnv = springApp.getEnvironment();
         final Locale locale = Locale.getDefault();
         final Map<String, String> envVars = System.getenv();
-        log.info("{} starting event processor in working directory {}, locale language {}, country {} and environment {}", Runtime.version().toString(), System.getProperty("user.dir"), locale.getLanguage(), locale.getCountry(), envVars.keySet());
-
+        log.info("{} starting {} in working directory {}, locale language {}, country {} and environment {}",
+            springEnv.getProperty("app.project-name"),
+            Runtime.version().toString(),
+            System.getProperty("user.dir"),
+            locale.getLanguage(),
+            locale.getCountry(),
+            envVars.keySet());
         // read application settings
         try {
             Ini appConfig = new Ini(new File("./app.conf"));
@@ -175,10 +175,13 @@ public class EventProcessor
         Thread rabbitMqThread = appThreadFactory.newThread(() -> {
             try {
                 rabbitMqChannel = rabbitMqConnection.createChannel();
-                final String EXCHANGE_NAME = "home_automation";
-                rabbitMqChannel.exchangeDeclare(EXCHANGE_NAME, BuiltinExchangeType.TOPIC);
+                final String exchangeName = springEnv.getProperty("app.message-event-exchange-name");
+                if (exchangeName == null || exchangeName.length() == 0) {
+                    throw new RuntimeException("Empty exchange name during RabbitMQ client setup.");
+                }
+                rabbitMqChannel.exchangeDeclare(exchangeName, BuiltinExchangeType.TOPIC);
                 String queueName = rabbitMqChannel.queueDeclare().getQueue();
-                rabbitMqChannel.queueBind(queueName, EXCHANGE_NAME, "#");
+                rabbitMqChannel.queueBind(queueName, exchangeName, "#");
                 rabbitMqChannel.basicConsume(queueName, true, new RabbitMq(srv, rabbitMqConnection), consumerTag -> { });
             } catch (Exception e) {
                 log.error("Problem with RabbitMQ client", e);
@@ -206,7 +209,7 @@ public class EventProcessor
                     try {
                         final byte[] zmqData = socket.recv();
                         log.info("ZMQ data received {}", new String(zmqData));
-                    } catch (ZMQException e) {
+                    } catch (Exception e) {
                         if (!zmqContext.isClosed()) {
                             throw e;
                         }
