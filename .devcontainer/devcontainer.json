@@ -15,5 +15,6 @@
         "OP_CONNECT_TOKEN": "${localEnv:OP_CONNECT_TOKEN}",
         "GRAFANA_USER": "${localEnv:GRAFANA_USER}",
         "GRAFANA_TOKEN": "${localEnv:GRAFANA_TOKEN}"
-    }
+    },
+    "runArgs": ["--network=host"]
 }
