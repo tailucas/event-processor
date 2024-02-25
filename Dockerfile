@@ -1,4 +1,4 @@
-FROM tailucas/base-app:20240210
+FROM tailucas/base-app:latest
 # for system/site packages
 USER root
 # generate correct locales
@@ -9,8 +9,7 @@ ENV LANGUAGE=$LANGUAGE
 ARG LC_ALL
 ENV LC_ALL=$LC_ALL
 ARG ENCODING
-ENV ENCODING=$ENCODING
-RUN localedef -i ${LANGUAGE} -c -f ${ENCODING} -A /usr/share/locale/locale.alias ${LANG}
+RUN localedef -i ${LANGUAGE} -c -f $ENCODING -A /usr/share/locale/locale.alias ${LANG}
 # system setup
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \

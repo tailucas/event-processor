@@ -3,4 +3,8 @@
 version: '3'
 
 vars:
-  APP: event_processor
+  PROJECT_NAME: event-processor
+  ENCODING: UTF-8
+  LANG: en_ZA.UTF-8
+  LANGUAGE: en_ZA
+  LC_ALL: en_ZA.UTF-8
