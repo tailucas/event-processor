@@ -19,6 +19,7 @@ public class OnePassword {
             log = LoggerFactory.getLogger(OnePassword.class);
         }
         final String opServerAddr = System.getenv("OP_CONNECT_SERVER");
+        log.info("Attempting to connect to 1Password at {}...", opServerAddr);
         final String opToken = System.getenv("OP_CONNECT_TOKEN");
         client = OPConnectClientBuilder.builder()
             .withEndpoint(opServerAddr)

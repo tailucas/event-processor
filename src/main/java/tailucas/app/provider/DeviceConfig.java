@@ -99,9 +99,11 @@ public class DeviceConfig {
         if (configCache.containsKey(cacheKey)) {
             return configCache.get(cacheKey);
         }
+        final String hostName = "192.168.0.5";
+        log.info("{} needs {} from {}...", deviceKey, apiName, hostName);
         UriComponents uriComponents = UriComponentsBuilder.newInstance()
             .scheme("http")
-            .host("192.168.0.5")
+            .host(hostName)
             .path("/{scope}/{function}")
             .queryParam("device_key", deviceKey)
             .build()

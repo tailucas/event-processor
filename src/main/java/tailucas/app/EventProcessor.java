@@ -18,6 +18,7 @@ import com.rabbitmq.client.BuiltinExchangeType;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
+import com.rabbitmq.client.impl.StrictExceptionHandler;
 
 import io.sentry.ISpan;
 import io.sentry.ITransaction;
@@ -63,6 +64,7 @@ public class EventProcessor
 
     private static final int EXIT_CODE_MQTT = 2;
     private static final int EXIT_CODE_RABBITMQ = 4;
+    private static final int EXIT_CODE_CREDENTIALS = 8;
 
     @Bean
 	public CommandLineRunner commandLineRunner(ApplicationContext ctx) {
@@ -134,7 +136,13 @@ public class EventProcessor
     {
         Thread.currentThread().setName("main");
         creds = new OnePassword();
-        creds.listVaults();
+        try {
+            creds.listVaults();
+        } catch (Exception e) {
+            log.error("Problem with credential client", e);
+            exitCode |= EXIT_CODE_CREDENTIALS;
+            System.exit(exitCode);
+        }
         final String sentryDsn = System.getenv("SENTRY_DSN");
         Sentry.init(options -> {
             options.setDsn(sentryDsn);
@@ -164,6 +172,14 @@ public class EventProcessor
 
         ConnectionFactory rabbitMqConnectionFactory = new ConnectionFactory();
         rabbitMqConnectionFactory.setHost("192.168.0.5");
+        rabbitMqConnectionFactory.setExceptionHandler(new StrictExceptionHandler() {
+            @Override
+            public void handleUnexpectedConnectionDriverException(Connection conn, Throwable exception) {
+                super.handleUnexpectedConnectionDriverException(conn, exception);
+                exitCode |= EXIT_CODE_RABBITMQ;
+                System.exit(SpringApplication.exit(springApp));
+            }
+        });
         try {
             rabbitMqConnection = rabbitMqConnectionFactory.newConnection(srv);
         } catch (Exception e) {
@@ -199,7 +215,7 @@ public class EventProcessor
                 final MqttConnectOptions options = new MqttConnectOptions();
                 options.setAutomaticReconnect(true);
                 options.setCleanSession(true);
-                options.setConnectionTimeout(10);
+                options.setConnectionTimeout(5);
                 mqttClient.connect(options);
                 mqttClient.subscribe("#", new Mqtt(srv, rabbitMqConnection));
                 // use inproc socket in ZMQ to serialize outbound messages for thread safety
