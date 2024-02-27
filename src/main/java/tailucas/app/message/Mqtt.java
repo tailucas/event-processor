@@ -86,8 +86,8 @@ public class Mqtt implements IMqttMessageListener {
                         });
                     } else if (deviceType.equals(Type.METER)) {
                         final Meter meter = mapper.treeToValue(root, Meter.class);
-                        final String deviceName = topicParts[1];
-                        meter.device_key = StringUtils.capitalize(String.format("%s %s", deviceName, deviceTypeString));
+                        final String deviceLocation = topicParts[1];
+                        meter.device_key = StringUtils.capitalize(String.format("%s %s", deviceLocation, deviceTypeString));
                         inputs.add(meter);
                         // meters are always "active", thresholds are computed against configuration.
                         active_devices.add(meter);

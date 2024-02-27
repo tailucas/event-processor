@@ -39,7 +39,7 @@ public class Device implements Trigger {
         if (device_label != null) {
             return device_label;
         }
-        return device_key;
+        return getDeviceKey();
     }
     @JsonIgnore
     public Instant getTimestamp() {
