@@ -1,5 +1,6 @@
 package tailucas.app.api;
 
+import org.slf4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -11,6 +12,9 @@ import tailucas.app.AppProperties;
 public class EventHandler {
 
 	@Autowired
+    private Logger log;
+
+	@Autowired
 	private Environment env;
 
 	@Autowired
@@ -18,7 +22,8 @@ public class EventHandler {
 
 	@GetMapping("/")
 	public String index() {
-		return Thread.currentThread() + " spring.threads.virtual.enabled " + env.getProperty("spring.threads.virtual.enabled") + " " + props.getProjectName() + " " + props.getMessageControlExchangeName();
+		final String message = Thread.currentThread() + " spring.threads.virtual.enabled " + env.getProperty("spring.threads.virtual.enabled") + " " + props.getProjectName() + " " + props.getMessageControlExchangeName();
+		log.info(message);
+		return message;
 	}
-
 }
