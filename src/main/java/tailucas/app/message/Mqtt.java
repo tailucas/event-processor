@@ -5,10 +5,13 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 
 import org.apache.commons.lang3.StringUtils;
-import org.eclipse.paho.client.mqttv3.IMqttMessageListener;
+import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
+import org.eclipse.paho.client.mqttv3.MqttCallback;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.SpringApplication;
+import org.springframework.context.ApplicationContext;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -22,18 +25,20 @@ import tailucas.app.device.Meter;
 import tailucas.app.device.Sensor;
 import tailucas.app.device.State;
 
-public class Mqtt implements IMqttMessageListener {
+public class Mqtt implements MqttCallback {
 
     private static Logger log = null;
 
+    private ApplicationContext springApp = null;
     private ExecutorService srv = null;
     private Connection rabbitMqConnection = null;
     private ObjectMapper mapper = null;
 
-    public Mqtt(ExecutorService srv, Connection rabbitMqConnection) {
+    public Mqtt(ApplicationContext springApp, ExecutorService srv, Connection rabbitMqConnection) {
         if (log == null) {
             log = LoggerFactory.getLogger(Mqtt.class);
         }
+        this.springApp = springApp;
         this.srv = srv;
         this.rabbitMqConnection = rabbitMqConnection;
         this.mapper = new ObjectMapper();
@@ -111,4 +116,13 @@ public class Mqtt implements IMqttMessageListener {
             log.warn("{} payload {}", e.getMessage(), new String(payload));
         }
     }
+
+    @Override
+    public void connectionLost(Throwable cause) {
+        log.error("MQTT error", cause);
+        System.exit(SpringApplication.exit(springApp));
+    }
+
+    @Override
+    public void deliveryComplete(IMqttDeliveryToken token) { }
 }

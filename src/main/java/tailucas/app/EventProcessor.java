@@ -217,7 +217,8 @@ public class EventProcessor
                 options.setCleanSession(true);
                 options.setConnectionTimeout(5);
                 mqttClient.connect(options);
-                mqttClient.subscribe("#", new Mqtt(srv, rabbitMqConnection));
+                mqttClient.setCallback(new Mqtt(springApp, srv, rabbitMqConnection));
+                mqttClient.subscribe("#");
                 // use inproc socket in ZMQ to serialize outbound messages for thread safety
                 socket = zmqContext.createSocket(SocketType.PULL);
                 socket.connect(ZMQ_MQTT_URL);
