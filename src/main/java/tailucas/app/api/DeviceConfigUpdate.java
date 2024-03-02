@@ -7,6 +7,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
 
+import tailucas.app.provider.DeviceConfig;
+
 @RestController
 public class DeviceConfigUpdate {
 
@@ -16,7 +18,8 @@ public class DeviceConfigUpdate {
     @PostMapping("/invalidate_config")
     @ResponseBody
 	public String invalidateConfig(@RequestParam("device_key") String deviceKey) {
-        log.info("Updating device {}", deviceKey);
+        log.info("Invalidating cached configuration for {}", deviceKey);
+        DeviceConfig.getInstance().invalidateConfiguration(deviceKey);
         return deviceKey;
 	}
 }

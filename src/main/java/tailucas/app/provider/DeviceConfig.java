@@ -5,10 +5,15 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.util.UriComponents;
@@ -33,7 +38,7 @@ public class DeviceConfig {
     private HttpClient httpClient = null;
     private ObjectMapper mapper = null;
     private Map<ConfigType, CollectionType> collectionTypes = null;
-    private Map<String, List<Config>> configCache;
+    private Map<String, Pair<Instant, List<Config>>> configCache;
 
     private DeviceConfig() {
         log = LoggerFactory.getLogger(DeviceConfig.class);
@@ -41,8 +46,7 @@ public class DeviceConfig {
         mapper = new ObjectMapper();
         mapper.enable(DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT);
         collectionTypes = new HashMap<>(4);
-        //FIXME: just to avoid spam during testing
-        configCache = new HashMap<>(100);
+        configCache = new ConcurrentHashMap<>(100);
     }
 
     public static synchronized DeviceConfig getInstance() {
@@ -93,11 +97,22 @@ public class DeviceConfig {
         return outputConfigs;
     }
 
+    public void invalidateConfiguration(String deviceKey) {
+        configCache.remove(deviceKey);
+    }
+
     protected List<Config> fetchDeviceConfiguration(ConfigType api, String deviceKey) throws IOException, InterruptedException {
         final String apiName = api.toString().toLowerCase();
-        final String cacheKey = String.format("%s:%s", apiName, deviceKey);
-        if (configCache.containsKey(cacheKey)) {
-            return configCache.get(cacheKey);
+        final Instant now = Instant.now();
+        if (configCache.containsKey(deviceKey)) {
+            var cached = configCache.get(deviceKey);
+            final Instant fetchedAt = cached.getLeft();
+            // FIXME
+            if (fetchedAt.until(now, ChronoUnit.SECONDS) <= 3600) {
+                return cached.getRight();
+            } else {
+                configCache.remove(deviceKey);
+            }
         }
         final String hostName = "192.168.0.5";
         log.info("{} needs {} from {}...", deviceKey, apiName, hostName);
@@ -128,7 +143,7 @@ public class DeviceConfig {
         } else {
             configs = mapper.readValue(responseBody, getCollectionType(api));
         }
-        configCache.put(cacheKey, configs);
+        configCache.put(deviceKey, Pair.of(now, configs));
         return configs;
     }
 
