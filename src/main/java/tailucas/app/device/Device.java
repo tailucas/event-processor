@@ -1,6 +1,7 @@
 package tailucas.app.device;
 
 import java.time.Instant;
+import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
@@ -30,6 +31,20 @@ public class Device implements Trigger {
     public Double uptime;
 
     public Device() { }
+
+    @JsonIgnore
+    private Config config;
+
+    @JsonIgnore
+    public Config getConfig() {
+        return config;
+    }
+
+    @JsonIgnore
+    public void setConfig(Config config) {
+        this.config = config;
+    }
+
     @JsonIgnore
     public String getDeviceKey() {
         return device_key;
@@ -52,8 +67,17 @@ public class Device implements Trigger {
     public long getUptimeSeconds() {
         return Double.valueOf(timestamp - uptime).longValue();
     }
+    @JsonIgnore
     public boolean mustTriggerOutput(Config deviceConfig) {
         throw new UnsupportedOperationException("Unimplemented method 'mustTriggerOutput'");
+    }
+    @JsonIgnore
+    public Instant lastTriggered() {
+        throw new UnsupportedOperationException("Unimplemented method 'lastTriggered'");
+    }
+    @JsonIgnore
+    public List<Device> triggerGroup() {
+        throw new UnsupportedOperationException("Unimplemented method 'triggerGroup'");
     }
     @Override
     public String toString() {
