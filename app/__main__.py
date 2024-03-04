@@ -497,6 +497,8 @@ def index():
                 log.info(f'{input_cfg.device_key} (group {input_cfg.group_name}) is now {state}.')
                 db.session.add(input_cfg)
             db.session.commit()
+            for input_cfg in input_cfgs:
+                invalidate_remote_config(device_key=input_cfg.device_key)
         else:
             log.error('No action associated with this request: {}'.format(request.form))
     meters = dict()
@@ -854,6 +856,19 @@ async def telegram_error_handler(update: Update, context: TelegramContextTypes.D
     log.warning(msg="Telegram Bot Exception while handling an update:", exc_info=context.error)
 
 
+def invalidate_remote_config(device_key):
+    api_server = app_config.get('app', 'event_processor_address')
+    api_method = "invalidate_config"
+    try:
+        response = requests.post(
+            url=f'{api_server}/{api_method}',
+            params={"device_key": device_key}
+        )
+        log.info(f'{response.status_code} response from {api_method} API call to {api_server} to invalidate configuration for {device_key}: {response!s}')
+    except ConnectionError as e:
+        log.warn(f'Unable to call {api_method} API at {api_server} to invalidate configuration for {device_key}: {e!s}')
+
+
 class EventProcessor(MQConnection):
 
     def __init__(self, mqtt_subscriber, mq_server_address, mq_exchange_name):
@@ -1067,6 +1082,7 @@ class EventProcessor(MQConnection):
                             input_config.device_enabled = device_enable
                             db.session.add(input_config)
                             db.session.commit()
+                            invalidate_remote_config(device_key=device_key)
                             # skip further processing because of enable/disable
                             continue
                         if 'bot' == event_origin:
@@ -1130,11 +1146,11 @@ class EventProcessor(MQConnection):
                                         log.info(f'{state.title()} {len(input_config)} devices...')
                                         input_configs.extend(input_config)
                                 # process all collected inputs
-                                inputs_updated = 0
+                                inputs_updated = []
                                 if len(input_configs) > 0:
                                     for ic in input_configs:
                                         if ic.device_enabled != input_enable:
-                                            inputs_updated += 1
+                                            inputs_updated.append(ic.device_key)
                                             log.info(f'{state.title()} {ic.device_key} (group {ic.group_name})')
                                             ic.device_enabled = input_enable
                                             # update the database
@@ -1148,9 +1164,11 @@ class EventProcessor(MQConnection):
                                                     else:
                                                         # disable runtime auto-scheduling actions
                                                         zmq_socket.send_pyobj((ic.device_key, None, None, None))
-                                    if inputs_updated > 0:
+                                    if len(inputs_updated) > 0:
                                         db.session.commit()
-                                    bot_reply = f'{inputs_updated} devices changed to {state}.'
+                                        for device_key in inputs_updated:
+                                            invalidate_remote_config(device_key=device_key)
+                                    bot_reply = f'{len(inputs_updated)} devices changed to {state}.'
                                 else:
                                     log.warning(f'No devices matched to {state}.')
                             if bot_reply:
