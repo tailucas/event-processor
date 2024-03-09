@@ -2016,7 +2016,10 @@ class ApiServer(Thread):
             log.warning(f'API server shutting down: {self.__class__.__name__}')
             # emulate signal handler latch in server.handle_exit()
             self.server.force_exit = True
-            asyncio.run(self.server.shutdown())
+            try:
+                asyncio.run(self.server.shutdown())
+            except Exception:
+                log.warning("Ignoring API server shutdown issue.", exc_info=True)
             log.warning(f'API server shutdown complete: {self.__class__.__name__}')
 
 
