@@ -193,15 +193,19 @@ public class EventProcessor
                 HttpResponse<String> response = httpClient.send(request, BodyHandlers.ofString());
                 final int responseCode = response.statusCode();
                 final String responseBody = response.body();
-                if (responseCode % 200 == 0 && responseBody.equals("True")) {
-                    ready = true;
+                log.info("Peer response is {}...", responseBody);
+                if (responseCode % 200 == 0) {
+                    ready = Boolean.valueOf(responseBody).booleanValue();
                 }
             } catch (Exception e) {
                 log.warn("Not ready for startup.");
-                try {
-                    Thread.sleep(10*1000);
-                } catch (InterruptedException e1) {
-                    System.exit(1);
+            } finally {
+                if (!ready) {
+                    try {
+                        Thread.sleep(10*1000);
+                    } catch (InterruptedException e1) {
+                        System.exit(1);
+                    }
                 }
             }
         }

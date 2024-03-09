@@ -2092,6 +2092,7 @@ def main():
                 # discover ngrok callback URL
                 CallbackUrlDiscovery().start()
             nanny.start()
+            global startup_complete
             startup_complete = True
             log.info('Startup complete.')
             # block on threading event

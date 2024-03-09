@@ -56,6 +56,7 @@
     <sentry.environment>java</sentry.environment>
     <spring.threads.virtual.enabled>true</spring.threads.virtual.enabled>
     <spring.main.keep-alive>true</spring.main.keep-alive>
+    <server.port>8085</server.port>
   </properties>
 
   <dependencies>
