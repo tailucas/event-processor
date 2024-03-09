@@ -98,13 +98,13 @@ Install these tools and make sure that they are on the environment `$PATH`.
 
 ### Installation
 
-0. :stop_sign: This project uses [1Password Secrets Automation][1p-url] to store both application key-value pairs as well as runtime secrets. It is assumed that the connect server containers are already running on your environment. If you do not want to use this, then you'll need to fork this package and make the changes as appropriate. It's actually very easy to set up, but note that 1Password is a paid product with a free-tier for secrets automation. Here is an example of how this looks for my application and the generation of the docker-compose.yml relies on this step. Your secrets automation vault must contain an entry called `ENV.event_processor` with these keys:
+0. :stop_sign: This project uses [1Password Secrets Automation][1p-url] to store both application key-value pairs as well as runtime secrets. It is assumed that the connect server containers are already running on your environment. If you do not want to use this, then you'll need to fork this package and make the changes as appropriate. It's actually very easy to set up, but note that 1Password is a paid product with a free-tier for secrets automation. Here is an example of how this looks for my application and the generation of the docker-compose.yml relies on this step. Your secrets automation vault must contain an entry called `ENV.event-processor` with these keys:
 
 | Variable | Description | Example |
 | --- | --- | --- |
 | `APP_FLASK_DEBUG` | Web server debug | `false` |
 | `APP_FLASK_HTTP_PORT` | Web server port | `8080` |
-| `APP_NAME` | Application name used in logging and metrics | `event_processor` |
+| `APP_NAME` | Application name used in logging and metrics | `event-processor` |
 | `AWS_CONFIG_FILE` | AWS client configuration file | `/home/app/.aws/config` |
 | `AWS_DEFAULT_REGION` | AWS region | `us-east-1` |
 | `BACKUP_S3_BUCKET` | Bucket name for database backup | *project specific* |
@@ -134,7 +134,7 @@ Install these tools and make sure that they are on the environment `$PATH`.
 | `RABBITMQ_SERVER_ADDRESS` | IP address of RabbitMQ exchange | *network specific* |
 | `SNS_CONTROL_ENABLED` | Enable control messages from SQS | `false` |
 | `SQS_QUEUE` | SQS queue name | `automation-control` |
-| `TABLESPACE_PATH` | SQLite database for configuration | `/data/event_processor.db` |
+| `TABLESPACE_PATH` | SQLite database for configuration | `/data/event-processor.db` |
 | `TELEGRAM_CHAT_ROOM` | Telegram chat room ID | *project specific* |
 | `TELEGRAM_IMAGE_SEND_ONLY_WITH_PEOPLE` | Send images only to humans | `true` |
 | `TELEGRAM_SMS_FALLBACK_ENABLED` | Fall back to AWS SNS (SMS) | `false` |

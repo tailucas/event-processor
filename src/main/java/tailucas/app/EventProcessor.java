@@ -6,6 +6,7 @@ import java.util.Arrays;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -65,6 +66,7 @@ public class EventProcessor
     private static final int EXIT_CODE_MQTT = 2;
     private static final int EXIT_CODE_RABBITMQ = 4;
     private static final int EXIT_CODE_CREDENTIALS = 8;
+    private static final int EXIT_CODE_SENTRY = 16;
 
     @Bean
 	public CommandLineRunner commandLineRunner(ApplicationContext ctx) {
@@ -135,18 +137,39 @@ public class EventProcessor
     public static void main( String[] args )
     {
         Thread.currentThread().setName("main");
-        creds = new OnePassword();
+        creds = OnePassword.getInstance();
         try {
-            creds.listVaults();
+            var vaults = creds.listVaults();
+            if (vaults == null || vaults.size() == 0) {
+                throw new RuntimeException("No credential vaults are available.");
+            }
+            vaults.forEach(vault -> {
+                log.info("Credential vault {}: is {} ({}).", vault.getId(), vault.getName(), vault.getDescription());
+            });
+            log.info("Using credential vault {}.", creds.getVaultId());
         } catch (Exception e) {
             log.error("Problem with credential client", e);
             exitCode |= EXIT_CODE_CREDENTIALS;
             System.exit(exitCode);
         }
-        final String sentryDsn = System.getenv("SENTRY_DSN");
-        Sentry.init(options -> {
-            options.setDsn(sentryDsn);
-        });
+        try {
+            final String sentryDsn = creds.getField("Sentry", "dsn", "event-processor");
+            Sentry.init(options -> {
+                options.setDsn(sentryDsn);
+            });
+        } catch (AssertionError e) {
+                log.error("Problem with credential item", e);
+                exitCode |= EXIT_CODE_CREDENTIALS;
+                System.exit(exitCode);
+        } catch (CompletionException e) {
+            log.error("Problem with credential item", e.getCause());
+            exitCode |= EXIT_CODE_CREDENTIALS;
+            System.exit(exitCode);
+        } catch (IllegalArgumentException e) {
+            log.error("Problem with Sentry client", e);
+            exitCode |= EXIT_CODE_SENTRY;
+            System.exit(exitCode);
+        }
         log.info("Sentry enabled: {}, healthy: {}.", Sentry.isEnabled(), Sentry.isHealthy());
         final ApplicationContext springApp = SpringApplication.run(EventProcessor.class, args);
         final Environment springEnv = springApp.getEnvironment();

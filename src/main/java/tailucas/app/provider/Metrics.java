@@ -23,8 +23,9 @@ public class Metrics {
     }
 
     public void postMetric() {
-        final String userId = System.getenv("GRAFANA_USER");
-        final String apiKey = System.getenv("GRAFANA_TOKEN");
+        var creds = OnePassword.getInstance();
+        final String userId = creds.getField("Grafana", "user_id", "event-processor");
+        final String apiKey = creds.getField("Grafana", "user_id", "event-processor");
         String response = null;
         try {
             HttpURLConnection.setFollowRedirects(false);
