@@ -2,6 +2,10 @@ package tailucas.app;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.net.http.HttpResponse.BodyHandlers;
 import java.util.Arrays;
 import java.util.Locale;
 import java.util.Map;
@@ -15,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.zeromq.ZMQ;
+
 import com.rabbitmq.client.BuiltinExchangeType;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
@@ -46,6 +51,8 @@ import org.springframework.boot.ExitCodeGenerator;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.Environment;
+import org.springframework.web.util.UriComponents;
+import org.springframework.web.util.UriComponentsBuilder;
 
 
 @SpringBootApplication
@@ -171,6 +178,33 @@ public class EventProcessor
             System.exit(exitCode);
         }
         log.info("Sentry enabled: {}, healthy: {}.", Sentry.isEnabled(), Sentry.isHealthy());
+        final String hostName = "192.168.0.5";
+        UriComponents uriComponents = UriComponentsBuilder.newInstance()
+            .scheme("http")
+            .host(hostName)
+            .path("/api/running")
+            .build()
+            .encode();
+        HttpRequest request = HttpRequest.newBuilder().GET().uri(uriComponents.toUri()).build();
+        HttpClient httpClient = HttpClient.newHttpClient();
+        boolean ready = false;
+        while (!ready) {
+            try {
+                HttpResponse<String> response = httpClient.send(request, BodyHandlers.ofString());
+                final int responseCode = response.statusCode();
+                final String responseBody = response.body();
+                if (responseCode % 200 == 0 && responseBody.equals("True")) {
+                    ready = true;
+                }
+            } catch (Exception e) {
+                log.warn("Not ready for startup.");
+                try {
+                    Thread.sleep(10*1000);
+                } catch (InterruptedException e1) {
+                    System.exit(1);
+                }
+            }
+        }
         final ApplicationContext springApp = SpringApplication.run(EventProcessor.class, args);
         final Environment springEnv = springApp.getEnvironment();
         final Locale locale = Locale.getDefault();
