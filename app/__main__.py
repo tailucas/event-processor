@@ -152,6 +152,8 @@ URL_WORKER_AUTO_SCHEDULER = 'inproc://auto-scheduler'
 ngrok_tunnel_url = None
 ngrok_tunnel_url_with_bauth = None
 
+startup_complete = False
+
 
 class EventLog(db.Model):
     __tablename__ = 'event_log'
@@ -394,7 +396,12 @@ def api_root():
 
 @api_app.get("/api/ping")
 def api_ping():
-    return {"message": "Hello World"}
+    return "OK"
+
+
+@api_app.get("/api/running")
+def api_running():
+    return startup_complete
 
 
 @flask_app.route('/debug-sentry')
@@ -2085,6 +2092,7 @@ def main():
                 # discover ngrok callback URL
                 CallbackUrlDiscovery().start()
             nanny.start()
+            startup_complete = True
             log.info('Startup complete.')
             # block on threading event
             threads.interruptable_sleep.wait()
