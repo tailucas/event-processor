@@ -65,6 +65,7 @@ tasks:
       - mvn -v
     cmds:
       - mvn package
+      - mvn dependency:tree
   push:
     deps: [build]
     desc: Push built image to Docker Hub

@@ -13,15 +13,20 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.SpringApplication;
 import org.springframework.context.ApplicationContext;
 
+import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.rabbitmq.client.Connection;
 
 import tailucas.app.device.Device;
 import tailucas.app.device.Event;
 import tailucas.app.device.Device.Type;
+import tailucas.app.device.config.HAConfig;
 import tailucas.app.device.Meter;
+import tailucas.app.device.Ring;
 import tailucas.app.device.Sensor;
 import tailucas.app.device.State;
 
@@ -47,26 +52,58 @@ public class Mqtt implements MqttCallback {
     @Override
     public void messageArrived(String topic, MqttMessage message) throws Exception {
         final byte[] payload = message.getPayload();
-        try {
-            if (topic.startsWith("tasmota/discovery/") || topic.startsWith("tele/")) {
-                log.warn("Ignoring event on topic {}", topic);
-                return;
-            } else if (payload.length == 2 && payload[0] == 'O' && payload[1] == 'K') {
-                srv.submit(new Event(rabbitMqConnection, topic, new String(payload)));
+        if (topic.startsWith("tasmota/discovery/") || topic.startsWith("tele/")) {
+            // filter out unsupported topics
+            log.warn("{} ignored.", topic);
+            return;
+        } else if (payload.length == 2 && new String(payload).equals("OK")) {
+            // catch heartbeat messages for topic matching
+            srv.submit(new Event(rabbitMqConnection, topic, new String(payload)));
+        } else if (topic.startsWith("inverter/")) {
+            log.debug("{} not yet supported.");
+        } else if (topic.startsWith("homeassistant/")) {
+            log.info("{}: {}", topic, new String(payload));
+            if (payload.length > 0) {
+                if (payload[0] == '{') {
+                    try {
+                        HAConfig haConfig = mapper.readerFor(new TypeReference<HAConfig>() { }).readValue(payload);
+                        log.info("HA config is: {}", haConfig);
+                    } catch (Throwable e) {
+                        log.warn("JSON issue with {}", new String(payload), e);
+                    }
+                } else {
+                    log.warn("{} not doing anything with payload: {}", topic, new String(payload));
+                }
+            }
+        } else if (topic.startsWith("ring/")) {
+            log.info("{}: {}", topic, new String(payload));
+            if (payload[0] == '{') {
+                try {
+                    Ring ringDevice = mapper.readerFor(new TypeReference<Ring>() { }).readValue(payload);
+                    log.info("Ring state is: {}", ringDevice);
+                } catch (Throwable e) {
+                    log.warn("JSON issue with {}", new String(payload), e);
+                }
             } else {
+                log.warn("{} not doing anything with payload: {}", topic, new String(payload));
+            }
+        } else if (topic.startsWith("meter/") || topic.startsWith("sensor/")) {
+            // attempt a JSON introspection
+            try {
                 JsonNode root = mapper.readTree(payload);
                 final List<Device> inputs = new ArrayList<>();
                 final List<Device> active_devices = new ArrayList<>();
                 final String[] topicParts = topic.split("/", 2);
                 if (topicParts.length < 2) {
-                    throw new RuntimeException("Invalid topic path on topic [" + topic + "]");
+                    log.error("{} not handled.", topic);
+                    return;
                 }
                 final String deviceTypeString = StringUtils.capitalize(topicParts[0]);
                 Type deviceType = null;
                 try {
                     deviceType = Type.valueOf(deviceTypeString.toUpperCase());
                 } catch (IllegalArgumentException e) {
-                    log.warn("Unknown inferred device type from topic [{}]", topic);
+                    log.warn("{} unknown device type.", topic);
                     return;
                 }
                 try {
@@ -84,8 +121,8 @@ public class Mqtt implements MqttCallback {
                                         active_devices.add(sensor);
                                     }
                                 } catch (JsonProcessingException e) {
-                                    log.error("During deserialization of field {}: " + e.getMessage(), fieldName);
-                                    throw new RuntimeException(e);
+                                    log.error("{} deserialization failure of field {}: ", topic, fieldName, e);
+                                    return;
                                 }
                             }
                         });
@@ -97,23 +134,30 @@ public class Mqtt implements MqttCallback {
                         // meters are always "active", thresholds are computed against configuration.
                         active_devices.add(meter);
                     } else {
-                        log.warn("Unknown inferred device type from topic {}", topic);
+                        log.warn("{} unknown inferred device type.", topic);
+                        return;
                     }
                 } catch (JsonProcessingException e) {
                     log.error("During deserialization of {}: " + e.getMessage(), deviceType);
-                    throw new RuntimeException(e);
+                    return;
                 }
-                State deviceUpdate = new State(inputs, active_devices);
-                if (active_devices.size() > 0) {
-                    active_devices.forEach(device -> {
-                        srv.submit(new Event(rabbitMqConnection, topic, device, deviceUpdate));
-                    });
+                if (inputs.size() > 0) {
+                    State deviceUpdate = new State(inputs, active_devices);
+                    if (active_devices.size() > 0) {
+                        active_devices.forEach(device -> {
+                            srv.submit(new Event(rabbitMqConnection, topic, device, deviceUpdate));
+                        });
+                    } else {
+                        srv.submit(new Event(rabbitMqConnection, topic, deviceUpdate));
+                    }
                 } else {
-                    srv.submit(new Event(rabbitMqConnection, topic, deviceUpdate));
+                    log.warn("{} insufficient device information from topic.", topic);
+                    return;
                 }
+            } catch (JsonParseException e) {
+                log.warn("{} during processing of payload, unsupported JSON: {}", topic, new String(payload), e);
+                return;
             }
-        } catch (RuntimeException e) {
-            log.warn("{} payload {}", e.getMessage(), new String(payload));
         }
     }
 
