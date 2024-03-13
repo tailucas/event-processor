@@ -7,7 +7,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import tailucas.app.device.config.Config;
 
-public class Device implements Trigger {
+public class Device implements Generic {
 
     public enum Type {
         BASE,
@@ -81,7 +81,11 @@ public class Device implements Trigger {
     }
     @Override
     public String toString() {
-        return "Device [" + getDeviceLabel() + "]";
+        String description = device_key;
+        if (device_label != null && !device_label.equals(device_key)) {
+            description += " (" + device_label + ")";
+        }
+        return "Device [" + description + "]";
     }
     /*
      * Legacy message fields not used here

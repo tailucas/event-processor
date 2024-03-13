@@ -18,7 +18,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.rabbitmq.client.Connection;
 
 import tailucas.app.device.Device;
@@ -52,9 +51,8 @@ public class Mqtt implements MqttCallback {
     @Override
     public void messageArrived(String topic, MqttMessage message) throws Exception {
         final byte[] payload = message.getPayload();
-        if (topic.startsWith("tasmota/discovery/") || topic.startsWith("tele/")) {
-            // filter out unsupported topics
-            log.warn("{} ignored.", topic);
+        if (payload.length == 0) {
+            log.warn("{} ignored with no payload.", topic);
             return;
         } else if (payload.length == 2 && new String(payload).equals("OK")) {
             // catch heartbeat messages for topic matching
@@ -63,29 +61,32 @@ public class Mqtt implements MqttCallback {
             log.debug("{} not yet supported.");
         } else if (topic.startsWith("homeassistant/")) {
             log.info("{}: {}", topic, new String(payload));
-            if (payload.length > 0) {
-                if (payload[0] == '{') {
-                    try {
-                        HAConfig haConfig = mapper.readerFor(new TypeReference<HAConfig>() { }).readValue(payload);
-                        log.info("HA config is: {}", haConfig);
-                    } catch (Throwable e) {
-                        log.warn("JSON issue with {}", new String(payload), e);
-                    }
-                } else {
-                    log.warn("{} not doing anything with payload: {}", topic, new String(payload));
-                }
-            }
-        } else if (topic.startsWith("ring/")) {
-            log.info("{}: {}", topic, new String(payload));
             if (payload[0] == '{') {
                 try {
-                    Ring ringDevice = mapper.readerFor(new TypeReference<Ring>() { }).readValue(payload);
-                    log.info("Ring state is: {}", ringDevice);
+                    HAConfig haConfig = mapper.readerFor(new TypeReference<HAConfig>() { }).readValue(payload);
+                    log.info("HA config is: {}", haConfig);
                 } catch (Throwable e) {
                     log.warn("JSON issue with {}", new String(payload), e);
                 }
             } else {
-                log.warn("{} not doing anything with payload: {}", topic, new String(payload));
+                log.warn("{} unassigned payload: {}", topic, new String(payload));
+            }
+        } else if (topic.startsWith("ring/")) {
+            Ring ringDevice = null;
+            log.info("{}: {}", topic, new String(payload));
+            if (payload[0] == '{') {
+                try {
+                    ringDevice = mapper.readerFor(new TypeReference<Ring>() { }).readValue(payload);
+                    ringDevice.setMqttTopic(topic);
+                } catch (Throwable e) {
+                    log.warn("JSON issue with {}", new String(payload), e);
+                }
+            } else {
+                ringDevice = new Ring();
+                ringDevice.setMqttTopic(topic, new String(payload));
+            }
+            if (ringDevice != null) {
+                log.info("Ring state is: {}", ringDevice);
             }
         } else if (topic.startsWith("meter/") || topic.startsWith("sensor/")) {
             // attempt a JSON introspection
@@ -158,6 +159,8 @@ public class Mqtt implements MqttCallback {
                 log.warn("{} during processing of payload, unsupported JSON: {}", topic, new String(payload), e);
                 return;
             }
+        } else {
+            log.warn("{} ignored.", topic);
         }
     }
 

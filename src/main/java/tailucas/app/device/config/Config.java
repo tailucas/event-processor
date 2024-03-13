@@ -7,6 +7,7 @@ public class Config {
         INPUT_CONFIG,
         OUTPUT_CONFIG,
         METER_CONFIG,
+        HA_CONFIG,
         OUTPUT_LINK
     }
     @JsonIgnore
@@ -17,6 +18,7 @@ public class Config {
             case ConfigType.INPUT_CONFIG -> InputConfig.class;
             case ConfigType.OUTPUT_CONFIG -> OutputConfig.class;
             case ConfigType.METER_CONFIG -> MeterConfig.class;
+            case ConfigType.HA_CONFIG -> HAConfig.class;
             case ConfigType.OUTPUT_LINK -> OutputConfig.class;
             default -> null;
         };

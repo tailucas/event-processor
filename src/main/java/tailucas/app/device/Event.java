@@ -41,11 +41,11 @@ public class Event implements Runnable {
 
     protected Connection connection;
     protected String source;
-    protected Device device;
+    protected Generic device;
     protected State deviceUpdate;
     protected String deviceUpdateString;
 
-    public Event(Connection connection, String source, Device device, State deviceUpdate, String deviceUpdateString) {
+    public Event(Connection connection, String source, Generic device, State deviceUpdate, String deviceUpdateString) {
         if (log == null) {
             log = LoggerFactory.getLogger(Event.class);
             mapper = new MessagePackMapper();

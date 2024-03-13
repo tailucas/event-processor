@@ -25,7 +25,9 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.type.CollectionType;
 
+import tailucas.app.device.Ring;
 import tailucas.app.device.config.Config;
+import tailucas.app.device.config.HAConfig;
 import tailucas.app.device.config.InputConfig;
 import tailucas.app.device.config.OutputConfig;
 import tailucas.app.device.config.Config.ConfigType;
@@ -58,6 +60,14 @@ public class DeviceConfig {
 
     public void close() {
         httpClient.close();
+    }
+
+    public void putHaConfig(HAConfig haConfig) {
+
+    }
+
+    public HAConfig getHaConfig(Ring ringDevice) {
+        return null;
     }
 
     public InputConfig fetchInputDeviceConfig(String deviceKey) throws IOException, InterruptedException {
