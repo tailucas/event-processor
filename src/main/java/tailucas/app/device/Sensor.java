@@ -2,23 +2,34 @@ package tailucas.app.device;
 
 import org.apache.commons.lang3.StringUtils;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import tailucas.app.device.config.Config;
 
 public class Sensor extends Device {
-    public Integer normal_value;
-    public Double sample_value;
-    public Boolean active;
-    public String input_label;
+    @JsonProperty("normal_value")
+    protected Integer normalValue;
+    @JsonProperty("sample_value")
+    protected Double sampleValue;
+    @JsonProperty
+    protected Boolean active;
+    @JsonProperty("input_label")
+    protected String inputLabel;
+    @JsonIgnore
+    public boolean isActive() {
+        return active;
+    }
     public void updateFrom(Device device) {
-        this.device_id = device.device_id;
-        this.input_location = device.input_location;
+        this.deviceId = device.deviceId;
+        this.inputLocation = device.inputLocation;
         this.timestamp = device.timestamp;
         this.uptime = device.uptime;
         this.type = device.type;
     }
     @Override
     public String getDeviceKey() {
-        return StringUtils.capitalize(String.format("%s %s", input_location, input_label));
+        return StringUtils.capitalize(String.format("%s %s", inputLocation, inputLabel));
     }
     @Override
     public boolean mustTriggerOutput(Config deviceConfig) {
@@ -26,6 +37,7 @@ public class Sensor extends Device {
     }
     @Override
     public String toString() {
-        return "Sensor [" + getDeviceLabel() + " (" + device_id + ")]";
+        return "Sensor [normalValue=" + normalValue + ", sampleValue=" + sampleValue + ", active=" + active
+                + ", inputLabel=" + inputLabel + "]: " + super.toString();
     }
 }

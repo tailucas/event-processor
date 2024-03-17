@@ -24,6 +24,7 @@ import tailucas.app.device.Device;
 import tailucas.app.device.Event;
 import tailucas.app.device.Device.Type;
 import tailucas.app.device.config.HAConfig;
+import tailucas.app.provider.DeviceConfig;
 import tailucas.app.device.Meter;
 import tailucas.app.device.Ring;
 import tailucas.app.device.Sensor;
@@ -60,11 +61,11 @@ public class Mqtt implements MqttCallback {
         } else if (topic.startsWith("inverter/")) {
             log.debug("{} not yet supported.");
         } else if (topic.startsWith("homeassistant/")) {
-            log.info("{}: {}", topic, new String(payload));
             if (payload[0] == '{') {
                 try {
                     HAConfig haConfig = mapper.readerFor(new TypeReference<HAConfig>() { }).readValue(payload);
-                    log.info("HA config is: {}", haConfig);
+                    log.debug("HA config is: {}", haConfig);
+                    DeviceConfig.getInstance().putHaConfig(haConfig);
                 } catch (Throwable e) {
                     log.warn("JSON issue with {}", new String(payload), e);
                 }
@@ -73,7 +74,7 @@ public class Mqtt implements MqttCallback {
             }
         } else if (topic.startsWith("ring/")) {
             Ring ringDevice = null;
-            log.info("{}: {}", topic, new String(payload));
+            log.debug("{}: {}", topic, new String(payload));
             if (payload[0] == '{') {
                 try {
                     ringDevice = mapper.readerFor(new TypeReference<Ring>() { }).readValue(payload);
@@ -86,7 +87,8 @@ public class Mqtt implements MqttCallback {
                 ringDevice.setMqttTopic(topic, new String(payload));
             }
             if (ringDevice != null) {
-                log.info("Ring state is: {}", ringDevice);
+                log.debug("Ring state is: {}", ringDevice);
+                srv.submit(new Event(rabbitMqConnection, topic, ringDevice));
             }
         } else if (topic.startsWith("meter/") || topic.startsWith("sensor/")) {
             // attempt a JSON introspection
@@ -117,8 +119,9 @@ public class Mqtt implements MqttCallback {
                                 try {
                                     final Sensor sensor = mapper.treeToValue(node, Sensor.class);
                                     sensor.updateFrom(common);
+                                    log.debug("Sensor state is: {}", sensor);
                                     inputs.add(sensor);
-                                    if (sensor.active) {
+                                    if (sensor.isActive()) {
                                         active_devices.add(sensor);
                                     }
                                 } catch (JsonProcessingException e) {
@@ -130,7 +133,8 @@ public class Mqtt implements MqttCallback {
                     } else if (deviceType.equals(Type.METER)) {
                         final Meter meter = mapper.treeToValue(root, Meter.class);
                         final String deviceLocation = topicParts[1];
-                        meter.device_key = StringUtils.capitalize(String.format("%s %s", deviceLocation, deviceTypeString));
+                        meter.setDeviceKey(StringUtils.capitalize(String.format("%s %s", deviceLocation, deviceTypeString)));
+                        log.debug("Meter state is: {}", meter);
                         inputs.add(meter);
                         // meters are always "active", thresholds are computed against configuration.
                         active_devices.add(meter);
@@ -144,6 +148,7 @@ public class Mqtt implements MqttCallback {
                 }
                 if (inputs.size() > 0) {
                     State deviceUpdate = new State(inputs, active_devices);
+                    log.debug("Derived MQTT device state update: {}", deviceUpdate);
                     if (active_devices.size() > 0) {
                         active_devices.forEach(device -> {
                             srv.submit(new Event(rabbitMqConnection, topic, device, deviceUpdate));

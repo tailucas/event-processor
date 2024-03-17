@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import tailucas.app.device.config.Config;
 
@@ -16,43 +17,54 @@ public class Device implements Generic {
         SENSOR
     }
 
-    public String device_key;
-    public String device_id;
-    public String device_label;
-    public byte[] image;
-    public String location;
-    public String input_location;
-    public String name;
-    public Double sample_value;
-    public String storage_url;
-    public String storage_path;
-    public String type;
-    public Double timestamp;
-    public Double uptime;
-
-    public Device() { }
-
+    @JsonProperty("device_key")
+    protected String deviceKey;
+    @JsonProperty("device_id")
+    protected String deviceId;
+    @JsonProperty("device_label")
+    protected String deviceLabel;
+    @JsonProperty("image")
+    protected byte[] image;
+    @JsonProperty("location")
+    protected String location;
+    @JsonProperty("input_location")
+    protected String inputLocation;
+    @JsonProperty
+    protected String name;
+    @JsonProperty("sample_value")
+    protected Double sampleValue;
+    @JsonProperty("storage_url")
+    protected String storageUrl;
+    @JsonProperty("storage_path")
+    protected String storagePath;
+    @JsonProperty
+    protected String type;
+    @JsonProperty
+    protected Double timestamp;
+    @JsonProperty
+    protected Double uptime;
     @JsonIgnore
-    private Config config;
-
+    protected Config config;
     @JsonIgnore
     public Config getConfig() {
         return config;
     }
-
     @JsonIgnore
     public void setConfig(Config config) {
         this.config = config;
     }
-
     @JsonIgnore
     public String getDeviceKey() {
-        return device_key;
+        return deviceKey;
+    }
+    @JsonIgnore
+    public void setDeviceKey(String deviceKey) {
+        this.deviceKey = deviceKey;
     }
     @JsonIgnore
     public String getDeviceLabel() {
-        if (device_label != null) {
-            return device_label;
+        if (deviceLabel != null) {
+            return deviceLabel;
         }
         return getDeviceKey();
     }
@@ -81,21 +93,24 @@ public class Device implements Generic {
     }
     @Override
     public String toString() {
-        String description = device_key;
-        if (device_label != null && !device_label.equals(device_key)) {
-            description += " (" + device_label + ")";
-        }
-        return "Device [" + description + "]";
+        return "Device [device_key=" + deviceKey + ", device_id=" + deviceId + ", device_label=" + deviceLabel
+                + ", location=" + location + ", input_location=" + inputLocation + ", name=" + name + ", sample_value="
+                + sampleValue + ", storage_url=" + storageUrl + ", storage_path=" + storagePath + ", type=" + type
+                + ", timestamp=" + timestamp + ", uptime=" + uptime + "]";
     }
     /*
      * Legacy message fields not used here
      */
     @JsonIgnore
-    public Object input_1;
+    @JsonProperty
+    protected Object input_1;
     @JsonIgnore
-    public Object input_2;
+    @JsonProperty
+    protected Object input_2;
     @JsonIgnore
-    public Object input_3;
+    @JsonProperty
+    protected Object input_3;
     @JsonIgnore
-    public Object input_4;
+    @JsonProperty
+    protected Object input_4;
 }

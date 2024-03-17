@@ -10,17 +10,23 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class State {
 
     private static Logger log = null;
     public static DateTimeFormatter DATE_TIME_FORMATTER = null;
 
-    public String timestamp;
-    public List<Device> inputs;
-    public List<Device> outputs;
-    public List<Device> outputs_triggered;
+    @JsonProperty
+    protected String timestamp;
+    @JsonProperty
+    protected List<Device> inputs;
+    @JsonProperty
+    protected List<Device> outputs;
+    @JsonProperty("outputs_triggered")
+    protected List<Device> outputsTriggered;
 
+    @JsonIgnore
     protected Instant createdTime;
 
     public State() {
@@ -29,10 +35,10 @@ public class State {
             DATE_TIME_FORMATTER = new DateTimeFormatterBuilder().appendPattern("yyyy-MM-dd'T'HH:mm:ss.SSSSSSZ").toFormatter();
         }
     }
-    public State(List<Device> inputs, List<Device> outputs_triggered) {
+    public State(List<Device> inputs, List<Device> outputsTriggered) {
         this();
         this.inputs = inputs;
-        this.outputs_triggered = outputs_triggered;
+        this.outputsTriggered = outputsTriggered;
         this.createdTime = null;
     }
     public Instant getTimestamp() {
@@ -49,21 +55,30 @@ public class State {
         }
         return createdTime;
     }
+    public List<Device> getOutputsTriggered() {
+        return outputsTriggered;
+    }
     @Override
     public String toString() {
         return "State [timestamp=" + timestamp + ", inputs=" + inputs + ", outputs=" + outputs + ", outputs_triggered="
-                + outputs_triggered + "]";
+                + outputsTriggered + "]";
     }
     @JsonIgnore
-    public Object active_devices;
+    @JsonProperty
+    private Object active_devices;
     @JsonIgnore
-    public Object device_info;
+    @JsonProperty
+    private Object device_info;
     @JsonIgnore
-    public Object samples;
+    @JsonProperty
+    private Object samples;
     @JsonIgnore
-    public Object statistics;
+    @JsonProperty
+    private Object statistics;
     @JsonIgnore
-    public String storage_url;
+    @JsonProperty
+    private String storage_url;
     @JsonIgnore
-    public String storage_path;
+    @JsonProperty
+    private String storage_path;
 }

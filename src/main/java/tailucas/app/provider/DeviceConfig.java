@@ -41,6 +41,7 @@ public class DeviceConfig {
     private ObjectMapper mapper = null;
     private Map<ConfigType, CollectionType> collectionTypes = null;
     private Map<String, Pair<Instant, List<Config>>> configCache;
+    private Map<String, HAConfig> haConfigCache;
 
     private DeviceConfig() {
         log = LoggerFactory.getLogger(DeviceConfig.class);
@@ -49,6 +50,7 @@ public class DeviceConfig {
         mapper.enable(DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT);
         collectionTypes = new HashMap<>(4);
         configCache = new ConcurrentHashMap<>(100);
+        haConfigCache = new HashMap<>(100);
     }
 
     public static synchronized DeviceConfig getInstance() {
@@ -63,11 +65,13 @@ public class DeviceConfig {
     }
 
     public void putHaConfig(HAConfig haConfig) {
-
+        haConfig.getDevice().getIds().forEach(id -> {
+            haConfigCache.put(id, haConfig);
+        });
     }
 
     public HAConfig getHaConfig(Ring ringDevice) {
-        return null;
+        return haConfigCache.get(ringDevice.getDeviceId());
     }
 
     public InputConfig fetchInputDeviceConfig(String deviceKey) throws IOException, InterruptedException {

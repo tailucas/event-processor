@@ -40,8 +40,10 @@ public class RabbitMq implements DeliverCallback {
             final String source = message.getEnvelope().getRoutingKey();
             final byte[] msgBody = message.getBody();
             State deviceUpdate = mapper.readerFor(new TypeReference<State>() { }).readValue(msgBody);
-            if (deviceUpdate.outputs_triggered != null) {
-                deviceUpdate.outputs_triggered.forEach(device -> {
+            log.debug("RabbitMQ device state update: {}", deviceUpdate);
+            var outputsTriggers = deviceUpdate.getOutputsTriggered();
+            if (outputsTriggers != null) {
+                outputsTriggers.forEach(device -> {
                     srv.submit(new Event(connection, source, device, deviceUpdate));
                 });
             } else {

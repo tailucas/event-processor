@@ -63,8 +63,12 @@ public class Event implements Runnable {
         this.deviceUpdateString = deviceUpdateString;
     }
 
-    public Event(Connection connection, String source, Device device, State deviceUpdate) {
+    public Event(Connection connection, String source, Generic device, State deviceUpdate) {
         this(connection, source, device, deviceUpdate, null);
+    }
+
+    public Event(Connection connection, String source, Generic device) {
+        this(connection, source, device, null, null);
     }
 
     public Event(Connection connection, String source, State deviceUpdate) {
@@ -89,36 +93,42 @@ public class Event implements Runnable {
         try {
             final Map<String, OutputConfig> processedOutputs = new HashMap<>(10);
             if (device != null) {
-                final String deviceLabel = device.getDeviceLabel();
-                log.debug("{} references {}", source, deviceLabel);
                 final String deviceKey = device.getDeviceKey();
-                InputConfig deviceConfig = configProvider.fetchInputDeviceConfig(deviceKey);
+                final String deviceLabel = device.getDeviceLabel();
+                String deviceDescription;
+                if (deviceLabel != null) {
+                    deviceDescription = deviceLabel;
+                } else {
+                    deviceDescription = deviceKey;
+                }
+                log.debug("{} references {}", source, deviceDescription);
+                InputConfig deviceConfig = configProvider.fetchInputDeviceConfig(deviceDescription);
                 if (deviceConfig == null) {
-                    log.warn("No input device configuration found for active {}.", deviceLabel);
+                    log.warn("No input device configuration found for active {}.", deviceDescription);
                     return;
                 }
                 if (!deviceConfig.isEnabled()) {
                     if (device.mustTriggerOutput(deviceConfig)) {
-                        log.warn("{} is not enabled but would trigger outputs based on current state.", deviceLabel);
+                        log.warn("{} is not enabled but would trigger outputs based on current state.", deviceDescription);
                     } else {
-                        log.debug("{} is not enabled to trigger outputs.", deviceLabel);
+                        log.debug("{} is not enabled to trigger outputs.", deviceDescription);
                     }
                     return;
                 }
                 if (!device.mustTriggerOutput(deviceConfig)) {
-                    log.debug("{} does not trigger any outputs based on current state.", deviceLabel);
+                    log.debug("{} does not trigger any outputs based on current state.", deviceDescription);
                     return;
                 }
                 List<OutputConfig> linkedOutputs = configProvider.getLinkedOutputs(deviceConfig);
                 if (linkedOutputs == null) {
-                    log.warn("No output device configuration found for active {}.", deviceLabel);
+                    log.warn("No output device configuration found for active {}.", deviceDescription);
                     return;
                 }
                 final List<String> outputNames = new ArrayList<>();
                 linkedOutputs.forEach(output -> {
                     outputNames.add(output.getDeviceLabel());
                 });
-                log.info("{} is linked to {} outputs: {}.", deviceLabel, linkedOutputs.size(), outputNames);
+                log.info("{} is linked to {} outputs: {}.", deviceDescription, linkedOutputs.size(), outputNames);
                 final Channel rabbitMqChannel = connection.createChannel();
                 try {
                     linkedOutputs.forEach(Failable.asConsumer(outputConfig -> {
@@ -143,7 +153,7 @@ public class Event implements Runnable {
                                     outputDeviceType));
                             }
                             final String responseTopic = String.format("event.trigger.%s", responseTopicSuffix);
-                            log.info("{} ({}) triggers {}{} on topic {} ({} bytes on the wire).", deviceLabel, source, outputDeviceLabel, deviceDetail, responseTopic, wireCommand.length);
+                            log.info("{} ({}) triggers {}{} on topic {} ({} bytes on the wire).", deviceDescription, source, outputDeviceLabel, deviceDetail, responseTopic, wireCommand.length);
                             sendResponse(rabbitMqChannel, responseTopic, wireCommand);
                         } catch (Exception e) {
                             log.error(e.getMessage(), e);

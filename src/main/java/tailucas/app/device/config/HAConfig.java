@@ -3,34 +3,58 @@ package tailucas.app.device.config;
 import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class HAConfig extends Config {
-    public String name;
-    public String unique_id;
-    public String state_topic;
-    public String device_class;
-    public String command_topic;
-    public String icon;
-    public String json_attributes_topic;
-    public List<String> options;
-    public String min;
-    public String max;
-    public String mode;
-    public String availability_topic;
-    public String payload_available;
-    public String payload_not_available;
-    public String state_class;
-    public String supported_features;
-    public String unit_of_measurement;
-    public String value_template;
-    public HADevice device;
+    @JsonProperty
+    private String name;
+    @JsonProperty("unique_id")
+    private String uniqueId;
+    @JsonProperty("state_topic")
+    private String stateTopic;
+    @JsonProperty("device_class")
+    private String deviceClass;
+    @JsonProperty("command_topic")
+    private String commandTopic;
+    @JsonProperty
+    private String icon;
+    @JsonProperty("json_attributes_topic")
+    private String jsonAttributesTopic;
+    @JsonProperty
+    private List<String> options;
+    @JsonProperty
+    private String min;
+    @JsonProperty
+    private String max;
+    @JsonProperty
+    private String mode;
+    @JsonProperty("availability_topic")
+    private String availabilityTopic;
+    @JsonProperty("payload_available")
+    private String payloadAvailable;
+    @JsonProperty("payload_not_available")
+    private String payloadNotAvailable;
+    @JsonProperty("state_class")
+    private String stateClass;
+    @JsonProperty("supported_features")
+    private String supportedFeatures;
+    @JsonProperty("unit_of_measurement")
+    private String unitOfMeasurement;
+    @JsonProperty("value_template")
+    private String valueTemplate;
+    @JsonProperty
+    private HADevice device;
     @JsonIgnore
-    protected String mqttTopic;
+    private String mqttTopic;
     public class HADevice {
-        public List<String> ids;
-        public String name;
-        public String mf;
-        public String mdl;
+        @JsonProperty
+        private List<String> ids;
+        @JsonProperty
+        private String name;
+        @JsonProperty
+        private String mf;
+        @JsonProperty
+        private String mdl;
         @Override
         public String toString() {
             return "HADevice [ids=" + ids + ", name=" + name + ", mf=" + mf + ", mdl=" + mdl + "]";
@@ -57,22 +81,22 @@ public class HAConfig extends Config {
         return name;
     }
     public String getUniqueId() {
-        return unique_id;
+        return uniqueId;
     }
     public String getStateTopic() {
-        return state_topic;
+        return stateTopic;
     }
     public String getDeviceClass() {
-        return device_class;
+        return deviceClass;
     }
     public String getCommandTopic() {
-        return command_topic;
+        return commandTopic;
     }
     public String getIcon() {
         return icon;
     }
     public String getJsonAttributesTopic() {
-        return json_attributes_topic;
+        return jsonAttributesTopic;
     }
     public List<String> getOptions() {
         return options;
@@ -87,41 +111,42 @@ public class HAConfig extends Config {
         return mode;
     }
     public String getAvailabilityTopic() {
-        return availability_topic;
+        return availabilityTopic;
     }
     public String getPayloadAvailable() {
-        return payload_available;
+        return payloadAvailable;
     }
     public String getPayloadNotAvailable() {
-        return payload_not_available;
+        return payloadNotAvailable;
     }
     public String getStateClass() {
-        return state_class;
+        return stateClass;
     }
     public String getSupportedFeatures() {
-        return supported_features;
+        return supportedFeatures;
     }
     public String getUnitOfMeasurement() {
-        return unit_of_measurement;
+        return unitOfMeasurement;
     }
     public String getValueTemplate() {
-        return value_template;
+        return valueTemplate;
     }
     public HADevice getDevice() {
         return device;
     }
+    @JsonIgnore
     public String getMqttTopic() {
         return mqttTopic;
     }
     @Override
     public String toString() {
-        return "HAConfig [name=" + name + ", unique_id=" + unique_id + ", state_topic=" + state_topic
-                + ", device_class=" + device_class + ", command_topic=" + command_topic + ", icon=" + icon
-                + ", json_attributes_topic=" + json_attributes_topic + ", options=" + options + ", min=" + min
-                + ", max=" + max + ", mode=" + mode + ", availability_topic=" + availability_topic
-                + ", payload_available=" + payload_available + ", payload_not_available=" + payload_not_available
-                + ", state_class=" + state_class + ", supported_features=" + supported_features
-                + ", unit_of_measurement=" + unit_of_measurement + ", value_template=" + value_template + ", device="
+        return "HAConfig [name=" + name + ", unique_id=" + uniqueId + ", state_topic=" + stateTopic
+                + ", device_class=" + deviceClass + ", command_topic=" + commandTopic + ", icon=" + icon
+                + ", json_attributes_topic=" + jsonAttributesTopic + ", options=" + options + ", min=" + min
+                + ", max=" + max + ", mode=" + mode + ", availability_topic=" + availabilityTopic
+                + ", payload_available=" + payloadAvailable + ", payload_not_available=" + payloadNotAvailable
+                + ", state_class=" + stateClass + ", supported_features=" + supportedFeatures
+                + ", unit_of_measurement=" + unitOfMeasurement + ", value_template=" + valueTemplate + ", device="
                 + device + ", mqttTopic=" + mqttTopic + "]";
     }
 }

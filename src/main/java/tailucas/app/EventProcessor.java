@@ -41,6 +41,7 @@ import org.eclipse.paho.client.mqttv3.IMqttClient;
 import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttException;
+import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.ini4j.Ini;
 import org.springframework.boot.SpringApplication;
@@ -280,6 +281,17 @@ public class EventProcessor
                 mqttClient.connect(options);
                 mqttClient.setCallback(new Mqtt(springApp, srv, rabbitMqConnection));
                 mqttClient.subscribe("#");
+                // send MQTT discovery message
+                final String mqttDiscoveryTopic = "homeassistant/status";
+                final String mqttDiscoveryPayload = "online";
+                try {
+                    log.info("Sending Home Assistant discovery message ({}) to topic: {}", mqttDiscoveryPayload, mqttDiscoveryTopic);
+                    mqttClient.publish(mqttDiscoveryTopic, new MqttMessage(mqttDiscoveryPayload.getBytes()));
+                } catch (MqttException e) {
+                    log.error("Problem sending MQTT discovery message to topic {}", mqttDiscoveryTopic, e);
+                    exitCode |= EXIT_CODE_MQTT;
+                    System.exit(SpringApplication.exit(springApp));
+                };
                 // use inproc socket in ZMQ to serialize outbound messages for thread safety
                 socket = zmqContext.createSocket(SocketType.PULL);
                 socket.connect(ZMQ_MQTT_URL);

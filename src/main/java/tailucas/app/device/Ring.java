@@ -1,45 +1,52 @@
 package tailucas.app.device;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import tailucas.app.device.config.Config;
+import tailucas.app.device.config.HAConfig;
+import tailucas.app.provider.DeviceConfig;
 
 public class Ring implements Generic {
-    public String acStatus;
-    public String alarmState;
-    public int batteryLevel;
-    public String batteryStatus;
-    public float brightness;
-    public String chirps;
-    public String commStatus;
-    public String entrySecondsLeft;
-    public String exitSecondsLeft;
-    public String firmwareStatus;
-    public String lastArmedBy;
-    public String lastCommTime;
-    public String lastUpdate;
-    public String linkQuality;
-    public String powerSave;
-    public String serialNumber;
-    public String tamperStatus;
-    public float volume;
+    private String acStatus;
+    private String alarmState;
+    private int batteryLevel;
+    private String batteryStatus;
+    private float brightness;
+    private String chirps;
+    private String commStatus;
+    private String entrySecondsLeft;
+    private String exitSecondsLeft;
+    private String firmwareStatus;
+    private String lastArmedBy;
+    private String lastArmedTime;
+    private String lastCommTime;
+    private String lastUpdate;
+    private String linkQuality;
+    private String powerSave;
+    private String serialNumber;
+    private String tamperStatus;
+    private float volume;
     @JsonIgnore
-    protected String componentId;
+    private String componentId;
     @JsonIgnore
-    protected String componentName;
+    private String componentName;
     @JsonIgnore
-    protected String deviceId;
+    private String deviceId;
     @JsonIgnore
-    protected String mqttTopic;
+    private String mqttTopic;
     @JsonIgnore
-    protected String state;
+    private String state;
     @JsonIgnore
-    protected String updateType;
+    private String updateType;
     @JsonIgnore
-    protected String updateSubject;
+    private String updateSubject;
+    @JsonIgnore
+    private HAConfig haConfig;
+    @JsonIgnore
     public String getMqttTopic() {
         return mqttTopic;
     }
@@ -71,6 +78,7 @@ public class Ring implements Generic {
             if (!topicParts[4].equals(topicKey)) {
                 throw new AssertionError(String.format("%s unexpected topic key %s.", mqttTopic, topicKey));
             }
+            updateSubject = null;
             updateType = topicKey;
         } else if (topicParts.length == 6) {
             updateSubject = topicParts[4];
@@ -80,20 +88,44 @@ public class Ring implements Generic {
         }
         state = mqttPayload;
     }
+    @JsonIgnore
+    public String getTopicDescription() {
+        if (deviceId == null || updateType == null) {
+            throw new IllegalStateException("No device information is set.");
+        }
+        if (updateSubject != null) {
+            return String.format("Ring device %s (%s %s)", deviceId, updateType, updateSubject);
+        }
+        return String.format("Ring device %s (%s)", deviceId, updateType);
+    }
     @Override
     public String getDeviceKey() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getDeviceKey'");
+        return deviceId;
     }
     @Override
     public String getDeviceLabel() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getDeviceLabel'");
+        HAConfig config = (HAConfig) getConfig();
+        return config.getDevice().getName();
     }
     @Override
     public Config getConfig() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getConfig'");
+        final String description = getTopicDescription();
+        if (haConfig == null) {
+            haConfig = DeviceConfig.getInstance().getHaConfig(this);
+            if (haConfig == null) {
+                throw new IllegalStateException(String.format("%s has no discovery information.", description));
+            }
+            var matchedIds = new ArrayList<>();
+            haConfig.getDevice().getIds().forEach(id -> {
+                if (id.equals(deviceId)) {
+                    matchedIds.add(id);
+                }
+            });
+            if (matchedIds.isEmpty()) {
+                throw new IllegalStateException(String.format("%s has no matched discovery information.", description));
+            }
+        }
+        return haConfig;
     }
     @Override
     public Instant lastTriggered() {
@@ -142,6 +174,9 @@ public class Ring implements Generic {
     }
     public String getLastArmedBy() {
         return lastArmedBy;
+    }
+    public String getLastArmedTime() {
+        return lastArmedTime;
     }
     public String getLastCommTime() {
         return lastCommTime;
