@@ -4,6 +4,9 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import tailucas.app.device.config.Config;
@@ -11,6 +14,10 @@ import tailucas.app.device.config.HAConfig;
 import tailucas.app.provider.DeviceConfig;
 
 public class Ring implements Generic {
+
+    @JsonIgnore
+    private static Logger log = null;
+
     private String acStatus;
     private String alarmState;
     private int batteryLevel;
@@ -22,6 +29,7 @@ public class Ring implements Generic {
     private String exitSecondsLeft;
     private String firmwareStatus;
     private String lastArmedBy;
+    private String lastDisarmedBy;
     private String lastArmedTime;
     private String lastCommTime;
     private String lastUpdate;
@@ -46,6 +54,13 @@ public class Ring implements Generic {
     private String updateSubject;
     @JsonIgnore
     private HAConfig haConfig;
+
+    public Ring() {
+        if (log == null) {
+            log = LoggerFactory.getLogger(Ring.class);
+        }
+    }
+
     @JsonIgnore
     public String getMqttTopic() {
         return mqttTopic;
@@ -134,8 +149,8 @@ public class Ring implements Generic {
     }
     @Override
     public boolean mustTriggerOutput(Config config) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'mustTriggerOutput'");
+        log.info("{} evaluating trigger based on configs {} and {}", toString(), getConfig(), config);
+        return true;
     }
     @Override
     public List<Device> triggerGroup() {
@@ -174,6 +189,9 @@ public class Ring implements Generic {
     }
     public String getLastArmedBy() {
         return lastArmedBy;
+    }
+    public String getLastDisarmedBy() {
+        return lastDisarmedBy;
     }
     public String getLastArmedTime() {
         return lastArmedTime;

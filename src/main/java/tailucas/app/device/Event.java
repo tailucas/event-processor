@@ -92,7 +92,7 @@ public class Event implements Runnable {
         try {
             final Map<String, OutputConfig> processedOutputs = new HashMap<>(10);
             if (device != null) {
-                log.info("{} device: {}", source, device);
+                log.debug("{} device: {}", source, device);
                 final String deviceKey = device.getDeviceKey();
                 final String deviceLabel = device.getDeviceLabel();
                 String deviceDescription;
@@ -102,14 +102,14 @@ public class Event implements Runnable {
                     deviceDescription = deviceKey;
                 }
                 InputConfig deviceConfig = configProvider.fetchInputDeviceConfig(deviceKey);
-                log.info("{} configuration: {}", deviceDescription, deviceConfig);
+                log.debug("{} configuration: {}", deviceDescription, deviceConfig);
                 if (!device.mustTriggerOutput(deviceConfig)) {
-                    log.info("{} does not trigger any outputs based on current configuration or state.", deviceDescription);
+                    log.debug("{} does not trigger any outputs based on current configuration or state.", deviceDescription);
                     return;
                 }
-                log.info("{} getting outputs", deviceDescription);
+                log.debug("{} getting outputs", deviceDescription);
                 List<OutputConfig> linkedOutputs = configProvider.getLinkedOutputs(deviceConfig);
-                log.info("{} outputs {}", deviceDescription, linkedOutputs);
+                log.debug("{} outputs {}", deviceDescription, linkedOutputs);
                 if (linkedOutputs == null) {
                     log.warn("No output links found for active {}.", deviceDescription);
                     return;
@@ -117,7 +117,7 @@ public class Event implements Runnable {
                 final List<String> outputNames = new ArrayList<>();
                 linkedOutputs.forEach(output -> {
                     final String outputLabel = output.getDeviceLabel();
-                    log.info("Adding output {}...", outputLabel);
+                    log.debug("Adding output {}...", outputLabel);
                     outputNames.add(outputLabel);
                 });
                 log.info("{} is linked to {} outputs: {}.", deviceDescription, linkedOutputs.size(), outputNames);
@@ -187,7 +187,9 @@ public class Event implements Runnable {
                     }));
                 }
             }
-        } catch (IOException | InterruptedException | TimeoutException | IllegalStateException e) {
+        } catch (IllegalStateException e) {
+            log.warn("{}: {}", source, e.getMessage());
+        } catch (IOException | InterruptedException | TimeoutException e) {
             log.error(String.format("Issue during processing from %s", source), e);
         }
         if (deviceUpdateString != null) {
