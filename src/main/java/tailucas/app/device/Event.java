@@ -89,10 +89,10 @@ public class Event implements Runnable {
     @Override
     public void run() {
         final long unixTime = System.currentTimeMillis() / 1000L;
-        log.debug("{}", source);
         try {
             final Map<String, OutputConfig> processedOutputs = new HashMap<>(10);
             if (device != null) {
+                log.info("{} device: {}", source, device);
                 final String deviceKey = device.getDeviceKey();
                 final String deviceLabel = device.getDeviceLabel();
                 String deviceDescription;
@@ -101,72 +101,67 @@ public class Event implements Runnable {
                 } else {
                     deviceDescription = deviceKey;
                 }
-                log.debug("{} references {}", source, deviceDescription);
-                InputConfig deviceConfig = configProvider.fetchInputDeviceConfig(deviceDescription);
-                if (deviceConfig == null) {
-                    log.warn("No input device configuration found for active {}.", deviceDescription);
-                    return;
-                }
-                if (!deviceConfig.isEnabled()) {
-                    if (device.mustTriggerOutput(deviceConfig)) {
-                        log.warn("{} is not enabled but would trigger outputs based on current state.", deviceDescription);
-                    } else {
-                        log.debug("{} is not enabled to trigger outputs.", deviceDescription);
-                    }
-                    return;
-                }
+                InputConfig deviceConfig = configProvider.fetchInputDeviceConfig(deviceKey);
+                log.info("{} configuration: {}", deviceDescription, deviceConfig);
                 if (!device.mustTriggerOutput(deviceConfig)) {
-                    log.debug("{} does not trigger any outputs based on current state.", deviceDescription);
+                    log.info("{} does not trigger any outputs based on current configuration or state.", deviceDescription);
                     return;
                 }
+                log.info("{} getting outputs", deviceDescription);
                 List<OutputConfig> linkedOutputs = configProvider.getLinkedOutputs(deviceConfig);
+                log.info("{} outputs {}", deviceDescription, linkedOutputs);
                 if (linkedOutputs == null) {
-                    log.warn("No output device configuration found for active {}.", deviceDescription);
+                    log.warn("No output links found for active {}.", deviceDescription);
                     return;
                 }
                 final List<String> outputNames = new ArrayList<>();
                 linkedOutputs.forEach(output -> {
-                    outputNames.add(output.getDeviceLabel());
+                    final String outputLabel = output.getDeviceLabel();
+                    log.info("Adding output {}...", outputLabel);
+                    outputNames.add(outputLabel);
                 });
                 log.info("{} is linked to {} outputs: {}.", deviceDescription, linkedOutputs.size(), outputNames);
-                final Channel rabbitMqChannel = connection.createChannel();
-                try {
-                    linkedOutputs.forEach(Failable.asConsumer(outputConfig -> {
-                        final String outputDeviceLabel = outputConfig.getDeviceLabel();
-                        final String outputDeviceType = outputConfig.getDeviceType();
-                        ObjectNode root = mapper.createObjectNode();
-                        try {
-                            root.put("timestamp", unixTime);
-                            root.putPOJO("active_input", device);
-                            root.putPOJO("output_triggered", outputConfig);
-                            final byte[] wireCommand = mapper.writeValueAsBytes(root);
-                            final Matcher nameMatcher = namePattern.matcher(outputDeviceType.toLowerCase());
-                            String deviceDetail = "";
-                            if (!outputDeviceType.equals(outputDeviceLabel)) {
-                                deviceDetail = String.format(" (%s)", outputDeviceType);
+                if (linkedOutputs.size() > 0) {
+                    final Channel rabbitMqChannel = connection.createChannel();
+                    try {
+                        linkedOutputs.forEach(Failable.asConsumer(outputConfig -> {
+                            final String outputDeviceLabel = outputConfig.getDeviceLabel();
+                            final String outputDeviceType = outputConfig.getDeviceType();
+                            ObjectNode root = mapper.createObjectNode();
+                            try {
+                                root.put("timestamp", unixTime);
+                                root.putPOJO("active_input", device);
+                                root.putPOJO("output_triggered", outputConfig);
+                                final byte[] wireCommand = mapper.writeValueAsBytes(root);
+                                final Matcher nameMatcher = namePattern.matcher(outputDeviceType.toLowerCase());
+                                String deviceDetail = "";
+                                if (!outputDeviceType.equals(outputDeviceLabel)) {
+                                    deviceDetail = String.format(" (%s)", outputDeviceType);
+                                }
+                                final String responseTopicSuffix = nameMatcher.replaceAll("_");
+                                if (responseTopicSuffix.length() == 0) {
+                                    throw new RuntimeException(String.format(
+                                        "%s maps to invalid command topic suffix %s.",
+                                        device.getDeviceLabel(),
+                                        outputDeviceType));
+                                }
+                                final String responseTopic = String.format("event.trigger.%s", responseTopicSuffix);
+                                log.info("{} ({}) triggers {}{} on topic {} ({} bytes on the wire).", deviceDescription, source, outputDeviceLabel, deviceDetail, responseTopic, wireCommand.length);
+                                sendResponse(rabbitMqChannel, responseTopic, wireCommand);
+                            } catch (Exception e) {
+                                log.error(e.getMessage(), e);
                             }
-                            final String responseTopicSuffix = nameMatcher.replaceAll("_");
-                            if (responseTopicSuffix.length() == 0) {
-                                throw new RuntimeException(String.format(
-                                    "%s maps to invalid command topic suffix %s.",
-                                    device.getDeviceLabel(),
-                                    outputDeviceType));
-                            }
-                            final String responseTopic = String.format("event.trigger.%s", responseTopicSuffix);
-                            log.info("{} ({}) triggers {}{} on topic {} ({} bytes on the wire).", deviceDescription, source, outputDeviceLabel, deviceDetail, responseTopic, wireCommand.length);
-                            sendResponse(rabbitMqChannel, responseTopic, wireCommand);
-                        } catch (Exception e) {
-                            log.error(e.getMessage(), e);
-                        }
+                        }));
+                    } finally {
+                        rabbitMqChannel.close();
+                    }
+                    linkedOutputs.forEach(Failable.asConsumer(linkedOutput -> {
+                        processedOutputs.put(linkedOutput.getDeviceKey(), linkedOutput);
                     }));
-                } finally {
-                    rabbitMqChannel.close();
                 }
-                linkedOutputs.forEach(Failable.asConsumer(linkedOutput -> {
-                    processedOutputs.put(linkedOutput.getDeviceKey(), linkedOutput);
-                }));
             }
             if (deviceUpdate != null) {
+                log.debug("{} update: {}", source, deviceUpdate);
                 if (deviceUpdate.inputs != null) {
                     deviceUpdate.inputs.forEach(Failable.asConsumer(device -> {
                         final String deviceKey = device.getDeviceKey();
@@ -192,7 +187,7 @@ public class Event implements Runnable {
                     }));
                 }
             }
-        } catch (IOException | InterruptedException | TimeoutException e) {
+        } catch (IOException | InterruptedException | TimeoutException | IllegalStateException e) {
             log.error(String.format("Issue during processing from %s", source), e);
         }
         if (deviceUpdateString != null) {

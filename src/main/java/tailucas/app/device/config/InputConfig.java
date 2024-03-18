@@ -1,37 +1,77 @@
 package tailucas.app.device.config;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class InputConfig extends Config {
-    public String device_key;
-    public String device_type;
-    public String device_label;
-    public Boolean customized;
-    public Integer activation_interval;
-    public Boolean auto_schedule;
-    public String auto_schedule_enable;
-    public String auto_schedule_disable;
-    public Boolean device_enabled;
-    public Boolean multi_trigger;
-    public String group_name;
-    public Boolean info_notify;
-    @JsonIgnore
-    public String getDeviceLabel() {
-        if (device_label != null) {
-            return device_label;
+    @JsonProperty("device_key")
+    protected String deviceKey;
+    @JsonProperty("device_type")
+    protected String deviceType;
+    @JsonProperty("device_label")
+    protected String deviceLabel;
+    @JsonProperty
+    protected Boolean customized;
+    @JsonProperty("activation_interval")
+    protected Integer activationInterval;
+    @JsonProperty("auto_schedule")
+    protected Boolean autoSchedule;
+    @JsonProperty("auto_schedule_enable")
+    protected String autoScheduleEnable;
+    @JsonProperty("auto_schedule_disable")
+    protected String autoScheduleDisable;
+    @JsonProperty("device_enabled")
+    protected Boolean deviceEnabled;
+    @JsonProperty("multi_trigger")
+    protected Boolean multiTrigger;
+    @JsonProperty("group_name")
+    protected String groupName;
+    @JsonProperty("info_notify")
+    protected Boolean infoNotify;
+    public String getDeviceKey() throws IllegalStateException {
+        if (deviceKey == null) {
+            throw new IllegalStateException(String.format("No device key present on %s", toString()));
         }
-        return device_key;
+        return deviceKey;
     }
-    @JsonIgnore
-    public boolean isEnabled() {
-        return device_enabled;
+    public String getDeviceType() {
+        return deviceType;
+    }
+    public String getDeviceLabel() {
+        return deviceLabel;
+    }
+    public Boolean getCustomized() {
+        return customized;
+    }
+    public Integer getActivationInterval() {
+        return activationInterval;
+    }
+    public Boolean getAutoSchedule() {
+        return autoSchedule;
+    }
+    public String getAutoScheduleEnable() {
+        return autoScheduleEnable;
+    }
+    public String getAutoScheduleDisable() {
+        return autoScheduleDisable;
+    }
+    public Boolean isDeviceEnabled() {
+        return deviceEnabled;
+    }
+    public Boolean getMultiTrigger() {
+        return multiTrigger;
+    }
+    public String getGroupName() {
+        return groupName;
+    }
+    public Boolean getInfoNotify() {
+        return infoNotify;
     }
     @Override
     public String toString() {
-        return "InputConfig [device_key=" + device_key + ", device_type=" + device_type + ", device_label=" + device_label
-                + ", customized=" + customized + ", activation_interval=" + activation_interval + ", auto_schedule="
-                + auto_schedule + ", auto_schedule_enable=" + auto_schedule_enable + ", auto_schedule_disable="
-                + auto_schedule_disable + ", device_enabled=" + device_enabled + ", multi_trigger=" + multi_trigger
-                + ", group_name=" + group_name + ", info_notify=" + info_notify + "]";
+        return "InputConfig [device_key=" + deviceKey + ", device_type=" + deviceType + ", device_label=" + deviceLabel
+                + ", customized=" + customized + ", activation_interval=" + activationInterval + ", auto_schedule="
+                + autoSchedule + ", auto_schedule_enable=" + autoScheduleEnable + ", auto_schedule_disable="
+                + autoScheduleDisable + ", device_enabled=" + deviceEnabled + ", multi_trigger=" + multiTrigger
+                + ", group_name=" + groupName + ", info_notify=" + infoNotify + "]";
     }
 }

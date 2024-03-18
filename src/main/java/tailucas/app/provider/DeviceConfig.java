@@ -82,7 +82,12 @@ public class DeviceConfig {
         if (deviceConfig.size() != 1) {
             throw new RuntimeException(String.format("Expected exactly 1 configuration item for {}", deviceKey));
         }
-        return (InputConfig) deviceConfig.getFirst();
+        final InputConfig inputConfig = (InputConfig) deviceConfig.getFirst();
+        final String configDeviceKey = inputConfig.getDeviceKey();
+        if (!configDeviceKey.equals(deviceKey)) {
+            throw new RuntimeException(String.format("Device key mismatch between device (%s) and config (%s).", deviceKey, configDeviceKey));
+        }
+        return inputConfig;
     }
 
     public OutputConfig fetchOutputDeviceConfig(String deviceKey) throws IOException, InterruptedException {
@@ -93,14 +98,19 @@ public class DeviceConfig {
         if (deviceConfig.size() != 1) {
             throw new RuntimeException(String.format("Expected exactly 1 configuration item for {}", deviceKey));
         }
-        return (OutputConfig) deviceConfig.getFirst();
+        final OutputConfig outputConfig = (OutputConfig) deviceConfig.getFirst();
+        final String configDeviceKey = outputConfig.getDeviceKey();
+        if (!configDeviceKey.equals(deviceKey)) {
+            throw new RuntimeException(String.format("Device key mismatch between device (%s) and config (%s).", deviceKey, configDeviceKey));
+        }
+        return outputConfig;
     }
 
-    public List<OutputConfig> getLinkedOutputs(InputConfig inputConfig) throws IOException, InterruptedException {
+    public List<OutputConfig> getLinkedOutputs(InputConfig inputConfig) throws IOException, InterruptedException, IllegalStateException {
         if (inputConfig == null) {
             return null;
         }
-        List<Config> outputConfig = fetchDeviceConfiguration(ConfigType.OUTPUT_LINK, inputConfig.device_key);
+        List<Config> outputConfig = fetchDeviceConfiguration(ConfigType.OUTPUT_LINK, inputConfig.getDeviceKey());
         if (outputConfig == null || outputConfig.size() == 0) {
             return null;
         }
@@ -116,19 +126,24 @@ public class DeviceConfig {
     }
 
     protected List<Config> fetchDeviceConfiguration(ConfigType api, String deviceKey) throws IOException, InterruptedException {
+        final String hostName = "192.168.0.5";
         final String apiName = api.toString().toLowerCase();
         final Instant now = Instant.now();
-        if (configCache.containsKey(deviceKey)) {
-            var cached = configCache.get(deviceKey);
+        final String cacheKey = deviceKey + "/" + apiName;
+        if (configCache.containsKey(cacheKey)) {
+            var cached = configCache.get(cacheKey);
             final Instant fetchedAt = cached.getLeft();
+            final long cacheAge = fetchedAt.until(now, ChronoUnit.SECONDS);
             // FIXME
-            if (fetchedAt.until(now, ChronoUnit.SECONDS) <= 3600) {
-                return cached.getRight();
+            if (cacheAge <= 3600) {
+                List<Config> cachedConfig = cached.getRight();
+                log.debug("Returning cached config ({} items) for {} (age {}s).", cachedConfig.size(), cacheKey, cacheAge);
+                return cachedConfig;
             } else {
-                configCache.remove(deviceKey);
+                log.debug("Invalidating cache for {} (age {}s).", cacheKey, cacheAge);
+                configCache.remove(cacheKey);
             }
         }
-        final String hostName = "192.168.0.5";
         log.info("{} needs {} from {}...", deviceKey, apiName, hostName);
         UriComponents uriComponents = UriComponentsBuilder.newInstance()
             .scheme("http")
@@ -157,7 +172,7 @@ public class DeviceConfig {
         } else {
             configs = mapper.readValue(responseBody, getCollectionType(api));
         }
-        configCache.put(deviceKey, Pair.of(now, configs));
+        configCache.put(cacheKey, Pair.of(now, configs));
         return configs;
     }
 

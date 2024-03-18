@@ -37,7 +37,7 @@ public class HAConfig extends Config {
     @JsonProperty("state_class")
     private String stateClass;
     @JsonProperty("supported_features")
-    private String supportedFeatures;
+    private List<String> supportedFeatures;
     @JsonProperty("unit_of_measurement")
     private String unitOfMeasurement;
     @JsonProperty("value_template")
@@ -122,7 +122,7 @@ public class HAConfig extends Config {
     public String getStateClass() {
         return stateClass;
     }
-    public String getSupportedFeatures() {
+    public List<String> getSupportedFeatures() {
         return supportedFeatures;
     }
     public String getUnitOfMeasurement() {
