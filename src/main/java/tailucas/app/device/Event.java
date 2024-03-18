@@ -102,12 +102,16 @@ public class Event implements Runnable {
                 } else {
                     deviceDescription = deviceKey;
                 }
-                log.info("{} fetch configuration with key {}, description: {}", source, deviceKey, deviceDescription);
+                log.debug("{} fetch configuration with key {}, description: {}", source, deviceKey, deviceDescription);
                 InputConfig deviceConfig = configProvider.fetchInputDeviceConfig(deviceKey);
-                log.info("{} configuration: {}", deviceDescription, deviceConfig);
-                if (!device.mustTriggerOutput(deviceConfig)) {
-                    log.debug("{} does not trigger any outputs based on current configuration or state.", deviceDescription);
-                    return;
+                log.debug("{} configuration: {}", deviceDescription, deviceConfig);
+                try {
+                    if (!device.mustTriggerOutput(deviceConfig)) {
+                        log.debug("{} does not trigger any outputs based on current configuration or state.", deviceDescription);
+                        return;
+                    }
+                } catch (UnsupportedOperationException e) {
+                    log.error("{} has invalid device type {}, device update: {}", source, device.toString(), deviceUpdate, e);
                 }
                 log.debug("{} getting outputs", deviceDescription);
                 List<OutputConfig> linkedOutputs = configProvider.getLinkedOutputs(deviceConfig);
