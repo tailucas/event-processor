@@ -95,14 +95,16 @@ public class Event implements Runnable {
                 log.debug("{} device: {}", source, device);
                 final String deviceKey = device.getDeviceKey();
                 final String deviceLabel = device.getDeviceLabel();
+                log.debug("Device key: {}, device label: {}", deviceKey, deviceLabel);
                 String deviceDescription;
                 if (deviceLabel != null) {
                     deviceDescription = deviceLabel;
                 } else {
                     deviceDescription = deviceKey;
                 }
+                log.info("{} fetch configuration with key {}, description: {}", source, deviceKey, deviceDescription);
                 InputConfig deviceConfig = configProvider.fetchInputDeviceConfig(deviceKey);
-                log.debug("{} configuration: {}", deviceDescription, deviceConfig);
+                log.info("{} configuration: {}", deviceDescription, deviceConfig);
                 if (!device.mustTriggerOutput(deviceConfig)) {
                     log.debug("{} does not trigger any outputs based on current configuration or state.", deviceDescription);
                     return;
@@ -188,9 +190,12 @@ public class Event implements Runnable {
                 }
             }
         } catch (IllegalStateException e) {
+            // logged only with message
             log.warn("{}: {}", source, e.getMessage());
-        } catch (IOException | InterruptedException | TimeoutException e) {
-            log.error(String.format("Issue during processing from %s", source), e);
+        } catch (Throwable e) {
+            // catch-all before thread death
+            // TODO: catch in Sentry
+            log.error("{} event issue.", source, e);
         }
         if (deviceUpdateString != null) {
             // mutually exclusive with device and device updates

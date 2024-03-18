@@ -87,7 +87,7 @@ public class Mqtt implements MqttCallback {
                 ringDevice.setMqttTopic(topic, new String(payload));
             }
             if (ringDevice != null) {
-                log.debug("Ring state is: {}", ringDevice);
+                log.info("Ring state is: {}", ringDevice);
                 srv.submit(new Event(rabbitMqConnection, topic, ringDevice));
             }
         } else if (topic.startsWith("meter/") || topic.startsWith("sensor/")) {

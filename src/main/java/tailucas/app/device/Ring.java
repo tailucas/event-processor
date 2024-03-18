@@ -29,14 +29,16 @@ public class Ring implements Generic {
     private String exitSecondsLeft;
     private String firmwareStatus;
     private String lastArmedBy;
-    private String lastDisarmedBy;
     private String lastArmedTime;
+    private String lastDisarmedBy;
+    private String lastDisarmedTime;
     private String lastCommTime;
     private String lastUpdate;
     private String linkQuality;
     private String powerSave;
     private String serialNumber;
     private String tamperStatus;
+    private String targetState;
     private float volume;
     @JsonIgnore
     private String componentId;
@@ -149,7 +151,7 @@ public class Ring implements Generic {
     }
     @Override
     public boolean mustTriggerOutput(Config config) {
-        log.info("{} evaluating trigger based on configs {} and {}", toString(), getConfig(), config);
+        log.info("Evaluating trigger for {} based on configs {} and {}", toString(), getConfig(), config);
         return true;
     }
     @Override
@@ -190,11 +192,14 @@ public class Ring implements Generic {
     public String getLastArmedBy() {
         return lastArmedBy;
     }
+    public String getLastArmedTime() {
+        return lastArmedTime;
+    }
     public String getLastDisarmedBy() {
         return lastDisarmedBy;
     }
-    public String getLastArmedTime() {
-        return lastArmedTime;
+    public String getLastDisarmedTime() {
+        return lastDisarmedTime;
     }
     public String getLastCommTime() {
         return lastCommTime;
@@ -213,6 +218,9 @@ public class Ring implements Generic {
     }
     public String getTamperStatus() {
         return tamperStatus;
+    }
+    public String getTargetState() {
+        return targetState;
     }
     public float getVolume() {
         return volume;

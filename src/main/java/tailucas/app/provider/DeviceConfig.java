@@ -137,7 +137,11 @@ public class DeviceConfig {
             // FIXME
             if (cacheAge <= 3600) {
                 List<Config> cachedConfig = cached.getRight();
-                log.debug("Returning cached config ({} items) for {} (age {}s).", cachedConfig.size(), cacheKey, cacheAge);
+                if (cachedConfig != null) {
+                    log.debug("Returning cached config ({} items) for {} (age {}s).", cachedConfig.size(), cacheKey, cacheAge);
+                } else {
+                    throw new IllegalArgumentException(String.format("Cached null item for %s.", cacheKey));
+                }
                 return cachedConfig;
             } else {
                 log.debug("Invalidating cache for {} (age {}s).", cacheKey, cacheAge);
@@ -172,7 +176,9 @@ public class DeviceConfig {
         } else {
             configs = mapper.readValue(responseBody, getCollectionType(api));
         }
-        configCache.put(cacheKey, Pair.of(now, configs));
+        if (configs != null) {
+            configCache.put(cacheKey, Pair.of(now, configs));
+        }
         return configs;
     }
 
