@@ -5,7 +5,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeoutException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -105,13 +104,9 @@ public class Event implements Runnable {
                 log.debug("{} fetch configuration with key {}, description: {}", source, deviceKey, deviceDescription);
                 InputConfig deviceConfig = configProvider.fetchInputDeviceConfig(deviceKey);
                 log.debug("{} configuration: {}", deviceDescription, deviceConfig);
-                try {
-                    if (!device.mustTriggerOutput(deviceConfig)) {
-                        log.debug("{} does not trigger any outputs based on current configuration or state.", deviceDescription);
-                        return;
-                    }
-                } catch (UnsupportedOperationException e) {
-                    log.error("{} has invalid device type {}, device update: {}", source, device.toString(), deviceUpdate, e);
+                if (!device.mustTriggerOutput(deviceConfig)) {
+                    log.debug("{} does not trigger any outputs based on current configuration or state.", deviceDescription);
+                    return;
                 }
                 log.debug("{} getting outputs", deviceDescription);
                 List<OutputConfig> linkedOutputs = configProvider.getLinkedOutputs(deviceConfig);
@@ -193,7 +188,7 @@ public class Event implements Runnable {
                     }));
                 }
             }
-        } catch (IllegalStateException e) {
+        } catch (IllegalStateException | UnsupportedOperationException e) {
             // logged only with message
             log.warn("{}: {}", source, e.getMessage());
         } catch (Throwable e) {

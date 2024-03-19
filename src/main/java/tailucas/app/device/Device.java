@@ -81,15 +81,38 @@ public class Device implements Generic {
     }
     @JsonIgnore
     public boolean mustTriggerOutput(Config deviceConfig) {
-        throw new UnsupportedOperationException("Unimplemented method 'mustTriggerOutput'");
+        throw new UnsupportedOperationException("Missing override on 'mustTriggerOutput' for type "+type);
     }
     @JsonIgnore
     public Instant lastTriggered() {
-        throw new UnsupportedOperationException("Unimplemented method 'lastTriggered'");
+        throw new UnsupportedOperationException("Missing override on 'lastTriggered' for type "+type);
     }
     @JsonIgnore
     public List<Device> triggerGroup() {
-        throw new UnsupportedOperationException("Unimplemented method 'triggerGroup'");
+        throw new UnsupportedOperationException("Missing override on 'triggerGroup' for type "+type);
+    }
+    @JsonIgnore
+    public Type getType() {
+        if (type == null) {
+            return Type.BASE;
+        }
+        Type deviceType = null;
+        try {
+            deviceType = Type.valueOf(type.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalStateException(e);
+        }
+        return deviceType;
+    }
+    @JsonIgnore
+    public Device getDeviceByType() {
+        Type type = getType();
+        var device = switch (type) {
+            case Type.BASE -> this;
+            case Type.CAMERA -> new Camera(this);
+            default -> null;
+        };
+        return device;
     }
     @Override
     public String toString() {
