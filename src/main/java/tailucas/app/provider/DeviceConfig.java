@@ -148,7 +148,7 @@ public class DeviceConfig {
                 configCache.remove(cacheKey);
             }
         }
-        log.info("{} needs {} from {}...", deviceKey, apiName, hostName);
+        log.debug("{} needs {} from {}...", deviceKey, apiName, hostName);
         UriComponents uriComponents = UriComponentsBuilder.newInstance()
             .scheme("http")
             .host(hostName)
@@ -171,8 +171,7 @@ public class DeviceConfig {
             } catch (JsonProcessingException e) {
                 responseDetail = responseBody;
             }
-            log.debug("HTTP {} from {} for {}.", responseCode, apiName, deviceKey);
-            log.error("{}: {}", deviceKey, responseDetail);
+            log.debug("HTTP {} from {} for {}.", responseCode, apiName, deviceKey, responseDetail);
         } else {
             configs = mapper.readValue(responseBody, getCollectionType(api));
         }

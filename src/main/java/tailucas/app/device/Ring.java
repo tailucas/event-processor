@@ -4,6 +4,8 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.text.WordUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -14,6 +16,11 @@ import tailucas.app.device.config.HAConfig;
 import tailucas.app.provider.DeviceConfig;
 
 public class Ring implements Generic {
+
+    public enum TriggerSubjects {
+        CONTACT,
+        MOTION
+    }
 
     @JsonIgnore
     private static Logger log = null;
@@ -115,6 +122,12 @@ public class Ring implements Generic {
         }
         return String.format("Ring device %s (%s)", deviceId, updateType);
     }
+    @JsonIgnore
+    public String getDeviceDescription() {
+        final var ringConfig = (HAConfig) getConfig();
+        final var ringDevice = ringConfig.getDevice();
+        return String.format("%s %s (%s)", ringDevice.getMf(), ringDevice.getMdl(), ringDevice.getName());
+    }
     @Override
     public String getDeviceKey() {
         return deviceId;
@@ -151,8 +164,51 @@ public class Ring implements Generic {
     }
     @Override
     public boolean mustTriggerOutput(Config config) {
-        log.info("Evaluating trigger for {} based on configs {} and {}", toString(), getConfig(), config);
-        return true;
+        log.debug("Evaluating trigger for {} based on configs {} and {}.", toString(), getConfig(), config);
+        var ringConfig = (HAConfig) getConfig();
+        var ringDevice = ringConfig.getDevice();
+        final String deviceDescripion = getDeviceDescription();
+        final String updateType = getUpdateType();
+        switch(updateType) {
+            case "attributes":
+                log.debug("{} {}, config {}.", toString(), getConfig(), config);
+                break;
+            case "status":
+                log.info("{} is {}.", deviceDescripion, state);
+                break;
+            case "state":
+                switch (updateSubject) {
+                    case "info":
+                        log.debug("{} {}, config {}.", toString(), getConfig(), config);
+                        log.info("{}: Battery Level is {}% ({}).", deviceDescripion, getBatteryLevel(), getBatteryStatus());
+                        break;
+                    default:
+                        String updateSubjectDescription = updateSubject.replace('_', ' ');
+                        updateSubjectDescription = WordUtils.capitalizeFully(updateSubjectDescription);
+                        log.info("{}: {} is {}.", deviceDescripion, updateSubjectDescription, state);
+                        break;
+                }
+                break;
+            default:
+                log.warn("Unmapped update type {} for {}.", updateType, toString());
+                break;
+        }
+        /*
+            updateSubject=alarm
+            updateSubject=battery
+            updateSubject=bypass_mode
+            updateSubject=chirps
+            updateSubject=chirp_tone
+            updateSubject=contact
+            updateSubject=fire
+            updateSubject=info
+            updateSubject=motion
+            updateSubject=null
+            updateSubject=police
+            updateSubject=siren
+            updateSubject=volume
+        */
+        return false;
     }
     @Override
     public List<Device> triggerGroup() {

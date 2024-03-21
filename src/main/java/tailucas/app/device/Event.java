@@ -121,8 +121,8 @@ public class Event implements Runnable {
                     log.debug("Adding output {}...", outputLabel);
                     outputNames.add(outputLabel);
                 });
-                log.info("{} is linked to {} outputs: {}.", deviceDescription, linkedOutputs.size(), outputNames);
                 if (linkedOutputs.size() > 0) {
+                    log.info("{} is linked to {} outputs: {}.", deviceDescription, linkedOutputs.size(), outputNames);
                     final Channel rabbitMqChannel = connection.createChannel();
                     try {
                         linkedOutputs.forEach(Failable.asConsumer(outputConfig -> {
@@ -159,6 +159,8 @@ public class Event implements Runnable {
                     linkedOutputs.forEach(Failable.asConsumer(linkedOutput -> {
                         processedOutputs.put(linkedOutput.getDeviceKey(), linkedOutput);
                     }));
+                } else {
+                    log.warn("{} is linked to no outputs: {}.", deviceDescription, outputNames);
                 }
             }
             if (deviceUpdate != null) {
