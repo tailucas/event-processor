@@ -180,7 +180,19 @@ public class Ring implements Generic {
                 switch (updateSubject) {
                     case "info":
                         log.debug("{} {}, config {}.", toString(), getConfig(), config);
-                        log.info("{}: Battery Level is {}% ({}).", deviceDescripion, getBatteryLevel(), getBatteryStatus());
+                        StringBuilder sb = new StringBuilder();
+                        if (batteryStatus != null) {
+                            sb.append(String.format(" Battery Level is %s%% (%s).", getBatteryLevel(), getBatteryStatus()));
+                        }
+                        if (commStatus != null && linkQuality != null) {
+                            sb.append(String.format(" Link quality is %s (%s).", getLinkQuality(), getCommStatus()));
+                        }
+                        if (tamperStatus != null) {
+                            sb.append(String.format(" Tamper status is %s.", getTamperStatus()));
+                        }
+                        if (sb.length() > 0) {
+                            log.info("{} health:{}", deviceDescripion, sb.toString());
+                        }
                         break;
                     default:
                         String updateSubjectDescription = updateSubject.replace('_', ' ');
