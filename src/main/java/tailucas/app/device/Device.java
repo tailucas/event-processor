@@ -80,6 +80,10 @@ public class Device implements Generic {
         return Double.valueOf(timestamp - uptime).longValue();
     }
     @JsonIgnore
+    public boolean isHeartbeat() {
+        return false;
+    }
+    @JsonIgnore
     public boolean mustTriggerOutput(Config deviceConfig) {
         throw new UnsupportedOperationException("Missing override on 'mustTriggerOutput' for type "+type);
     }

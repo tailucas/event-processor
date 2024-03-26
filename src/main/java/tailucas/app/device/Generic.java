@@ -10,6 +10,7 @@ public interface Generic {
     public String getDeviceLabel();
     public Config getConfig();
     public Instant lastTriggered();
+    public boolean isHeartbeat();
     public boolean mustTriggerOutput(Config config);
     public List<Device> triggerGroup();
 }

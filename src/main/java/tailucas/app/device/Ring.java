@@ -3,8 +3,8 @@ package tailucas.app.device;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
-import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.text.WordUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,14 +19,27 @@ public class Ring implements Generic {
 
     public enum TriggerSubjects {
         CONTACT,
-        MOTION
+        MOTION,
+        FIRE,
+        POLICE,
+        SIREN
     }
+
+    @JsonIgnore
+    protected static final Map<String, TriggerSubjects> triggers = Map.of(
+        TriggerSubjects.CONTACT.name().toLowerCase(), TriggerSubjects.CONTACT,
+        TriggerSubjects.MOTION.name().toLowerCase(), TriggerSubjects.MOTION,
+        TriggerSubjects.FIRE.name().toLowerCase(), TriggerSubjects.FIRE,
+        TriggerSubjects.POLICE.name().toLowerCase(), TriggerSubjects.POLICE,
+        TriggerSubjects.SIREN.name().toLowerCase(), TriggerSubjects.SIREN);
 
     @JsonIgnore
     private static Logger log = null;
 
     private String acStatus;
     private String alarmState;
+    private String auxBatteryLevel;
+    private String auxBatteryStatus;
     private int batteryLevel;
     private String batteryStatus;
     private float brightness;
@@ -42,6 +55,7 @@ public class Ring implements Generic {
     private String lastCommTime;
     private String lastUpdate;
     private String linkQuality;
+    private float maxVolume;
     private String powerSave;
     private String serialNumber;
     private String tamperStatus;
@@ -162,24 +176,23 @@ public class Ring implements Generic {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'lastTriggered'");
     }
-    @Override
-    public boolean mustTriggerOutput(Config config) {
-        log.debug("Evaluating trigger for {} based on configs {} and {}.", toString(), getConfig(), config);
-        var ringConfig = (HAConfig) getConfig();
-        var ringDevice = ringConfig.getDevice();
+    public boolean isHeartbeat() {
+        boolean statusUpdate = false;
         final String deviceDescripion = getDeviceDescription();
         final String updateType = getUpdateType();
+        log.debug("{} {}, config {}.", toString(), getConfig());
         switch(updateType) {
             case "attributes":
-                log.debug("{} {}, config {}.", toString(), getConfig(), config);
+                statusUpdate = true;
                 break;
             case "status":
-                log.info("{} is {}.", deviceDescripion, state);
+                statusUpdate = true;
+                log.info("{} status is {}.", deviceDescripion, state);
                 break;
             case "state":
                 switch (updateSubject) {
                     case "info":
-                        log.debug("{} {}, config {}.", toString(), getConfig(), config);
+                        statusUpdate = true;
                         StringBuilder sb = new StringBuilder();
                         if (batteryStatus != null) {
                             sb.append(String.format(" Battery Level is %s%% (%s).", getBatteryLevel(), getBatteryStatus()));
@@ -195,9 +208,6 @@ public class Ring implements Generic {
                         }
                         break;
                     default:
-                        String updateSubjectDescription = updateSubject.replace('_', ' ');
-                        updateSubjectDescription = WordUtils.capitalizeFully(updateSubjectDescription);
-                        log.info("{}: {} is {}.", deviceDescripion, updateSubjectDescription, state);
                         break;
                 }
                 break;
@@ -205,22 +215,43 @@ public class Ring implements Generic {
                 log.warn("Unmapped update type {} for {}.", updateType, toString());
                 break;
         }
-        /*
-            updateSubject=alarm
-            updateSubject=battery
-            updateSubject=bypass_mode
-            updateSubject=chirps
-            updateSubject=chirp_tone
-            updateSubject=contact
-            updateSubject=fire
-            updateSubject=info
-            updateSubject=motion
-            updateSubject=null
-            updateSubject=police
-            updateSubject=siren
-            updateSubject=volume
-        */
-        return false;
+        return statusUpdate;
+    }
+    @Override
+    public boolean mustTriggerOutput(Config config) {
+        boolean triggerOutput = false;
+        log.debug("Evaluating trigger for {} based on configs {} and {}.", toString(), getConfig(), config);
+        var ringConfig = (HAConfig) getConfig();
+        var ringDevice = ringConfig.getDevice();
+        final String deviceDescripion = getDeviceDescription();
+        final String updateType = getUpdateType();
+        log.debug("{} {}, config {}.", toString(), getConfig(), config);
+        switch(updateType) {
+            case "attributes":
+                break;
+            case "status":
+                break;
+            case "state":
+                switch (updateSubject) {
+                    case "info":
+                        break;
+                    default:
+                        String updateSubjectDescription = updateSubject.replace('_', ' ');
+                        updateSubjectDescription = WordUtils.capitalizeFully(updateSubjectDescription);
+                        if (triggers.containsKey(updateSubject)) {
+                            triggerOutput = true;
+                            log.info("{}: {} ({}) is {}.", deviceDescripion, updateSubjectDescription, updateSubject, state);
+                        } else {
+                            log.warn("{}: {} ({}) is {} but not a trigger.", deviceDescripion, updateSubjectDescription, updateSubject, state);
+                        }
+                        break;
+                }
+                break;
+            default:
+                log.warn("Unmapped update type {} for {}.", updateType, toString());
+                break;
+        }
+        return triggerOutput;
     }
     @Override
     public List<Device> triggerGroup() {
@@ -232,6 +263,12 @@ public class Ring implements Generic {
     }
     public String getAlarmState() {
         return alarmState;
+    }
+    public String getAuxBatteryLevel() {
+        return auxBatteryLevel;
+    }
+    public String getAuxBatteryStatus() {
+        return auxBatteryStatus;
     }
     public int getBatteryLevel() {
         return batteryLevel;
@@ -290,6 +327,9 @@ public class Ring implements Generic {
     public String getTargetState() {
         return targetState;
     }
+    public float getMaxVolume() {
+        return maxVolume;
+    }
     public float getVolume() {
         return volume;
     }
@@ -313,14 +353,17 @@ public class Ring implements Generic {
     }
     @Override
     public String toString() {
-        return "Ring [acStatus=" + acStatus + ", alarmState=" + alarmState + ", batteryLevel=" + batteryLevel
-                + ", batteryStatus=" + batteryStatus + ", brightness=" + brightness + ", chirps=" + chirps
-                + ", commStatus=" + commStatus + ", entrySecondsLeft=" + entrySecondsLeft + ", exitSecondsLeft="
-                + exitSecondsLeft + ", firmwareStatus=" + firmwareStatus + ", lastArmedBy=" + lastArmedBy
+        return "Ring [acStatus=" + acStatus + ", alarmState=" + alarmState + ", auxBatteryLevel=" + auxBatteryLevel
+                + ", auxBatteryStatus=" + auxBatteryStatus + ", batteryLevel=" + batteryLevel + ", batteryStatus="
+                + batteryStatus + ", brightness=" + brightness + ", chirps=" + chirps + ", commStatus=" + commStatus
+                + ", entrySecondsLeft=" + entrySecondsLeft + ", exitSecondsLeft=" + exitSecondsLeft
+                + ", firmwareStatus=" + firmwareStatus + ", lastArmedBy=" + lastArmedBy + ", lastArmedTime="
+                + lastArmedTime + ", lastDisarmedBy=" + lastDisarmedBy + ", lastDisarmedTime=" + lastDisarmedTime
                 + ", lastCommTime=" + lastCommTime + ", lastUpdate=" + lastUpdate + ", linkQuality=" + linkQuality
-                + ", powerSave=" + powerSave + ", serialNumber=" + serialNumber + ", tamperStatus=" + tamperStatus
-                + ", volume=" + volume + ", componentId=" + componentId + ", componentName=" + componentName
-                + ", deviceId=" + deviceId + ", mqttTopic=" + mqttTopic + ", state=" + state + ", updateType="
-                + updateType + ", updateSubject=" + updateSubject + "]";
+                + ", maxVolume=" + maxVolume + ", powerSave=" + powerSave + ", serialNumber=" + serialNumber
+                + ", tamperStatus=" + tamperStatus + ", targetState=" + targetState + ", volume=" + volume
+                + ", componentId=" + componentId + ", componentName=" + componentName + ", deviceId=" + deviceId
+                + ", mqttTopic=" + mqttTopic + ", state=" + state + ", updateType=" + updateType + ", updateSubject="
+                + updateSubject + ", haConfig=" + haConfig + "]";
     }
 }

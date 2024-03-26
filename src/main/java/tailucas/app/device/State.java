@@ -34,12 +34,13 @@ public class State {
             log = LoggerFactory.getLogger(State.class);
             DATE_TIME_FORMATTER = new DateTimeFormatterBuilder().appendPattern("yyyy-MM-dd'T'HH:mm:ss.SSSSSSZ").toFormatter();
         }
+        this.createdTime = null;
+        this.outputsTriggered = null;
     }
     public State(List<Device> inputs, List<Device> outputsTriggered) {
         this();
         this.inputs = inputs;
         this.outputsTriggered = outputsTriggered;
-        this.createdTime = null;
     }
     public Instant getTimestamp() {
         if (createdTime != null) {

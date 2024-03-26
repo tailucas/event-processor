@@ -101,6 +101,10 @@ public class Event implements Runnable {
                 } else {
                     deviceDescription = deviceKey;
                 }
+                if (device.isHeartbeat()) {
+                    log.debug("Heartbeat for {}.", deviceDescription);
+                    return;
+                }
                 log.debug("{} fetch configuration with key {}, description: {}", source, deviceKey, deviceDescription);
                 InputConfig deviceConfig = configProvider.fetchInputDeviceConfig(deviceKey);
                 log.debug("{} configuration: {}", deviceDescription, deviceConfig);
