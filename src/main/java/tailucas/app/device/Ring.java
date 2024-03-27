@@ -18,6 +18,7 @@ import tailucas.app.provider.DeviceConfig;
 public class Ring implements Generic {
 
     public enum TriggerSubjects {
+        ALARM, // pending, disarmed
         CONTACT,
         MOTION,
         FIRE,
@@ -27,6 +28,7 @@ public class Ring implements Generic {
 
     @JsonIgnore
     protected static final Map<String, TriggerSubjects> triggers = Map.of(
+        TriggerSubjects.ALARM.name().toLowerCase(), TriggerSubjects.ALARM,
         TriggerSubjects.CONTACT.name().toLowerCase(), TriggerSubjects.CONTACT,
         TriggerSubjects.MOTION.name().toLowerCase(), TriggerSubjects.MOTION,
         TriggerSubjects.FIRE.name().toLowerCase(), TriggerSubjects.FIRE,
