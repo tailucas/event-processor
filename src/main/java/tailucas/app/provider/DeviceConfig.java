@@ -5,6 +5,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -25,6 +26,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.type.CollectionType;
 
+import tailucas.app.device.Device;
 import tailucas.app.device.Ring;
 import tailucas.app.device.config.Config;
 import tailucas.app.device.config.HAConfig;
@@ -179,6 +181,29 @@ public class DeviceConfig {
             configCache.put(cacheKey, Pair.of(now, configs));
         }
         return configs;
+    }
+
+    public void postDeviceInfo(Device device) throws IOException, InterruptedException {
+        final String hostName = "192.168.0.5";
+        final Instant now = Instant.now();
+        final String deviceKey = device.getDeviceKey();
+        log.debug("Posting update on {} to {}", deviceKey);
+        UriComponents uriComponents = UriComponentsBuilder.newInstance()
+            .scheme("http")
+            .host(hostName)
+            .path("/{scope}/{function}")
+            .build()
+            .expand("api", "device_info")
+            .encode();
+        log.debug("HTTP POST for {} is: {}", deviceKey, uriComponents.toUriString());
+        final String deviceJson = mapper.writeValueAsString(device);
+        log.info("POST payload {}", deviceJson);
+        HttpRequest request = HttpRequest.newBuilder().POST(
+            HttpRequest.BodyPublishers.ofString(deviceJson, StandardCharsets.UTF_8)).uri(uriComponents.toUri()).build();
+        HttpResponse<String> response = httpClient.send(request, BodyHandlers.ofString());
+        final int responseCode = response.statusCode();
+        final String responseBody = response.body();
+        log.info("POST {} response body {}", responseCode, responseBody);
     }
 
     private CollectionType getCollectionType(ConfigType api) {

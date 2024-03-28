@@ -46,6 +46,8 @@ from fastapi import FastAPI, status, HTTPException
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.wsgi import WSGIMiddleware
 
+from pydantic import BaseModel
+
 from flask import Flask, g, flash, request, render_template, url_for, redirect
 from flask.logging import default_handler
 from flask_compress import Compress
@@ -390,18 +392,29 @@ def update_meter_config(input_device_key, meter_config, register_value, meter_va
 
 
 @api_app.get("/", response_class=RedirectResponse)
-def api_root():
+async def api_root():
     return "/admin/"
 
 
 @api_app.get("/api/ping")
-def api_ping():
+async def api_ping():
     return "OK"
 
 
 @api_app.get("/api/running")
-def api_running():
+async def api_running():
     return startup_complete
+
+
+class DeviceInfo(BaseModel):
+    device_key: str
+    device_label: str | None = None
+
+
+@api_app.post("/api/device_info")
+async def api_device_info(device_info: DeviceInfo):
+    log.info(f'Device post {device_info.device_key}')
+    return device_info
 
 
 @flask_app.route('/debug-sentry')
@@ -557,7 +570,7 @@ def show_config():
 
 
 @api_app.get("/api/input_config")
-def api_input_config(device_key: str | None = None) -> list[dict]:
+async def api_input_config(device_key: str | None = None) -> list[dict]:
     with flask_app.app_context():
         configs = []
         if device_key:
@@ -574,7 +587,7 @@ def api_input_config(device_key: str | None = None) -> list[dict]:
 
 
 @api_app.get("/api/meter_config")
-def api_meter_config(device_key: str) -> list[dict]:
+async def api_meter_config(device_key: str) -> list[dict]:
     with flask_app.app_context():
         configs = []
         db_input_config = InputConfig.query.filter_by(device_label=device_key).first()
@@ -721,7 +734,7 @@ def input_link():
 
 
 @api_app.get("/api/output_link")
-def api_output_link(device_key: str) -> list[dict]:
+async def api_output_link(device_key: str) -> list[dict]:
     with flask_app.app_context():
         configs = []
         db_input_config = InputConfig.query.filter_by(device_key=device_key).first()
@@ -769,7 +782,7 @@ def output_link():
 
 
 @api_app.get("/api/output_config")
-def api_output_config(device_key: str | None = None) -> list[dict]:
+async def api_output_config(device_key: str | None = None) -> list[dict]:
     with flask_app.app_context():
         configs = []
         if device_key:
