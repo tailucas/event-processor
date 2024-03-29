@@ -17,16 +17,20 @@ public class Device implements Generic {
         SENSOR
     }
 
-    @JsonProperty("device_key")
-    protected String deviceKey;
     @JsonProperty("device_id")
     protected String deviceId;
+    @JsonProperty("device_key")
+    protected String deviceKey;
     @JsonProperty("device_label")
     protected String deviceLabel;
-    @JsonProperty("image")
-    protected byte[] image;
+    @JsonProperty("device_type")
+    protected String deviceType;
+    @JsonProperty("group_name")
+    protected String groupName;
     @JsonProperty("location")
     protected String location;
+    @JsonProperty("image")
+    protected byte[] image;
     @JsonProperty("input_location")
     protected String inputLocation;
     @JsonProperty
@@ -67,6 +71,18 @@ public class Device implements Generic {
             return deviceLabel;
         }
         return getDeviceKey();
+    }
+    @Override
+    public String getDeviceType() {
+        return deviceType;
+    }
+    @Override
+    public String getGroupName() {
+        return groupName;
+    }
+    @Override
+    public String getLocation() {
+        return location;
     }
     @JsonIgnore
     public Instant getTimestamp() {

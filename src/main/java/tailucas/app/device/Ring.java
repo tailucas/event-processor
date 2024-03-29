@@ -154,6 +154,20 @@ public class Ring implements Generic {
         return config.getDevice().getName();
     }
     @Override
+    public String getDeviceType() {
+        return updateSubject;
+    }
+    @Override
+    public String getGroupName() {
+        return this.getClass().getSimpleName();
+    }
+    @Override
+    public String getLocation() {
+        // TODO
+        return null;
+    }
+    @JsonIgnore
+    @Override
     public Config getConfig() {
         final String description = getTopicDescription();
         if (haConfig == null) {
@@ -173,11 +187,13 @@ public class Ring implements Generic {
         }
         return haConfig;
     }
+    @JsonIgnore
     @Override
     public Instant lastTriggered() {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'lastTriggered'");
     }
+    @JsonIgnore
     public boolean isHeartbeat() {
         boolean statusUpdate = false;
         final String deviceDescripion = getDeviceDescription();
@@ -219,6 +235,7 @@ public class Ring implements Generic {
         }
         return statusUpdate;
     }
+    @JsonIgnore
     @Override
     public boolean mustTriggerOutput(Config config) {
         boolean triggerOutput = false;
@@ -255,6 +272,7 @@ public class Ring implements Generic {
         }
         return triggerOutput;
     }
+    @JsonIgnore
     @Override
     public List<Device> triggerGroup() {
         // TODO Auto-generated method stub

@@ -409,11 +409,14 @@ async def api_running():
 class DeviceInfo(BaseModel):
     device_key: str
     device_label: str | None = None
+    device_type: str | None = None
+    group_name: str | None = None
+    location: str | None = None
 
 
 @api_app.post("/api/device_info")
 async def api_device_info(device_info: DeviceInfo):
-    log.info(f'Device post {device_info.device_key}')
+    log.info(f'Device post {device_info.model_dump_json}')
     return device_info
 
 

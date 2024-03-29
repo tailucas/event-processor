@@ -112,9 +112,7 @@ public class Event implements Runnable {
                     log.debug("{} does not trigger any outputs based on current configuration or state.", deviceDescription);
                     return;
                 }
-                if (device instanceof Device) {
-                    configProvider.postDeviceInfo((Device) device);
-                }
+                configProvider.postDeviceInfo(device);
                 log.debug("{} getting outputs", deviceDescription);
                 List<OutputConfig> linkedOutputs = configProvider.getLinkedOutputs(deviceConfig);
                 log.debug("{} outputs {}", deviceDescription, linkedOutputs);

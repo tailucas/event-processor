@@ -24,9 +24,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.type.CollectionType;
 
-import tailucas.app.device.Device;
+import tailucas.app.device.Generic;
 import tailucas.app.device.Ring;
 import tailucas.app.device.config.Config;
 import tailucas.app.device.config.HAConfig;
@@ -50,6 +51,7 @@ public class DeviceConfig {
         httpClient = HttpClient.newHttpClient();
         mapper = new ObjectMapper();
         mapper.enable(DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT);
+        mapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
         collectionTypes = new HashMap<>(4);
         configCache = new ConcurrentHashMap<>(100);
         haConfigCache = new HashMap<>(100);
@@ -183,7 +185,7 @@ public class DeviceConfig {
         return configs;
     }
 
-    public void postDeviceInfo(Device device) throws IOException, InterruptedException {
+    public void postDeviceInfo(Generic device) throws IOException, InterruptedException {
         final String hostName = "192.168.0.5";
         final Instant now = Instant.now();
         final String deviceKey = device.getDeviceKey();
