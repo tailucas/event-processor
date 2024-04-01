@@ -18,7 +18,10 @@ public class Sensor extends Device {
     protected String inputLabel;
     @JsonIgnore
     public boolean isActive() {
-        return active;
+        if (active == null) {
+            return false;
+        }
+        return active.booleanValue();
     }
     public void updateFrom(Device device) {
         this.deviceId = device.deviceId;
@@ -33,7 +36,7 @@ public class Sensor extends Device {
     }
     @Override
     public boolean mustTriggerOutput(InputConfig deviceConfig) {
-        return true;
+        return deviceConfig.isDeviceEnabled() && isActive();
     }
     @Override
     public String toString() {

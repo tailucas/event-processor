@@ -61,7 +61,7 @@ public class Mqtt implements MqttCallback {
         } else if (topic.startsWith("inverter/")) {
             log.debug("{} not yet supported.", topic);
         } else if (topic.equals("homeassistant/status")) {
-            log.debug("{} not yet supported.", topic);
+            log.debug("{} not supported.", topic);
         } else if (topic.startsWith("homeassistant/")) {
             if (payload[0] == '{') {
                 try {

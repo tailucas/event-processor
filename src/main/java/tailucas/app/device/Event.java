@@ -89,7 +89,8 @@ public class Event implements Runnable {
                 log.debug("{} device: {}", source, device);
                 final String deviceKey = device.getDeviceKey();
                 final String deviceLabel = device.getDeviceLabel();
-                log.debug("Device key: {}, device label: {}", deviceKey, deviceLabel);
+                final String deviceType = device.getDeviceType();
+                log.debug("{} {} ({})", deviceType, deviceKey, deviceLabel);
                 String deviceDescription;
                 if (deviceLabel != null) {
                     deviceDescription = deviceLabel;
