@@ -26,6 +26,7 @@ from pathlib import Path
 from pylru import lrucache
 from pytz import timezone
 from requests.exceptions import ConnectionError
+from schedule import ScheduleValueError
 from sentry_sdk import capture_exception, last_event_id
 from sentry_sdk.integrations.flask import FlaskIntegration
 from sentry_sdk.integrations.logging import ignore_logger
@@ -1929,16 +1930,19 @@ class AutoScheduler(AppThread, Closable):
                     # clear any previous schedule
                     schedule.clear(device_key)
                     if auto_schedule:
-                        log.info(f'Setting auto-schedule for {device_key} to disable at {auto_schedule_disable} and enable at {auto_schedule_enable}.')
-                        # install a new scedule
-                        self._schedule(
-                            device_key=device_key,
-                            schedule_time=auto_schedule_disable,
-                            device_state=False)
-                        self._schedule(
-                            device_key=device_key,
-                            schedule_time=auto_schedule_enable,
-                            device_state=True)
+                        log.info(f'Setting auto-schedule for {device_key} to disable at {auto_schedule_disable} and enable at {auto_schedule_enable}...')
+                        try:
+                            # install a new scedule
+                            self._schedule(
+                                device_key=device_key,
+                                schedule_time=auto_schedule_disable,
+                                device_state=False)
+                            self._schedule(
+                                device_key=device_key,
+                                schedule_time=auto_schedule_enable,
+                                device_state=True)
+                        except ScheduleValueError:
+                            log.exception(f'Unable to schedule.')
                     else:
                         log.warning(f'Disabled auto-schedule for {device_key}.')
                 # don't spin
