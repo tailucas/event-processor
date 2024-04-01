@@ -277,7 +277,7 @@ public class Ring implements Generic {
                                 triggerOutput = true;
                                 triggerStateDescription = String.format("%s (%s) is %s", updateSubjectDescription, updateSubject, state);
                             } else {
-                                log.warn("{}: {} ({}) is not a trigger state {}.", deviceDescripion, updateSubjectDescription, updateSubject, state);
+                                log.warn("{}: {} ({}) is not in a trigger state {}.", deviceDescripion, updateSubjectDescription, updateSubject, state);
                             }
                         } else {
                             log.warn("{}: {} ({}) is not a trigger (state is {}).", deviceDescripion, updateSubjectDescription, updateSubject, state);
