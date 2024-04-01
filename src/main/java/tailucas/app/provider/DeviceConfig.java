@@ -32,6 +32,7 @@ import tailucas.app.device.Ring;
 import tailucas.app.device.config.Config;
 import tailucas.app.device.config.HAConfig;
 import tailucas.app.device.config.InputConfig;
+import tailucas.app.device.config.MeterConfig;
 import tailucas.app.device.config.OutputConfig;
 import tailucas.app.device.config.Config.ConfigType;
 
@@ -108,6 +109,17 @@ public class DeviceConfig {
             throw new RuntimeException(String.format("Device key mismatch between device (%s) and config (%s).", deviceKey, configDeviceKey));
         }
         return outputConfig;
+    }
+
+    public MeterConfig fetchMeterConfig(String deviceKey) throws IOException, InterruptedException {
+        List<Config> deviceConfig = fetchDeviceConfiguration(ConfigType.METER_CONFIG, deviceKey);
+        if (deviceConfig == null) {
+            return null;
+        }
+        if (deviceConfig.size() != 1) {
+            throw new RuntimeException(String.format("Expected exactly 1 configuration item for {}", deviceKey));
+        }
+        return (MeterConfig) deviceConfig.getFirst();
     }
 
     public List<OutputConfig> getLinkedOutputs(InputConfig inputConfig) throws IOException, InterruptedException, IllegalStateException {
@@ -199,13 +211,14 @@ public class DeviceConfig {
             .encode();
         log.debug("HTTP POST for {} is: {}", deviceKey, uriComponents.toUriString());
         final String deviceJson = mapper.writeValueAsString(device);
-        log.info("POST payload {}", deviceJson);
         HttpRequest request = HttpRequest.newBuilder().POST(
             HttpRequest.BodyPublishers.ofString(deviceJson, StandardCharsets.UTF_8)).uri(uriComponents.toUri()).build();
         HttpResponse<String> response = httpClient.send(request, BodyHandlers.ofString());
         final int responseCode = response.statusCode();
         final String responseBody = response.body();
-        log.info("POST {} response body {}", responseCode, responseBody);
+        if (responseCode % 200 != 0) {
+            log.warn("{} device update response code {}: {}", deviceKey, responseCode, responseBody);
+        }
     }
 
     private CollectionType getCollectionType(ConfigType api) {

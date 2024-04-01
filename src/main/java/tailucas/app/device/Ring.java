@@ -13,6 +13,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import tailucas.app.device.config.Config;
 import tailucas.app.device.config.HAConfig;
+import tailucas.app.device.config.InputConfig;
 import tailucas.app.provider.DeviceConfig;
 
 public class Ring implements Generic {
@@ -79,6 +80,8 @@ public class Ring implements Generic {
     private String updateSubject;
     @JsonIgnore
     private HAConfig haConfig;
+    @JsonIgnore
+    private String triggerStateDescription;
 
     public Ring() {
         if (log == null) {
@@ -155,6 +158,9 @@ public class Ring implements Generic {
     }
     @Override
     public String getDeviceType() {
+        if (updateSubject == null) {
+            return "ring";
+        }
         return updateSubject;
     }
     @Override
@@ -237,7 +243,7 @@ public class Ring implements Generic {
     }
     @JsonIgnore
     @Override
-    public boolean mustTriggerOutput(Config config) {
+    public boolean mustTriggerOutput(InputConfig config) {
         boolean triggerOutput = false;
         log.debug("Evaluating trigger for {} based on configs {} and {}.", toString(), getConfig(), config);
         var ringConfig = (HAConfig) getConfig();
@@ -258,8 +264,9 @@ public class Ring implements Generic {
                         String updateSubjectDescription = updateSubject.replace('_', ' ');
                         updateSubjectDescription = WordUtils.capitalizeFully(updateSubjectDescription);
                         if (triggers.containsKey(updateSubject)) {
-                            triggerOutput = true;
                             log.info("{}: {} ({}) is {}.", deviceDescripion, updateSubjectDescription, updateSubject, state);
+                            triggerOutput = true;
+                            triggerStateDescription = String.format("%s (%s) is %s", updateSubjectDescription, updateSubject, state);
                         } else {
                             log.warn("{}: {} ({}) is {} but not a trigger.", deviceDescripion, updateSubjectDescription, updateSubject, state);
                         }
@@ -271,6 +278,11 @@ public class Ring implements Generic {
                 break;
         }
         return triggerOutput;
+    }
+    @JsonIgnore
+    @Override
+    public String getTriggerStateDescription() {
+        return triggerStateDescription;
     }
     @JsonIgnore
     @Override

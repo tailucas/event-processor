@@ -7,6 +7,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import tailucas.app.device.config.Config;
+import tailucas.app.device.config.InputConfig;
 
 public interface Generic {
     @JsonProperty("device_key")
@@ -30,7 +31,9 @@ public interface Generic {
     @JsonIgnore
     public boolean isHeartbeat();
     @JsonIgnore
-    public boolean mustTriggerOutput(Config config);
+    public boolean mustTriggerOutput(InputConfig config);
+    @JsonIgnore
+    public String getTriggerStateDescription();
     @JsonIgnore
     public List<Device> triggerGroup();
 }

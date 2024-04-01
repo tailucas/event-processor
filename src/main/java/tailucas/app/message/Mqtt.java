@@ -59,7 +59,9 @@ public class Mqtt implements MqttCallback {
             // catch heartbeat messages for topic matching
             srv.submit(new Event(rabbitMqConnection, topic, new String(payload)));
         } else if (topic.startsWith("inverter/")) {
-            log.debug("{} not yet supported.");
+            log.debug("{} not yet supported.", topic);
+        } else if (topic.equals("homeassistant/status")) {
+            log.debug("{} not yet supported.", topic);
         } else if (topic.startsWith("homeassistant/")) {
             if (payload[0] == '{') {
                 try {

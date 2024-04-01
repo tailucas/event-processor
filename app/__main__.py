@@ -130,7 +130,7 @@ async def get_db():
         yield session
 
 
-from sqlalchemy import Column, Integer, String, JSON, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, JSON, DateTime, Boolean, Text
 
 from sqlalchemy import update, ForeignKey, UniqueConstraint, Result, delete
 from sqlalchemy.future import select
@@ -178,12 +178,12 @@ ngrok_tunnel_url_with_bauth = None
 startup_complete = False
 
 
-class EventLog(db.Model):
+class EventLog(Base):
     __tablename__ = 'event_log'
-    id = db.Column(db.Integer, primary_key=True)
-    input_device = db.Column(db.String(100), index=True)
-    output_device = db.Column(db.String(100), index=True)
-    timestamp = db.Column(db.DateTime, index=True)
+    id = Column(Integer, primary_key=True)
+    input_device = Column(String(100), index=True)
+    output_device = Column(String(100), index=True)
+    timestamp = Column(DateTime, index=True)
 
     def __init__(self, input_device, output_device, timestamp):
         self.input_device = input_device
@@ -227,21 +227,21 @@ class InputConfig(Base):
     def as_dict(self):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
-class MeterConfig(db.Model):
+class MeterConfig(Base):
     __tablename__ = 'meter_config'
-    id = db.Column(db.Integer, primary_key = True, autoincrement=True)
-    input_device_id = db.Column(db.Integer, db.ForeignKey('input_config.id'), index=True, nullable=False)
-    meter_value = db.Column(db.Integer, default=0, nullable=False)
-    register_value = db.Column(db.Integer, default=0, nullable=False)
-    meter_reading = db.Column(db.String, default='0', nullable=False)
-    meter_iot_topic = db.Column(db.String(100), nullable=False)
-    meter_low_limit = db.Column(db.Integer)
-    meter_high_limit = db.Column(db.Integer)
-    meter_reset_value = db.Column(db.Integer)
-    meter_reset_additive = db.Column(db.Boolean)
-    meter_reading_unit = db.Column(db.String(10))
-    meter_reading_unit_factor = db.Column(db.Integer)
-    meter_reading_unit_precision = db.Column(db.Integer)
+    id = Column(Integer, primary_key = True, autoincrement=True)
+    input_device_id = Column(Integer, ForeignKey('input_config.id'), index=True, nullable=False)
+    meter_value = Column(Integer, default=0, nullable=False)
+    register_value = Column(Integer, default=0, nullable=False)
+    meter_reading = Column(String, default='0', nullable=False)
+    meter_iot_topic = Column(String(100), nullable=False)
+    meter_low_limit = Column(Integer)
+    meter_high_limit = Column(Integer)
+    meter_reset_value = Column(Integer)
+    meter_reset_additive = Column(Boolean)
+    meter_reading_unit = Column(String(10))
+    meter_reading_unit_factor = Column(Integer)
+    meter_reading_unit_precision = Column(Integer)
 
     def __init__(self, input_device_id, meter_iot_topic, meter_low_limit, meter_high_limit, meter_reset_value, meter_reset_additive, meter_reading_unit, meter_reading_unit_factor, meter_reading_unit_precision):
         self.input_device_id = input_device_id
@@ -258,14 +258,14 @@ class MeterConfig(db.Model):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
 
-class OutputConfig(db.Model):
+class OutputConfig(Base):
     __tablename__  = 'output_config'
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    device_key = db.Column(db.String(50), unique=True, index=True, nullable=False)
-    device_type = db.Column(db.String(100), nullable=False)
-    device_label = db.Column(db.String(100))
-    device_params = db.Column(db.Text)
-    links = db.relationship('OutputLink', backref='output_config', cascade='all, delete-orphan', lazy='dynamic')
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    device_key = Column(String(50), unique=True, index=True, nullable=False)
+    device_type = Column(String(100), nullable=False)
+    device_label = Column(String(100))
+    device_params = Column(Text)
+    links = relationship('OutputLink', backref='output_config', cascade='all, delete-orphan', lazy='dynamic')
 
     def __init__(self, device_key, device_type, device_label, device_params):
         self.device_key = device_key
@@ -277,12 +277,12 @@ class OutputConfig(db.Model):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
 
-class InputLink(db.Model):
+class InputLink(Base):
     __tablename__ = 'input_link'
-    __table_args__ = (UniqueConstraint('input_device_id', 'linked_device_id', name='unique_link'),)
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    input_device_id = db.Column(db.Integer, db.ForeignKey('input_config.id'), index=True, nullable=False)
-    linked_device_id = db.Column(db.Integer, nullable=False)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    input_device_id = Column(Integer, ForeignKey('input_config.id'), index=True, nullable=False)
+    linked_device_id = Column(Integer, nullable=False)
+    UniqueConstraint('input_device_id', 'linked_device_id', name='unique_link')
 
     def __init__(self, input_device_id, linked_device_id):
         self.input_device_id = input_device_id
@@ -292,12 +292,12 @@ class InputLink(db.Model):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
 
-class OutputLink(db.Model):
+class OutputLink(Base):
     __tablename__ = 'output_link'
-    __table_args__ = (UniqueConstraint('input_device_id', 'output_device_id', name='unique_link'),)
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    input_device_id = db.Column(db.Integer, db.ForeignKey('input_config.id'), index=True, nullable=False)
-    output_device_id = db.Column(db.Integer, db.ForeignKey('output_config.id'), nullable=False)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    input_device_id = Column(Integer, ForeignKey('input_config.id'), index=True, nullable=False)
+    output_device_id = Column(Integer, ForeignKey('output_config.id'), nullable=False)
+    UniqueConstraint('input_device_id', 'output_device_id', name='unique_link')
 
     def __init__(self, input_device_id, output_device_id):
         self.input_device_id = input_device_id
@@ -469,7 +469,11 @@ async def api_device_info(di: DeviceInfo):
                     device_params=None))
                 db.session.commit()
     with exception_handler(connect_url=URL_WORKER_APP, and_raise=False, shutdown_on_error=True) as zmq_socket:
-        zmq_socket.send_pyobj({'API': di.model_dump()})
+        di_model = di.model_dump()
+        if di.is_input:
+            zmq_socket.send_pyobj({'device_info_input': di_model})
+        if di.is_output:
+            zmq_socket.send_pyobj({'device_info_output': di_model})
     return di
 
 
@@ -1149,12 +1153,18 @@ class EventProcessor(MQConnection):
                                 log.warning(log_msg)
                             else:
                                 log.debug(log_msg)
-                        if 'API' == event_origin:
-                            log.info(f'Updating device info {self.inputs=}, {self._input_origin=}, {self._inputs_by_origin=}, {device_name=}, {event_data=}')
+                        if 'device_info_input' == event_origin:
                             self._update_device(
                                 input_outputs=self.inputs,
                                 device_origin=self._input_origin,
                                 origin_devices=self._inputs_by_origin,
+                                event_origin=device_name,
+                                device=event_data)
+                        if 'device_info_output' == event_origin:
+                            self._update_device(
+                                input_outputs=self.outputs,
+                                device_origin=self._output_origin,
+                                origin_devices=self._outputs_by_origin,
                                 event_origin=device_name,
                                 device=event_data)
                         if 'register_mqtt_origin' == event_origin:

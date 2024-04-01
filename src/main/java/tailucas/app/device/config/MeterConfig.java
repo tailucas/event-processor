@@ -29,6 +29,39 @@ public class MeterConfig extends Config {
     protected Integer meterReadingUnitFactor;
     @JsonProperty("meter_reading_unit_precision")
     protected Integer meterReadingUnitPrecision;
+    public Integer getMeterValue() {
+        return meterValue;
+    }
+    public Integer getRegisterValue() {
+        return registerValue;
+    }
+    public String getMeterReading() {
+        return meterReading;
+    }
+    public String getMeterIotTopic() {
+        return meterIotTopic;
+    }
+    public Integer getMeterLowLimit() {
+        return meterLowLimit;
+    }
+    public Integer getMeterHighLimit() {
+        return meterHighLimit;
+    }
+    public Integer getMeterResetValue() {
+        return meterResetValue;
+    }
+    public Boolean getMeterResetAdditive() {
+        return meterResetAdditive;
+    }
+    public String getMeterReadingUnit() {
+        return meterReadingUnit;
+    }
+    public Integer getMeterReadingUnitFactor() {
+        return meterReadingUnitFactor;
+    }
+    public Integer getMeterReadingUnitPrecision() {
+        return meterReadingUnitPrecision;
+    }
     @Override
     public String toString() {
         return "MeterConfig [meter_value=" + meterValue + ", register_value=" + registerValue + ", meter_reading="

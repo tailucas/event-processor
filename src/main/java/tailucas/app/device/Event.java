@@ -96,6 +96,7 @@ public class Event implements Runnable {
                 } else {
                     deviceDescription = deviceKey;
                 }
+                configProvider.postDeviceInfo(device);
                 if (device.isHeartbeat()) {
                     log.debug("Heartbeat for {}.", deviceDescription);
                     return;
@@ -107,7 +108,7 @@ public class Event implements Runnable {
                     log.debug("{} does not trigger any outputs based on current configuration or state.", deviceDescription);
                     return;
                 }
-                configProvider.postDeviceInfo(device);
+                log.info("{} will trigger outputs because {}", deviceDescription, device.getTriggerStateDescription());
                 log.debug("{} getting outputs", deviceDescription);
                 List<OutputConfig> linkedOutputs = configProvider.getLinkedOutputs(deviceConfig);
                 log.debug("{} outputs {}", deviceDescription, linkedOutputs);

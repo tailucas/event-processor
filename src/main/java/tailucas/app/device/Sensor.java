@@ -5,7 +5,7 @@ import org.apache.commons.lang3.StringUtils;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-import tailucas.app.device.config.Config;
+import tailucas.app.device.config.InputConfig;
 
 public class Sensor extends Device {
     @JsonProperty("normal_value")
@@ -32,7 +32,7 @@ public class Sensor extends Device {
         return StringUtils.capitalize(String.format("%s %s", inputLocation, inputLabel));
     }
     @Override
-    public boolean mustTriggerOutput(Config deviceConfig) {
+    public boolean mustTriggerOutput(InputConfig deviceConfig) {
         return true;
     }
     @Override

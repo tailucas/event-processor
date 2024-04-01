@@ -1,9 +1,10 @@
 package tailucas.app.device;
 
-import tailucas.app.device.config.Config;
+import tailucas.app.device.config.InputConfig;
 
 public class Camera extends Device {
     public Camera(Device device) {
+        super();
         this.deviceId = device.deviceId;
         this.deviceKey = device.deviceKey;
         this.deviceLabel = device.deviceLabel;
@@ -17,7 +18,7 @@ public class Camera extends Device {
         return Type.CAMERA.name().toLowerCase();
     }
     @Override
-    public boolean mustTriggerOutput(Config deviceConfig) {
+    public boolean mustTriggerOutput(InputConfig deviceConfig) {
         return true;
     }
     @Override

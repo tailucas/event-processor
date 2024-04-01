@@ -3,12 +3,19 @@ package tailucas.app.device;
 import java.time.Instant;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import tailucas.app.device.config.Config;
+import tailucas.app.device.config.InputConfig;
 
 public class Device implements Generic {
+
+    @JsonIgnore
+    protected static Logger log = null;
 
     public enum Type {
         BASE,
@@ -51,6 +58,13 @@ public class Device implements Generic {
     protected Double uptime;
     @JsonIgnore
     protected Config config;
+    @JsonIgnore
+    protected String triggerStateDescription;
+    public Device() {
+        if (log == null) {
+            log = LoggerFactory.getLogger(Device.class);
+        }
+    }
     @JsonIgnore
     public Config getConfig() {
         return config;
@@ -102,8 +116,15 @@ public class Device implements Generic {
         return false;
     }
     @JsonIgnore
-    public boolean mustTriggerOutput(Config deviceConfig) {
+    public boolean mustTriggerOutput(InputConfig deviceConfig) {
         throw new UnsupportedOperationException("Missing override on 'mustTriggerOutput' for type "+type);
+    }
+    @Override
+    public String getTriggerStateDescription() {
+        if (triggerStateDescription == null) {
+            return "unspecified";
+        }
+        return triggerStateDescription;
     }
     @JsonIgnore
     public Instant lastTriggered() {
