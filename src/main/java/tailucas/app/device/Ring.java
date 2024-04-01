@@ -36,6 +36,14 @@ public class Ring implements Generic {
         TriggerSubjects.POLICE.name().toLowerCase(), TriggerSubjects.POLICE,
         TriggerSubjects.SIREN.name().toLowerCase(), TriggerSubjects.SIREN);
 
+    public enum InactiveStates {
+        OFF
+    }
+
+    @JsonIgnore
+    protected static final Map<String, InactiveStates> nonTriggerStates = Map.of(
+        InactiveStates.OFF.name(), InactiveStates.OFF);
+
     @JsonIgnore
     private static Logger log = null;
 
@@ -264,11 +272,15 @@ public class Ring implements Generic {
                         String updateSubjectDescription = updateSubject.replace('_', ' ');
                         updateSubjectDescription = WordUtils.capitalizeFully(updateSubjectDescription);
                         if (triggers.containsKey(updateSubject)) {
-                            log.info("{}: {} ({}) is {}.", deviceDescripion, updateSubjectDescription, updateSubject, state);
-                            triggerOutput = true;
-                            triggerStateDescription = String.format("%s (%s) is %s", updateSubjectDescription, updateSubject, state);
+                            if (!nonTriggerStates.containsKey(state)) {
+                                log.info("{}: {} ({}) is {}.", deviceDescripion, updateSubjectDescription, updateSubject, state);
+                                triggerOutput = true;
+                                triggerStateDescription = String.format("%s (%s) is %s", updateSubjectDescription, updateSubject, state);
+                            } else {
+                                log.warn("{}: {} ({}) is not a trigger state {}.", deviceDescripion, updateSubjectDescription, updateSubject, state);
+                            }
                         } else {
-                            log.warn("{}: {} ({}) is {} but not a trigger.", deviceDescripion, updateSubjectDescription, updateSubject, state);
+                            log.warn("{}: {} ({}) is not a trigger (state is {}).", deviceDescripion, updateSubjectDescription, updateSubject, state);
                         }
                         break;
                 }

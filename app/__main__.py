@@ -2103,7 +2103,7 @@ class ApiServer(Thread):
             app="app.__main__:api_app",
             host='0.0.0.0',
             port=int(app_config.get('flask', 'http_port')),
-            log_level="info",
+            log_level="warning",
             timeout_graceful_shutdown=1)
         self.server = uvicorn.Server(config)
 
