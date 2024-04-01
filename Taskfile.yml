@@ -70,16 +70,16 @@ tasks:
     deps: [build]
     desc: Push built image to Docker Hub
     preconditions:
-      - docker-compose images
+      - docker compose images
     cmds:
-      - docker-compose push
+      - docker compose push
   build:
     deps: [docker, java]
     desc: Clean up volume directory and build container image.
     preconditions:
-      - docker-compose -v
+      - docker compose -v
     cmds:
-      - docker-compose build --progress plain
+      - docker compose build --progress plain
   run:
     deps: [build, datadir]
     desc: Run docker container
@@ -89,7 +89,7 @@ tasks:
       - docker ps | grep 1password
       - test -d ./data/
     cmds:
-      - docker-compose up
+      - docker compose up
   rund:
     deps: [build, datadir]
     desc: Run docker container and detach
@@ -99,6 +99,6 @@ tasks:
       - docker ps | grep 1password
       - test -d ./data/
     cmds:
-      - docker-compose up -d
+      - docker compose up -d
   connect:
     cmd: ./connect_to_app.sh {{.DOCKER_APP}}
