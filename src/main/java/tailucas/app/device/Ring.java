@@ -278,6 +278,15 @@ public class Ring implements Generic {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'triggerGroup'");
     }
+    @Override
+    public boolean isInput() {
+        return true;
+    }
+
+    @Override
+    public boolean isOutput() {
+        return false;
+    }
     public String getAcStatus() {
         return acStatus;
     }

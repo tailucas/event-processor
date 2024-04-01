@@ -19,6 +19,10 @@ public interface Generic {
     public String getGroupName();
     @JsonProperty("location")
     public String getLocation();
+    @JsonProperty("is_input")
+    public boolean isInput();
+    @JsonProperty("is_output")
+    public boolean isOutput();
     @JsonIgnore
     public Config getConfig();
     @JsonIgnore

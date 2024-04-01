@@ -412,11 +412,15 @@ class DeviceInfo(BaseModel):
     device_type: str | None = None
     group_name: str | None = None
     location: str | None = None
+    is_input: bool
+    is_output: bool
 
 
 @api_app.post("/api/device_info")
 async def api_device_info(device_info: DeviceInfo):
-    log.info(f'Device post {device_info.model_dump_json}')
+    log.info(f'Device post {device_info.model_dump_json()}')
+    with exception_handler(connect_url=URL_WORKER_APP, and_raise=False, shutdown_on_error=True) as zmq_socket:
+        zmq_socket.send_pyobj({'API': device_info.model_dump()})
     return device_info
 
 
@@ -950,16 +954,13 @@ class EventProcessor(MQConnection):
             if io not in device_info:
                 continue
             for device in device_info[io]:
-                try:
-                    devices_updated += self._update_device(
-                        input_outputs=input_outputs,
-                        device_origin=device_origin,
-                        origin_devices=origin_devices,
-                        event_origin=event_origin,
-                        device=device
-                    )
-                except RuntimeError:
-                    log.exception('Bad device @ {}.'.format(device_origin))
+                devices_updated += self._update_device(
+                    input_outputs=input_outputs,
+                    device_origin=device_origin,
+                    origin_devices=origin_devices,
+                    event_origin=event_origin,
+                    device=device
+                )
         return devices_updated
 
     def _update_device(self, input_outputs, device_origin, origin_devices, event_origin, device):
@@ -967,7 +968,8 @@ class EventProcessor(MQConnection):
         try:
             device_key = device['device_key']
         except KeyError:
-            raise RuntimeError("No device key in {}".format(device))
+            log.error(f'No device key in {device}')
+            return 0
         # set the device label if that hasn't already been done
         if 'device_label' not in device:
             device['device_label'] = device_key
@@ -980,10 +982,7 @@ class EventProcessor(MQConnection):
         if device_key not in device_origin:
             device_origin[device_key] = event_origin
         elif device_origin[device_key] != event_origin:
-            raise RuntimeError("Device with key '{}' is already present at '{}' "
-                               "but is also present at '{}' and is ignored.".format(device_key,
-                                                                                    device_origin[device_key],
-                                                                                    event_origin))
+            log.warn(f'{device_key} already known from {device_origin[device_key]} but also sent by {event_origin}.')
         if device_key not in input_outputs:
             input_outputs[device_key] = device
             return 1
@@ -1090,6 +1089,14 @@ class EventProcessor(MQConnection):
                                 log.warning(log_msg)
                             else:
                                 log.debug(log_msg)
+                        if 'API' == event_origin:
+                            log.info(f'Updating device info {self.inputs=}, {self._input_origin=}, {self._inputs_by_origin=}, {device_name=}, {event_data=}')
+                            self._update_device(
+                                input_outputs=self.inputs,
+                                device_origin=self._input_origin,
+                                origin_devices=self._inputs_by_origin,
+                                event_origin=device_name,
+                                device=event_data)
                         if 'register_mqtt_origin' == event_origin:
                             # connect to event origins
                             for mqtt_topic, device_id in list(event_data.items()):
@@ -1561,7 +1568,8 @@ class TBot(AppThread, Closable):
                     # rebuild the message for SMS
                     notification_message = TBot.build_message(timestamp=timestamp, event_data=event, build_sms=True)
                     if 'device_params' not in event['trigger_output']:
-                        raise RuntimeError('Cannot send SMS because no parameters are configured.')
+                        log.error('Cannot send SMS because no parameters are configured.')
+                        return
                     recipients = event['trigger_output']['device_params'].strip().split(',')
                     for recipient in recipients:
                         name_number = recipient.split(';')

@@ -16,6 +16,10 @@ public class Meter extends Device {
     @JsonProperty("register_reading")
     protected Integer registerReading;
     @Override
+    public String getDeviceType() {
+        return Type.METER.name().toLowerCase();
+    }
+    @Override
     public boolean mustTriggerOutput(Config deviceConfig) {
         return true;
     }

@@ -13,7 +13,9 @@ public class Device implements Generic {
     public enum Type {
         BASE,
         CAMERA,
+        CONTACT,
         METER,
+        MOTION,
         SENSOR
     }
 
@@ -133,6 +135,14 @@ public class Device implements Generic {
             default -> null;
         };
         return device;
+    }
+    @Override
+    public boolean isInput() {
+        return true;
+    }
+    @Override
+    public boolean isOutput() {
+        return false;
     }
     @Override
     public String toString() {

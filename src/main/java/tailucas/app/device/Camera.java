@@ -13,12 +13,20 @@ public class Camera extends Device {
         this.timestamp = device.timestamp;
     }
     @Override
+    public String getDeviceType() {
+        return Type.CAMERA.name().toLowerCase();
+    }
+    @Override
     public boolean mustTriggerOutput(Config deviceConfig) {
         return true;
     }
     @Override
     public Type getType() {
         return Type.CAMERA;
+    }
+    @Override
+    public boolean isOutput() {
+        return true;
     }
     @Override
     public String toString() {

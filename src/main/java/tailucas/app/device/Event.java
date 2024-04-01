@@ -26,11 +26,6 @@ import tailucas.app.provider.DeviceConfig;
 
 public class Event implements Runnable {
 
-    public enum DeviceType {
-        SENSOR,
-        METER
-    }
-
     private static Logger log = null;
     protected static Pattern namePattern;
     protected static BasicProperties rabbitMqProperties;
@@ -195,7 +190,7 @@ public class Event implements Runnable {
                     }));
                 }
             }
-        } catch (IllegalStateException | UnsupportedOperationException e) {
+        } catch (IllegalStateException | UnsupportedOperationException | IOException e) {
             // logged only with message
             log.warn("{}: {}", source, e.getMessage());
         } catch (Throwable e) {
