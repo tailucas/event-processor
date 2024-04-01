@@ -25,11 +25,12 @@ simplejson = "^3.19.2"
 flask = "^3.0.2"
 flask-compress = "^1.14"
 flask-sqlalchemy = "^3.0.3"
-sqlalchemy = "^2.0.27"
+sqlalchemy = {extras = ["asyncio"], version = "^2.0.29"}
 fastapi = "^0.110.0"
 uvicorn = "^0.24.0.post1"
 tailucas-pylib = "^0.2.4"
 python-telegram-bot = "20.2"
+aiosqlite = "^0.20.0"
 
 
 [build-system]

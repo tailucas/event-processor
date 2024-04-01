@@ -30,7 +30,6 @@ from sentry_sdk import capture_exception, last_event_id
 from sentry_sdk.integrations.flask import FlaskIntegration
 from sentry_sdk.integrations.logging import ignore_logger
 from simplejson.scanner import JSONDecodeError
-from sqlalchemy import or_, UniqueConstraint
 from telegram import ForceReply, Update
 from telegram.ext import Application as TelegramApp, \
     Updater as TelegramUpdater, \
@@ -42,7 +41,7 @@ from telegram.error import TelegramError, NetworkError, RetryAfter, TimedOut
 from threading import Thread
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, status, HTTPException
+from fastapi import FastAPI, Depends, status, HTTPException
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.wsgi import WSGIMiddleware
 
@@ -115,12 +114,34 @@ ignore_logger('telegram.ext.Updater')
 ignore_logger('telegram.ext._updater')
 ignore_logger('asyncio')
 
+db_tablespace = app_config.get('sqlite', 'tablespace_path')
+
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine, AsyncSession
+from sqlalchemy.orm import declarative_base, sessionmaker, Session
+
+dburl: str = f'sqlite+aiosqlite:///{db_tablespace}'
+engine: AsyncEngine = create_async_engine(dburl)
+async_session: AsyncSession = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+Base = declarative_base()
+
+
+async def get_db():
+    async with async_session() as session:
+        yield session
+
+
+from sqlalchemy import Column, Integer, String, JSON, DateTime, Boolean
+
+from sqlalchemy import update, ForeignKey, UniqueConstraint, Result, delete
+from sqlalchemy.future import select
+from sqlalchemy.orm import relationship, Mapped, Query
+from sqlalchemy import or_
+
 user_tz = timezone(app_config.get('app', 'user_tz'))
 flask_app = Flask(APP_NAME)
-db_tablespace = app_config.get('sqlite', 'tablespace_path')
 flask_app.config["SQLALCHEMY_DATABASE_URI"] = f'sqlite:///{db_tablespace}'
 flask_app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-db = SQLAlchemy(app=flask_app)
+db = SQLAlchemy(app=flask_app, model_class=Base)
 # set up flask application
 flask_app.logger.removeHandler(default_handler)
 flask_app.logger.addHandler(log_handler)
@@ -170,24 +191,24 @@ class EventLog(db.Model):
         self.timestamp = timestamp
 
 
-class InputConfig(db.Model):
+class InputConfig(Base):
     __tablename__ = 'input_config'
-    id = db.Column(db.Integer, primary_key = True, autoincrement=True)
-    device_key = db.Column(db.String(50), unique=True, index=True, nullable=False)
-    device_type = db.Column(db.String(100), nullable=False)
-    device_label = db.Column(db.String(100))
-    customized = db.Column(db.Boolean)
-    activation_interval = db.Column(db.Integer)
-    auto_schedule = db.Column(db.Boolean)
-    auto_schedule_enable = db.Column(db.String(5))
-    auto_schedule_disable = db.Column(db.String(5))
-    device_enabled = db.Column(db.Boolean)
-    multi_trigger = db.Column(db.Boolean)
-    group_name = db.Column(db.String(100), index=True)
-    info_notify = db.Column(db.Boolean)
-    links_il = db.relationship('InputLink', backref='input_config', cascade='all, delete-orphan', lazy='dynamic')
-    links_ol = db.relationship('OutputLink', backref='input_config', cascade='all, delete-orphan', lazy='dynamic')
-    links_mc = db.relationship('MeterConfig', backref='input_config', cascade='all, delete-orphan', lazy='dynamic')
+    id = Column(Integer, primary_key = True, autoincrement=True)
+    device_key = Column(String(50), unique=True, index=True, nullable=False)
+    device_type = Column(String(100), nullable=False)
+    device_label = Column(String(100))
+    customized = Column(Boolean)
+    activation_interval = Column(Integer)
+    auto_schedule = Column(Boolean)
+    auto_schedule_enable = Column(String(5))
+    auto_schedule_disable = Column(String(5))
+    device_enabled = Column(Boolean)
+    multi_trigger = Column(Boolean)
+    group_name = Column(String(100), index=True)
+    info_notify = Column(Boolean)
+    links_il = relationship('InputLink', backref='input_config', cascade='all, delete-orphan', lazy='dynamic')
+    links_ol = relationship('OutputLink', backref='input_config', cascade='all, delete-orphan', lazy='dynamic')
+    links_mc = relationship('MeterConfig', backref='input_config', cascade='all, delete-orphan', lazy='dynamic')
 
     def __init__(self, device_key, device_type, device_label, customized, activation_interval, auto_schedule, auto_schedule_enable, auto_schedule_disable, device_enabled, multi_trigger, group_name, info_notify):
         self.device_key = device_key
@@ -417,11 +438,39 @@ class DeviceInfo(BaseModel):
 
 
 @api_app.post("/api/device_info")
-async def api_device_info(device_info: DeviceInfo):
-    log.info(f'Device post {device_info.model_dump_json()}')
+async def api_device_info(di: DeviceInfo):
+    with flask_app.app_context():
+        if di.is_input:
+            ic = InputConfig.query.filter_by(device_key=di.device_key).first()
+            if ic is None:
+                log.info(f'Adding new input configuration for {di.device_key} ({di.device_label})')
+                db.session.add(InputConfig(
+                    device_key=di.device_key,
+                    device_label=di.device_label,
+                    device_type=di.device_type,
+                    group_name=di.group_name,
+                    customized=None,
+                    activation_interval=None,
+                    auto_schedule=None,
+                    auto_schedule_enable=None,
+                    auto_schedule_disable=None,
+                    device_enabled=None,
+                    multi_trigger=None,
+                    info_notify=None))
+                db.session.commit()
+        if di.is_output:
+            oc = OutputConfig.query.filter_by(device_key=di.device_key).first()
+            if oc is None:
+                log.info(f'Adding new output configuration for {di.device_key} ({di.device_label})')
+                db.session.add(OutputConfig(
+                    device_key=di.device_key,
+                    device_label=di.device_label,
+                    device_type=di.device_type,
+                    device_params=None))
+                db.session.commit()
     with exception_handler(connect_url=URL_WORKER_APP, and_raise=False, shutdown_on_error=True) as zmq_socket:
-        zmq_socket.send_pyobj({'API': device_info.model_dump()})
-    return device_info
+        zmq_socket.send_pyobj({'API': di.model_dump()})
+    return di
 
 
 @flask_app.route('/debug-sentry')
@@ -574,6 +623,17 @@ def show_config():
     return render_template('config.html',
                            inputs=inputs,
                            saved_device_id=saved_device_id)
+
+
+@api_app.get("/api/input_configs")
+async def api_input_config(device_key: str, adb: AsyncSession = Depends(get_db)):
+    log.info(f'Async get input config for {device_key}')
+    result = await adb.execute(select(InputConfig).where(InputConfig.device_key==device_key))
+    config = result.scalars().one_or_none()
+    if config:
+        return config.as_dict()
+    else:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No input configuration found for {device_key}")
 
 
 @api_app.get("/api/input_config")
