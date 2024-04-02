@@ -205,13 +205,14 @@ class InputConfig(Base):
     auto_schedule_disable = Column(String(5))
     device_enabled = Column(Boolean)
     multi_trigger = Column(Boolean)
+    trigger_window = Column(Integer)
     group_name = Column(String(100), index=True)
     info_notify = Column(Boolean)
     links_il = relationship('InputLink', backref='input_config', cascade='all, delete-orphan', lazy='dynamic')
     links_ol = relationship('OutputLink', backref='input_config', cascade='all, delete-orphan', lazy='dynamic')
     links_mc = relationship('MeterConfig', backref='input_config', cascade='all, delete-orphan', lazy='dynamic')
 
-    def __init__(self, device_key, device_type, device_label, customized, activation_interval, auto_schedule, auto_schedule_enable, auto_schedule_disable, device_enabled, multi_trigger, group_name, info_notify):
+    def __init__(self, device_key, device_type, device_label, customized, activation_interval, auto_schedule, auto_schedule_enable, auto_schedule_disable, device_enabled, multi_trigger, trigger_window, group_name, info_notify):
         self.device_key = device_key
         self.device_type = device_type
         self.device_label = device_label
@@ -222,6 +223,7 @@ class InputConfig(Base):
         self.auto_schedule_disable = auto_schedule_disable
         self.device_enabled = device_enabled
         self.multi_trigger = multi_trigger
+        self.trigger_window = trigger_window
         self.group_name = group_name
         self.info_notify = info_notify
 
@@ -457,6 +459,7 @@ async def api_device_info(di: DeviceInfo):
                     auto_schedule_disable=None,
                     device_enabled=None,
                     multi_trigger=None,
+                    trigger_window=int(app_config.get('config', 'default_trigger_window')),
                     info_notify=None))
                 db.session.commit()
         if di.is_output:

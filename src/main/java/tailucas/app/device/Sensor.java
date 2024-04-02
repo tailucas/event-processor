@@ -31,6 +31,10 @@ public class Sensor extends Device {
         this.type = device.type;
     }
     @Override
+    public String getDeviceType() {
+        return Type.SENSOR.name().toLowerCase();
+    }
+    @Override
     public String getDeviceKey() {
         return StringUtils.capitalize(String.format("%s %s", inputLocation, inputLabel));
     }

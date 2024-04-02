@@ -23,6 +23,8 @@ public class InputConfig extends Config {
     protected Boolean deviceEnabled;
     @JsonProperty("multi_trigger")
     protected Boolean multiTrigger;
+    @JsonProperty("trigger_window")
+    protected Integer triggerWindow;
     @JsonProperty("group_name")
     protected String groupName;
     @JsonProperty("info_notify")
@@ -60,6 +62,9 @@ public class InputConfig extends Config {
     public Boolean getMultiTrigger() {
         return multiTrigger;
     }
+    public Integer getTriggerWindow() {
+        return triggerWindow;
+    }
     public String getGroupName() {
         return groupName;
     }
@@ -68,10 +73,10 @@ public class InputConfig extends Config {
     }
     @Override
     public String toString() {
-        return "InputConfig [device_key=" + deviceKey + ", device_type=" + deviceType + ", device_label=" + deviceLabel
-                + ", customized=" + customized + ", activation_interval=" + activationInterval + ", auto_schedule="
-                + autoSchedule + ", auto_schedule_enable=" + autoScheduleEnable + ", auto_schedule_disable="
-                + autoScheduleDisable + ", device_enabled=" + deviceEnabled + ", multi_trigger=" + multiTrigger
-                + ", group_name=" + groupName + ", info_notify=" + infoNotify + "]";
+        return "InputConfig [deviceKey=" + deviceKey + ", deviceType=" + deviceType + ", deviceLabel=" + deviceLabel
+                + ", customized=" + customized + ", activationInterval=" + activationInterval + ", autoSchedule="
+                + autoSchedule + ", autoScheduleEnable=" + autoScheduleEnable + ", autoScheduleDisable="
+                + autoScheduleDisable + ", deviceEnabled=" + deviceEnabled + ", multiTrigger=" + multiTrigger
+                + ", triggerWindow=" + triggerWindow + ", groupName=" + groupName + ", infoNotify=" + infoNotify + "]";
     }
 }

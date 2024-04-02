@@ -117,6 +117,8 @@ public class Device implements Generic {
     }
     @JsonIgnore
     public boolean mustTriggerOutput(InputConfig deviceConfig) {
+
+        // TODO: add generic logic
         throw new UnsupportedOperationException("Missing override on 'mustTriggerOutput' for type "+type);
     }
     @Override
