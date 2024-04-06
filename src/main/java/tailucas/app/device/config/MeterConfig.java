@@ -4,9 +4,6 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class MeterConfig extends Config {
-    @JsonIgnore
-    @JsonProperty("input_device_id")
-    protected String inputDeviceId;
     @JsonProperty("meter_value")
     protected Integer meterValue;
     @JsonProperty("register_value")
@@ -71,4 +68,7 @@ public class MeterConfig extends Config {
                 + ", meter_reading_unit_factor=" + meterReadingUnitFactor + ", meter_reading_unit_precision="
                 + meterReadingUnitPrecision + "]";
     }
+    @JsonIgnore
+    @JsonProperty
+    private String input_device_id;
 }

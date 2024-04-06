@@ -42,14 +42,20 @@ public class InputConfig extends Config {
     public String getDeviceLabel() {
         return deviceLabel;
     }
-    public Boolean getCustomized() {
-        return customized;
+    public boolean isCustomized() {
+        if (customized == null) {
+            return false;
+        }
+        return customized.booleanValue();
     }
     public Integer getActivationInterval() {
         return activationInterval;
     }
-    public Boolean getAutoSchedule() {
-        return autoSchedule;
+    public boolean isAutoSchedule() {
+        if (autoSchedule == null) {
+            return false;
+        }
+        return autoSchedule.booleanValue();
     }
     public String getAutoScheduleEnable() {
         return autoScheduleEnable;
@@ -57,11 +63,17 @@ public class InputConfig extends Config {
     public String getAutoScheduleDisable() {
         return autoScheduleDisable;
     }
-    public Boolean isDeviceEnabled() {
-        return deviceEnabled;
+    public boolean isDeviceEnabled() {
+        if (deviceEnabled == null) {
+            return false;
+        }
+        return deviceEnabled.booleanValue();
     }
-    public Boolean getMultiTrigger() {
-        return multiTrigger;
+    public boolean isMultiTrigger() {
+        if (multiTrigger == null) {
+            return false;
+        }
+        return multiTrigger.booleanValue();
     }
     public Integer getTriggerWindow() {
         return triggerWindow;
@@ -69,8 +81,11 @@ public class InputConfig extends Config {
     public String getGroupName() {
         return groupName;
     }
-    public Boolean getInfoNotify() {
-        return infoNotify;
+    public boolean isInfoNotify() {
+        if (infoNotify == null) {
+            return false;
+        }
+        return infoNotify.booleanValue();
     }
     @Override
     public String toString() {

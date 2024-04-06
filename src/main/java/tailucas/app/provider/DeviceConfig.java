@@ -192,6 +192,7 @@ public class DeviceConfig {
             configs = mapper.readValue(responseBody, getCollectionType(api));
         }
         if (configs != null) {
+            log.info("Updating configuration cache for {}.", cacheKey);
             configCache.put(cacheKey, Pair.of(now, configs));
         }
         return configs;
