@@ -108,6 +108,8 @@ public class Event implements Runnable {
                 if (!device.mustTriggerOutput(deviceConfig)) {
                     log.debug("{} does not trigger any outputs based on current configuration or state.", deviceDescription);
                     return;
+                } else {
+                    TriggerHistory.getInstance().triggered(deviceKey);
                 }
                 log.info("{} will trigger outputs because {}", deviceDescription, device.getTriggerStateDescription());
                 log.debug("{} getting outputs", deviceDescription);

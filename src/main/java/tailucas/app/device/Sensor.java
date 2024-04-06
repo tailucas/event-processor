@@ -40,7 +40,10 @@ public class Sensor extends Device {
     }
     @Override
     public boolean mustTriggerOutput(InputConfig deviceConfig) {
-        return deviceConfig.isDeviceEnabled() && isActive();
+        if (!super.mustTriggerOutput(deviceConfig)) {
+            return false;
+        }
+        return isActive();
     }
     @Override
     public String toString() {

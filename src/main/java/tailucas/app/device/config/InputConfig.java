@@ -23,6 +23,7 @@ public class InputConfig extends Config {
     protected Boolean deviceEnabled;
     @JsonProperty("multi_trigger")
     protected Boolean multiTrigger;
+    // bad name, should be called trigger rate
     @JsonProperty("trigger_window")
     protected Integer triggerWindow;
     @JsonProperty("group_name")

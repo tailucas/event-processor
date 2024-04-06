@@ -25,7 +25,7 @@ public class Meter extends Device {
     }
     @Override
     public boolean mustTriggerOutput(InputConfig deviceConfig) {
-        if (!deviceConfig.isDeviceEnabled()) {
+        if (!super.mustTriggerOutput(deviceConfig)) {
             return false;
         }
         MeterConfig meterConfig = null;
