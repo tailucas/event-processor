@@ -138,7 +138,14 @@ public class DeviceConfig {
     }
 
     public void invalidateConfiguration(String deviceKey) {
-        configCache.remove(deviceKey);
+        final List<String> keysToRemove = new ArrayList<>();
+        configCache.keySet().forEach(k -> {
+            if (k.startsWith(deviceKey)) {
+                keysToRemove.add(k);
+            }
+        });
+        keysToRemove.forEach(k -> configCache.remove(k));
+        log.info("Removed keys from config cache: {}", keysToRemove);
     }
 
     protected List<Config> fetchDeviceConfiguration(ConfigType api, String deviceKey) throws IOException, InterruptedException {
