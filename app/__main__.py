@@ -230,6 +230,11 @@ class InputConfig(Base):
     def as_dict(self):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
+    def __str__(self):
+        if self.device_label:
+            return self.device_label
+        return self.device_key
+
 class MeterConfig(Base):
     __tablename__ = 'meter_config'
     id = Column(Integer, primary_key = True, autoincrement=True)
@@ -278,6 +283,11 @@ class OutputConfig(Base):
 
     def as_dict(self):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
+    def __str__(self):
+        if self.device_label:
+            return self.device_label
+        return self.device_key
 
 
 class InputLink(Base):
@@ -626,7 +636,7 @@ def show_config():
         db.session.commit()
         # open IPC
         with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, and_raise=False) as zmq_socket:
-            zmq_socket.send_pyobj((input.device_key, input.auto_schedule, input.auto_schedule_enable, input.auto_schedule_disable))
+            zmq_socket.send_pyobj((input.device_key, str(input), input.auto_schedule, input.auto_schedule_enable, input.auto_schedule_disable))
     inputs = InputConfig.query.order_by(InputConfig.device_key).all()
     return render_template('config.html',
                            inputs=inputs,
@@ -1086,6 +1096,7 @@ class EventProcessor(MQConnection):
                 if input_config.auto_schedule:
                     zmq_socket.send_pyobj((
                         input_config.device_key,
+                        str(input_config),
                         input_config.auto_schedule,
                         input_config.auto_schedule_enable,
                         input_config.auto_schedule_disable))
@@ -1180,8 +1191,9 @@ class EventProcessor(MQConnection):
                             continue
                         if 'auto-scheduler' == event_origin:
                             device_key = event_data['device_key']
+                            device_label = event_data['device_label']
                             device_enable = event_data['device_state']
-                            log.info(f'Updating device {device_key}; enable: {device_enable}')
+                            log.info(f'Updating device {device_label}; enable: {device_enable}')
                             input_config = InputConfig.query.filter_by(device_key=device_key).first()
                             input_config.device_enabled = device_enable
                             db.session.add(input_config)
@@ -1264,10 +1276,10 @@ class EventProcessor(MQConnection):
                                                 with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, and_raise=False) as zmq_socket:
                                                     if input_enable:
                                                         # restore auto-schedule actions
-                                                        zmq_socket.send_pyobj((ic.device_key, ic.auto_schedule, ic.auto_schedule_enable, ic.auto_schedule_disable))
+                                                        zmq_socket.send_pyobj((ic.device_key, str(ic), ic.auto_schedule, ic.auto_schedule_enable, ic.auto_schedule_disable))
                                                     else:
                                                         # disable runtime auto-scheduling actions
-                                                        zmq_socket.send_pyobj((ic.device_key, None, None, None))
+                                                        zmq_socket.send_pyobj((ic.device_key, str(ic), None, None, None))
                                     if len(inputs_updated) > 0:
                                         db.session.commit()
                                         for device_key in inputs_updated:
@@ -1902,16 +1914,17 @@ class AutoScheduler(AppThread, Closable):
         AppThread.__init__(self, name=self.__class__.__name__)
         Closable.__init__(self, connect_url=URL_WORKER_APP, socket_type=zmq.PUSH)
 
-    def update_device(self, device_key, device_state):
-        log.info('Updating {} to enabled={}'.format(device_key, device_state))
+    def update_device(self, device_key, device_label, device_state):
+        log.info('Updating {} to enabled={}'.format(device_key, device_label, device_state))
         self.socket.send_pyobj({
             'auto-scheduler': {
                 'device_key': device_key,
+                'device_label': device_label,
                 'device_state': device_state
             }})
 
-    def _schedule(self, device_key, schedule_time, device_state):
-        schedule.every().day.at(schedule_time).do(self.update_device, device_key=device_key, device_state=device_state).tag(device_key)
+    def _schedule(self, device_key, device_label, schedule_time, device_state):
+        schedule.every().day.at(schedule_time).do(self.update_device, device_key=device_key, device_label=device_label, device_state=device_state).tag(device_key)
 
     # noinspection PyBroadException
     def run(self):
@@ -1924,7 +1937,7 @@ class AutoScheduler(AppThread, Closable):
                 # look for device updates
                 device_key = None
                 try:
-                    device_key, auto_schedule, auto_schedule_enable, auto_schedule_disable = zmq_socket.recv_pyobj(flags=zmq.NOBLOCK)
+                    device_key, device_label, auto_schedule, auto_schedule_enable, auto_schedule_disable = zmq_socket.recv_pyobj(flags=zmq.NOBLOCK)
                     next_message = True
                 except ZMQError:
                     # ignore, no data
@@ -1933,21 +1946,23 @@ class AutoScheduler(AppThread, Closable):
                     # clear any previous schedule
                     schedule.clear(device_key)
                     if auto_schedule:
-                        log.info(f'Setting auto-schedule for {device_key} to disable at {auto_schedule_disable} and enable at {auto_schedule_enable}...')
+                        log.info(f'Setting auto-schedule for {device_label} to disable at {auto_schedule_disable} and enable at {auto_schedule_enable}...')
                         try:
                             # install a new scedule
                             self._schedule(
                                 device_key=device_key,
+                                device_label=device_label,
                                 schedule_time=auto_schedule_disable,
                                 device_state=False)
                             self._schedule(
                                 device_key=device_key,
+                                device_label=device_label,
                                 schedule_time=auto_schedule_enable,
                                 device_state=True)
                         except ScheduleValueError:
                             log.exception(f'Unable to schedule.')
                     else:
-                        log.warning(f'Disabled auto-schedule for {device_key}.')
+                        log.warning(f'Disabled auto-schedule for {device_label}.')
                 # don't spin
                 if not next_message:
                     threads.interruptable_sleep.wait(10)
