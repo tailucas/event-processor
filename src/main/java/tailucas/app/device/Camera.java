@@ -19,7 +19,7 @@ public class Camera extends Device {
     }
     @Override
     public boolean mustTriggerOutput(InputConfig deviceConfig) {
-        if (!super.mustTriggerOutput(deviceConfig)) {
+        if (!deviceConfig.isDeviceEnabled()) {
             return false;
         }
         // any image data is relevant
