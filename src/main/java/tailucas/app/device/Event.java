@@ -118,7 +118,7 @@ public class Event implements Runnable {
                 // rate limit 1 - trigger rate latch
                 final Long secondsSinceLastTrigger = triggerLatchHistory.secondsSinceLastTriggered(deviceKey);
                 if (secondsSinceLastTrigger != null) {
-                    log.info("{} was last triggered {}s ago.", deviceDescription, secondsSinceLastTrigger.toString());
+                    log.debug("{} was last triggered {}s ago.", deviceDescription, secondsSinceLastTrigger.toString());
                     final Integer triggerLatchDuration = deviceConfig.getTriggerLatchDuration();
                     if (triggerLatchDuration != null) {
                         if (triggerLatchHistory.triggeredWithin(deviceKey, triggerLatchDuration.intValue())) {

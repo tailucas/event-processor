@@ -56,13 +56,13 @@ public class TriggerHistory {
             throw new RuntimeException(String.format("Invalid inputs for times %s and seconds %s."));
         }
         if (!triggerHistory.containsKey(deviceKey)) {
-            log.info("{} has no trigger history.", deviceKey);
+            log.debug("{} has no trigger history.", deviceKey);
             return false;
         }
         var history = triggerHistory.get(deviceKey);
         final int historyLenth = history.size();
         if (historyLenth < times) {
-            log.info("{} has triggered {} times, fewer than {}.", deviceKey, historyLenth, times);
+            log.debug("{} has triggered {} times, fewer than {}.", deviceKey, historyLenth, times);
             return false;
         }
         var moment = history.get(history.size()-times);
