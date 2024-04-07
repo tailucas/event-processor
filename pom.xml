@@ -27,6 +27,7 @@
     <!-- runtime dependencies -->
     <apache-commons.version>[3.14.0,)</apache-commons.version>
     <ini4j.version>[0.5.4,)</ini4j.version>
+    <pagerduty.version>3.0.0</pagerduty.version>
     <sentry.version>[7.1.0,)</sentry.version>
     <rabbitmq.version>[5.20.0,)</rabbitmq.version>
     <paho.version>[1.2.5,)</paho.version>
@@ -92,6 +93,12 @@
       <groupId>org.ini4j</groupId>
       <artifactId>ini4j</artifactId>
       <version>${ini4j.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>com.github.dikhan</groupId>
+      <artifactId>pagerduty-client</artifactId>
+      <version>${pagerduty.version}</version>
     </dependency>
 
     <dependency>

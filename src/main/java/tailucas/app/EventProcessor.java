@@ -6,6 +6,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
+import java.time.OffsetDateTime;
 import java.util.Arrays;
 import java.util.Locale;
 import java.util.Map;
@@ -20,6 +21,11 @@ import org.slf4j.LoggerFactory;
 
 import org.zeromq.ZMQ;
 
+import com.github.dikhan.pagerduty.client.events.PagerDutyEventsClient;
+import com.github.dikhan.pagerduty.client.events.domain.Payload;
+import com.github.dikhan.pagerduty.client.events.domain.Severity;
+import com.github.dikhan.pagerduty.client.events.domain.TriggerIncident;
+import com.github.dikhan.pagerduty.client.events.exceptions.NotifyEventException;
 import com.rabbitmq.client.BuiltinExchangeType;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
@@ -331,5 +337,23 @@ public class EventProcessor
         }
         transaction.setMeasurement("hello", 12);
         transaction.finish();
+
+        PagerDutyEventsClient pagerDuty = PagerDutyEventsClient.create();
+        Payload payload = Payload.Builder.newBuilder()
+            .setSummary("Event Processor startup")
+            .setSource("testing host")
+            .setSeverity(Severity.INFO)
+            .setTimestamp(OffsetDateTime.now())
+            .build();
+        final String pagerDutyRoutingKey = creds.getField("PagerDuty", "routing_key", "event-processor");
+        TriggerIncident incident = TriggerIncident.TriggerIncidentBuilder
+                .newBuilder(pagerDutyRoutingKey, payload)
+                .setDedupKey(EventProcessor.class.getName())
+                .build();
+        try {
+            pagerDuty.trigger(incident);
+        } catch (NotifyEventException e) {
+            log.error("Cannot trigger PagerDuty alert.", e);
+        }
     }
 }
