@@ -145,7 +145,7 @@ public class DeviceConfig {
             }
         });
         keysToRemove.forEach(k -> configCache.remove(k));
-        log.info("Removed keys from config cache: {}", keysToRemove);
+        log.debug("Removed keys from config cache: {}", keysToRemove);
     }
 
     protected List<Config> fetchDeviceConfiguration(ConfigType api, String deviceKey) throws IOException, InterruptedException {
@@ -171,7 +171,7 @@ public class DeviceConfig {
                 configCache.remove(cacheKey);
             }
         }
-        log.debug("{} needs {} from {}...", deviceKey, apiName, hostName);
+        log.info("{} needs {} from {}...", deviceKey, apiName, hostName);
         UriComponents uriComponents = UriComponentsBuilder.newInstance()
             .scheme("http")
             .host(hostName)
@@ -199,7 +199,7 @@ public class DeviceConfig {
             configs = mapper.readValue(responseBody, getCollectionType(api));
         }
         if (configs != null) {
-            log.info("Updating configuration cache for {}.", cacheKey);
+            log.debug("Updating configuration cache for {}.", cacheKey);
             configCache.put(cacheKey, Pair.of(now, configs));
         }
         return configs;

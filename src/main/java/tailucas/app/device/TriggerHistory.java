@@ -12,21 +12,15 @@ import org.slf4j.LoggerFactory;
 public class TriggerHistory {
 
     private static Logger log = null;
-    private static TriggerHistory singleton = null;
 
     private Map<String, Stack<Instant>> triggerHistory;
     private static final int maxTriggerHistory = 100;
 
-    private TriggerHistory() {
-        log = LoggerFactory.getLogger(TriggerHistory.class);
-        triggerHistory = new ConcurrentHashMap<>(100);
-    }
-
-    public static synchronized TriggerHistory getInstance() {
-        if (singleton == null) {
-            singleton = new TriggerHistory();
+    public TriggerHistory() {
+        if (log == null) {
+            log = LoggerFactory.getLogger(TriggerHistory.class);
         }
-        return singleton;
+        triggerHistory = new ConcurrentHashMap<>(100);
     }
 
     public Instant lastTriggered(String deviceKey) {
@@ -35,6 +29,14 @@ public class TriggerHistory {
             return null;
         }
         return history.peek();
+    }
+
+    public Long secondsSinceLastTriggered(String deviceKey) {
+        var lastTriggered = lastTriggered(deviceKey);
+        if (lastTriggered == null) {
+            return null;
+        }
+        return Long.valueOf(Duration.between(lastTriggered, Instant.now()).toSeconds());
     }
 
     public synchronized void triggered(String deviceKey) {
@@ -60,14 +62,16 @@ public class TriggerHistory {
         var history = triggerHistory.get(deviceKey);
         final int historyLenth = history.size();
         if (historyLenth < times) {
-            log.info("{} has triggered less than {} times.", deviceKey, historyLenth);
+            log.info("{} has triggered {} times, fewer than {}.", deviceKey, historyLenth, times);
             return false;
         }
-        var moment = history.get(times-1);
-        final long interval = Duration.between(Instant.now(), moment).toSeconds();
+        var moment = history.get(history.size()-times);
+        final long interval = Duration.between(moment, Instant.now()).toSeconds();
         if (interval > seconds) {
-            log.info("{} has triggered {} times across an interval ({}s) greater than {}s.", deviceKey, historyLenth, interval, seconds);
+            log.info("{} has triggered {} times across {}s interval beyond {}s.", deviceKey, times, interval, seconds);
             return false;
+        } else {
+            log.info("{} has triggered {} times across {}s interval within {}s.", deviceKey, times, interval, seconds);
         }
         return true;
     }

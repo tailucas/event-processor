@@ -117,23 +117,8 @@ public class Device implements Generic {
     }
     @JsonIgnore
     public boolean mustTriggerOutput(InputConfig deviceConfig) {
-        log.info("Evaluating trigger decision for {} based {}.", deviceKey, deviceConfig);
         if (!deviceConfig.isDeviceEnabled()) {
             return false;
-        }
-        final TriggerHistory triggerHistory = TriggerHistory.getInstance();
-        final Integer triggerInterval = deviceConfig.getActivationInterval();
-        if (triggerInterval != null) {
-            if (deviceConfig.isMultiTrigger()) {
-                final Integer triggerRate = deviceConfig.getTriggerWindow();
-                if (triggerRate == null) {
-                    log.warn("Multi-trigger set for {} but no trigger rate set.", deviceKey);
-                } else if (triggerHistory.isMultiTriggered(deviceKey, triggerRate, triggerInterval)) {
-                    return false;
-                }
-            } else if (triggerHistory.triggeredWithin(deviceKey, triggerInterval.intValue())) {
-                return false;
-            }
         }
         return true;
     }

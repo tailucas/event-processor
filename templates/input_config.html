@@ -25,12 +25,14 @@
                                 </div>
                                 {% endif %}
                                 <div class="form-group">
-                                    <label for="interval"><input type="checkbox" name="multi_trigger" value="{{ input_device.device_key }}"{% if input_device.multi_trigger %} checked{% endif %}>Treated as active only on multiple triggers within this interval:</label>
-                                    <input id="interval" class="form-control" type="text" name="trigger_window" placeholder="{{ default_trigger_window }} seconds" value="{{ input_device.trigger_window if input_device.trigger_window }}">
+                                    <label for="trigger_latch">Latch activation duration to suppress redundant triggers:</label>
+                                    <input id="trigger_latch" class="form-control" type="text" name="trigger_latch_duration" placeholder="seconds" value="{{ input_device.trigger_latch_duration if input_device.trigger_latch_duration }}">
                                 </div>
                                 <div class="form-group">
-                                    <label for="latch">Latched as activated for this duration irrespective of ongoing triggers:</label>
-                                    <input id="latch" class="form-control" type="text" name="activation_interval" placeholder="{{ default_activation_interval }} seconds" value="{{ input_device.activation_interval if input_device.activation_interval }}">
+                                    <label for="multi_trigger_rate">Activate only after consecutive triggers:</label>
+                                    <input id="multi_trigger_rate" class="form-control" type="text" name="multi_trigger_rate" placeholder="number of triggers" value="{{ input_device.multi_trigger_rate if input_device.multi_trigger_rate }}">
+                                    <label for="multi_trigger_interval">Within interval:</label>
+                                    <input id="multi_trigger_interval" class="form-control" type="text" name="multi_trigger_interval" placeholder="seconds" value="{{ input_device.multi_trigger_interval if input_device.multi_trigger_interval }}">
                                 </div>
                                 {% if input_device.device_type == 'meter' %}
                                 {% if input_device.id in meters.keys() %}
@@ -41,7 +43,7 @@
                                 </div>
                                 <div class="form-group">
                                     <label for="meter_reading_unit">Display name for the units of the reading:</label>
-                                    <input id="meter_reading_unit" class="form-control" type="text" name="meter_reading_unit" value="{{ meter.meter_reading_unit }}">
+                                    <input id="meter_reading_unit" class="form-control" type="text" name="meter_reading_unit" value="{{ meter.meter_reading_unit if meter.meter_reading_unit }}">
                                 </div>
                                 <div class="form-group">
                                     <label for="meter_reading_unit_factor">Unit factor in tens (divide by this amount for display):</label>
@@ -60,11 +62,11 @@
                                 </div>
                                 <div class="form-group">
                                     <label for="meter_low">Active if the metered value is below this value:</label>
-                                    <input id="meter_low" class="form-control" type="text" name="meter_low_limit" placeholder="" value="{{ meter.meter_low_limit }}">
+                                    <input id="meter_low" class="form-control" type="text" name="meter_low_limit" placeholder="unlimited" value="{{ meter.meter_low_limit if meter.meter_low_limit }}">
                                 </div>
                                 <div class="form-group">
                                     <label for="meter_high">Active if the metered value is above this value:</label>
-                                    <input id="meter_high" class="form-control" type="text" name="meter_high_limit" placeholder="" value="{{ meter.meter_high_limit }}">
+                                    <input id="meter_high" class="form-control" type="text" name="meter_high_limit" placeholder="unlimited" value="{{ meter.meter_high_limit if meter.meter_high_limit }}">
                                 </div>
                                 {% endwith %}
                                 {% endif %}

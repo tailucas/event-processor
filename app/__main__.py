@@ -199,31 +199,31 @@ class InputConfig(Base):
     device_type = Column(String(100), nullable=False)
     device_label = Column(String(100))
     customized = Column(Boolean)
-    activation_interval = Column(Integer)
     auto_schedule = Column(Boolean)
     auto_schedule_enable = Column(String(5))
     auto_schedule_disable = Column(String(5))
     device_enabled = Column(Boolean)
-    multi_trigger = Column(Boolean)
-    trigger_window = Column(Integer)
+    trigger_latch_duration = Column(Integer)
+    multi_trigger_rate = Column(Integer)
+    multi_trigger_interval = Column(Integer)
     group_name = Column(String(100), index=True)
     info_notify = Column(Boolean)
     links_il = relationship('InputLink', backref='input_config', cascade='all, delete-orphan', lazy='dynamic')
     links_ol = relationship('OutputLink', backref='input_config', cascade='all, delete-orphan', lazy='dynamic')
     links_mc = relationship('MeterConfig', backref='input_config', cascade='all, delete-orphan', lazy='dynamic')
 
-    def __init__(self, device_key, device_type, device_label, customized, activation_interval, auto_schedule, auto_schedule_enable, auto_schedule_disable, device_enabled, multi_trigger, trigger_window, group_name, info_notify):
+    def __init__(self, device_key, device_type, device_label, customized, auto_schedule, auto_schedule_enable, auto_schedule_disable, device_enabled, trigger_latch_duration, multi_trigger_rate, multi_trigger_interval, group_name, info_notify):
         self.device_key = device_key
         self.device_type = device_type
         self.device_label = device_label
         self.customized = customized
-        self.activation_interval = activation_interval
         self.auto_schedule = auto_schedule
         self.auto_schedule_enable = auto_schedule_enable
         self.auto_schedule_disable = auto_schedule_disable
         self.device_enabled = device_enabled
-        self.multi_trigger = multi_trigger
-        self.trigger_window = trigger_window
+        self.trigger_latch_duration = trigger_latch_duration
+        self.multi_trigger_rate = multi_trigger_rate
+        self.multi_trigger_interval = multi_trigger_interval
         self.group_name = group_name
         self.info_notify = info_notify
 
@@ -463,13 +463,13 @@ async def api_device_info(di: DeviceInfo):
                     device_type=di.device_type,
                     group_name=di.group_name,
                     customized=None,
-                    activation_interval=None,
                     auto_schedule=None,
                     auto_schedule_enable=None,
                     auto_schedule_disable=None,
                     device_enabled=None,
-                    multi_trigger=None,
-                    trigger_window=int(app_config.get('config', 'default_trigger_window')),
+                    trigger_latch_duration=None,
+                    multi_trigger_rate=None,
+                    multi_trigger_interval=None,
                     info_notify=None))
                 db.session.commit()
         if di.is_output:
@@ -634,6 +634,8 @@ def show_config():
         input.auto_schedule_disable = request.form['auto_schedule_disable']
         db.session.add(input)
         db.session.commit()
+        # invalidate remote cache
+        invalidate_remote_config(device_key=input.device_key)
         # open IPC
         with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, and_raise=False) as zmq_socket:
             zmq_socket.send_pyobj((input.device_key, str(input), input.auto_schedule, input.auto_schedule_enable, input.auto_schedule_disable))
@@ -707,21 +709,21 @@ def input_config():
             customized = True
         else:
             input_cfg.info_notify = None
-        if request.form.get('multi_trigger'):
-            input_cfg.multi_trigger = True
+        if len(request.form['trigger_latch_duration']) > 0:
+            input_cfg.trigger_latch_duration = int(request.form['trigger_latch_duration'])
             customized = True
         else:
-            input_cfg.multi_trigger = None
-        if len(request.form['activation_interval']) > 0:
-            input_cfg.activation_interval = int(request.form['activation_interval'])
+            input_cfg.trigger_latch_duration = None
+        if len(request.form['multi_trigger_rate']) > 0:
+            input_cfg.multi_trigger_rate = int(request.form['multi_trigger_rate'])
             customized = True
         else:
-            input_cfg.activation_interval = None
-        if len(request.form['trigger_window']) > 0:
-            input_cfg.trigger_window = int(request.form['trigger_window'])
+            input_cfg.multi_trigger_rate = None
+        if len(request.form['multi_trigger_interval']) > 0:
+            input_cfg.multi_trigger_interval = int(request.form['multi_trigger_interval'])
             customized = True
         else:
-            input_cfg.trigger_window = None
+            input_cfg.multi_trigger_interval = None
         if meter_cfg:
             if request.form.get('meter_low_limit', None) and len(request.form['meter_low_limit']) > 0:
                 meter_cfg.meter_low_limit = int(request.form['meter_low_limit'])
@@ -774,6 +776,8 @@ def input_config():
         if meter_cfg:
             db.session.add(meter_cfg)
         db.session.commit()
+        # invalidate remote cache
+        invalidate_remote_config(device_key=input_cfg.device_key)
     inputs = InputConfig.query.order_by(InputConfig.device_key).all()
     meters = dict()
     meter_configs = MeterConfig.query.all()
@@ -782,9 +786,7 @@ def input_config():
     return render_template('input_config.html',
                            inputs=inputs,
                            meters=meters,
-                           saved_device_id=saved_device_id,
-                           default_trigger_window=int(app_config.get('config', 'default_trigger_window')),
-                           default_activation_interval=int(app_config.get('config', 'default_activation_interval')))
+                           saved_device_id=saved_device_id)
 
 
 @flask_app.route('/input_link', methods=['GET', 'POST'])
@@ -802,6 +804,9 @@ def input_link():
             db.session.add(InputLink(input_device_id=saved_device_id, linked_device_id=linked_id))
         # save the changes
         db.session.commit()
+        # invalidate remote cache
+        db_input_config = InputConfig.query.filter_by(id=saved_device_id).first()
+        invalidate_remote_config(device_key=db_input_config.device_key)
     input_links = InputConfig.query.add_entity(InputLink).join(InputLink, InputConfig.id==InputLink.input_device_id, isouter=True).order_by(InputConfig.device_key).all()
     inputs = OrderedDict()
     links = dict()
@@ -848,6 +853,9 @@ def output_link():
             db.session.add(OutputLink(input_device_id=saved_device_id, output_device_id=output_device_id))
         # save the changes
         db.session.commit()
+        # invalidate remote cache
+        db_output_config = OutputConfig.query.filter_by(id=saved_device_id).first()
+        invalidate_remote_config(device_key=db_output_config.device_key)
     output_links = InputConfig.query.add_entity(OutputLink).join(OutputLink, InputConfig.id==OutputLink.input_device_id, isouter=True).order_by(InputConfig.device_key).all()
     inputs = OrderedDict()
     outputs = OutputConfig.query.order_by(OutputConfig.device_key).all()
@@ -896,6 +904,8 @@ def output_config():
             output_config.device_params = None
         db.session.add(output_config)
         db.session.commit()
+        # invalidate remote cache
+        invalidate_remote_config(device_key=output_config.device_key)
     outputs = OutputConfig.query.order_by(OutputConfig.device_key).all()
     return render_template('output_config.html',
                            outputs=outputs,
@@ -1383,9 +1393,7 @@ class EventProcessor(MQConnection):
                                     if not out_of_range:
                                         continue
                                 # multi-trigger
-                                if input_config.multi_trigger:
-                                    # TODO: make configurable
-                                    trigger_window = int(app_config.get('config', 'default_trigger_window'))
+                                if input_config.multi_trigger_interval and input_config.multi_trigger_rate:
                                     # if not in the trigger history, treat as never activated
                                     if active_device_key not in self._input_trigger_history:
                                         self._input_trigger_history[active_device_key] = time.time()
@@ -1393,10 +1401,10 @@ class EventProcessor(MQConnection):
                                     input_last_triggered = self._input_trigger_history[active_device_key]
                                     # the device must have been considered active within the trigger window
                                     last_triggered = time.time() - input_last_triggered
-                                    if last_triggered > trigger_window:
+                                    if last_triggered > input_config.multi_trigger_interval:
                                         # update the history and continue
                                         self._input_trigger_history[active_device_key] = time.time()
-                                        log.debug(f'Not activating {active_device_key} because it was triggered more than {trigger_window} seconds ago. ({last_triggered})')
+                                        log.debug(f'Not activating {active_device_key} because it was triggered more than {input_config.multi_trigger_interval} seconds ago. ({last_triggered})')
                                         continue
                                 # get the event detail for debouncing
                                 event_detail = None
@@ -1405,16 +1413,17 @@ class EventProcessor(MQConnection):
                                 # debounce
                                 if active_device_key in self._input_active_history:
                                     # debounce this input
-                                    if input_config.activation_interval:
-                                        activation_interval = input_config.activation_interval
+                                    if input_config.trigger_latch_duration:
+                                        trigger_latch_duration = input_config.trigger_latch_duration
                                     else:
-                                        activation_interval = int(app_config.get('config', 'default_activation_interval'))
+                                        # FIXME
+                                        trigger_latch_duration = 10
                                     input_last_active, last_event_detail = self._input_active_history[active_device_key]
                                     if last_event_detail == event_detail:
                                         last_activated = time.time() - input_last_active
-                                        if last_activated < activation_interval:
+                                        if last_activated < trigger_latch_duration:
                                             # device is still considered active
-                                            log.debug(f'Not activating {active_device_key} ({last_event_detail}) because it was triggered less than {activation_interval} seconds ago. ({last_activated})')
+                                            log.debug(f'Not activating {active_device_key} ({last_event_detail}) because it was triggered less than {trigger_latch_duration} seconds ago. ({last_activated})')
                                             continue
                                 self._input_active_history[active_device_key] = (time.time(), event_detail)
                                 # active devices are presently assumed to be inputs
@@ -1514,8 +1523,8 @@ class EventProcessor(MQConnection):
                 'input_context': active_device,
                 'trigger_history': activation_history,
             }
-            if input_config.activation_interval:
-                activation_command['trigger_duration'] = input_config.activation_interval
+            if input_config.trigger_latch_duration:
+                activation_command['trigger_duration'] = input_config.trigger_latch_duration
             # get the output type
             output_device_type = output_config.device_type.lower()
             # let the bot know first

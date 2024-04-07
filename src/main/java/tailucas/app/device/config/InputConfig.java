@@ -11,8 +11,6 @@ public class InputConfig extends Config {
     protected String deviceLabel;
     @JsonProperty
     protected Boolean customized;
-    @JsonProperty("activation_interval")
-    protected Integer activationInterval;
     @JsonProperty("auto_schedule")
     protected Boolean autoSchedule;
     @JsonProperty("auto_schedule_enable")
@@ -21,11 +19,12 @@ public class InputConfig extends Config {
     protected String autoScheduleDisable;
     @JsonProperty("device_enabled")
     protected Boolean deviceEnabled;
-    @JsonProperty("multi_trigger")
-    protected Boolean multiTrigger;
-    // bad name, should be called trigger rate
-    @JsonProperty("trigger_window")
-    protected Integer triggerWindow;
+    @JsonProperty("trigger_latch_duration")
+    protected Integer triggerLatchDuration;
+    @JsonProperty("multi_trigger_rate")
+    protected Integer multiTriggerRate;
+    @JsonProperty("multi_trigger_interval")
+    protected Integer multiTriggerInterval;
     @JsonProperty("group_name")
     protected String groupName;
     @JsonProperty("info_notify")
@@ -48,9 +47,6 @@ public class InputConfig extends Config {
         }
         return customized.booleanValue();
     }
-    public Integer getActivationInterval() {
-        return activationInterval;
-    }
     public boolean isAutoSchedule() {
         if (autoSchedule == null) {
             return false;
@@ -69,15 +65,6 @@ public class InputConfig extends Config {
         }
         return deviceEnabled.booleanValue();
     }
-    public boolean isMultiTrigger() {
-        if (multiTrigger == null) {
-            return false;
-        }
-        return multiTrigger.booleanValue();
-    }
-    public Integer getTriggerWindow() {
-        return triggerWindow;
-    }
     public String getGroupName() {
         return groupName;
     }
@@ -87,12 +74,23 @@ public class InputConfig extends Config {
         }
         return infoNotify.booleanValue();
     }
+    public Integer getTriggerLatchDuration() {
+        return triggerLatchDuration;
+    }
+    public Integer getMultiTriggerRate() {
+        return multiTriggerRate;
+    }
+    public Integer getMultiTriggerInterval() {
+        return multiTriggerInterval;
+    }
     @Override
     public String toString() {
         return "InputConfig [deviceKey=" + deviceKey + ", deviceType=" + deviceType + ", deviceLabel=" + deviceLabel
-                + ", customized=" + customized + ", activationInterval=" + activationInterval + ", autoSchedule="
-                + autoSchedule + ", autoScheduleEnable=" + autoScheduleEnable + ", autoScheduleDisable="
-                + autoScheduleDisable + ", deviceEnabled=" + deviceEnabled + ", multiTrigger=" + multiTrigger
-                + ", triggerWindow=" + triggerWindow + ", groupName=" + groupName + ", infoNotify=" + infoNotify + "]";
+                + ", customized=" + customized + ", autoSchedule=" + autoSchedule + ", autoScheduleEnable="
+                + autoScheduleEnable + ", autoScheduleDisable=" + autoScheduleDisable + ", deviceEnabled="
+                + deviceEnabled + ", triggerLatchDuration=" + triggerLatchDuration
+                + ", multiTriggerRate=" + multiTriggerRate
+                + ", multiTriggerInterval=" + multiTriggerInterval + ", groupName=" + groupName + ", infoNotify="
+                + infoNotify + "]";
     }
 }

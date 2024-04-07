@@ -32,6 +32,8 @@ public class Event implements Runnable {
     protected static MessagePackMapper mapper;
     protected static DeviceConfig configProvider;
     protected static String exchangeName;
+    protected static TriggerHistory triggerLatchHistory;
+    protected static TriggerHistory triggerMultiHistory;
 
     protected Connection connection;
     protected String source;
@@ -49,6 +51,8 @@ public class Event implements Runnable {
                 .expiration(AppProperties.getProperty("app.message-control-expiry-ms"))
                 .build();
             exchangeName = AppProperties.getProperty("app.message-control-exchange-name");
+            triggerLatchHistory = new TriggerHistory();
+            triggerMultiHistory = new TriggerHistory();
         }
         this.connection = connection;
         this.source = source;
@@ -108,9 +112,32 @@ public class Event implements Runnable {
                 if (!device.mustTriggerOutput(deviceConfig)) {
                     log.debug("{} does not trigger any outputs based on current configuration or state.", deviceDescription);
                     return;
-                } else {
-                    TriggerHistory.getInstance().triggered(deviceKey);
                 }
+                // record the trigger attempt
+                triggerMultiHistory.triggered(deviceKey);
+                // rate limit 1 - trigger rate latch
+                final Long secondsSinceLastTrigger = triggerLatchHistory.secondsSinceLastTriggered(deviceKey);
+                if (secondsSinceLastTrigger != null) {
+                    log.info("{} was last triggered {}s ago.", deviceDescription, secondsSinceLastTrigger.toString());
+                    final Integer triggerLatchDuration = deviceConfig.getTriggerLatchDuration();
+                    if (triggerLatchDuration != null) {
+                        if (triggerLatchHistory.triggeredWithin(deviceKey, triggerLatchDuration.intValue())) {
+                            log.info("{} has been triggered already in the last {}s.", deviceDescription, triggerLatchDuration);
+                            return;
+                        }
+                    }
+                }
+                // rate limit 2 - trigger filter
+                final Integer multiTriggerRate = deviceConfig.getMultiTriggerRate();
+                final Integer multiTriggerInterval = deviceConfig.getMultiTriggerInterval();
+                if (multiTriggerRate != null && multiTriggerInterval != null) {
+                    if (!triggerMultiHistory.isMultiTriggered(deviceKey, multiTriggerRate, multiTriggerInterval)) {
+                        log.info("{} has not yet been triggered {} times in {}s.", deviceDescription, multiTriggerRate, multiTriggerInterval);
+                        return;
+                    }
+                }
+                // record trigger event
+                triggerLatchHistory.triggered(deviceKey);
                 log.info("{} will trigger outputs because {}", deviceDescription, device.getTriggerStateDescription());
                 log.debug("{} getting outputs", deviceDescription);
                 List<OutputConfig> linkedOutputs = configProvider.getLinkedOutputs(deviceConfig);

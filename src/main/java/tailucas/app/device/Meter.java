@@ -35,6 +35,7 @@ public class Meter extends Device {
             log.error("{} cannot fetch meter configuration.", e);
             return false;
         }
+        log.debug("Evaluating meter configuration {}", meterConfig);
         final Integer meterLowLimit = meterConfig.getMeterLowLimit();
         if (meterLowLimit != null && registerReading < meterLowLimit) {
             triggerStateDescription = String.format("register value %s is below the configured limit of %s.", registerReading, meterLowLimit);
