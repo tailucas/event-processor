@@ -24,10 +24,7 @@ public class Meter extends Device {
         return Type.METER.name().toLowerCase();
     }
     @Override
-    public boolean mustTriggerOutput(InputConfig deviceConfig) {
-        if (!super.mustTriggerOutput(deviceConfig)) {
-            return false;
-        }
+    public boolean wouldTriggerOutput(InputConfig deviceConfig) {
         MeterConfig meterConfig = null;
         try {
             meterConfig = DeviceConfig.getInstance().fetchMeterConfig(deviceKey);

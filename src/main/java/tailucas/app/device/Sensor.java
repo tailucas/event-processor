@@ -39,10 +39,8 @@ public class Sensor extends Device {
         return StringUtils.capitalize(String.format("%s %s", inputLocation, inputLabel));
     }
     @Override
-    public boolean mustTriggerOutput(InputConfig deviceConfig) {
-        if (!super.mustTriggerOutput(deviceConfig)) {
-            return false;
-        }
+    public boolean wouldTriggerOutput(InputConfig deviceConfig) {
+        triggerStateDescription = String.format("%s sample value %s outside normal value %s.", inputLabel, sampleValue, normalValue);
         return isActive();
     }
     @Override

@@ -115,12 +115,9 @@ public class Device implements Generic {
     public boolean isHeartbeat() {
         return false;
     }
-    @JsonIgnore
-    public boolean mustTriggerOutput(InputConfig deviceConfig) {
-        if (!deviceConfig.isDeviceEnabled()) {
-            return false;
-        }
-        return true;
+    @Override
+    public boolean wouldTriggerOutput(InputConfig deviceConfig) {
+        throw new UnsupportedOperationException("Missing override on 'wouldTriggerOutput' for type "+type);
     }
     @Override
     public String getTriggerStateDescription() {

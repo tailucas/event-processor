@@ -251,10 +251,7 @@ public class Ring implements Generic {
     }
     @JsonIgnore
     @Override
-    public boolean mustTriggerOutput(InputConfig config) {
-        if (!config.isDeviceEnabled()) {
-            return false;
-        }
+    public boolean wouldTriggerOutput(InputConfig config) {
         boolean triggerOutput = false;
         log.debug("Evaluating trigger for {} based on configs {} and {}.", toString(), getConfig(), config);
         var ringConfig = (HAConfig) getConfig();

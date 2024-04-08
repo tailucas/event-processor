@@ -31,7 +31,7 @@ public interface Generic {
     @JsonIgnore
     public boolean isHeartbeat();
     @JsonIgnore
-    public boolean mustTriggerOutput(InputConfig config);
+    public boolean wouldTriggerOutput(InputConfig config);
     @JsonIgnore
     public String getTriggerStateDescription();
     @JsonIgnore

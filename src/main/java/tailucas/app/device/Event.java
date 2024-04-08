@@ -109,8 +109,11 @@ public class Event implements Runnable {
                 log.debug("{} fetch configuration with key {}, description: {}", source, deviceKey, deviceDescription);
                 InputConfig deviceConfig = configProvider.fetchInputDeviceConfig(deviceKey);
                 log.debug("{} configuration: {}", deviceDescription, deviceConfig);
-                if (!device.mustTriggerOutput(deviceConfig)) {
+                if (!device.wouldTriggerOutput(deviceConfig)) {
                     log.debug("{} does not trigger any outputs based on current configuration or state.", deviceDescription);
+                    return;
+                } else if (!deviceConfig.isDeviceEnabled()) {
+                    log.warn("{} is disabled but would trigger outputs because {}", deviceDescription, device.getTriggerStateDescription());
                     return;
                 }
                 // record the trigger attempt
@@ -139,7 +142,6 @@ public class Event implements Runnable {
                 // record trigger event
                 triggerLatchHistory.triggered(deviceKey);
                 log.info("{} will trigger outputs because {}", deviceDescription, device.getTriggerStateDescription());
-                log.debug("{} getting outputs", deviceDescription);
                 List<OutputConfig> linkedOutputs = configProvider.getLinkedOutputs(deviceConfig);
                 log.debug("{} outputs {}", deviceDescription, linkedOutputs);
                 if (linkedOutputs == null) {
