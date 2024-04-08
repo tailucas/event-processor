@@ -168,6 +168,33 @@ public class Device implements Generic {
     public boolean isOutput() {
         return false;
     }
+    public static Logger getLog() {
+        return log;
+    }
+    public String getDeviceId() {
+        return deviceId;
+    }
+    public byte[] getImage() {
+        return image;
+    }
+    public String getInputLocation() {
+        return inputLocation;
+    }
+    public String getName() {
+        return name;
+    }
+    public Double getSampleValue() {
+        return sampleValue;
+    }
+    public String getStorageUrl() {
+        return storageUrl;
+    }
+    public String getStoragePath() {
+        return storagePath;
+    }
+    public Double getUptime() {
+        return uptime;
+    }
     @Override
     public String toString() {
         return "Device [device_key=" + deviceKey + ", device_id=" + deviceId + ", device_label=" + deviceLabel
@@ -180,14 +207,14 @@ public class Device implements Generic {
      */
     @JsonIgnore
     @JsonProperty
-    protected Object input_1;
+    private Object input_1;
     @JsonIgnore
     @JsonProperty
-    protected Object input_2;
+    private Object input_2;
     @JsonIgnore
     @JsonProperty
-    protected Object input_3;
+    private Object input_3;
     @JsonIgnore
     @JsonProperty
-    protected Object input_4;
+    private Object input_4;
 }
