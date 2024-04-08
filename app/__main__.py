@@ -1185,21 +1185,21 @@ class EventProcessor(MQConnection):
                                 origin_devices=self._inputs_by_origin,
                                 event_origin=device_name,
                                 device=event_data)
-                        if 'device_info_output' == event_origin:
+                        elif 'device_info_output' == event_origin:
                             self._update_device(
                                 input_outputs=self.outputs,
                                 device_origin=self._output_origin,
                                 origin_devices=self._outputs_by_origin,
                                 event_origin=device_name,
                                 device=event_data)
-                        if 'register_mqtt_origin' == event_origin:
+                        elif 'register_mqtt_origin' == event_origin:
                             # connect to event origins
                             for mqtt_topic, device_id in list(event_data.items()):
                                 subscriber = MqttEventSourceSubscriber(mqtt_topic=mqtt_topic, device_id=device_id)
                                 # keep the heartbeats up to date
                                 self._mqtt_subscriber.add_source_subscriber(topic=mqtt_topic, subscriber=subscriber)
                             continue
-                        if 'auto-scheduler' == event_origin:
+                        elif 'auto-scheduler' == event_origin:
                             device_key = event_data['device_key']
                             device_label = event_data['device_label']
                             device_enable = event_data['device_state']
@@ -1211,7 +1211,7 @@ class EventProcessor(MQConnection):
                             invalidate_remote_config(device_key=device_key)
                             # skip further processing because of enable/disable
                             continue
-                        if 'bot' == event_origin:
+                        elif 'bot' == event_origin:
                             log.debug(f'Got bot command: {event_data!s}')
                             bot_command = event_data['command'].split()
                             bot_command_base = bot_command[0]
