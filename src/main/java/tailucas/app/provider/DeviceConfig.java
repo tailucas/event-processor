@@ -225,7 +225,7 @@ public class DeviceConfig {
         final int responseCode = response.statusCode();
         final String responseBody = response.body();
         if (responseCode % 200 != 0) {
-            log.warn("{} device update response code {}: {}", deviceKey, responseCode, responseBody);
+            log.warn("{} device update response code {}: {} for request payload {}", deviceKey, responseCode, responseBody, deviceJson);
         }
     }
 

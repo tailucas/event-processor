@@ -98,7 +98,7 @@ public class Mqtt implements MqttCallback {
                 JsonNode root = mapper.readTree(payload);
                 final List<Device> inputs = new ArrayList<>();
                 final List<Device> active_devices = new ArrayList<>();
-                final String[] topicParts = topic.split("/", 2);
+                final String[] topicParts = topic.split("/", 3);
                 if (topicParts.length < 2) {
                     log.error("{} not handled.", topic);
                     return;
@@ -112,8 +112,10 @@ public class Mqtt implements MqttCallback {
                     return;
                 }
                 try {
+                    final String location = StringUtils.capitalize(topicParts[1]);
                     if (deviceType.equals(Type.SENSOR)) {
                         final Device common = mapper.treeToValue(root, Device.class);
+                        common.setLocation(location);
                         root.fields().forEachRemaining(field -> {
                             final String fieldName = field.getKey();
                             final JsonNode node = field.getValue();
@@ -134,8 +136,7 @@ public class Mqtt implements MqttCallback {
                         });
                     } else if (deviceType.equals(Type.METER)) {
                         final Meter meter = mapper.treeToValue(root, Meter.class);
-                        final String deviceLocation = topicParts[1];
-                        meter.setDeviceKey(StringUtils.capitalize(String.format("%s %s", deviceLocation, deviceTypeString)));
+                        meter.setLocation(location);
                         log.debug("Meter state is: {}", meter);
                         inputs.add(meter);
                         // meters are always "active", thresholds are computed against configuration.

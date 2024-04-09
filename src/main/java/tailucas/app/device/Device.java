@@ -3,6 +3,7 @@ package tailucas.app.device;
 import java.time.Instant;
 import java.util.List;
 
+import org.apache.commons.lang3.text.WordUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -65,7 +66,7 @@ public class Device implements Generic {
             log = LoggerFactory.getLogger(Device.class);
         }
     }
-    @JsonIgnore
+    @Override
     public Config getConfig() {
         return config;
     }
@@ -73,15 +74,26 @@ public class Device implements Generic {
     public void setConfig(Config config) {
         this.config = config;
     }
-    @JsonIgnore
+    @Override
     public String getDeviceKey() {
+        if (deviceKey == null) {
+            final String devType = getDeviceType();
+            if (deviceLabel != null) {
+                if (location != null) {
+                    deviceKey = WordUtils.capitalizeFully(String.format("%s %s", location, deviceLabel));
+                } else {
+                    return deviceLabel;
+                }
+            } else if (devType != null) {
+                deviceKey = WordUtils.capitalizeFully(String.format("%s %s", location, devType));
+            } else {
+                log.warn("No identifying information for: {}", this.toString());
+            }
+        }
         return deviceKey;
     }
-    @JsonIgnore
-    public void setDeviceKey(String deviceKey) {
-        this.deviceKey = deviceKey;
-    }
-    @JsonIgnore
+    @JsonIgnore // because it tampers with the field representation
+    @Override
     public String getDeviceLabel() {
         if (deviceLabel != null) {
             return deviceLabel;
@@ -101,6 +113,10 @@ public class Device implements Generic {
         return location;
     }
     @JsonIgnore
+    public void setLocation(String location) {
+        this.location = location;
+    }
+    @JsonIgnore
     public Instant getTimestamp() {
         if (timestamp == null) {
             return Instant.now();
@@ -111,7 +127,7 @@ public class Device implements Generic {
     public long getUptimeSeconds() {
         return Double.valueOf(timestamp - uptime).longValue();
     }
-    @JsonIgnore
+    @Override
     public boolean isHeartbeat() {
         return false;
     }
@@ -126,11 +142,11 @@ public class Device implements Generic {
         }
         return triggerStateDescription;
     }
-    @JsonIgnore
+    @Override
     public Instant lastTriggered() {
         throw new UnsupportedOperationException("Missing override on 'lastTriggered' for type "+type);
     }
-    @JsonIgnore
+    @Override
     public List<Device> triggerGroup() {
         throw new UnsupportedOperationException("Missing override on 'triggerGroup' for type "+type);
     }

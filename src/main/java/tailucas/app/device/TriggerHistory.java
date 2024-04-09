@@ -68,10 +68,10 @@ public class TriggerHistory {
         var moment = history.get(history.size()-times);
         final long interval = Duration.between(moment, Instant.now()).toSeconds();
         if (interval > seconds) {
-            log.info("{} has triggered {} times across {}s interval beyond {}s.", deviceKey, times, interval, seconds);
+            log.debug("{} has triggered {} times over a {}s interval beyond {}s.", deviceKey, times, interval, seconds);
             return false;
         } else {
-            log.info("{} has triggered {} times across {}s interval within {}s.", deviceKey, times, interval, seconds);
+            log.debug("{} has triggered {} times over a {}s interval within {}s.", deviceKey, times, interval, seconds);
         }
         return true;
     }

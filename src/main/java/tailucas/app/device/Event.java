@@ -92,8 +92,17 @@ public class Event implements Runnable {
             if (device != null) {
                 log.debug("{} device: {}", source, device);
                 final String deviceKey = device.getDeviceKey();
+                if (deviceKey == null) {
+                    log.warn("No identifier for device {}", device);
+                }
                 final String deviceLabel = device.getDeviceLabel();
+                if (deviceLabel == null && deviceKey != null) {
+                    log.warn("No device label for {}.", deviceKey);
+                }
                 final String deviceType = device.getDeviceType();
+                if (deviceType == null && deviceKey != null) {
+                    log.warn("No device type for set for {}", deviceKey);
+                }
                 log.debug("{} {} ({})", deviceType, deviceKey, deviceLabel);
                 String deviceDescription;
                 if (deviceLabel != null) {
@@ -112,9 +121,6 @@ public class Event implements Runnable {
                 if (!device.wouldTriggerOutput(deviceConfig)) {
                     log.debug("{} does not trigger any outputs based on current configuration or state.", deviceDescription);
                     return;
-                } else if (!deviceConfig.isDeviceEnabled()) {
-                    log.warn("{} is disabled but would trigger outputs because {}", deviceDescription, device.getTriggerStateDescription());
-                    return;
                 }
                 // record the trigger attempt
                 triggerMultiHistory.triggered(deviceKey);
@@ -125,7 +131,12 @@ public class Event implements Runnable {
                     final Integer triggerLatchDuration = deviceConfig.getTriggerLatchDuration();
                     if (triggerLatchDuration != null) {
                         if (triggerLatchHistory.triggeredWithin(deviceKey, triggerLatchDuration.intValue())) {
-                            log.info("{} has been triggered already in the last {}s.", deviceDescription, triggerLatchDuration);
+                            final String logMessage = String.format("%s has been triggered already in the last %ss.", deviceDescription, triggerLatchDuration);
+                            if (deviceConfig.isDeviceEnabled()) {
+                                log.info(logMessage);
+                            } else {
+                                log.debug(logMessage);
+                            }
                             return;
                         }
                     }
@@ -135,12 +146,21 @@ public class Event implements Runnable {
                 final Integer multiTriggerInterval = deviceConfig.getMultiTriggerInterval();
                 if (multiTriggerRate != null && multiTriggerInterval != null) {
                     if (!triggerMultiHistory.isMultiTriggered(deviceKey, multiTriggerRate, multiTriggerInterval)) {
-                        log.info("{} has not yet been triggered {} times in {}s.", deviceDescription, multiTriggerRate, multiTriggerInterval);
+                        final String logMessage = String.format("%s has not yet triggered %s times within %ss.", deviceDescription, multiTriggerRate, multiTriggerInterval);
+                        if (deviceConfig.isDeviceEnabled()) {
+                            log.info(logMessage);
+                        } else {
+                            log.debug(logMessage);
+                        }
                         return;
                     }
                 }
                 // record trigger event
                 triggerLatchHistory.triggered(deviceKey);
+                if (!deviceConfig.isDeviceEnabled()) {
+                    log.warn("{} is disabled but would otherwise trigger outputs because {}", deviceDescription, device.getTriggerStateDescription());
+                    return;
+                }
                 log.info("{} will trigger outputs because {}", deviceDescription, device.getTriggerStateDescription());
                 List<OutputConfig> linkedOutputs = configProvider.getLinkedOutputs(deviceConfig);
                 log.debug("{} outputs {}", deviceDescription, linkedOutputs);

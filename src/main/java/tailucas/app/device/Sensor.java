@@ -1,6 +1,9 @@
 package tailucas.app.device;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.text.WordUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -8,6 +11,10 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import tailucas.app.device.config.InputConfig;
 
 public class Sensor extends Device {
+
+    @JsonIgnore
+    protected static Logger log = null;
+
     @JsonProperty("normal_value")
     protected Integer normalValue;
     @JsonProperty("sample_value")
@@ -16,6 +23,11 @@ public class Sensor extends Device {
     protected Boolean active;
     @JsonProperty("input_label")
     protected String inputLabel;
+    public Sensor() {
+        if (log == null) {
+            log = LoggerFactory.getLogger(Sensor.class);
+        }
+    }
     @JsonIgnore
     public boolean isActive() {
         if (active == null) {
@@ -24,19 +36,20 @@ public class Sensor extends Device {
         return active.booleanValue();
     }
     public void updateFrom(Device device) {
-        this.deviceId = device.deviceId;
-        this.inputLocation = device.inputLocation;
-        this.timestamp = device.timestamp;
-        this.uptime = device.uptime;
-        this.type = device.type;
+        deviceId = device.deviceId;
+        // device label derived by super class
+        location = device.location;
+        if (location == null) {
+            location = device.inputLocation;
+        }
+        deviceKey = WordUtils.capitalizeFully(String.format("%s %s", location, inputLabel));
+        timestamp = device.timestamp;
+        uptime = device.uptime;
+        type = device.type;
     }
     @Override
     public String getDeviceType() {
         return Type.SENSOR.name().toLowerCase();
-    }
-    @Override
-    public String getDeviceKey() {
-        return StringUtils.capitalize(String.format("%s %s", inputLocation, inputLabel));
     }
     @Override
     public boolean wouldTriggerOutput(InputConfig deviceConfig) {
