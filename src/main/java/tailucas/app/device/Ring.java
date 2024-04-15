@@ -303,13 +303,12 @@ public class Ring implements Generic {
         throw new UnsupportedOperationException("Unimplemented method 'triggerGroup'");
     }
     @Override
-    public boolean isInput() {
-        return true;
+    public Boolean isInput() {
+        return Boolean.TRUE;
     }
-
     @Override
-    public boolean isOutput() {
-        return false;
+    public Boolean isOutput() {
+        return Boolean.FALSE;
     }
     public String getAcStatus() {
         return acStatus;

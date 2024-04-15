@@ -21,9 +21,9 @@ public interface Generic {
     @JsonProperty("location")
     public String getLocation();
     @JsonProperty("is_input")
-    public boolean isInput();
+    public Boolean isInput();
     @JsonProperty("is_output")
-    public boolean isOutput();
+    public Boolean isOutput();
     @JsonIgnore
     public Config getConfig();
     @JsonIgnore

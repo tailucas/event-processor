@@ -10,6 +10,7 @@ public class Camera extends Device {
         this.deviceLabel = device.deviceLabel;
         this.location = device.location;
         this.name = device.name;
+        this.image = device.image;
         this.storageUrl = device.storageUrl;
         this.timestamp = device.timestamp;
     }
@@ -32,8 +33,8 @@ public class Camera extends Device {
         return Type.CAMERA;
     }
     @Override
-    public boolean isOutput() {
-        return true;
+    public Boolean isOutput() {
+        return Boolean.TRUE;
     }
     @Override
     public String toString() {

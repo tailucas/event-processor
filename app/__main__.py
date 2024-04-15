@@ -46,7 +46,7 @@ from fastapi import FastAPI, Depends, status, HTTPException
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.wsgi import WSGIMiddleware
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from flask import Flask, g, flash, request, render_template, url_for, redirect
 from flask.logging import default_handler
@@ -167,6 +167,7 @@ OUTPUT_TYPE_SNAPSHOT = 'snapshot'
 OUTPUT_TYPE_TTS = 'tts'
 
 URL_WORKER_APP = 'inproc://app-worker'
+URL_WORKER_APP_BRIDGE = 'inproc://app-bridge'
 URL_WORKER_HEARTBEAT_NANNY = 'inproc://heartbeat-nanny'
 URL_WORKER_EVENT_LOG = 'inproc://event-log'
 URL_WORKER_TELEGRAM_BOT = 'inproc://telegram-bot'
@@ -177,6 +178,50 @@ ngrok_tunnel_url = None
 ngrok_tunnel_url_with_bauth = None
 
 startup_complete = False
+
+
+from typing import List, Optional
+from typing_extensions import Annotated
+
+
+class Device(BaseModel):
+    active: Optional[bool] = None
+    device_id: Optional[str] = None
+    device_key: str
+    device_label: Optional[str] = None
+    device_params: Optional[str] = None
+    device_type: str
+    group_name: Optional[str] = None
+    image: Optional[List[int]] = None
+    input_label: Optional[str] = None
+    input_location: Optional[str] = None
+    is_input: Optional[bool] = None
+    is_output: Optional[bool] = None
+    last_metered_minute: Optional[float] = None
+    last_minute_metered: Optional[int] = None
+    last_sample_value: Optional[int] = None
+    location: Optional[str] = None
+    name: Optional[str] = None
+    normal_value: Optional[int] = None
+    pulse_discards: Optional[int] = None
+    register_reading: Optional[int] = None
+    sample_value: Optional[int] = None
+    storage_path: Optional[str] = None
+    storage_url: Optional[str] = None
+    timestamp: Optional[int] = None
+    type_: Optional[Annotated[str, Field(alias='type')]] = None
+    uptime: Optional[int] = None
+
+    def __str__(self):
+        str_rep = ''
+        for name, value in vars(self).items():
+            if len(str_rep) > 0:
+                str_rep += ','
+            if not isinstance(value, List):
+                str_rep += f'{name}={value}'
+            else:
+                str_rep += f'{name}={len(value)} bytes'
+        return str_rep
 
 
 class EventLog(Base):
@@ -234,6 +279,7 @@ class InputConfig(Base):
         if self.device_label:
             return self.device_label
         return self.device_key
+
 
 class MeterConfig(Base):
     __tablename__ = 'meter_config'
@@ -318,6 +364,7 @@ class OutputLink(Base):
 
     def as_dict(self):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
 
 class InputConfigWrapper(object):
 
@@ -2027,6 +2074,51 @@ class HeartbeatFilter(ZmqRelay):
         sink_socket.send_pyobj({origin: data})
 
 
+class BridgeFilter(AppThread):
+
+    def __init__(self):
+        AppThread.__init__(self, name=self.__class__.__name__)
+
+    def visit_keys(dictionary, parent_key=''):
+        for key, value in dictionary.items():
+            full_key = f'{parent_key}.{key}' if parent_key else key
+            if isinstance(value, dict):
+                BridgeFilter.visit_keys(value, full_key)
+            elif isinstance(value, str) or isinstance(value, int):
+                log.info(f'{full_key}::{value}')
+            else:
+                log.info(f'{full_key}::{type(value)}')
+
+    # noinspection PyBroadException
+    def run(self):
+        with exception_handler(connect_url=URL_WORKER_APP_BRIDGE, socket_type=zmq.PULL, and_raise=False) as zmq_socket:
+            while not threads.shutting_down:
+                next_message = False
+                control_payload = None
+                try:
+                    control_payload = zmq_socket.recv_pyobj(flags=zmq.NOBLOCK)
+                    next_message = True
+                except ZMQError:
+                    # ignore, no data
+                    next_message = False
+                if control_payload:
+                    BridgeFilter.visit_keys(control_payload)
+                    if 'sms' in control_payload.keys():
+                        try:
+                            active_input = Device(**control_payload['sms']['active_input'])
+                            log.info(f'Control message received on bridge (input): {active_input!s}')
+                        except Exception as e:
+                            log.warn(e, exc_info=True)
+                        try:
+                            output_triggered = Device(**control_payload['sms']['output_triggered'])
+                            log.info(f'Control message received on bridge (output): {output_triggered!s}')
+                        except Exception as e:
+                            log.warn(e, exc_info=True)
+                # don't spin
+                if not next_message:
+                    threads.interruptable_sleep.wait(10)
+
+
 class EventSourceDiscovery(AppThread):
     def __init__(self):
         AppThread.__init__(self, name=self.__class__.__name__)
@@ -2163,6 +2255,7 @@ def main():
         log.info('Creating application threads...')
         # bind listeners first
         heartbeat_filter = HeartbeatFilter()
+        app_bridge = BridgeFilter()
         mq_server_address=app_config.get('rabbitmq', 'server_address').split(',')
         mq_exchange_name=app_config.get('rabbitmq', 'mq_exchange')
         mq_listener = ZMQListener(
@@ -2171,6 +2264,12 @@ def main():
             mq_exchange_name=mq_exchange_name,
             mq_topic_filter='event.#',
             mq_exchange_type='topic')
+        mq_listener_bridge = ZMQListener(
+            zmq_url=URL_WORKER_APP_BRIDGE,
+            mq_server_address=mq_server_address,
+            mq_exchange_name=f'{mq_exchange_name}_control',
+            mq_topic_filter='event.trigger.sms',
+            mq_exchange_type='direct')
         mqtt_subscriber = MqttSubscriber()
         auto_scheduler = AutoScheduler()
         event_processor = EventProcessor(
@@ -2202,6 +2301,7 @@ def main():
             # start the binders
             event_processor.start()
             heartbeat_filter.start()
+            app_bridge.start()
             telegram_bot.start()
             # start the connectors
             event_source_discovery.start()
@@ -2210,6 +2310,7 @@ def main():
             if sqs_listener:
                 sqs_listener.start()
             mq_listener.start()
+            mq_listener_bridge.start()
             # HTTP APIs
             server.start()
             # get supporting services going

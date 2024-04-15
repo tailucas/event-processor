@@ -54,9 +54,9 @@ public class Device implements Generic {
     @JsonProperty
     protected String type;
     @JsonProperty
-    protected Double timestamp;
+    protected Long timestamp;
     @JsonProperty
-    protected Double uptime;
+    protected Integer uptime;
     @JsonIgnore
     protected Config config;
     @JsonIgnore
@@ -174,12 +174,12 @@ public class Device implements Generic {
         return device;
     }
     @Override
-    public boolean isInput() {
-        return true;
+    public Boolean isInput() {
+        return Boolean.TRUE;
     }
     @Override
-    public boolean isOutput() {
-        return false;
+    public Boolean isOutput() {
+        return Boolean.FALSE;
     }
     public static Logger getLog() {
         return log;
@@ -205,7 +205,7 @@ public class Device implements Generic {
     public String getStoragePath() {
         return storagePath;
     }
-    public Double getUptime() {
+    public Integer getUptime() {
         return uptime;
     }
     @Override

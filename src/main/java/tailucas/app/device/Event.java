@@ -77,13 +77,6 @@ public class Event implements Runnable {
         this(connection, source, null, null, deviceUpdate);
     }
 
-    protected void sendResponse(Channel rabbitMqChannel, String topic, byte[] payload) throws IOException {
-        log.debug("Sending {} bytes to topic {}...", payload.length, topic);
-        rabbitMqChannel.exchangeDeclare(exchangeName, BuiltinExchangeType.DIRECT);
-        rabbitMqChannel.queueDeclare(topic, false, false, false, null);
-        rabbitMqChannel.basicPublish("", topic, rabbitMqProperties, payload);
-    }
-
     @Override
     public void run() {
         final long unixTime = System.currentTimeMillis() / 1000L;
@@ -177,6 +170,7 @@ public class Event implements Runnable {
                 if (linkedOutputs.size() > 0) {
                     log.info("{} is linked to {} outputs: {}.", deviceDescription, linkedOutputs.size(), outputNames);
                     final Channel rabbitMqChannel = connection.createChannel();
+                    rabbitMqChannel.exchangeDeclare(exchangeName, BuiltinExchangeType.DIRECT);
                     try {
                         linkedOutputs.forEach(Failable.asConsumer(outputConfig -> {
                             final String outputDeviceLabel = outputConfig.getDeviceLabel();
@@ -200,10 +194,10 @@ public class Event implements Runnable {
                                         outputDeviceType));
                                 }
                                 final String responseTopic = String.format("event.trigger.%s", responseTopicSuffix);
-                                log.info("{} ({}) triggers {}{} on topic {} ({} bytes on the wire).", deviceDescription, source, outputDeviceLabel, deviceDetail, responseTopic, wireCommand.length);
-                                sendResponse(rabbitMqChannel, responseTopic, wireCommand);
+                                log.info("{} ({}) triggers {}{} on exchange {} with routing {} ({} bytes on the wire).", deviceDescription, source, outputDeviceLabel, deviceDetail, exchangeName, responseTopic, wireCommand.length);
+                                rabbitMqChannel.basicPublish(exchangeName, responseTopic, rabbitMqProperties, wireCommand);
                             } catch (Exception e) {
-                                log.error(e.getMessage(), e);
+                                log.warn("{}: {}", source, e.getMessage());
                             }
                         }));
                     } finally {
