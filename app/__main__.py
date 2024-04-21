@@ -2102,18 +2102,15 @@ class BridgeFilter(AppThread):
                     # ignore, no data
                     next_message = False
                 if control_payload:
-                    BridgeFilter.visit_keys(control_payload)
-                    if 'sms' in control_payload.keys():
-                        try:
+                    try:
+                        if 'sms' in control_payload.keys():
                             active_input = Device(**control_payload['sms']['active_input'])
-                            log.info(f'Control message received on bridge (input): {active_input!s}')
-                        except Exception as e:
-                            log.warn(e, exc_info=True)
-                        try:
+                            log.debug(f'Control message received on bridge (input): {active_input!s}')
                             output_triggered = Device(**control_payload['sms']['output_triggered'])
-                            log.info(f'Control message received on bridge (output): {output_triggered!s}')
-                        except Exception as e:
-                            log.warn(e, exc_info=True)
+                            log.debug(f'Control message received on bridge (output): {output_triggered!s}')
+                    except Exception as e:
+                        log.warn(e, exc_info=True)
+                        BridgeFilter.visit_keys(control_payload)
                 # don't spin
                 if not next_message:
                     threads.interruptable_sleep.wait(10)
