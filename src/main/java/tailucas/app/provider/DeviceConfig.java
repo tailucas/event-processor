@@ -162,8 +162,6 @@ public class DeviceConfig {
                 List<Config> cachedConfig = cached.getRight();
                 if (cachedConfig != null) {
                     log.debug("Returning cached config ({} items) for {} (age {}s).", cachedConfig.size(), cacheKey, cacheAge);
-                } else {
-                    throw new IllegalArgumentException(String.format("Cached null item for %s.", cacheKey));
                 }
                 return cachedConfig;
             } else {
@@ -198,10 +196,8 @@ public class DeviceConfig {
         } else {
             configs = mapper.readValue(responseBody, getCollectionType(api));
         }
-        if (configs != null) {
-            log.debug("Updating configuration cache for {}.", cacheKey);
-            configCache.put(cacheKey, Pair.of(now, configs));
-        }
+        log.debug("Updating configuration cache for {}.", cacheKey);
+        configCache.put(cacheKey, Pair.of(now, configs));
         return configs;
     }
 

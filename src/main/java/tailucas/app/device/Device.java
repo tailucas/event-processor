@@ -102,6 +102,11 @@ public class Device implements Generic {
     }
     @Override
     public String getDeviceType() {
+        if (deviceType == null) {
+            final String legacyType = getType().name();
+            log.warn("{} using legacy device type {}", this.toString(), legacyType);
+            return legacyType.toLowerCase();
+        }
         return deviceType;
     }
     @Override
@@ -157,7 +162,11 @@ public class Device implements Generic {
         }
         Type deviceType = null;
         try {
-            deviceType = Type.valueOf(type.toUpperCase());
+            String uType = type.toUpperCase();
+            if (uType.equals("MOTION DETECTOR")) {
+                uType = "MOTION";
+            }
+            deviceType = Type.valueOf(uType);
         } catch (IllegalArgumentException e) {
             throw new IllegalStateException(e);
         }
@@ -165,8 +174,8 @@ public class Device implements Generic {
     }
     @JsonIgnore
     public Device getDeviceByType() {
-        Type type = getType();
-        var device = switch (type) {
+        Type typeType = getType();
+        var device = switch (typeType) {
             case Type.BASE -> this;
             case Type.CAMERA -> new Camera(this);
             default -> null;

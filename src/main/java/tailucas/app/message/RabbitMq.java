@@ -36,9 +36,9 @@ public class RabbitMq implements DeliverCallback {
 
     @Override
     public void handle(String consumerTag, Delivery message) throws IOException {
+        final String source = message.getEnvelope().getRoutingKey();
+        final byte[] msgBody = message.getBody();
         try {
-            final String source = message.getEnvelope().getRoutingKey();
-            final byte[] msgBody = message.getBody();
             final State deviceUpdate = mapper.readerFor(new TypeReference<State>() { }).readValue(msgBody);
             log.debug("RabbitMQ device state update: {}", deviceUpdate);
             var outputsTriggers = deviceUpdate.getOutputsTriggered();
@@ -50,7 +50,7 @@ public class RabbitMq implements DeliverCallback {
                 srv.submit(new Event(connection, source, deviceUpdate));
             }
         } catch (Exception e) {
-            log.warn(e.getMessage());
+            log.error("{} event issue ({} bytes).", source, msgBody.length, e);
         }
     }
 }
