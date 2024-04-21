@@ -192,7 +192,7 @@ class Device(BaseModel):
     device_params: Optional[str] = None
     device_type: str
     group_name: Optional[str] = None
-    image: Optional[List[int]] = None
+    image: Optional[bytes] = None
     input_label: Optional[str] = None
     input_location: Optional[str] = None
     is_input: Optional[bool] = None
@@ -217,7 +217,7 @@ class Device(BaseModel):
         for name, value in vars(self).items():
             if len(str_rep) > 0:
                 str_rep += ','
-            if not isinstance(value, List):
+            if not isinstance(value, bytes):
                 str_rep += f'{name}={value}'
             else:
                 str_rep += f'{name}={len(value)} bytes'
