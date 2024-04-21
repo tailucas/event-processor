@@ -1653,6 +1653,27 @@ class TBot(AppThread, Closable):
         notification_message += footer
         return notification_message
 
+    def build_message(timestamp, input_device):
+        global ngrok_tunnel_url
+        device_label = input_device.device_label
+        if device_label is None:
+            device_label = input_device.device_key
+        event_detail = ''
+        # include a timestamp in this SMS message
+        notification_message = '{}{} ({}:{})'.format(
+            device_label,
+            event_detail,
+            timestamp.hour,
+            str(timestamp.minute).zfill(2))
+        footer = ''
+        # add in the callback URL
+        if ngrok_tunnel_url:
+            footer = "\n{}".format(ngrok_tunnel_url)
+        if input_device.storage_url:
+            notification_message = '[{}]({})'.format(notification_message, input_device.storage_url)
+        notification_message += footer
+        return notification_message
+
     async def tbot_run(t_app: TelegramApp, zmq_socket, chat_id, sns_fallback):
         global ngrok_tunnel_url_with_bauth
         log.info(f'Waiting for events to forward to Telegram bot on chat ID {chat_id}...')
@@ -1665,65 +1686,98 @@ class TBot(AppThread, Closable):
                 # never spin
                 threads.interruptable_sleep.wait(1)
                 continue
-            #TODO: fix me for small payloads
-            #log.debug(event)
+            if not isinstance(event, dict):
+                log.info('Malformed message event structure, expecting dictionary.')
+                continue
+            input_device = None
+            if 'active_input' in event.keys():
+                input_device = Device(**event['active_input'])
+                log.debug(f'Input device for message: {input_device!s}')
+            output_device = None
+            if 'output_triggered' in event.keys():
+                output_device = Device(**event['output_triggered'])
+                log.debug(f'Output device for message: {output_device!s}')
             if 'timestamp' in event:
                 timestamp = parse_datetime(value=event['timestamp'], as_tz=user_tz)
             else:
+                log.warn('No timestamp included in event message; using "now"')
                 timestamp = make_timestamp(as_tz=user_tz)
-            input_context = None
-            # build the message
-            image_data = None
-            if 'message' in event:
-                notification_message = event['message']
-                if 'add_tunnel_url' in event and ngrok_tunnel_url_with_bauth:
-                    notification_message = '[{}]({})'.format(notification_message, ngrok_tunnel_url_with_bauth)
-            else:
-                notification_message = TBot.build_message(timestamp=timestamp, event_data=event, max_length=200)
-                if 'input_context' in event:
-                    input_context = event['input_context']
-                    if 'image' in input_context:
-                        image_data = BytesIO(input_context['image'])
-            # send the message
-            try:
-                if image_data:
-                    button_input = False
-                    if 'type' in input_context and 'button' in input_context['type'].lower():
-                        button_input = True
-                    if app_config.getboolean('telegram', 'image_send_only_with_people') and 'person' not in notification_message and not button_input:
-                        log.warning(f'Discarding image message without person data, as configured.')
-                        continue
-                    log.debug(f'Bot sends image to {chat_id!s} with caption "{notification_message}"')
-                    await t_app.bot.send_photo(chat_id=chat_id,
-                                        photo=image_data,
-                                        caption=notification_message,
-                                        parse_mode='Markdown')
-                else:
-                    log.debug(f'Bot sends message to {chat_id!s} with caption "{notification_message}"')
-                    await t_app.bot.send_message(chat_id=chat_id,
-                                            text=notification_message,
+            if input_device:
+                # build the message
+                notification_message = TBot.build_message(timestamp=timestamp, input_device=input_device)
+                # send the message
+                try:
+                    if input_device.image:
+                        if app_config.getboolean('telegram', 'image_send_only_with_people') and 'person' not in notification_message:
+                            log.warning(f'Discarding image message without person data, as configured.')
+                            continue
+                        log.debug(f'Bot sends image to {chat_id!s} with caption "{notification_message}"')
+                        await t_app.bot.send_photo(chat_id=chat_id,
+                                            photo=BytesIO(input_device.image),
+                                            caption=notification_message,
                                             parse_mode='Markdown')
-            except (TimedOut, NetworkError, RetryAfter):
-                if event and sns_fallback:
-                    sns = boto3.client('sns')
-                    log.warning('Timeout or network problem using Bot. Fallback back to SMS.')
-                    # rebuild the message for SMS
-                    notification_message = TBot.build_message(timestamp=timestamp, event_data=event, build_sms=True)
-                    if 'device_params' not in event['trigger_output']:
-                        log.error('Cannot send SMS because no parameters are configured.')
-                        return
-                    recipients = event['trigger_output']['device_params'].strip().split(',')
-                    for recipient in recipients:
-                        name_number = recipient.split(';')
-                        log.info(f'SMS {name_number[0]} ({name_number[1]}) "{notification_message}"')
-                        try:
-                            resp = sns.publish(PhoneNumber=name_number[1], Message=notification_message)
-                            log.info(f'SMS sent: {resp!s}')
-                        except Exception:
-                            log.exception(f'Cannot send SMS {name_number[1]}: {notification_message}')
-                else:
+                    else:
+                        log.debug(f'Bot sends message to {chat_id!s} with caption "{notification_message}"')
+                        await t_app.bot.send_message(chat_id=chat_id,
+                                                text=notification_message,
+                                                parse_mode='Markdown')
+                except (TimedOut, NetworkError, RetryAfter):
                     log.warning(f'No viable method to send notification for event: {notification_message}', exc_info=True)
-                    threads.interruptable_sleep.wait(10)
+                    threads.interruptable_sleep.wait(1)
+            else:
+                input_context = None
+                # build the message
+                image_data = None
+                if 'message' in event:
+                    notification_message = event['message']
+                    if 'add_tunnel_url' in event and ngrok_tunnel_url_with_bauth:
+                        notification_message = '[{}]({})'.format(notification_message, ngrok_tunnel_url_with_bauth)
+                else:
+                    notification_message = TBot.build_message(timestamp=timestamp, event_data=event, max_length=200)
+                    if 'input_context' in event:
+                        input_context = event['input_context']
+                        if 'image' in input_context:
+                            image_data = BytesIO(input_context['image'])
+                # send the message
+                try:
+                    if image_data:
+                        button_input = False
+                        if 'type' in input_context and 'button' in input_context['type'].lower():
+                            button_input = True
+                        if app_config.getboolean('telegram', 'image_send_only_with_people') and 'person' not in notification_message and not button_input:
+                            log.warning(f'Discarding image message without person data, as configured.')
+                            continue
+                        log.debug(f'Bot sends image to {chat_id!s} with caption "{notification_message}"')
+                        await t_app.bot.send_photo(chat_id=chat_id,
+                                            photo=image_data,
+                                            caption=notification_message,
+                                            parse_mode='Markdown')
+                    else:
+                        log.debug(f'Bot sends message to {chat_id!s} with caption "{notification_message}"')
+                        await t_app.bot.send_message(chat_id=chat_id,
+                                                text=notification_message,
+                                                parse_mode='Markdown')
+                except (TimedOut, NetworkError, RetryAfter):
+                    if event and sns_fallback:
+                        sns = boto3.client('sns')
+                        log.warning('Timeout or network problem using Bot. Fallback back to SMS.')
+                        # rebuild the message for SMS
+                        notification_message = TBot.build_message(timestamp=timestamp, event_data=event, build_sms=True)
+                        if 'device_params' not in event['trigger_output']:
+                            log.error('Cannot send SMS because no parameters are configured.')
+                            return
+                        recipients = event['trigger_output']['device_params'].strip().split(',')
+                        for recipient in recipients:
+                            name_number = recipient.split(';')
+                            log.info(f'SMS {name_number[0]} ({name_number[1]}) "{notification_message}"')
+                            try:
+                                resp = sns.publish(PhoneNumber=name_number[1], Message=notification_message)
+                                log.info(f'SMS sent: {resp!s}')
+                            except Exception:
+                                log.exception(f'Cannot send SMS {name_number[1]}: {notification_message}')
+                    else:
+                        log.warning(f'No viable method to send notification for event: {notification_message}', exc_info=True)
+                        threads.interruptable_sleep.wait(10)
 
     def run(self):
         log.info('Creating asyncio event loop...')
@@ -1790,33 +1844,33 @@ class MqttSubscriber(AppThread, Closable):
     def add_source_subscriber(self, topic, subscriber):
         self._source_subscribers[topic] = subscriber
 
-    def on_connect(self, client, userdata, flags, rc):
+    def on_connect(self, client, userdata, connect_flags, reason_code, properties):
         log.info('Subscribing to topics {}'.format(self._mqtt_subscribe_topics))
         self._mqtt_client.subscribe(self._mqtt_subscribe_topics)
 
-    def on_disconnect(self, client, userdata, rc):
+    def on_disconnect(self, client, userdata, disconnect_flags, reason_code, properties):
         log.info('MQTT client has disconnected.')
         self._disconnected = True
 
-    def on_message(self, client, userdata, msg):
-        log.debug('{} received {} bytes.'.format(msg.topic, len(msg.payload)))
+    def on_message(self, client, userdata, message):
+        log.debug('{} received {} bytes.'.format(message.topic, len(message.payload)))
         msg_data = None
         try:
-            msg_data = json.loads(msg.payload)
+            msg_data = json.loads(message.payload)
         except JSONDecodeError:
-            log.exception('Unstructured message: {}'.format(msg.payload))
+            log.exception('Unstructured message: {}'.format(message.payload))
             return
         # ignore any message without a device ID
         if 'device_id' not in msg_data:
-            warning_message = f'Ignoring {len(msg.payload)} bytes from topic {msg.topic} with no device_id set.'
-            if len(msg.payload) <= 100:
-                warning_message += f' Payload: {msg.payload!s}'
+            warning_message = f'Ignoring {len(message.payload)} bytes from topic {message.topic} with no device_id set.'
+            if len(message.payload) <= 100:
+                warning_message += f' Payload: {message.payload!s}'
             log.warning(warning_message)
             return
         device_id = msg_data['device_id']
         input_location = msg_data['input_location']
         # FIXME: create a canonical topic form
-        topic_base = '/'.join(msg.topic.split('/')[0:2])
+        topic_base = '/'.join(message.topic.split('/')[0:2])
         # get the subscriber and update the timestamp
         if topic_base in self._source_subscribers:
             subscriber = self._source_subscribers[topic_base]
@@ -1824,7 +1878,7 @@ class MqttSubscriber(AppThread, Closable):
         event_timestamp = make_timestamp()
         # unpack the message
         try:
-            if msg.topic.startswith('sensor'):
+            if message.topic.startswith('sensor'):
                 device_inputs = list()
                 active_devices = list()
                 for msg_key in msg_data:
@@ -1853,8 +1907,8 @@ class MqttSubscriber(AppThread, Closable):
                         'timestamp': event_timestamp
                     }
                 })
-            elif msg.topic.startswith('meter'):
-                topic_parts = msg.topic.split('/')
+            elif message.topic.startswith('meter'):
+                topic_parts = message.topic.split('/')
                 device_type = topic_parts[0]
                 device_name = topic_parts[1]
                 device_key = '{} {}'.format(device_name, device_type).title()
@@ -1889,7 +1943,7 @@ class MqttSubscriber(AppThread, Closable):
     def run(self):
         log.info('Connecting to MQTT server {}...'.format(self._mqtt_server_address))
         self.get_socket()
-        self._mqtt_client = mqtt.Client()
+        self._mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
         self._mqtt_client.on_connect = self.on_connect
         self._mqtt_client.on_disconnect = self.on_disconnect
         self._mqtt_client.on_message = self.on_message
