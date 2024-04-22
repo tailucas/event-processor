@@ -1733,13 +1733,13 @@ full = ["httpx (>=0.22.0)", "itsdangerous", "jinja2", "python-multipart (>=0.0.7
 
 [[package]]
 name = "tailucas-pylib"
-version = "0.2.6"
+version = "0.2.7"
 description = "Common Python utility modules"
 optional = false
 python-versions = "<4.0,>=3.11"
 files = [
-    {file = "tailucas_pylib-0.2.6-py3-none-any.whl", hash = "sha256:4c24f08be12a69b26ad3b2eae73c776a0ac87a115b87b860d90bfef8369a1e4e"},
-    {file = "tailucas_pylib-0.2.6.tar.gz", hash = "sha256:5e99bacfc468d09334573fbd18109183db653e98a854d133c3d977c7762e8d1c"},
+    {file = "tailucas_pylib-0.2.7-py3-none-any.whl", hash = "sha256:f55983c26141a63a43805523813c1014d8ce1890bf5c9e1fbba5c8cee3b6121f"},
+    {file = "tailucas_pylib-0.2.7.tar.gz", hash = "sha256:0efdfbd353f922caac2a751454bd3c179b0e9f03a1572e777640270aef6cf048"},
 ]
 
 [package.dependencies]
@@ -1822,4 +1822,4 @@ watchdog = ["watchdog (>=2.3)"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "17398034644b2c7dba212d8700cd8e3a7065d486030745cf52677b53b30166f9"
+content-hash = "7d9584389fb406f6ce3c053442d9d14078ebf80bb814eb11ade7b85bee88ed70"
