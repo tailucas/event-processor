@@ -35,6 +35,8 @@ public class Device implements Generic {
     protected String deviceLabel;
     @JsonProperty("device_type")
     protected String deviceType;
+    @JsonProperty("event_detail")
+    protected String eventDetail;
     @JsonProperty("group_name")
     protected String groupName;
     @JsonProperty("location")
@@ -195,6 +197,9 @@ public class Device implements Generic {
     }
     public String getDeviceId() {
         return deviceId;
+    }
+    public String getEventDetail() {
+        return eventDetail;
     }
     public byte[] getImage() {
         return image;

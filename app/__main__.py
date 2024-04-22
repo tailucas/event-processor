@@ -191,6 +191,7 @@ class Device(BaseModel):
     device_label: Optional[str] = None
     device_params: Optional[str] = None
     device_type: str
+    event_detail: Optional[str] = None
     group_name: Optional[str] = None
     image: Optional[bytes] = None
     input_label: Optional[str] = None
@@ -1659,6 +1660,8 @@ class TBot(AppThread, Closable):
         if device_label is None:
             device_label = input_device.device_key
         event_detail = ''
+        if input_device.event_detail:
+            event_detail = input_device.event_detail
         # include a timestamp in this SMS message
         notification_message = '{}{} ({}:{})'.format(
             device_label,
@@ -1703,6 +1706,7 @@ class TBot(AppThread, Closable):
                 log.warn('No timestamp included in event message; using "now"')
                 timestamp = make_timestamp(as_tz=user_tz)
             if input_device:
+                log.info(f'Building message based on input device: {input_device!s}')
                 # build the message
                 notification_message = TBot.build_message(timestamp=timestamp, input_device=input_device)
                 # send the message
