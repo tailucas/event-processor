@@ -95,7 +95,6 @@ from tailucas_pylib import app_config, \
 from tailucas_pylib.datetime import is_list, \
     make_timestamp, \
     make_unix_timestamp, \
-    parse_datetime, \
     ISO_DATE_FORMAT
 from tailucas_pylib.aws.metrics import post_count_metric
 from tailucas_pylib.process import SignalHandler, exec_cmd_log
@@ -1684,27 +1683,36 @@ class TBot(AppThread, Closable):
             event = None
             try:
                 event = await zmq_socket.recv_pyobj()
-            except ZMQError:
-                log.debug('ZMQ error.', exc_info=True)
+            except ZMQError as e:
+                log.warn(f'ZMQ error {e!s}', exc_info=True)
                 # never spin
                 threads.interruptable_sleep.wait(1)
                 continue
-            if not isinstance(event, dict):
-                log.info('Malformed message event structure, expecting dictionary.')
+            log.info(f'Got bot event {event}')
+            try:
+                if not isinstance(event, dict):
+                    log.info('Malformed message event structure, expecting dictionary.')
+                    continue
+                input_device = None
+                if 'active_input' in event.keys():
+                    input_device = Device(**event['active_input'])
+                    log.debug(f'Input device for message: {input_device!s}')
+                output_device = None
+                if 'output_triggered' in event.keys():
+                    output_device = Device(**event['output_triggered'])
+                    log.debug(f'Output device for message: {output_device!s}')
+                timestamp = None
+                if 'timestamp' in event:
+                    timestamp = make_timestamp(timestamp=event['timestamp'], as_tz=user_tz)
+                else:
+                    log.warn('No timestamp included in event message; using "now"')
+                    timestamp = make_timestamp(as_tz=user_tz)
+            except Exception as e:
+                log.warn('Bot message unpack problem {e!s}', exc_info=True)
                 continue
-            input_device = None
-            if 'active_input' in event.keys():
-                input_device = Device(**event['active_input'])
-                log.debug(f'Input device for message: {input_device!s}')
-            output_device = None
-            if 'output_triggered' in event.keys():
-                output_device = Device(**event['output_triggered'])
-                log.debug(f'Output device for message: {output_device!s}')
-            if 'timestamp' in event:
-                timestamp = parse_datetime(value=event['timestamp'], as_tz=user_tz)
-            else:
-                log.warn('No timestamp included in event message; using "now"')
-                timestamp = make_timestamp(as_tz=user_tz)
+            log.info(f'{input_device=};{output_device=};{timestamp=}')
+            if True:
+                continue
             if input_device:
                 log.info(f'Building message based on input device: {input_device!s}')
                 # build the message
@@ -2136,6 +2144,7 @@ class BridgeFilter(AppThread):
 
     def __init__(self):
         AppThread.__init__(self, name=self.__class__.__name__)
+        self.bot = zmq_socket(zmq.PUSH)
 
     def visit_keys(dictionary, parent_key=''):
         for key, value in dictionary.items():
@@ -2149,29 +2158,28 @@ class BridgeFilter(AppThread):
 
     # noinspection PyBroadException
     def run(self):
+        self.bot.connect(URL_WORKER_TELEGRAM_BOT)
         with exception_handler(connect_url=URL_WORKER_APP_BRIDGE, socket_type=zmq.PULL, and_raise=False) as zmq_socket:
             while not threads.shutting_down:
-                next_message = False
                 control_payload = None
                 try:
                     control_payload = zmq_socket.recv_pyobj(flags=zmq.NOBLOCK)
-                    next_message = True
-                except ZMQError:
+                except Again:
                     # ignore, no data
-                    next_message = False
+                    threads.interruptable_sleep.wait(0.5)
+                    continue
                 if control_payload:
-                    try:
-                        if 'sms' in control_payload.keys():
-                            active_input = Device(**control_payload['sms']['active_input'])
-                            log.debug(f'Control message received on bridge (input): {active_input!s}')
-                            output_triggered = Device(**control_payload['sms']['output_triggered'])
-                            log.debug(f'Control message received on bridge (output): {output_triggered!s}')
-                    except Exception as e:
-                        log.warn(e, exc_info=True)
-                        BridgeFilter.visit_keys(control_payload)
-                # don't spin
-                if not next_message:
-                    threads.interruptable_sleep.wait(10)
+                    BridgeFilter.visit_keys(control_payload)
+                    if 'sms' in control_payload.keys():
+                        log.info(f'Sending payload to bot {control_payload.keys()}...')
+                        try:
+                            self.bot.send_pyobj(control_payload['sms'])
+                        except ZMQError as e:
+                            log.warn(f'ZMQ error {e!s}', exc_info=True)
+                        log.info(f'Sent payload to bot...')
+                else:
+                    log.warn(f'Got null data payload')
+        try_close(self.bot)
 
 
 class EventSourceDiscovery(AppThread):
