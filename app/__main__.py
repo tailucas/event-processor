@@ -1688,20 +1688,22 @@ class TBot(AppThread, Closable):
                 # never spin
                 threads.interruptable_sleep.wait(1)
                 continue
-            log.info(f'Got bot event {event}')
+            input_device = None
+            output_device = None
+            timestamp = None
             try:
                 if not isinstance(event, dict):
                     log.info('Malformed message event structure, expecting dictionary.')
                     continue
-                input_device = None
+                #input_device = None
                 if 'active_input' in event.keys():
                     input_device = Device(**event['active_input'])
                     log.debug(f'Input device for message: {input_device!s}')
-                output_device = None
+                #output_device = None
                 if 'output_triggered' in event.keys():
                     output_device = Device(**event['output_triggered'])
                     log.debug(f'Output device for message: {output_device!s}')
-                timestamp = None
+                #timestamp = None
                 if 'timestamp' in event:
                     timestamp = make_timestamp(timestamp=event['timestamp'], as_tz=user_tz)
                 else:
@@ -1710,13 +1712,16 @@ class TBot(AppThread, Closable):
             except Exception as e:
                 log.warn('Bot message unpack problem {e!s}', exc_info=True)
                 continue
-            log.info(f'{input_device=};{output_device=};{timestamp=}')
-            if True:
-                continue
+            log.info(f'{input_device!s};{output_device!s};{timestamp!s}')
             if input_device:
                 log.info(f'Building message based on input device: {input_device!s}')
                 # build the message
-                notification_message = TBot.build_message(timestamp=timestamp, input_device=input_device)
+                notification_message = None
+                try:
+                    notification_message = TBot.build_message(timestamp=timestamp, input_device=input_device)
+                except Exception as e:
+                    log.warn(f'Bot message build error {e!s}', exc_info=True)
+                    continue
                 # send the message
                 try:
                     if input_device.image:
@@ -1736,6 +1741,8 @@ class TBot(AppThread, Closable):
                 except (TimedOut, NetworkError, RetryAfter):
                     log.warning(f'No viable method to send notification for event: {notification_message}', exc_info=True)
                     threads.interruptable_sleep.wait(1)
+                except Exception as e:
+                    log.warn(f'Bot message error {e!s}', exc_info=True)
             else:
                 input_context = None
                 # build the message
@@ -2161,24 +2168,20 @@ class BridgeFilter(AppThread):
         self.bot.connect(URL_WORKER_TELEGRAM_BOT)
         with exception_handler(connect_url=URL_WORKER_APP_BRIDGE, socket_type=zmq.PULL, and_raise=False) as zmq_socket:
             while not threads.shutting_down:
-                control_payload = None
-                try:
-                    control_payload = zmq_socket.recv_pyobj(flags=zmq.NOBLOCK)
-                except Again:
-                    # ignore, no data
-                    threads.interruptable_sleep.wait(0.5)
+                control_payload = zmq_socket.recv_pyobj()
+                if not isinstance(control_payload, dict):
+                    log.info('Malformed event; expecting dictionary.')
                     continue
-                if control_payload:
-                    BridgeFilter.visit_keys(control_payload)
-                    if 'sms' in control_payload.keys():
-                        log.info(f'Sending payload to bot {control_payload.keys()}...')
-                        try:
-                            self.bot.send_pyobj(control_payload['sms'])
-                        except ZMQError as e:
-                            log.warn(f'ZMQ error {e!s}', exc_info=True)
-                        log.info(f'Sent payload to bot...')
+                if 'sms' in control_payload.keys():
+                    log.info(f'Sending payload to bot {control_payload.keys()}...')
+                    try:
+                        self.bot.send_pyobj(control_payload['sms'])
+                    except ZMQError as e:
+                        log.warn(f'ZMQ error {e!s}', exc_info=True)
+                    log.info(f'Sent payload to bot...')
                 else:
-                    log.warn(f'Got null data payload')
+                    log.warn(f'Unsupported payload with keys {control_payload.keys()}')
+                    BridgeFilter.visit_keys(control_payload)
         try_close(self.bot)
 
 
