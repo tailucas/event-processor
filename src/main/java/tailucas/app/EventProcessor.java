@@ -36,6 +36,7 @@ import io.sentry.ISpan;
 import io.sentry.ITransaction;
 import io.sentry.Sentry;
 import jakarta.annotation.PreDestroy;
+import tailucas.app.device.Event;
 import tailucas.app.message.Mqtt;
 import tailucas.app.message.RabbitMq;
 import tailucas.app.provider.DeviceConfig;
@@ -255,6 +256,9 @@ public class EventProcessor
             exitCode |= EXIT_CODE_RABBITMQ;
             System.exit(SpringApplication.exit(springApp));
         }
+
+        // init statics
+        Event.init();
 
         Thread rabbitMqThread = appThreadFactory.newThread(() -> {
             try {

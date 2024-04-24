@@ -30,7 +30,6 @@ public class Event implements Runnable {
     protected static Pattern namePattern;
     protected static BasicProperties rabbitMqProperties;
     protected static MessagePackMapper mapper;
-    protected static DeviceConfig configProvider;
     protected static String exchangeName;
     protected static TriggerHistory triggerLatchHistory;
     protected static TriggerHistory triggerMultiHistory;
@@ -41,11 +40,10 @@ public class Event implements Runnable {
     protected State deviceUpdate;
     protected String deviceUpdateString;
 
-    public Event(Connection connection, String source, Generic device, State deviceUpdate, String deviceUpdateString) {
+    public static void init() {
         if (log == null) {
             log = LoggerFactory.getLogger(Event.class);
             mapper = new MessagePackMapper();
-            configProvider = DeviceConfig.getInstance();
             namePattern = Pattern.compile("\\W");
             rabbitMqProperties = new AMQP.BasicProperties.Builder()
                 .expiration(AppProperties.getProperty("app.message-control-expiry-ms"))
@@ -54,6 +52,10 @@ public class Event implements Runnable {
             triggerLatchHistory = new TriggerHistory();
             triggerMultiHistory = new TriggerHistory();
         }
+    }
+
+    public Event(Connection connection, String source, Generic device, State deviceUpdate, String deviceUpdateString) {
+        init();
         this.connection = connection;
         this.source = source;
         this.device = device;
@@ -81,6 +83,7 @@ public class Event implements Runnable {
     public void run() {
         final long unixTime = System.currentTimeMillis() / 1000L;
         try {
+            final DeviceConfig configProvider = DeviceConfig.getInstance();
             final Map<String, OutputConfig> processedOutputs = new HashMap<>(10);
             if (device != null) {
                 log.debug("{} device: {}", source, device);
