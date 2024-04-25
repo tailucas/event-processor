@@ -15,7 +15,7 @@ import uvicorn
 import zmq
 import zmq.asyncio
 
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from concurrent import futures
 from botocore.exceptions import EndpointConnectionError as bcece
 from datetime import datetime, timedelta
@@ -31,7 +31,8 @@ from sentry_sdk import capture_exception, last_event_id
 from sentry_sdk.integrations.flask import FlaskIntegration
 from sentry_sdk.integrations.logging import ignore_logger
 from simplejson.scanner import JSONDecodeError
-from telegram import ForceReply, Update
+from telegram import ForceReply, Update, InputMediaPhoto
+from telegram.constants import MediaGroupLimit
 from telegram.ext import Application as TelegramApp, \
     Updater as TelegramUpdater, \
     CommandHandler as TelegramCommandHandler, \
@@ -53,6 +54,7 @@ from flask.logging import default_handler
 from flask_compress import Compress
 from werkzeug.serving import make_server
 
+from zmq.asyncio import Poller
 from zmq.error import ZMQError, ContextTerminated, Again
 
 import paho.mqtt.client as mqtt
@@ -1632,7 +1634,7 @@ class TBot(AppThread, Closable):
         if 'event_detail' in event_data['input_context']:
             event_detail = ' {}'.format(event_data['input_context']['event_detail'])
         # include a timestamp in this SMS message
-        notification_message = '{}{} ({}:{})'.format(
+        message = '{}{} ({}:{})'.format(
             device_label,
             event_detail,
             timestamp.hour,
@@ -1642,18 +1644,18 @@ class TBot(AppThread, Closable):
         if build_sms and ngrok_tunnel_url:
             footer = "\n{}".format(ngrok_tunnel_url)
         if not build_sms and 'storage_url' in event_data['input_context']:
-            notification_message = '[{}]({})'.format(notification_message, event_data['input_context']['storage_url'])
+            message = '[{}]({})'.format(message, event_data['input_context']['storage_url'])
         # add in some trigger history for context
         if 'trigger_history' in event_data:
             for history_device_label, trigger_secs_ago in event_data['trigger_history']:
                 history_info = "\n{}s ago: {}".format(trigger_secs_ago, history_device_label)
-                if len(notification_message) + len(history_info) + len(footer) >= max_length:
+                if len(message) + len(history_info) + len(footer) >= max_length:
                     break
-                notification_message += history_info
-        notification_message += footer
-        return notification_message
+                message += history_info
+        message += footer
+        return {'device_label': device_label, 'message': message, 'image': None}
 
-    def build_message(timestamp, input_device):
+    def build_device_message(timestamp, input_device):
         global ngrok_tunnel_url
         device_label = input_device.device_label
         if device_label is None:
@@ -1662,7 +1664,7 @@ class TBot(AppThread, Closable):
         if input_device.event_detail:
             event_detail = input_device.event_detail
         # include a timestamp in this SMS message
-        notification_message = '{}{} ({}:{})'.format(
+        message = '{}{} ({}:{})'.format(
             device_label,
             event_detail,
             timestamp.hour,
@@ -1672,107 +1674,150 @@ class TBot(AppThread, Closable):
         if ngrok_tunnel_url:
             footer = "\n{}".format(ngrok_tunnel_url)
         if input_device.storage_url:
-            notification_message = '[{}]({})'.format(notification_message, input_device.storage_url)
-        notification_message += footer
-        return notification_message
+            message = '[{}]({})'.format(message, input_device.storage_url)
+        message += footer
+        image_data = None
+        if input_device.image:
+            image_data = BytesIO(input_device.image)
+        return {'device_label': device_label, 'message': message, 'image': image_data}
+
+    def include_image(message):
+            if not app_config.getboolean('telegram', 'image_send_only_with_people'):
+                return True
+            if 'person' in message:
+                return True
+            return False
 
     async def tbot_run(t_app: TelegramApp, zmq_socket, chat_id, sns_fallback):
         global ngrok_tunnel_url_with_bauth
+        poller = Poller()
+        poller.register(zmq_socket, zmq.POLLIN)
+        pending = deque()
         log.info(f'Waiting for events to forward to Telegram bot on chat ID {chat_id}...')
+        min_send_interval = app_config.getint('telegram', 'min_send_interval')
+        last_sent = 0
         while not threads.shutting_down:
+            now = round(time.time())
             event = None
-            try:
-                event = await zmq_socket.recv_pyobj()
-            except ZMQError as e:
-                log.warn(f'ZMQ error {e!s}', exc_info=True)
-                # never spin
-                threads.interruptable_sleep.wait(1)
-                continue
-            input_device = None
-            output_device = None
-            timestamp = None
-            try:
-                if not isinstance(event, dict):
-                    log.info('Malformed message event structure, expecting dictionary.')
-                    continue
-                #input_device = None
-                if 'active_input' in event.keys():
-                    input_device = Device(**event['active_input'])
-                    log.debug(f'Input device for message: {input_device!s}')
-                #output_device = None
-                if 'output_triggered' in event.keys():
-                    output_device = Device(**event['output_triggered'])
-                    log.debug(f'Output device for message: {output_device!s}')
-                #timestamp = None
-                if 'timestamp' in event:
-                    timestamp = make_timestamp(timestamp=event['timestamp'], as_tz=user_tz)
-                else:
-                    log.warn('No timestamp included in event message; using "now"')
-                    timestamp = make_timestamp(as_tz=user_tz)
-            except Exception as e:
-                log.warn('Bot message unpack problem {e!s}', exc_info=True)
-                continue
-            log.info(f'{input_device!s};{output_device!s};{timestamp!s}')
-            if input_device:
-                log.info(f'Building message based on input device: {input_device!s}')
-                # build the message
-                notification_message = None
+            events = await poller.poll(timeout=1000)
+            if zmq_socket in dict(events):
                 try:
-                    notification_message = TBot.build_message(timestamp=timestamp, input_device=input_device)
-                except Exception as e:
-                    log.warn(f'Bot message build error {e!s}', exc_info=True)
-                    continue
-                # send the message
-                try:
-                    if input_device.image:
-                        if app_config.getboolean('telegram', 'image_send_only_with_people') and 'person' not in notification_message:
-                            log.warning(f'Discarding image message without person data, as configured.')
-                            continue
-                        log.debug(f'Bot sends image to {chat_id!s} with caption "{notification_message}"')
-                        await t_app.bot.send_photo(chat_id=chat_id,
-                                            photo=BytesIO(input_device.image),
-                                            caption=notification_message,
-                                            parse_mode='Markdown')
+                    event = await zmq_socket.recv_pyobj()
+                except ZMQError as e:
+                    log.exception(f'Cannot get message from ZMQ channel.')
+            if event is None and not pending:
+                continue
+            try:
+                if event:
+                    if not isinstance(event, dict):
+                        log.warn(f'Non dictionary type {type(event)} received, ignoring.')
+                        continue
+                    input_device = None
+                    output_device = None
+                    try:
+                        if 'active_input' in event.keys():
+                            input_device = Device(**event['active_input'])
+                            log.debug(f'Input device for message: {input_device!s}')
+                        if 'output_triggered' in event.keys():
+                            output_device = Device(**event['output_triggered'])
+                            log.debug(f'Output device for message: {output_device!s}')
+                    except Exception as e:
+                        log.warn('Bot message unpack problem {e!s}', exc_info=True)
+                        continue
+                    timestamp = None
+                    if 'timestamp' in event:
+                        timestamp = make_timestamp(timestamp=event['timestamp'], as_tz=user_tz)
                     else:
-                        log.debug(f'Bot sends message to {chat_id!s} with caption "{notification_message}"')
-                        await t_app.bot.send_message(chat_id=chat_id,
-                                                text=notification_message,
-                                                parse_mode='Markdown')
-                except (TimedOut, NetworkError, RetryAfter):
-                    log.warning(f'No viable method to send notification for event: {notification_message}', exc_info=True)
-                    threads.interruptable_sleep.wait(1)
-                except Exception as e:
-                    log.warn(f'Bot message error {e!s}', exc_info=True)
-            else:
-                input_context = None
-                # build the message
-                image_data = None
-                if 'message' in event:
-                    notification_message = event['message']
-                    if 'add_tunnel_url' in event and ngrok_tunnel_url_with_bauth:
-                        notification_message = '[{}]({})'.format(notification_message, ngrok_tunnel_url_with_bauth)
-                else:
-                    notification_message = TBot.build_message(timestamp=timestamp, event_data=event, max_length=200)
-                    if 'input_context' in event:
-                        input_context = event['input_context']
-                        if 'image' in input_context:
-                            image_data = BytesIO(input_context['image'])
-                # send the message
-                try:
-                    if image_data:
-                        button_input = False
-                        if 'type' in input_context and 'button' in input_context['type'].lower():
-                            button_input = True
-                        if app_config.getboolean('telegram', 'image_send_only_with_people') and 'person' not in notification_message and not button_input:
-                            log.warning(f'Discarding image message without person data, as configured.')
+                        log.warn('No timestamp included in event message; using "now"')
+                        timestamp = make_timestamp(as_tz=user_tz)
+                    log.debug(f'{input_device!s};{output_device!s};{timestamp!s}')
+                    # build the message
+                    message = None
+                    if input_device:
+                        log.debug(f'Building message based on input device: {input_device!s}')
+                        try:
+                            message = TBot.build_device_message(timestamp=timestamp, input_device=input_device)
+                        except Exception as e:
+                            log.warn(f'Bot message build error {e!s}', exc_info=True)
                             continue
-                        log.debug(f'Bot sends image to {chat_id!s} with caption "{notification_message}"')
+                    else:
+                        input_context = None
+                        image_data = None
+                        if 'message' in event:
+                            message = {'device_label': None, 'message': event['message'], 'image': None}
+                            if 'add_tunnel_url' in event and ngrok_tunnel_url_with_bauth:
+                                message = '[{}]({})'.format(message, ngrok_tunnel_url_with_bauth)
+                        else:
+                            message = TBot.build_message(timestamp=timestamp, event_data=event, max_length=200)
+                            if 'input_context' in event:
+                                input_context = event['input_context']
+                                if 'image' in input_context:
+                                    image_data = BytesIO(input_context['image'])
+                                    message['image'] = image_data
+                    # always queue the message
+                    device_label = message['device_label']
+                    message_timestamp = make_unix_timestamp(timestamp=timestamp)
+                    message['timestamp'] = message_timestamp
+                    log.info(f'Preparing message to send about {device_label} ({message_timestamp})...')
+                    pending.append(message)
+                # rate-limit the send
+                # https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this
+                time_since_sent = now - last_sent
+                if time_since_sent < min_send_interval:
+                    log.warn(f'Rate limiting message queue (of {len(pending)} items). Time since last send is {time_since_sent}s, min interval is {min_send_interval}s.')
+                    continue
+                # dequeue the message
+                message = pending.popleft()
+                image_batch = []
+                # other messages to dedupe
+                while len(pending) > 0:
+                    device_label = message['device_label']
+                    # keep all image data as configured
+                    if message['image']:
+                        if not TBot.include_image(message=message['message']):
+                            log.warn(f'Discarding event from {device_label} with image of no persons.')
+                            message = pending.popleft()
+                            continue
+                        else:
+                            # check if the next item is also an image, and batch
+                            if pending[0]['image'] and TBot.include_image(message=pending[0]['message']):
+                                if len(image_batch) < MediaGroupLimit.MAX_MEDIA_LENGTH:
+                                    image_batch.append(InputMediaPhoto(media=message['image'], caption=message['message']))
+                                    message = pending.popleft()
+                                    continue
+                                else:
+                                    # enough is enough
+                                    break
+                            elif len(image_batch) > 0:
+                                # finish batching if started
+                                image_batch.append(InputMediaPhoto(media=message['image'], caption=message['message']))
+                                break
+                    elif device_label and pending[0]['device_label']:
+                        message_timestamp = message['timestamp']
+                        next_message_timestamp = pending[0]['timestamp']
+                        log.warn(f'Discarding recent duplicate message for {device_label} (discarding {message_timestamp}, keeping {next_message_timestamp}).')
+                        message = pending.popleft()
+                        continue
+                    break
+                device_label = message['device_label']
+                notification_message = message['message']
+                image_data = message['image']
+                message_timestamp = message['timestamp']
+                try:
+                    if len(image_batch) > 0:
+                        log.info(f'Sending image group to {chat_id!s} containing {len(image_batch)} images.')
+                        await t_app.bot.send_media_group(chat_id=chat_id, media=image_batch)
+                    elif image_data:
+                        log.info(f'Sending image about {device_label} to {chat_id!s} with caption "{notification_message}"')
                         await t_app.bot.send_photo(chat_id=chat_id,
                                             photo=image_data,
                                             caption=notification_message,
                                             parse_mode='Markdown')
                     else:
-                        log.debug(f'Bot sends message to {chat_id!s} with caption "{notification_message}"')
+                        if device_label:
+                            log.info(f'Sending message about {device_label} to {chat_id!s} with caption "{notification_message}"')
+                        else:
+                            log.info(f'Sending message to {chat_id!s} with caption "{notification_message}"')
                         await t_app.bot.send_message(chat_id=chat_id,
                                                 text=notification_message,
                                                 parse_mode='Markdown')
@@ -1797,6 +1842,11 @@ class TBot(AppThread, Closable):
                     else:
                         log.warning(f'No viable method to send notification for event: {notification_message}', exc_info=True)
                         threads.interruptable_sleep.wait(10)
+                finally:
+                    last_sent = now
+            except Exception as e:
+                log.exception(f'General issue with bot message processing.')
+
 
     def run(self):
         log.info('Creating asyncio event loop...')
