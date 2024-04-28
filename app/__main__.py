@@ -27,11 +27,11 @@ from pylru import lrucache
 from pytz import timezone
 from requests.exceptions import ConnectionError
 from schedule import ScheduleValueError
-from sentry_sdk import capture_exception, last_event_id
+from sentry_sdk import capture_exception
 from sentry_sdk.integrations.flask import FlaskIntegration
 from sentry_sdk.integrations.logging import ignore_logger
 from simplejson.scanner import JSONDecodeError
-from telegram import ForceReply, Update, InputMediaPhoto
+from telegram import ForceReply, Update, InputMediaPhoto, MessageEntity
 from telegram.constants import MediaGroupLimit
 from telegram.ext import Application as TelegramApp, \
     Updater as TelegramUpdater, \
@@ -63,7 +63,7 @@ from paho.mqtt.client import MQTT_ERR_SUCCESS, MQTT_ERR_NO_CONN
 import os.path
 
 # setup builtins used by pylib init
-builtins.SENTRY_EXTRAS = [FlaskIntegration()]
+builtins.SENTRY_EXTRAS = [FlaskIntegration(transaction_style="url")]
 builtins.SENTRY_ENVIRONMENT = 'python'
 AWS_REGION = os.environ['AWS_DEFAULT_REGION']
 influx_creds_section = 'local'
@@ -553,8 +553,11 @@ def debug():
 
 @flask_app.errorhandler(500)
 def internal_server_error(e):
+    log.error(f'{e!s}')
+    last_event_id = capture_exception(error=e)
+    log.info(f'Sentry captured event ID is {last_event_id}.')
     return render_template('error.html',
-                           sentry_event_id=last_event_id(),
+                           sentry_event_id=last_event_id,
                            sentry_dsn=creds.sentry_dsn
                            ), 500
 
@@ -1627,36 +1630,27 @@ class TBot(AppThread, Closable):
         self.chat_id = chat_id
         self.sns_fallback = sns_fallback
 
-    def build_message(timestamp, event_data, max_length=160, build_sms=False):
-        global ngrok_tunnel_url
+    def build_message(timestamp, event_data):
         device_label = event_data['input_context']['device_label']
         event_detail = ""
         if 'event_detail' in event_data['input_context']:
             event_detail = ' {}'.format(event_data['input_context']['event_detail'])
+        event_url = None
+        if 'storage_url' in event_data['input_context']:
+            event_url = event_data['input_context']['storage_url']
         # include a timestamp in this SMS message
         message = '{}{} ({}:{})'.format(
             device_label,
             event_detail,
             timestamp.hour,
             str(timestamp.minute).zfill(2))
-        footer = ''
-        # add in the callback URL
-        if build_sms and ngrok_tunnel_url:
-            footer = "\n{}".format(ngrok_tunnel_url)
-        if not build_sms and 'storage_url' in event_data['input_context']:
-            message = '[{}]({})'.format(message, event_data['input_context']['storage_url'])
         # add in some trigger history for context
         if 'trigger_history' in event_data:
-            for history_device_label, trigger_secs_ago in event_data['trigger_history']:
-                history_info = "\n{}s ago: {}".format(trigger_secs_ago, history_device_label)
-                if len(message) + len(history_info) + len(footer) >= max_length:
-                    break
-                message += history_info
-        message += footer
-        return {'device_label': device_label, 'message': message, 'image': None}
+            history_length = len(event_data['trigger_history'])
+            log.warning(f'Ignoring included trigger history of {history_length} items.')
+        return {'device_label': device_label, 'message': message, 'url': event_url, 'image': None}
 
     def build_device_message(timestamp, input_device):
-        global ngrok_tunnel_url
         device_label = input_device.device_label
         if device_label is None:
             device_label = input_device.device_key
@@ -1669,17 +1663,10 @@ class TBot(AppThread, Closable):
             event_detail,
             timestamp.hour,
             str(timestamp.minute).zfill(2))
-        footer = ''
-        # add in the callback URL
-        if ngrok_tunnel_url:
-            footer = "\n{}".format(ngrok_tunnel_url)
-        if input_device.storage_url:
-            message = '[{}]({})'.format(message, input_device.storage_url)
-        message += footer
         image_data = None
         if input_device.image:
             image_data = BytesIO(input_device.image)
-        return {'device_label': device_label, 'message': message, 'image': image_data}
+        return {'device_label': device_label, 'message': message, 'url': input_device.storage_url, 'image': image_data}
 
     def include_image(message):
             if not app_config.getboolean('telegram', 'image_send_only_with_people'):
@@ -1692,7 +1679,7 @@ class TBot(AppThread, Closable):
         global ngrok_tunnel_url_with_bauth
         poller = Poller()
         poller.register(zmq_socket, zmq.POLLIN)
-        pending = deque()
+        pending_by_label = OrderedDict()
         log.info(f'Waiting for events to forward to Telegram bot on chat ID {chat_id}...')
         min_send_interval = app_config.getint('telegram', 'min_send_interval')
         last_sent = 0
@@ -1705,7 +1692,7 @@ class TBot(AppThread, Closable):
                     event = await zmq_socket.recv_pyobj()
                 except ZMQError as e:
                     log.exception(f'Cannot get message from ZMQ channel.')
-            if event is None and not pending:
+            if event is None and not pending_by_label:
                 continue
             try:
                 if event:
@@ -1744,11 +1731,11 @@ class TBot(AppThread, Closable):
                         input_context = None
                         image_data = None
                         if 'message' in event:
-                            message = {'device_label': None, 'message': event['message'], 'image': None}
+                            message = {'device_label': None, 'message': event['message'], 'url': None, 'image': None}
                             if 'add_tunnel_url' in event and ngrok_tunnel_url_with_bauth:
                                 message = '[{}]({})'.format(message, ngrok_tunnel_url_with_bauth)
                         else:
-                            message = TBot.build_message(timestamp=timestamp, event_data=event, max_length=200)
+                            message = TBot.build_message(timestamp=timestamp, event_data=event)
                             if 'input_context' in event:
                                 input_context = event['input_context']
                                 if 'image' in input_context:
@@ -1758,93 +1745,96 @@ class TBot(AppThread, Closable):
                     device_label = message['device_label']
                     message_timestamp = make_unix_timestamp(timestamp=timestamp)
                     message['timestamp'] = message_timestamp
-                    log.info(f'Preparing message to send about {device_label} ({message_timestamp})...')
+                    try:
+                        pending = pending_by_label[device_label]
+                    except KeyError:
+                        pending = deque()
+                        pending_by_label[device_label] = pending
+                    log.info(f'Preparing message to send about {device_label} ({message_timestamp}) with {len(pending)} already queued...')
                     pending.append(message)
                 # rate-limit the send
                 # https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this
                 time_since_sent = now - last_sent
                 if time_since_sent < min_send_interval:
-                    log.warn(f'Rate limiting message queue (of {len(pending)} items). Time since last send is {time_since_sent}s, min interval is {min_send_interval}s.')
+                    log.warn(f'Rate limiting message queue (of {len(pending_by_label)} devices). Time since last send is {time_since_sent}s, min interval is {min_send_interval}s.')
                     continue
                 # dequeue the message
+                # since we favour brevity over temporal precision, access the event
+                # dictionary by rough order of entry and take the latest event for a
+                # label, except for images in which all images with features detected
+                # should be batched and sent.
+                pending = pending_by_label.popitem(last=False)[1]
                 message = pending.popleft()
                 image_batch = []
                 # other messages to dedupe
                 while len(pending) > 0:
                     device_label = message['device_label']
+                    message_timestamp = message['timestamp']
+                    log.info(f'Processing {len(pending)} more events for {device_label} ({message_timestamp})...')
                     # keep all image data as configured
                     if message['image']:
                         if not TBot.include_image(message=message['message']):
                             log.warn(f'Discarding event from {device_label} with image of no persons.')
                             message = pending.popleft()
                             continue
+                        elif len(image_batch) < MediaGroupLimit.MAX_MEDIA_LENGTH:
+                            image_batch.append(InputMediaPhoto(
+                                media=message['image'],
+                                caption=message['message'],
+                                caption_entities=[
+                                    MessageEntity(
+                                        type=MessageEntity.TEXT_LINK,
+                                        url=message['url']
+                                    )
+                                ]))
+                            # pop images in insertion order since all will be taken
+                            message = pending.popleft()
+                            continue
                         else:
-                            # check if the next item is also an image, and batch
-                            if pending[0]['image'] and TBot.include_image(message=pending[0]['message']):
-                                if len(image_batch) < MediaGroupLimit.MAX_MEDIA_LENGTH:
-                                    image_batch.append(InputMediaPhoto(media=message['image'], caption=message['message']))
-                                    message = pending.popleft()
-                                    continue
-                                else:
-                                    # enough is enough
-                                    break
-                            elif len(image_batch) > 0:
-                                # finish batching if started
-                                image_batch.append(InputMediaPhoto(media=message['image'], caption=message['message']))
-                                break
-                    elif device_label and pending[0]['device_label']:
+                            # enough is enough, re-enqueue the remainder
+                            log.info(f'Re-enqueing {len(pending)} remaining events for {device_label} because image batch to send is now {len(image_batch)} items.')
+                            pending_by_label[device_label] = pending
+                            break
+                    else:
+                        oldest_message_timestamp = message['timestamp']
+                        old_count = len(pending)
+                        # take the latest message, tossing the current and the remainders
+                        message = pending.pop()
                         message_timestamp = message['timestamp']
-                        next_message_timestamp = pending[0]['timestamp']
-                        log.warn(f'Discarding recent duplicate message for {device_label} (discarding {message_timestamp}, keeping {next_message_timestamp}).')
-                        message = pending.popleft()
-                        continue
-                    break
+                        log.info(f'Removing {old_count} redundant events for {device_label} (new/old: {message_timestamp}/{oldest_message_timestamp})')
+                        pending.clear()
+                # send the message
                 device_label = message['device_label']
                 notification_message = message['message']
+                notification_url = message['url']
                 image_data = message['image']
                 message_timestamp = message['timestamp']
-                try:
-                    if len(image_batch) > 0:
-                        log.info(f'Sending image group to {chat_id!s} containing {len(image_batch)} images.')
-                        await t_app.bot.send_media_group(chat_id=chat_id, media=image_batch)
-                    elif image_data:
-                        log.info(f'Sending image about {device_label} to {chat_id!s} with caption "{notification_message}"')
-                        await t_app.bot.send_photo(chat_id=chat_id,
-                                            photo=image_data,
-                                            caption=notification_message,
+                if len(image_batch) > 0:
+                    log.info(f'Sending image group to {chat_id!s} containing {len(image_batch)} images.')
+                    await t_app.bot.send_media_group(chat_id=chat_id, media=image_batch, read_timeout=300, write_timeout=300, connect_timeout=300, pool_timeout=300)
+                elif image_data:
+                    log.info(f'Sending image about {device_label} ({message_timestamp}) to {chat_id!s} with caption "{notification_message}"')
+                    await t_app.bot.send_photo(chat_id=chat_id,
+                                        photo=image_data,
+                                        caption=notification_message,
+                                        caption_entities=[
+                                            MessageEntity(
+                                                type=MessageEntity.TEXT_LINK,
+                                                url=notification_url
+                                            )
+                                        ])
+                else:
+                    if device_label:
+                        log.info(f'Sending message about {device_label} ({message_timestamp}) to {chat_id!s} with caption "{notification_message}"')
+                    else:
+                        log.info(f'Sending message to {chat_id!s} with caption "{notification_message}"')
+                    await t_app.bot.send_message(chat_id=chat_id,
+                                            text=notification_message,
                                             parse_mode='Markdown')
-                    else:
-                        if device_label:
-                            log.info(f'Sending message about {device_label} to {chat_id!s} with caption "{notification_message}"')
-                        else:
-                            log.info(f'Sending message to {chat_id!s} with caption "{notification_message}"')
-                        await t_app.bot.send_message(chat_id=chat_id,
-                                                text=notification_message,
-                                                parse_mode='Markdown')
-                except (TimedOut, NetworkError, RetryAfter):
-                    if event and sns_fallback:
-                        sns = boto3.client('sns')
-                        log.warning('Timeout or network problem using Bot. Fallback back to SMS.')
-                        # rebuild the message for SMS
-                        notification_message = TBot.build_message(timestamp=timestamp, event_data=event, build_sms=True)
-                        if 'device_params' not in event['trigger_output']:
-                            log.error('Cannot send SMS because no parameters are configured.')
-                            return
-                        recipients = event['trigger_output']['device_params'].strip().split(',')
-                        for recipient in recipients:
-                            name_number = recipient.split(';')
-                            log.info(f'SMS {name_number[0]} ({name_number[1]}) "{notification_message}"')
-                            try:
-                                resp = sns.publish(PhoneNumber=name_number[1], Message=notification_message)
-                                log.info(f'SMS sent: {resp!s}')
-                            except Exception:
-                                log.exception(f'Cannot send SMS {name_number[1]}: {notification_message}')
-                    else:
-                        log.warning(f'No viable method to send notification for event: {notification_message}', exc_info=True)
-                        threads.interruptable_sleep.wait(10)
-                finally:
-                    last_sent = now
-            except Exception as e:
+                # update send time
+                last_sent = now
+            except Exception:
+                capture_exception()
                 log.exception(f'General issue with bot message processing.')
 
 

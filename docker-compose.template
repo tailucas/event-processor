@@ -4,6 +4,7 @@ services:
       - .env
     image: "${DOCKER_IMAGE}"
     restart: unless-stopped
+    stop_grace_period: 45s
     build:
       context: .
       args:

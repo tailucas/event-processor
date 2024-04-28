@@ -1,17 +1,19 @@
 {% extends "layout.html" %}
 {% set active_page = "show_error" %}
 {% block head %}
-    <script
-      src="https://browser.sentry-cdn.com/6.8.0/bundle.min.js"
-      integrity="sha384-a1zd+NHj/GIqnlXIHuEKFontqYxBdK9Zwslrvnhr1KfU9tBDzKbM55gQFXlHYDiD"
-      crossorigin="anonymous"
-    ></script>
+  <script
+    src="https://browser.sentry-cdn.com/7.112.2/bundle.min.js"
+    integrity="sha384-GYBfUSSXr8sZhL4vR5sbenAmxj0Qh7vhSCMf1M4z4etvo3x0yUEOI3k5sFuEcJvX"
+    crossorigin="anonymous">
+  </script>
 {% endblock %}
 {% block body %}
     {% if sentry_event_id %}
       <script>
         Sentry.init({ dsn: '{{ sentry_dsn }}' });
-        Sentry.showReportDialog({ eventId: '{{ sentry_event_id }}' })
+        Sentry.showReportDialog({
+          eventId: "{{ sentry_event_id }}",
+        });
       </script>
     {% endif %}
 {% endblock %}
