@@ -1737,13 +1737,13 @@ full = ["httpx (>=0.22.0)", "itsdangerous", "jinja2", "python-multipart (>=0.0.7
 
 [[package]]
 name = "tailucas-pylib"
-version = "0.2.9"
+version = "0.3.0"
 description = "Common Python utility modules"
 optional = false
 python-versions = "<4.0,>=3.11"
 files = [
-    {file = "tailucas_pylib-0.2.9-py3-none-any.whl", hash = "sha256:82a2b503b4200c3ea252b64e36730f55439b75523ee8a6cc006be960df0e69b2"},
-    {file = "tailucas_pylib-0.2.9.tar.gz", hash = "sha256:3277564308eff74d158597f2d89529643b1ef5beb6b232fb470aca02e5357d6a"},
+    {file = "tailucas_pylib-0.3.0-py3-none-any.whl", hash = "sha256:4d78362040d048e76b119242ef9b1dafc69c4f15baae1b9c97cda10b034c6c7d"},
+    {file = "tailucas_pylib-0.3.0.tar.gz", hash = "sha256:faef9f04b3c2437c94adf0c8cb01ba5fa7c24a6e0cea49ab4503a796352d7887"},
 ]
 
 [package.dependencies]
@@ -1751,7 +1751,6 @@ boto3 = ">=1.34.93,<2.0.0"
 botoflow = ">=0.8,<0.9"
 cronitor = ">=4.7.1,<5.0.0"
 msgpack = ">=1.0.8,<2.0.0"
-onepasswordconnectsdk = ">=1.5.1,<2.0.0"
 pika = ">=1.3.2,<2.0.0"
 python-dateutil = ">=2.9.0.post0,<3.0.0"
 pytz = ">=2024.1,<2025.0"
@@ -1887,4 +1886,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "da0b921c83fddd6526ecb236317fb1980adc924024e70cbeafd55b97d66330db"
+content-hash = "96ed06aeacf37b147a573564128d7ebf0ecfb468893798ac35c4cc6e90e98984"

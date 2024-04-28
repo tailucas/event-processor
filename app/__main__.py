@@ -1784,6 +1784,8 @@ class TBot(AppThread, Closable):
                                 caption_entities=[
                                     MessageEntity(
                                         type=MessageEntity.TEXT_LINK,
+                                        offset=0,
+                                        length=len(device_label),
                                         url=message['url']
                                     )
                                 ]))
@@ -1820,6 +1822,8 @@ class TBot(AppThread, Closable):
                                         caption_entities=[
                                             MessageEntity(
                                                 type=MessageEntity.TEXT_LINK,
+                                                offset=0,
+                                                length=len(device_label),
                                                 url=notification_url
                                             )
                                         ])
