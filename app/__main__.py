@@ -28,8 +28,10 @@ from pytz import timezone
 from requests.exceptions import ConnectionError
 from schedule import ScheduleValueError
 from sentry_sdk import capture_exception
+from sentry_sdk.integrations.excepthook import ExcepthookIntegration
 from sentry_sdk.integrations.flask import FlaskIntegration
 from sentry_sdk.integrations.logging import ignore_logger
+from sentry_sdk.integrations.threading import ThreadingIntegration
 from simplejson.scanner import JSONDecodeError
 from telegram import ForceReply, Update, InputMediaPhoto, MessageEntity
 from telegram.constants import MediaGroupLimit
@@ -63,7 +65,10 @@ from paho.mqtt.client import MQTT_ERR_SUCCESS, MQTT_ERR_NO_CONN
 import os.path
 
 # setup builtins used by pylib init
-builtins.SENTRY_EXTRAS = [FlaskIntegration(transaction_style="url")]
+builtins.SENTRY_EXTRAS = [
+    FlaskIntegration(transaction_style="url"),
+    ThreadingIntegration(propagate_scope=True)
+]
 builtins.SENTRY_ENVIRONMENT = 'python'
 AWS_REGION = os.environ['AWS_DEFAULT_REGION']
 influx_creds_section = 'local'
@@ -2349,12 +2354,8 @@ class ApiServer(Thread):
         if self.server:
             log.warning(f'API server shutting down: {self.__class__.__name__}')
             # emulate signal handler latch in server.handle_exit()
+            self.server.should_exit = True
             self.server.force_exit = True
-            try:
-                asyncio.run(self.server.shutdown())
-            except Exception:
-                log.warning("Ignoring API server shutdown issue.", exc_info=True)
-            log.warning(f'API server shutdown complete: {self.__class__.__name__}')
 
 
 def main():
@@ -2444,6 +2445,8 @@ def main():
             telegram_bot.shutdown()
             log.info(message.format('Rabbit MQ listener'))
             mq_listener.stop()
+            log.info(message.format('Rabbit MQ listener bridge'))
+            mq_listener_bridge.stop()
             zmq_term()
         bye()
 
