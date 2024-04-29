@@ -7,7 +7,7 @@ cd "$(dirname "$0")"
 
 BACKUP_FILENAME_SUFFIX=""
 if [ -n "${1:-}" ]; then
-  BACKUP_FILENAME_SUFFIX="_${1}"
+  BACKUP_FILENAME_SUFFIX="_$(date +%y%m%d)"
 fi
 BACKUP_FILENAME="${APP_NAME}${BACKUP_FILENAME_SUFFIX}.db"
 
