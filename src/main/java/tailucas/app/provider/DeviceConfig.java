@@ -46,6 +46,7 @@ public class DeviceConfig {
     private Map<ConfigType, CollectionType> collectionTypes = null;
     private Map<String, Pair<Instant, List<Config>>> configCache;
     private Map<String, HAConfig> haConfigCache;
+    private String configHost = null;
 
     private DeviceConfig() {
         log = LoggerFactory.getLogger(DeviceConfig.class);
@@ -56,6 +57,7 @@ public class DeviceConfig {
         collectionTypes = new HashMap<>(4);
         configCache = new ConcurrentHashMap<>(100);
         haConfigCache = new HashMap<>(100);
+        configHost = System.getenv().get("CONFIG_HOST");
     }
 
     public static synchronized DeviceConfig getInstance() {
@@ -149,7 +151,6 @@ public class DeviceConfig {
     }
 
     protected List<Config> fetchDeviceConfiguration(ConfigType api, String deviceKey) throws IOException, InterruptedException {
-        final String hostName = "192.168.0.5";
         final String apiName = api.toString().toLowerCase();
         final Instant now = Instant.now();
         final String cacheKey = deviceKey + "/" + apiName;
@@ -169,10 +170,10 @@ public class DeviceConfig {
                 configCache.remove(cacheKey);
             }
         }
-        log.info("{} needs {} from {}...", deviceKey, apiName, hostName);
+        log.info("{} needs {} from {}...", deviceKey, apiName, configHost);
         UriComponents uriComponents = UriComponentsBuilder.newInstance()
             .scheme("http")
-            .host(hostName)
+            .host(configHost)
             .path("/{scope}/{function}")
             .queryParam("device_key", deviceKey)
             .build()
@@ -202,13 +203,11 @@ public class DeviceConfig {
     }
 
     public void postDeviceInfo(Generic device) throws IOException, InterruptedException {
-        final String hostName = "192.168.0.5";
-        final Instant now = Instant.now();
         final String deviceKey = device.getDeviceKey();
         log.debug("Posting update on {} to {}", deviceKey);
         UriComponents uriComponents = UriComponentsBuilder.newInstance()
             .scheme("http")
-            .host(hostName)
+            .host(configHost)
             .path("/{scope}/{function}")
             .build()
             .expand("api", "device_info")

@@ -186,7 +186,8 @@ public class EventProcessor
             System.exit(exitCode);
         }
         log.info("Sentry enabled: {}, healthy: {}.", Sentry.isEnabled(), Sentry.isHealthy());
-        final String hostName = "192.168.0.5";
+        final Map<String, String> envVars = System.getenv();
+        final String hostName = envVars.get("CONFIG_HOST");
         UriComponents uriComponents = UriComponentsBuilder.newInstance()
             .scheme("http")
             .host(hostName)
@@ -220,7 +221,6 @@ public class EventProcessor
         final ApplicationContext springApp = SpringApplication.run(EventProcessor.class, args);
         final Environment springEnv = springApp.getEnvironment();
         final Locale locale = Locale.getDefault();
-        final Map<String, String> envVars = System.getenv();
         log.info("{} starting {} in working directory {}, locale language {}, country {} and environment {}",
             springEnv.getProperty("app.project-name"),
             Runtime.version().toString(),
@@ -240,7 +240,7 @@ public class EventProcessor
         ThreadFactory appThreadFactory = Thread.ofVirtual().name("app-", 1).factory();
 
         ConnectionFactory rabbitMqConnectionFactory = new ConnectionFactory();
-        rabbitMqConnectionFactory.setHost("192.168.0.5");
+        rabbitMqConnectionFactory.setHost(envVars.get("RABBITMQ_SERVER_ADDRESS"));
         rabbitMqConnectionFactory.setExceptionHandler(new StrictExceptionHandler() {
             @Override
             public void handleUnexpectedConnectionDriverException(Connection conn, Throwable exception) {
@@ -283,7 +283,10 @@ public class EventProcessor
             ZMQ.Socket socket = null;
             try {
                 final String clientId = UUID.randomUUID().toString();
-                mqttClient = new MqttClient("tcp://192.168.0.5:1883", clientId, new MemoryPersistence());
+                mqttClient = new MqttClient(
+                    String.format("tcp://%s:1883", envVars.get("MQTT_SERVER_ADDRESS")),
+                    clientId,
+                    new MemoryPersistence());
                 final MqttConnectOptions options = new MqttConnectOptions();
                 options.setAutomaticReconnect(true);
                 options.setCleanSession(true);

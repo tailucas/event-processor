@@ -1725,13 +1725,13 @@ full = ["httpx (>=0.22.0)", "itsdangerous", "jinja2", "python-multipart (>=0.0.7
 
 [[package]]
 name = "tailucas-pylib"
-version = "0.3.5"
+version = "0.3.6"
 description = "Common Python utility modules"
 optional = false
 python-versions = "<4.0,>=3.11"
 files = [
-    {file = "tailucas_pylib-0.3.5-py3-none-any.whl", hash = "sha256:1d88155368e909b94ce63249ee2b4b19201b40caaf54ce2093e7796ddfa9e8a5"},
-    {file = "tailucas_pylib-0.3.5.tar.gz", hash = "sha256:5456ee94335ea35e026bc69402086d711d4187d58081d5b6e6fe0174eb715a22"},
+    {file = "tailucas_pylib-0.3.6-py3-none-any.whl", hash = "sha256:c3ea1e9a7872f498c7b80ba7982a8615e3d64b9b821aa7f77515ebe24f79662a"},
+    {file = "tailucas_pylib-0.3.6.tar.gz", hash = "sha256:f3b43d917bc2144a3507bcd26fe099b2daa89da99499b27b7eef37428ead1386"},
 ]
 
 [package.dependencies]
