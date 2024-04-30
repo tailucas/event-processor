@@ -41,7 +41,7 @@ from telegram.ext import Application as TelegramApp, \
     ContextTypes as TelegramContextTypes, \
     MessageHandler as TelegramMessageHandler, \
     filters
-from telegram.error import TelegramError, NetworkError, RetryAfter, TimedOut
+from telegram.error import NetworkError, RetryAfter, TimedOut
 from threading import Thread
 from urllib.parse import urlparse
 
@@ -1046,6 +1046,7 @@ class EventProcessor(MQConnection):
     def __init__(self, mqtt_subscriber, mq_server_address, mq_exchange_name):
         MQConnection.__init__(
             self,
+            name=f'{self.__class__.__name__} ({URL_WORKER_APP})',
             mq_server_address=mq_server_address,
             mq_exchange_name=mq_exchange_name,
             # direct routing
@@ -1680,12 +1681,13 @@ class TBot(AppThread, Closable):
                 return True
             return False
 
-    async def tbot_run(t_app: TelegramApp, zmq_socket, chat_id, sns_fallback):
+    async def tbot_run(t_app: TelegramApp, zmq_socket, chat_id):
         global ngrok_tunnel_url_with_bauth
         poller = Poller()
         poller.register(zmq_socket, zmq.POLLIN)
         pending_by_label = OrderedDict()
         log.info(f'Waiting for events to forward to Telegram bot on chat ID {chat_id}...')
+        call_again_timestamp = 0
         min_send_interval = app_config.getint('telegram', 'min_send_interval')
         last_sent = 0
         while not threads.shutting_down:
@@ -1760,8 +1762,11 @@ class TBot(AppThread, Closable):
                 # rate-limit the send
                 # https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this
                 time_since_sent = now - last_sent
+                if (time_since_sent < call_again_timestamp):
+                    log.warn(f'Enforced rate limiting message queue (of {len(pending_by_label)} devices). Telegram asked for {call_again_timestamp - now}s backoff.')
+                    continue
                 if time_since_sent < min_send_interval:
-                    log.warn(f'Rate limiting message queue (of {len(pending_by_label)} devices). Time since last send is {time_since_sent}s, min interval is {min_send_interval}s.')
+                    log.warn(f'Elective rate limiting message queue (of {len(pending_by_label)} devices). Time since last send is {time_since_sent}s, min interval is {min_send_interval}s.')
                     continue
                 # dequeue the message
                 # since we favour brevity over temporal precision, access the event
@@ -1816,30 +1821,35 @@ class TBot(AppThread, Closable):
                 notification_url = message['url']
                 image_data = message['image']
                 message_timestamp = message['timestamp']
-                if len(image_batch) > 0:
-                    log.info(f'Sending image group to {chat_id!s} containing {len(image_batch)} images.')
-                    await t_app.bot.send_media_group(chat_id=chat_id, media=image_batch, read_timeout=300, write_timeout=300, connect_timeout=300, pool_timeout=300)
-                elif image_data:
-                    log.info(f'Sending image about {device_label} ({message_timestamp}) to {chat_id!s} with caption "{notification_message}"')
-                    await t_app.bot.send_photo(chat_id=chat_id,
-                                        photo=image_data,
-                                        caption=notification_message,
-                                        caption_entities=[
-                                            MessageEntity(
-                                                type=MessageEntity.TEXT_LINK,
-                                                offset=0,
-                                                length=len(device_label),
-                                                url=notification_url
-                                            )
-                                        ])
-                else:
-                    if device_label:
-                        log.info(f'Sending message about {device_label} ({message_timestamp}) to {chat_id!s} with caption "{notification_message}"')
+                try:
+                    if len(image_batch) > 0:
+                        log.info(f'Sending image group to {chat_id!s} containing {len(image_batch)} images.')
+                        await t_app.bot.send_media_group(chat_id=chat_id, media=image_batch, read_timeout=300, write_timeout=300, connect_timeout=300, pool_timeout=300)
+                    elif image_data:
+                        log.info(f'Sending image about {device_label} ({message_timestamp}) to {chat_id!s} with caption "{notification_message}"')
+                        await t_app.bot.send_photo(chat_id=chat_id,
+                                            photo=image_data,
+                                            caption=notification_message,
+                                            caption_entities=[
+                                                MessageEntity(
+                                                    type=MessageEntity.TEXT_LINK,
+                                                    offset=0,
+                                                    length=len(device_label),
+                                                    url=notification_url
+                                                )
+                                            ])
                     else:
-                        log.info(f'Sending message to {chat_id!s} with caption "{notification_message}"')
-                    await t_app.bot.send_message(chat_id=chat_id,
-                                            text=notification_message,
-                                            parse_mode='Markdown')
+                        if device_label:
+                            log.info(f'Sending message about {device_label} ({message_timestamp}) to {chat_id!s} with caption "{notification_message}"')
+                        else:
+                            log.info(f'Sending message to {chat_id!s} with caption "{notification_message}"')
+                        await t_app.bot.send_message(chat_id=chat_id,
+                                                text=notification_message,
+                                                parse_mode='Markdown')
+                except RetryAfter as e:
+                    call_again_timestamp = now + e.retry_after
+                    log.warn(f'Telegram asks to call again in {e.retry_after}s. Deferring calls until {call_again_timestamp}.')
+                    continue
                 # update send time
                 last_sent = now
             except Exception:
@@ -1867,8 +1877,7 @@ class TBot(AppThread, Closable):
             TBot.tbot_run(
                 t_app=self.t_app,
                 zmq_socket=self.socket,
-                chat_id=self.chat_id,
-                sns_fallback=self.sns_fallback),
+                chat_id=self.chat_id),
             loop)
         log.info('Starting Telegram application...')
         self.t_app.run_polling(stop_signals=None)
