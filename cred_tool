@@ -23,21 +23,15 @@ def err(msg, code=1):
     exit(code)
 
 
-try:
-    op_connect_server = os.environ['OP_CONNECT_SERVER']
-except KeyError:
-    default_op_connect_server = 'http://localhost:8080'
-    op_connect_server = default_op_connect_server
-
-
-creds_client: Client = new_client_from_environment(url=op_connect_server)
+creds_client: Client = new_client_from_environment()
 creds_vaults = creds_client.get_vaults()
-vault_id = None
-if len(creds_vaults) == 1:
-    vault_id = creds_vaults[0].id
-elif len(creds_vaults) > 1:
-    # disambiguate
-    vault_id = os.environ['OP_VAULT']
+vault_id = os.environ['OP_VAULT']
+vault_match = False
+for creds_vault in creds_vaults:
+    if creds_vault.id == vault_id:
+        vault_match = True
+if not vault_match:
+    err(f'No vault found matching ID {vault_id}')
 
 
 if __name__ == "__main__":
@@ -50,7 +44,6 @@ if __name__ == "__main__":
         cred_schema = json.loads(sys.stdin.readline())
     else:
         err(f'Unexpected arguments in {sys.argv[1:]}')
-    creds_client: Client = new_client_from_environment(url=op_connect_server)
     if item_name is None:
         if (len(cred_schema) > 1):
             err(f'Only a single credential specification supported. {list(cred_schema)} provided.')

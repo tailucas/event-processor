@@ -123,7 +123,7 @@ Install these tools and make sure that they are on the environment `$PATH`.
 | `NGROK_CLIENT_API_PORT` | ngrok management port | `4040` |
 | `NGROK_ENABLED` | Create ngrok tunnel with container | `true` |
 | `NGROK_TUNNEL_NAME` | Tunnel name in configuration | `frontend` |
-| `OP_CONNECT_SERVER` | 1Password connect server URL | *network specific* |
+| `OP_CONNECT_HOST` | 1Password connect server URL | *network specific* |
 | `OP_CONNECT_TOKEN` | 1Password connect server token | *project specific* |
 | `OP_VAULT` | 1Password vault | *project specific* |
 | `OUTPUT_TYPE_BLUETOOTH` | Output type representing Bluetooth L2 ping | `l2ping` |

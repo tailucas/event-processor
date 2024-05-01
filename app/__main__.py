@@ -49,7 +49,7 @@ from fastapi import FastAPI, Depends, status, HTTPException
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.wsgi import WSGIMiddleware
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from flask import Flask, g, flash, request, render_template, url_for, redirect
 from flask.logging import default_handler
@@ -104,6 +104,7 @@ from tailucas_pylib.datetime import is_list, \
     make_unix_timestamp, \
     ISO_DATE_FORMAT
 from tailucas_pylib.aws.metrics import post_count_metric
+from tailucas_pylib.device import Device
 from tailucas_pylib.process import SignalHandler, exec_cmd_log
 from tailucas_pylib.rabbit import MQConnection, ZMQListener
 from tailucas_pylib import threads
@@ -184,51 +185,6 @@ ngrok_tunnel_url = None
 ngrok_tunnel_url_with_bauth = None
 
 startup_complete = False
-
-
-from typing import List, Optional
-from typing_extensions import Annotated
-
-
-class Device(BaseModel):
-    active: Optional[bool] = None
-    device_id: Optional[str] = None
-    device_key: str
-    device_label: Optional[str] = None
-    device_params: Optional[str] = None
-    device_type: str
-    event_detail: Optional[str] = None
-    group_name: Optional[str] = None
-    image: Optional[bytes] = None
-    input_label: Optional[str] = None
-    input_location: Optional[str] = None
-    is_input: Optional[bool] = None
-    is_output: Optional[bool] = None
-    last_metered_minute: Optional[float] = None
-    last_minute_metered: Optional[int] = None
-    last_sample_value: Optional[int] = None
-    location: Optional[str] = None
-    name: Optional[str] = None
-    normal_value: Optional[int] = None
-    pulse_discards: Optional[int] = None
-    register_reading: Optional[int] = None
-    sample_value: Optional[int] = None
-    storage_path: Optional[str] = None
-    storage_url: Optional[str] = None
-    timestamp: Optional[int] = None
-    type_: Optional[Annotated[str, Field(alias='type')]] = None
-    uptime: Optional[int] = None
-
-    def __str__(self):
-        str_rep = ''
-        for name, value in vars(self).items():
-            if len(str_rep) > 0:
-                str_rep += ','
-            if not isinstance(value, bytes):
-                str_rep += f'{name}={value}'
-            else:
-                str_rep += f'{name}={len(value)} bytes'
-        return str_rep
 
 
 class EventLog(Base):

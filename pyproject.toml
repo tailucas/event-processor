@@ -30,9 +30,9 @@ fastapi = "^0.110.2"
 uvicorn = "^0.29.0"
 python-telegram-bot = "^21.1.1"
 aiosqlite = "^0.20.0"
-pydantic = "^2.7.1"
 onepasswordconnectsdk = {git = "https://github.com/tglucas/connect-sdk-python.git"}
-tailucas-pylib = "^0.3.5"
+tailucas-pylib = "^0.4.0"
+pydantic = "^2.7.1"
 
 
 [build-system]

@@ -33,7 +33,7 @@ public class OnePassword {
         if (log == null) {
             log = LoggerFactory.getLogger(OnePassword.class);
         }
-        final String opServerAddr = System.getenv("OP_CONNECT_SERVER");
+        final String opServerAddr = System.getenv("OP_CONNECT_HOST");
         log.info("Attempting to connect to 1Password at {}...", opServerAddr);
         final String opToken = System.getenv("OP_CONNECT_TOKEN");
         client = OPConnectClientBuilder.builder()
