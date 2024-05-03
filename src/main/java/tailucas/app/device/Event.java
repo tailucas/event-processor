@@ -183,14 +183,19 @@ public class Event implements Runnable {
                                 if (!outputDeviceType.equals(outputDeviceLabel)) {
                                     deviceDetail = String.format(" (%s)", outputDeviceType);
                                 }
-                                final String responseTopicSuffix = nameMatcher.replaceAll("_");
-                                if (responseTopicSuffix.length() == 0) {
-                                    throw new RuntimeException(String.format(
-                                        "%s maps to invalid command topic suffix %s.",
-                                        device.getDeviceLabel(),
-                                        outputDeviceType));
+                                String responseTopic = outputConfig.getTriggerTopic();
+                                if (responseTopic == null) {
+                                    final String responseTopicSuffix = nameMatcher.replaceAll("_");
+                                    if (responseTopicSuffix.length() == 0) {
+                                        throw new RuntimeException(String.format(
+                                            "%s maps to invalid command topic suffix %s.",
+                                            device.getDeviceLabel(),
+                                            outputDeviceType));
+                                    }
+                                    responseTopic = String.format("event.trigger.%s", responseTopicSuffix);
+                                    log.warn("{} has no configured message topic. Using {}", deviceDescription, responseTopic);
                                 }
-                                final String responseTopic = String.format("event.trigger.%s", responseTopicSuffix);
+                                responseTopic = responseTopic.toLowerCase();
                                 log.info("{} ({}) triggers {}{} on exchange {} with routing {} ({} bytes on the wire).", deviceDescription, source, outputDeviceLabel, deviceDetail, exchangeName, responseTopic, wireCommand.length);
                                 rabbitMqChannel.basicPublish(exchangeName, responseTopic, rabbitMqProperties, wireCommand);
                             } catch (Exception e) {

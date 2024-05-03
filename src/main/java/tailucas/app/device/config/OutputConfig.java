@@ -4,13 +4,15 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class OutputConfig extends Config {
     @JsonProperty("device_key")
-    public String deviceKey;
+    private String deviceKey;
     @JsonProperty("device_type")
-    public String deviceType;
+    private String deviceType;
     @JsonProperty("device_label")
-    public String deviceLabel;
+    private String deviceLabel;
     @JsonProperty("device_params")
-    public String deviceParams;
+    private String deviceParams;
+    @JsonProperty("trigger_topic")
+    private String triggerTopic;
     public String getDeviceKey() {
         return deviceKey;
     }
@@ -22,6 +24,12 @@ public class OutputConfig extends Config {
             return deviceLabel;
         }
         return deviceKey;
+    }
+    public String getDeviceParams() {
+        return deviceParams;
+    }
+    public String getTriggerTopic() {
+        return triggerTopic;
     }
     @Override
     public String toString() {

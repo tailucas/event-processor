@@ -282,13 +282,15 @@ class OutputConfig(Base):
     device_type = Column(String(100), nullable=False)
     device_label = Column(String(100))
     device_params = Column(Text)
+    trigger_topic = Column(String(100))
     links = relationship('OutputLink', backref='output_config', cascade='all, delete-orphan', lazy='dynamic')
 
-    def __init__(self, device_key, device_type, device_label, device_params):
+    def __init__(self, device_key, device_type, device_label, device_params, trigger_topic):
         self.device_key = device_key
         self.device_type = device_type
         self.device_label = device_label
         self.device_params = device_params
+        self.trigger_topic = trigger_topic
 
     def as_dict(self):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
@@ -490,7 +492,8 @@ async def api_device_info(di: DeviceInfo):
                     device_key=di.device_key,
                     device_label=di.device_label,
                     device_type=di.device_type,
-                    device_params=None))
+                    device_params=None,
+                    trigger_topic=None))
                 db.session.commit()
     with exception_handler(connect_url=URL_WORKER_APP, and_raise=False, shutdown_on_error=True) as zmq_socket:
         di_model = di.model_dump()
@@ -867,8 +870,8 @@ def output_link():
         # save the changes
         db.session.commit()
         # invalidate remote cache
-        db_output_config = OutputConfig.query.filter_by(id=saved_device_id).first()
-        invalidate_remote_config(device_key=db_output_config.device_key)
+        db_input_config = InputConfig.query.filter_by(id=saved_device_id).first()
+        invalidate_remote_config(device_key=db_input_config.device_key)
     output_links = InputConfig.query.add_entity(OutputLink).join(OutputLink, InputConfig.id==OutputLink.input_device_id, isouter=True).order_by(InputConfig.device_key).all()
     inputs = OrderedDict()
     outputs = OutputConfig.query.order_by(OutputConfig.device_key).all()
@@ -2328,33 +2331,35 @@ def main():
     if not threads.shutting_down:
         log.info('Creating application threads...')
         # bind listeners first
-        heartbeat_filter = HeartbeatFilter()
+        #heartbeat_filter = HeartbeatFilter()
         app_bridge = BridgeFilter()
         mq_server_address=app_config.get('rabbitmq', 'server_address').split(',')
         mq_exchange_name=app_config.get('rabbitmq', 'mq_exchange')
-        mq_listener = ZMQListener(
-            zmq_url=URL_WORKER_HEARTBEAT_NANNY,
-            mq_server_address=mq_server_address,
-            mq_exchange_name=mq_exchange_name,
-            mq_topic_filter='event.#',
-            mq_exchange_type='topic')
+        #mq_listener = ZMQListener(
+        #    zmq_url=URL_WORKER_HEARTBEAT_NANNY,
+        #    mq_server_address=mq_server_address,
+        #    mq_exchange_name=mq_exchange_name,
+        #    mq_topic_filter='event.#',
+        #    mq_exchange_type='topic')
         mq_listener_bridge = ZMQListener(
             zmq_url=URL_WORKER_APP_BRIDGE,
             mq_server_address=mq_server_address,
             mq_exchange_name=f'{mq_exchange_name}_control',
             mq_topic_filter='event.trigger.sms',
             mq_exchange_type='direct')
-        mqtt_subscriber = MqttSubscriber()
+        #mqtt_subscriber = MqttSubscriber()
+        mqtt_subscriber = None
         auto_scheduler = AutoScheduler()
         event_processor = EventProcessor(
             mqtt_subscriber,
             mq_server_address,
             f'{mq_exchange_name}_control')
         # connect ZMQ IPC clients next
-        event_source_discovery = EventSourceDiscovery()
+        #event_source_discovery = EventSourceDiscovery()
         sqs_listener = None
         if app_config.getboolean('app', 'sns_control_enabled'):
-            sqs_listener = SQSListener()
+            pass
+            #sqs_listener = SQSListener()
         # configure Telegram bot
         telegram_bot = TBot(
             chat_id=app_config.getint('telegram', 'chat_room_id'),
@@ -2374,16 +2379,15 @@ def main():
             log.info(f'Starting {APP_NAME} threads...')
             # start the binders
             event_processor.start()
-            heartbeat_filter.start()
+            #heartbeat_filter.start()
             app_bridge.start()
             telegram_bot.start()
             # start the connectors
-            event_source_discovery.start()
-            mqtt_subscriber.start()
+            #event_source_discovery.start()
+            #mqtt_subscriber.start()
             auto_scheduler.start()
-            if sqs_listener:
-                sqs_listener.start()
-            mq_listener.start()
+            #if sqs_listener:
+            #    sqs_listener.start()
             mq_listener_bridge.start()
             # HTTP APIs
             server.start()
@@ -2406,8 +2410,6 @@ def main():
             event_processor.stop()
             log.info(message.format('Telegram Bot'))
             telegram_bot.shutdown()
-            log.info(message.format('Rabbit MQ listener'))
-            mq_listener.stop()
             log.info(message.format('Rabbit MQ listener bridge'))
             mq_listener_bridge.stop()
             zmq_term()

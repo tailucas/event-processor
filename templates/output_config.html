@@ -18,6 +18,9 @@
                                     <input class="form-control" type="text" name="device_params" placeholder="Parameters" value="{{ output_device.device_params }}">
                                 </div>
                                 <div class="form-group">
+                                    <input class="form-control" type="text" name="trigger_topic" placeholder="MQ Topic" value="{{ output_device.trigger_topic }}">
+                                </div>
+                                <div class="form-group">
                                     <button type="submit" class="btn btn-primary" name="device_id" value="{{ output_device.id }}"><i class="far fa-save"></i> Save</button>
                                 </div>
                             </form>
