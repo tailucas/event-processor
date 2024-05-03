@@ -1,7 +1,5 @@
 package tailucas.app.message;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.ExecutorService;
 
 import org.apache.commons.lang3.StringUtils;
@@ -28,7 +26,6 @@ import tailucas.app.provider.DeviceConfig;
 import tailucas.app.device.Meter;
 import tailucas.app.device.Ring;
 import tailucas.app.device.Sensor;
-import tailucas.app.device.State;
 
 public class Mqtt implements MqttCallback {
 
@@ -94,73 +91,47 @@ public class Mqtt implements MqttCallback {
             }
         } else if (topic.startsWith("meter/") || topic.startsWith("sensor/")) {
             // attempt a JSON introspection
+            JsonNode root = mapper.readTree(payload);
+            final String[] topicParts = topic.split("/", 3);
+            if (topicParts.length < 2) {
+                log.error("{} not handled.", topic);
+                return;
+            }
+            final String deviceTypeString = StringUtils.capitalize(topicParts[0]);
+            Type deviceType = null;
             try {
-                JsonNode root = mapper.readTree(payload);
-                final List<Device> inputs = new ArrayList<>();
-                final List<Device> active_devices = new ArrayList<>();
-                final String[] topicParts = topic.split("/", 3);
-                if (topicParts.length < 2) {
-                    log.error("{} not handled.", topic);
-                    return;
-                }
-                final String deviceTypeString = StringUtils.capitalize(topicParts[0]);
-                Type deviceType = null;
-                try {
-                    deviceType = Type.valueOf(deviceTypeString.toUpperCase());
-                } catch (IllegalArgumentException e) {
-                    log.warn("{} unknown device type.", topic);
-                    return;
-                }
-                try {
-                    final String location = StringUtils.capitalize(topicParts[1]);
-                    if (deviceType.equals(Type.SENSOR)) {
-                        final Device common = mapper.treeToValue(root, Device.class);
-                        common.setLocation(location);
-                        root.fields().forEachRemaining(field -> {
-                            final String fieldName = field.getKey();
-                            final JsonNode node = field.getValue();
-                            if (fieldName.startsWith("input_") && !fieldName.equals("input_location")) {
-                                try {
-                                    final Sensor sensor = mapper.treeToValue(node, Sensor.class);
-                                    sensor.updateFrom(common);
-                                    log.debug("Sensor state is: {}", sensor);
-                                    inputs.add(sensor);
-                                    if (sensor.isActive()) {
-                                        active_devices.add(sensor);
-                                    }
-                                } catch (JsonProcessingException e) {
-                                    log.error("{} deserialization failure of field {}: ", topic, fieldName, e);
-                                    return;
-                                }
+                deviceType = Type.valueOf(deviceTypeString.toUpperCase());
+            } catch (IllegalArgumentException e) {
+                log.warn("{} unknown device type.", topic);
+                return;
+            }
+            try {
+                final String location = StringUtils.capitalize(topicParts[1]);
+                if (deviceType.equals(Type.SENSOR)) {
+                    final Device common = mapper.treeToValue(root, Device.class);
+                    common.setLocation(location);
+                    root.fields().forEachRemaining(field -> {
+                        final String fieldName = field.getKey();
+                        final JsonNode node = field.getValue();
+                        if (fieldName.startsWith("input_") && !fieldName.equals("input_location")) {
+                            try {
+                                final Sensor sensor = mapper.treeToValue(node, Sensor.class);
+                                sensor.updateFrom(common);
+                                log.debug("Sensor state is: {}", sensor);
+                                srv.submit(new Event(rabbitMqConnection, topic, sensor));
+                            } catch (JsonProcessingException e) {
+                                log.error("{} deserialization failure of field {}: ", topic, fieldName, e);
+                                return;
                             }
-                        });
-                    } else if (deviceType.equals(Type.METER)) {
-                        final Meter meter = mapper.treeToValue(root, Meter.class);
-                        meter.setLocation(location);
-                        log.debug("Meter state is: {}", meter);
-                        inputs.add(meter);
-                        // meters are always "active", thresholds are computed against configuration.
-                        active_devices.add(meter);
-                    } else {
-                        log.warn("{} unknown inferred device type.", topic);
-                        return;
-                    }
-                } catch (JsonProcessingException e) {
-                    log.error("{} during deserialization of {}: {}", topic, deviceType, e);
-                    return;
-                }
-                if (inputs.size() > 0) {
-                    State deviceUpdate = new State(inputs, active_devices);
-                    log.debug("Derived MQTT device state update: {}", deviceUpdate);
-                    if (active_devices.size() > 0) {
-                        active_devices.forEach(device -> {
-                            srv.submit(new Event(rabbitMqConnection, topic, device, deviceUpdate));
-                        });
-                    } else {
-                        srv.submit(new Event(rabbitMqConnection, topic, deviceUpdate));
-                    }
+                        }
+                    });
+                } else if (deviceType.equals(Type.METER)) {
+                    final Meter meter = mapper.treeToValue(root, Meter.class);
+                    meter.setLocation(location);
+                    log.debug("Meter state is: {}", meter);
+                    srv.submit(new Event(rabbitMqConnection, topic, meter));
                 } else {
-                    log.warn("{} insufficient device information from topic.", topic);
+                    log.warn("{} unknown inferred device type.", topic);
                     return;
                 }
             } catch (JsonParseException e) {

@@ -1,6 +1,7 @@
 package tailucas.app.message;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 
 import org.msgpack.jackson.dataformat.MessagePackMapper;
@@ -13,6 +14,7 @@ import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.DeliverCallback;
 import com.rabbitmq.client.Delivery;
 
+import tailucas.app.device.Device;
 import tailucas.app.device.Event;
 import tailucas.app.device.State;
 
@@ -40,15 +42,15 @@ public class RabbitMq implements DeliverCallback {
         final byte[] msgBody = message.getBody();
         try {
             final State deviceUpdate = mapper.readerFor(new TypeReference<State>() { }).readValue(msgBody);
-            log.debug("RabbitMQ device state update: {}", deviceUpdate);
-            var outputsTriggers = deviceUpdate.getOutputsTriggered();
-            if (outputsTriggers != null) {
-                outputsTriggers.forEach(device -> {
-                    srv.submit(new Event(connection, source, device.getDeviceByType(), deviceUpdate));
-                });
-            } else {
-                srv.submit(new Event(connection, source, deviceUpdate));
+            log.debug("{}: RabbitMQ device state update: {}", source, deviceUpdate);
+            final List<Device> inputs = deviceUpdate.getInputs();
+            if (inputs == null) {
+                log.warn("{}: no inputs provide in device update.", source);
+                return;
             }
+            inputs.forEach(device -> {
+                srv.submit(new Event(connection, source, device));
+            });
         } catch (Exception e) {
             log.error("{} event issue ({} bytes).", source, msgBody.length, e);
         }

@@ -23,10 +23,9 @@ public class Device implements Generic {
         CAMERA,
         CONTACT,
         METER,
-        MOTION,
+        DETECTOR,
         SENSOR
     }
-
     @JsonProperty("device_id")
     protected String deviceId;
     @JsonProperty("device_key")
@@ -37,6 +36,8 @@ public class Device implements Generic {
     protected String deviceType;
     @JsonProperty("event_detail")
     protected String eventDetail;
+    @JsonProperty("state")
+    protected String state;
     @JsonProperty("group_name")
     protected String groupName;
     @JsonProperty("location")
@@ -67,6 +68,25 @@ public class Device implements Generic {
         if (log == null) {
             log = LoggerFactory.getLogger(Device.class);
         }
+    }
+    protected void setFieldsFrom(Device device) {
+        this.deviceId = device.deviceId;
+        this.deviceKey = device.deviceKey;
+        this.deviceLabel = device.deviceLabel;
+        this.deviceType = device.deviceType;
+        this.eventDetail = device.eventDetail;
+        this.state = device.state;
+        this.groupName = device.groupName;
+        this.location = device.location;
+        this.image = device.image;
+        this.inputLocation = device.inputLocation;
+        this.name = device.name;
+        this.sampleValue = device.sampleValue;
+        this.storageUrl = device.storageUrl;
+        this.storagePath = device.storagePath;
+        this.type = device.type;
+        this.timestamp = device.timestamp;
+        this.uptime = device.uptime;
     }
     @Override
     public Config getConfig() {
@@ -165,10 +185,11 @@ public class Device implements Generic {
         Type deviceType = null;
         try {
             String uType = type.toUpperCase();
-            if (uType.equals("MOTION DETECTOR")) {
-                uType = "MOTION";
+            if (uType.endsWith("DETECTOR")) {
+                deviceType = Type.DETECTOR;
+            } else {
+                deviceType = Type.valueOf(uType);
             }
-            deviceType = Type.valueOf(uType);
         } catch (IllegalArgumentException e) {
             throw new IllegalStateException(e);
         }
@@ -180,6 +201,7 @@ public class Device implements Generic {
         var device = switch (typeType) {
             case Type.BASE -> this;
             case Type.CAMERA -> new Camera(this);
+            case Type.DETECTOR -> new Detector(this);
             default -> null;
         };
         return device;

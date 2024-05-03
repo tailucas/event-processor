@@ -37,7 +37,6 @@ public class Event implements Runnable {
     protected Connection connection;
     protected String source;
     protected Generic device;
-    protected State deviceUpdate;
     protected String deviceUpdateString;
 
     public static void init() {
@@ -54,29 +53,24 @@ public class Event implements Runnable {
         }
     }
 
-    public Event(Connection connection, String source, Generic device, State deviceUpdate, String deviceUpdateString) {
+    public Event(Connection connection, String source, Generic device, String deviceUpdateString) {
         init();
         this.connection = connection;
         this.source = source;
         this.device = device;
-        this.deviceUpdate = deviceUpdate;
         this.deviceUpdateString = deviceUpdateString;
     }
 
-    public Event(Connection connection, String source, Generic device, State deviceUpdate) {
-        this(connection, source, device, deviceUpdate, null);
-    }
-
     public Event(Connection connection, String source, Generic device) {
-        this(connection, source, device, null, null);
+        this(connection, source, device, null);
     }
 
-    public Event(Connection connection, String source, State deviceUpdate) {
-        this(connection, source, null, deviceUpdate, null);
+    public Event(Connection connection, String source, Device device) {
+        this(connection, source, device.getDeviceByType(), null);
     }
 
     public Event(Connection connection, String source, String deviceUpdate) {
-        this(connection, source, null, null, deviceUpdate);
+        this(connection, source, null, deviceUpdate);
     }
 
     @Override
@@ -107,8 +101,8 @@ public class Event implements Runnable {
                     deviceDescription = deviceKey;
                 }
                 configProvider.postDeviceInfo(device);
-                if (device.isHeartbeat()) {
-                    log.debug("Heartbeat for {}.", deviceDescription);
+                if (device.isHeartbeat() || source.contains(".heartbeat.")) {
+                    log.debug("{}: Heartbeat for {}.", source, deviceDescription);
                     return;
                 }
                 log.debug("{} fetch configuration with key {}, description: {}", source, deviceKey, deviceDescription);
@@ -211,33 +205,6 @@ public class Event implements Runnable {
                     }));
                 } else {
                     log.warn("{} is linked to no outputs: {}.", deviceDescription, outputNames);
-                }
-            }
-            if (deviceUpdate != null) {
-                log.debug("{} update: {}", source, deviceUpdate);
-                if (deviceUpdate.inputs != null) {
-                    deviceUpdate.inputs.forEach(Failable.asConsumer(device -> {
-                        final String deviceKey = device.getDeviceKey();
-                        if (this.device != null && deviceKey.equals(this.device.getDeviceKey())) {
-                            return;
-                        }
-                        InputConfig deviceConfig = configProvider.fetchInputDeviceConfig(deviceKey);
-                        if (deviceConfig != null) {
-                            log.debug("{} input: {}", source, deviceConfig);
-                        }
-                    }));
-                }
-                if (deviceUpdate.outputs != null) {
-                    deviceUpdate.outputs.forEach(Failable.asConsumer(device -> {
-                        final String deviceKey = device.getDeviceKey();
-                        if (processedOutputs.containsKey(deviceKey)) {
-                            return;
-                        }
-                        OutputConfig deviceConfig = configProvider.fetchOutputDeviceConfig(deviceKey);
-                        if (deviceConfig != null) {
-                            log.debug("{} output: {}", source, deviceConfig);
-                        }
-                    }));
                 }
             }
         } catch (IllegalStateException | UnsupportedOperationException | IOException e) {

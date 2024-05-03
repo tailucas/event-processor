@@ -537,13 +537,13 @@ def index():
                     {
                         'device_key': 'App Panic Button',
                         'device_label': 'Panic Button',
-                        'type': 'Panic Button'
+                        'type': 'Button'
                     }
                 ]
                 zmq_socket.send_pyobj({
                     device_name: {
                         'active_devices': active_devices,
-                        'outputs_triggered': active_devices,
+                        'inputs': active_devices,
                     }
                 })
         elif 'meter_reset' in request.form:
@@ -1235,7 +1235,7 @@ class EventProcessor(MQConnection):
                             bot_reply = None
                             input_enable = None
                             if bot_command_base.startswith('/report'):
-                                device_type = 'Dash Button'
+                                device_type = 'Button'
                                 log.info(f'Synthesizing {device_type} event...')
                                 # splice in a new event
                                 event_origin = device_name
@@ -1248,7 +1248,7 @@ class EventProcessor(MQConnection):
                                 ]
                                 event_data.update({
                                     'active_devices': active_devices,
-                                    'outputs_triggered': active_devices,
+                                    'inputs': active_devices,
                                 })
                             elif bot_command_base.startswith('/outputson'):
                                 self._outputs_enabled = True
@@ -1936,7 +1936,6 @@ class MqttSubscriber(AppThread, Closable):
                         'device_info': {'inputs': device_inputs},
                         'inputs': device_inputs,
                         'active_devices': active_devices,
-                        'outputs_triggered': active_devices,
                         'timestamp': event_timestamp
                     }
                 })
@@ -1965,7 +1964,6 @@ class MqttSubscriber(AppThread, Closable):
                             }]
                         },
                         'active_devices': active_devices,
-                        'outputs_triggered': active_devices,
                         'timestamp': event_timestamp
                     }
                 })
@@ -2186,7 +2184,7 @@ class BridgeFilter(AppThread):
                 if not isinstance(control_payload, dict):
                     log.info('Malformed event; expecting dictionary.')
                     continue
-                if 'sms' in control_payload.keys():
+                if 'sms' in control_payload:
                     log.info(f'Sending payload to bot {control_payload.keys()}...')
                     try:
                         self.bot.send_pyobj(control_payload['sms'])

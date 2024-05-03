@@ -23,8 +23,6 @@ public class State {
     protected List<Device> inputs;
     @JsonProperty
     protected List<Device> outputs;
-    @JsonProperty("outputs_triggered")
-    protected List<Device> outputsTriggered;
 
     @JsonIgnore
     protected Instant createdTime;
@@ -35,12 +33,16 @@ public class State {
             DATE_TIME_FORMATTER = new DateTimeFormatterBuilder().appendPattern("yyyy-MM-dd'T'HH:mm:ss.SSSSSSZ").toFormatter();
         }
         this.createdTime = null;
-        this.outputsTriggered = null;
     }
-    public State(List<Device> inputs, List<Device> outputsTriggered) {
+    public State(List<Device> inputs) {
         this();
         this.inputs = inputs;
-        this.outputsTriggered = outputsTriggered;
+    }
+    public List<Device> getInputs() {
+        return inputs;
+    }
+    public List<Device> getOutputs() {
+        return outputs;
     }
     public Instant getTimestamp() {
         if (createdTime != null) {
@@ -56,17 +58,16 @@ public class State {
         }
         return createdTime;
     }
-    public List<Device> getOutputsTriggered() {
-        return outputsTriggered;
-    }
     @Override
     public String toString() {
-        return "State [timestamp=" + timestamp + ", inputs=" + inputs + ", outputs=" + outputs + ", outputs_triggered="
-                + outputsTriggered + "]";
+        return "State [timestamp=" + timestamp + ", inputs=" + inputs + ", outputs=" + outputs + "]";
     }
     @JsonIgnore
     @JsonProperty
     private Object active_devices;
+    @JsonIgnore
+    @JsonProperty
+    private Object outputs_triggered;
     @JsonIgnore
     @JsonProperty
     private Object device_info;

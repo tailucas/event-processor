@@ -5,14 +5,7 @@ import tailucas.app.device.config.InputConfig;
 public class Camera extends Device {
     public Camera(Device device) {
         super();
-        this.deviceId = device.deviceId;
-        this.deviceKey = device.deviceKey;
-        this.deviceLabel = device.deviceLabel;
-        this.location = device.location;
-        this.name = device.name;
-        this.image = device.image;
-        this.storageUrl = device.storageUrl;
-        this.timestamp = device.timestamp;
+        setFieldsFrom(device);
     }
     @Override
     public String getDeviceType() {
