@@ -1621,7 +1621,7 @@ class TBot(AppThread, Closable):
             device_label = input_device.device_key
         event_detail = ''
         if input_device.event_detail:
-            event_detail = input_device.event_detail
+            event_detail = f' {input_device.event_detail}'
         # include a timestamp in this SMS message
         message = '{}{} ({}:{})'.format(
             device_label,
@@ -1720,10 +1720,10 @@ class TBot(AppThread, Closable):
                     pending.append(message)
                 # rate-limit the send
                 # https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this
-                time_since_sent = now - last_sent
-                if (time_since_sent < call_again_timestamp):
+                if (now < call_again_timestamp):
                     log.warn(f'Enforced rate limiting message queue (of {len(pending_by_label)} devices). Telegram asked for {call_again_timestamp - now}s backoff.')
                     continue
+                time_since_sent = now - last_sent
                 if time_since_sent < min_send_interval:
                     log.warn(f'Elective rate limiting message queue (of {len(pending_by_label)} devices). Time since last send is {time_since_sent}s, min interval is {min_send_interval}s.')
                     continue
