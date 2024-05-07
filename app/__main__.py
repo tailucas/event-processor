@@ -3,12 +3,9 @@ import logging.handlers
 
 import asyncio
 import builtins
-import boto3
 import os
-import re
 import requests
 import schedule
-import simplejson as json
 import threading
 import time
 import uvicorn
@@ -17,7 +14,6 @@ import zmq.asyncio
 
 from collections import OrderedDict, deque
 from concurrent import futures
-from botocore.exceptions import EndpointConnectionError as bcece
 from datetime import datetime, timedelta
 from dateutil import tz
 from flask_sqlalchemy import SQLAlchemy
@@ -32,7 +28,6 @@ from sentry_sdk.integrations.excepthook import ExcepthookIntegration
 from sentry_sdk.integrations.flask import FlaskIntegration
 from sentry_sdk.integrations.logging import ignore_logger
 from sentry_sdk.integrations.threading import ThreadingIntegration
-from simplejson.scanner import JSONDecodeError
 from telegram import ForceReply, Update, InputMediaPhoto, MessageEntity
 from telegram.constants import MediaGroupLimit
 from telegram.ext import Application as TelegramApp, \
@@ -57,10 +52,7 @@ from flask_compress import Compress
 from werkzeug.serving import make_server
 
 from zmq.asyncio import Poller
-from zmq.error import ZMQError, ContextTerminated, Again
-
-import paho.mqtt.client as mqtt
-from paho.mqtt.client import MQTT_ERR_SUCCESS, MQTT_ERR_NO_CONN
+from zmq.error import ZMQError
 
 import os.path
 
@@ -79,10 +71,7 @@ class CredsConfig:
     flask_secret_key: f'opitem:"Frontend" opfield:Flask.secret_key' = None # type: ignore
     flask_basic_auth_username: f'opitem:"Frontend" opfield:.username' = None # type: ignore
     flask_basic_auth_password: f'opitem:"Frontend" opfield:.password' = None # type: ignore
-    mdash_api_key: f'opitem:"mdash" opfield:.password' = None # type: ignore
     telegram_bot_api_token: f'opitem:"Telegram" opfield:{APP_NAME}.token' = None # type: ignore
-    aws_akid: f'opitem:"AWS" opfield:{AWS_REGION}.akid' = None # type: ignore
-    aws_sak: f'opitem:"AWS" opfield:{AWS_REGION}.sak' = None # type: ignore
     influxdb_org: f'opitem:"InfluxDB" opfield:{influx_creds_section}.org' = None # type: ignore
     influxdb_token: f'opitem:"InfluxDB" opfield:{influx_creds_section}.token' = None # type: ignore
     influxdb_url: f'opitem:"InfluxDB" opfield:{influx_creds_section}.url' = None # type: ignore
@@ -167,22 +156,10 @@ api_app = FastAPI()
 api_app.mount("/admin", WSGIMiddleware(flask_app))
 
 
-OUTPUT_TYPE_BLUETOOTH = 'bluetooth'
-OUTPUT_TYPE_SWITCH = 'ioboard'
-OUTPUT_TYPE_IMAGE = 'image'
-OUTPUT_TYPE_SNAPSHOT = 'snapshot'
-OUTPUT_TYPE_TTS = 'tts'
-
 URL_WORKER_APP = 'inproc://app-worker'
-URL_WORKER_APP_BRIDGE = 'inproc://app-bridge'
-URL_WORKER_HEARTBEAT_NANNY = 'inproc://heartbeat-nanny'
-URL_WORKER_EVENT_LOG = 'inproc://event-log'
 URL_WORKER_TELEGRAM_BOT = 'inproc://telegram-bot'
-URL_WORKER_MQTT_PUBLISH = 'inproc://mqtt-publish'
 URL_WORKER_AUTO_SCHEDULER = 'inproc://auto-scheduler'
 
-ngrok_tunnel_url = None
-ngrok_tunnel_url_with_bauth = None
 
 startup_complete = False
 
@@ -575,11 +552,8 @@ def index():
             # update the in memory model
             update_meter_config(input_device_key=device_key, meter_config=meter_cfg, register_value=reset_value)
             # send IoT message
-            with exception_handler(connect_url=URL_WORKER_MQTT_PUBLISH, socket_type=zmq.PUSH, and_raise=False) as zmq_socket:
-                zmq_socket.send_pyobj((
-                    app_config.get('mqtt', 'meter_reset_topic'),
-                    json.dumps(iot_message)
-                ))
+            # FIXME
+            log.warn(f'No handler to send IOT message: {iot_message}')
         elif 'device_key' in request.form:
             device_key = request.form['device_key']
             input_cfg = inputs.input_config[device_key]
@@ -929,7 +903,6 @@ def output_config():
 
 
 async def telegram_bot_echo(update: Update, context: TelegramContextTypes.DEFAULT_TYPE) -> None:
-    global ngrok_tunnel_url
     try:
         authorized_users = app_config.get('telegram', 'authorized_users').split(',')
         if str(update.effective_user.id) not in authorized_users:
@@ -942,9 +915,6 @@ async def telegram_bot_echo(update: Update, context: TelegramContextTypes.DEFAUL
 
         group_info = await context.bot.get_chat(chat_id=app_config.getint('telegram', 'chat_room_id'))
         bot_response = f'I am in the [{group_info.title}]({group_info.invite_link}) group.'
-        if ngrok_tunnel_url:
-            dashboard_link = f'[Dashboard]({ngrok_tunnel_url})'
-            bot_response += "\n" + dashboard_link
         await update.message.reply_markdown(text=bot_response)
     except NetworkError:
         log.warning('bot handler', exc_info=True)
@@ -954,7 +924,6 @@ async def telegram_bot_echo(update: Update, context: TelegramContextTypes.DEFAUL
 
 
 async def telegram_bot_cmd(update: Update, context: TelegramContextTypes.DEFAULT_TYPE) -> None:
-    global ngrok_tunnel_url_with_bauth
     try:
         authorized_users = app_config.get('telegram', 'authorized_users').split(',')
         if str(update.effective_user.id) not in authorized_users:
@@ -965,8 +934,6 @@ async def telegram_bot_cmd(update: Update, context: TelegramContextTypes.DEFAULT
                                                                                      update.effective_message.text,
                                                                                      str(context.args),
                                                                                      update.effective_message.chat_id))
-        if ngrok_tunnel_url_with_bauth:
-            await update.message.reply_markdown(text=f'[Dashboard]({ngrok_tunnel_url_with_bauth})')
         # status update
         if update.effective_message.text.startswith('/'):
             with exception_handler(connect_url=URL_WORKER_APP, and_raise=False) as zmq_socket:
@@ -1000,18 +967,10 @@ def invalidate_remote_config(device_key):
         log.warn(f'Unable to call {api_method} API at {api_server} to invalidate configuration for {device_key}: {e!s}')
 
 
-class EventProcessor(MQConnection):
+class EventProcessor(AppThread):
 
-    def __init__(self, mqtt_subscriber, mq_server_address, mq_exchange_name):
-        MQConnection.__init__(
-            self,
-            name=f'{self.__class__.__name__} ({URL_WORKER_APP})',
-            mq_server_address=mq_server_address,
-            mq_exchange_name=mq_exchange_name,
-            # direct routing
-            mq_exchange_type='direct',
-            # no control message should live longer than 90s
-            mq_arguments={'x-message-ttl': 90*1000})
+    def __init__(self):
+        AppThread.__init__(self, name=self.__class__.__name__)
 
         self.inputs = {}
         self.outputs = {}
@@ -1025,8 +984,6 @@ class EventProcessor(MQConnection):
         self._inputs_by_origin = {}
         self._outputs_by_origin = {}
 
-        self._output_type_handlers = None
-
         self._max_message_validity_seconds = None
 
         self._device_event_lru = lrucache(100)
@@ -1035,8 +992,6 @@ class EventProcessor(MQConnection):
         #self.event_log = zmq_socket(zmq.PUSH)
 
         self.bot = zmq_socket(zmq.PUSH)
-
-        self._mqtt_subscriber = mqtt_subscriber
 
         self._metric_last_posted_meter_value = 0
         self._metric_meter_value_accumulator = 0
@@ -1048,25 +1003,6 @@ class EventProcessor(MQConnection):
         self.influxdb_bucket = app_config.get('influxdb', 'bucket')
 
         self._outputs_enabled = True
-
-    def _update_devices(self, event_origin, device_info):
-        devices_updated = 0
-        for input_outputs, device_origin, origin_devices, io in [
-            (self.inputs, self._input_origin, self._inputs_by_origin, 'inputs'),
-            (self.outputs, self._output_origin, self._outputs_by_origin, 'outputs')
-        ]:
-            # next if only input or output
-            if io not in device_info:
-                continue
-            for device in device_info[io]:
-                devices_updated += self._update_device(
-                    input_outputs=input_outputs,
-                    device_origin=device_origin,
-                    origin_devices=origin_devices,
-                    event_origin=event_origin,
-                    device=device
-                )
-        return devices_updated
 
     def _update_device(self, input_outputs, device_origin, origin_devices, event_origin, device):
         # device_key must always be present
@@ -1133,12 +1069,6 @@ class EventProcessor(MQConnection):
         self.notify_not_after_time = make_timestamp(timestamp=app_config.get('info_notify', 'not_after_time'))
         # message validity
         self._max_message_validity_seconds = int(app_config.get('app', 'max_message_validity_seconds'))
-        # output type handlers
-        self._output_type_handlers = dict()
-        for output_type_handler in [OUTPUT_TYPE_BLUETOOTH, OUTPUT_TYPE_SWITCH, OUTPUT_TYPE_SNAPSHOT, OUTPUT_TYPE_TTS]:
-            output_types = app_config.get('output_types', output_type_handler).lower().split(',')
-            for output_type in output_types:
-                self._output_type_handlers[output_type] = output_type_handler
         # set up the special input for the panic button
         self._update_device(
             input_outputs=self.inputs,
@@ -1173,418 +1103,153 @@ class EventProcessor(MQConnection):
                 'type': 'SMS'
             })
         with exception_handler(connect_url=URL_WORKER_APP, socket_type=zmq.PULL, and_raise=False, shutdown_on_error=True) as app_socket:
-            self._setup_channel()
             while not threads.shutting_down:
                 event = app_socket.recv_pyobj()
-                log.debug(event)
-                if isinstance(event, dict):
-                    for event_origin, event_data in list(event.items()):
-                        if not isinstance(event_data, dict):
-                            log.warning('Ignoring non-dict event format from {}: {} ({})'.format(
-                                event_origin, event_data.__class__, event_data))
-                            continue
-                        if 'timestamp' in event_data:
-                            str_timestamp = event_data['timestamp']
-                            log.debug('{} timestamp is {}'.format(event_origin, str_timestamp))
-                            timestamp = make_timestamp(str_timestamp)
+                if not isinstance(event, dict):
+                    log.info('Malformed event; expecting dictionary.')
+                    continue
+                if 'sms' in event:
+                    log.info(f'Sending payload to bot {event.keys()!s}...')
+                    self.bot.send_pyobj(event['sms'])
+                    log.info(f'Sent payload to bot...')
+                    continue
+                for event_origin, event_data in list(event.items()):
+                    if not isinstance(event_data, dict):
+                        log.warning('Ignoring non-dict event format from {}: {} ({})'.format(
+                            event_origin, event_data.__class__, event_data))
+                        continue
+                    if 'timestamp' in event_data:
+                        str_timestamp = event_data['timestamp']
+                        log.debug('{} timestamp is {}'.format(event_origin, str_timestamp))
+                        timestamp = make_timestamp(str_timestamp)
+                    else:
+                        timestamp = make_timestamp()
+                        log_msg = "Message from {} does not include a 'timestamp' so it can't be filtered if it " \
+                                    "is stale. Using {}.".format(event_origin, timestamp.strftime(ISO_DATE_FORMAT))
+                        if 'active_devices' in event_data or 'outputs_triggered' in event_data:
+                            log.warning(log_msg)
                         else:
-                            timestamp = make_timestamp()
-                            log_msg = "Message from {} does not include a 'timestamp' so it can't be filtered if it " \
-                                      "is stale. Using {}.".format(event_origin, timestamp.strftime(ISO_DATE_FORMAT))
-                            if 'active_devices' in event_data or 'outputs_triggered' in event_data:
-                                log.warning(log_msg)
-                            else:
-                                log.debug(log_msg)
-                        if 'device_info_input' == event_origin:
-                            self._update_device(
-                                input_outputs=self.inputs,
-                                device_origin=self._input_origin,
-                                origin_devices=self._inputs_by_origin,
-                                event_origin=device_name,
-                                device=event_data)
-                        elif 'device_info_output' == event_origin:
-                            self._update_device(
-                                input_outputs=self.outputs,
-                                device_origin=self._output_origin,
-                                origin_devices=self._outputs_by_origin,
-                                event_origin=device_name,
-                                device=event_data)
-                        elif 'register_mqtt_origin' == event_origin:
-                            # connect to event origins
-                            for mqtt_topic, device_id in list(event_data.items()):
-                                subscriber = MqttEventSourceSubscriber(mqtt_topic=mqtt_topic, device_id=device_id)
-                                # keep the heartbeats up to date
-                                self._mqtt_subscriber.add_source_subscriber(topic=mqtt_topic, subscriber=subscriber)
-                            continue
-                        elif 'auto-scheduler' == event_origin:
-                            device_key = event_data['device_key']
-                            device_label = event_data['device_label']
-                            device_enable = event_data['device_state']
-                            log.info(f'Updating device {device_label}; enable: {device_enable}')
-                            input_config = InputConfig.query.filter_by(device_key=device_key).first()
-                            input_config.device_enabled = device_enable
-                            db.session.add(input_config)
-                            db.session.commit()
-                            invalidate_remote_config(device_key=device_key)
-                            # skip further processing because of enable/disable
-                            continue
-                        elif 'bot' == event_origin:
-                            log.debug(f'Got bot command: {event_data!s}')
-                            bot_command = event_data['command'].split()
-                            bot_command_base = bot_command[0]
-                            bot_command_args = None
-                            if len(bot_command) > 0:
-                                bot_command_args = bot_command[1:]
-                            bot_reply = None
-                            input_enable = None
-                            if bot_command_base.startswith('/report'):
-                                device_type = 'Button'
-                                log.info(f'Synthesizing {device_type} event...')
-                                # splice in a new event
-                                event_origin = device_name
-                                active_devices = [
-                                    {
-                                        'device_key': 'App Dash Button',
-                                        'device_label': 'Dash Button',
-                                        'type': device_type
-                                    }
-                                ]
-                                event_data.update({
-                                    'active_devices': active_devices,
-                                    'inputs': active_devices,
-                                })
-                            elif bot_command_base.startswith('/outputson'):
-                                self._outputs_enabled = True
-                                bot_reply = f'Outputs enabled.'
-                            elif bot_command_base.startswith('/outputsoff'):
-                                self._outputs_enabled = False
-                                bot_reply = f'Outputs on log-only until the next application restart.'
-                            elif bot_command_base.startswith('/inputon'):
-                                input_enable = True
-                            elif bot_command_base.startswith('/inputoff'):
-                                input_enable = False
-                            if input_enable is not None:
-                                state = 'enable'
-                                if not input_enable:
-                                    state = 'disable'
-                                input_configs = list()
-                                if bot_command_args:
-                                    for bot_command_arg in bot_command_args:
-                                        # https://stackoverflow.com/questions/3325467/sqlalchemy-equivalent-to-sql-like-statement
-                                        sql_search = f'%{bot_command_arg}%'
-                                        input_config = InputConfig.query.filter(
-                                            or_(
-                                                InputConfig.device_key.like(sql_search),
-                                                InputConfig.device_label.like(sql_search),
-                                                InputConfig.group_name.like(sql_search)
-                                            )).order_by(InputConfig.device_key).all()
-                                        log.info(f'{state.title()} {len(input_config)} devices matching "{bot_command_arg}".')
-                                        if len(input_config) > 0:
-                                            input_configs.extend(input_config)
-                                else:
-                                    # wildcard action is constrained to devices where auto-scheduling is enabled
-                                    input_config = InputConfig.query.filter(InputConfig.auto_schedule.isnot(None)).order_by(InputConfig.device_key).all()
-                                    log.info(f'{state.title()} {len(input_config)} devices with auto-schedule not null.')
+                            log.debug(log_msg)
+                    if 'device_info_input' == event_origin:
+                        self._update_device(
+                            input_outputs=self.inputs,
+                            device_origin=self._input_origin,
+                            origin_devices=self._inputs_by_origin,
+                            event_origin=device_name,
+                            device=event_data)
+                    elif 'device_info_output' == event_origin:
+                        self._update_device(
+                            input_outputs=self.outputs,
+                            device_origin=self._output_origin,
+                            origin_devices=self._outputs_by_origin,
+                            event_origin=device_name,
+                            device=event_data)
+                    elif 'auto-scheduler' == event_origin:
+                        device_key = event_data['device_key']
+                        device_label = event_data['device_label']
+                        device_enable = event_data['device_state']
+                        log.info(f'Updating device {device_label}; enable: {device_enable}')
+                        input_config = InputConfig.query.filter_by(device_key=device_key).first()
+                        input_config.device_enabled = device_enable
+                        db.session.add(input_config)
+                        db.session.commit()
+                        invalidate_remote_config(device_key=device_key)
+                        # skip further processing because of enable/disable
+                        continue
+                    elif 'bot' == event_origin:
+                        log.debug(f'Got bot command: {event_data!s}')
+                        bot_command = event_data['command'].split()
+                        bot_command_base = bot_command[0]
+                        bot_command_args = None
+                        if len(bot_command) > 0:
+                            bot_command_args = bot_command[1:]
+                        bot_reply = None
+                        input_enable = None
+                        if bot_command_base.startswith('/report'):
+                            device_type = 'Button'
+                            log.info(f'Synthesizing {device_type} event...')
+                            # splice in a new event
+                            event_origin = device_name
+                            active_devices = [
+                                {
+                                    'device_key': 'App Dash Button',
+                                    'device_label': 'Dash Button',
+                                    'type': device_type
+                                }
+                            ]
+                            event_data.update({
+                                'active_devices': active_devices,
+                                'inputs': active_devices,
+                            })
+                        elif bot_command_base.startswith('/outputson'):
+                            self._outputs_enabled = True
+                            bot_reply = f'Outputs enabled.'
+                        elif bot_command_base.startswith('/outputsoff'):
+                            self._outputs_enabled = False
+                            bot_reply = f'Outputs on log-only until the next application restart.'
+                        elif bot_command_base.startswith('/inputon'):
+                            input_enable = True
+                        elif bot_command_base.startswith('/inputoff'):
+                            input_enable = False
+                        if input_enable is not None:
+                            state = 'enable'
+                            if not input_enable:
+                                state = 'disable'
+                            input_configs = list()
+                            if bot_command_args:
+                                for bot_command_arg in bot_command_args:
+                                    # https://stackoverflow.com/questions/3325467/sqlalchemy-equivalent-to-sql-like-statement
+                                    sql_search = f'%{bot_command_arg}%'
+                                    input_config = InputConfig.query.filter(
+                                        or_(
+                                            InputConfig.device_key.like(sql_search),
+                                            InputConfig.device_label.like(sql_search),
+                                            InputConfig.group_name.like(sql_search)
+                                        )).order_by(InputConfig.device_key).all()
+                                    log.info(f'{state.title()} {len(input_config)} devices matching "{bot_command_arg}".')
                                     if len(input_config) > 0:
-                                        log.info(f'{state.title()} {len(input_config)} devices...')
                                         input_configs.extend(input_config)
-                                # process all collected inputs
-                                inputs_updated = []
-                                if len(input_configs) > 0:
-                                    for ic in input_configs:
-                                        if ic.device_enabled != input_enable:
-                                            inputs_updated.append(ic.device_key)
-                                            log.info(f'{state.title()} {ic.device_key} (group {ic.group_name})')
-                                            ic.device_enabled = input_enable
-                                            # update the database
-                                            db.session.add(ic)
-                                            if ic.auto_schedule is not None:
-                                                # update the auto-scheduler task
-                                                with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, and_raise=False) as zmq_socket:
-                                                    if input_enable:
-                                                        # restore auto-schedule actions
-                                                        zmq_socket.send_pyobj((ic.device_key, str(ic), ic.auto_schedule, ic.auto_schedule_enable, ic.auto_schedule_disable))
-                                                    else:
-                                                        # disable runtime auto-scheduling actions
-                                                        zmq_socket.send_pyobj((ic.device_key, str(ic), None, None, None))
-                                    if len(inputs_updated) > 0:
-                                        db.session.commit()
-                                        for device_key in inputs_updated:
-                                            invalidate_remote_config(device_key=device_key)
-                                    bot_reply = f'{len(inputs_updated)} devices changed to {state}.'
-                                else:
-                                    log.warning(f'No devices matched to {state}.')
-                            if bot_reply:
-                                log.info(bot_reply)
-                                self.bot.send_pyobj({'message': bot_reply})
-                            # stop processing
-                            if not bot_command_base.startswith('/report'):
-                                # no further processing needed after enable/disable
-                                continue
-                        if 'stale_heartbeat' in event_data:
-                            stale_heartbeat = event_data['stale_heartbeat']
-                            device_status = "unknown"
-                            if 'device_status' in event_data:
-                                device_status = event_data['device_status']
-                            log.warning(f'{event_origin} status {device_status}: {stale_heartbeat}')
-                        if 'max_heartbeat_age' in event_data:
-                            heartbeat_age = int(event_data['max_heartbeat_age'])
-                            post_count_metric(
-                                metric_name='Heartbeat Age',
-                                count=heartbeat_age,
-                                unit='Seconds')
-                        if 'device_info' in event_data:
-                            devices_updated = self._update_devices(
-                                event_origin=event_origin,
-                                device_info=event_data['device_info'])
-                            if devices_updated > 0:
-                                log.info('{} advertised {} new devices.'.format(event_origin, devices_updated))
-                        active_devices = None
-                        if 'active_devices' in event_data:
-                            active_devices = event_data['active_devices']
-                        elif 'outputs_triggered' in event_data:
-                            active_devices = event_data['outputs_triggered']
-                        if active_devices:
-                            for active_device in active_devices:
-                                # patch in top-level data, if any
-                                if 'storage_url' in event_data:
-                                    active_device['storage_url'] = event_data['storage_url']
-                                active_device_key = active_device['device_key']
-                                # input known?
-                                input_config = InputConfig.query.filter_by(device_key=active_device_key).first()
-                                if not input_config:
-                                    log.warning(f'Input device {active_device_key} is not configured, ignoring.')
-                                    continue
-                                # message stale?
-                                message_age = make_timestamp() - timestamp
-                                if message_age > timedelta(seconds=self._max_message_validity_seconds):
-                                    log.warning('Skipping further processing of {} from {} due to message age '
-                                                '{} exceeding {} seconds.'.format(
-                                        active_device_key,
-                                        event_origin,
-                                        message_age.seconds,
-                                        self._max_message_validity_seconds))
-                                    continue
-                                # always process a fresh meter update
-                                meter_config = None
-                                if 'type' in active_device and 'meter' in active_device['type'].lower():
-                                    meter_value = int(active_device['sample_values']['meter'])
-                                    register_value = int(active_device['sample_values']['register'])
-                                    meter_config = MeterConfig.query.filter_by(input_device_id=input_config.id).first()
-                                    normalized_register_value = update_meter_config(
-                                        input_device_key=active_device_key,
-                                        meter_config=meter_config,
-                                        register_value=register_value,
-                                        meter_value=meter_value)
-                                    # post metric every n-minutes
-                                    now = time.time()
-                                    # accumulated meter value
-                                    if now - self._metric_last_posted_meter_value > 5*60:
-                                        self._influxdb_write(
-                                            bucket=self.influxdb_bucket,
-                                            active_device_key=active_device_key,
-                                            field_name='metered',
-                                            field_value=int(self._metric_meter_value_accumulator) / float(meter_config.meter_reading_unit_factor))
-                                        self._metric_last_posted_meter_value = now
-                                        self._metric_meter_value_accumulator = 0
-                                    else:
-                                        self._metric_meter_value_accumulator += meter_value
-                                    # register values
-                                    if now - self._metric_last_posted_register_value > 5*60:
-                                        self._influxdb_write(
-                                            bucket=self.influxdb_bucket,
-                                            active_device_key=active_device_key,
-                                            field_name='register',
-                                            field_value=normalized_register_value)
-                                        self._metric_last_posted_register_value = now
-                                # input enabled?
-                                if not input_config.device_enabled:
-                                    continue
-                                # only consider a meter active if the value is out of bounds
-                                if 'type' in active_device and 'meter' in active_device['type'].lower():
-                                    out_of_range = False
-                                    if meter_config.meter_low_limit and register_value < meter_config.meter_low_limit:
-                                        out_of_range = True
-                                    if meter_config.meter_high_limit and register_value > meter_config.meter_high_limit:
-                                        out_of_range = True
-                                    if not out_of_range:
-                                        continue
-                                # multi-trigger
-                                if input_config.multi_trigger_interval and input_config.multi_trigger_rate:
-                                    # if not in the trigger history, treat as never activated
-                                    if active_device_key not in self._input_trigger_history:
-                                        self._input_trigger_history[active_device_key] = time.time()
-                                        continue
-                                    input_last_triggered = self._input_trigger_history[active_device_key]
-                                    # the device must have been considered active within the trigger window
-                                    last_triggered = time.time() - input_last_triggered
-                                    if last_triggered > input_config.multi_trigger_interval:
-                                        # update the history and continue
-                                        self._input_trigger_history[active_device_key] = time.time()
-                                        log.debug(f'Not activating {active_device_key} because it was triggered more than {input_config.multi_trigger_interval} seconds ago. ({last_triggered})')
-                                        continue
-                                # get the event detail for debouncing
-                                event_detail = None
-                                if 'event_detail' in active_device:
-                                    event_detail = active_device['event_detail']
-                                # debounce
-                                if active_device_key in self._input_active_history:
-                                    # debounce this input
-                                    if input_config.trigger_latch_duration:
-                                        trigger_latch_duration = input_config.trigger_latch_duration
-                                    else:
-                                        # FIXME
-                                        trigger_latch_duration = 10
-                                    input_last_active, last_event_detail = self._input_active_history[active_device_key]
-                                    if last_event_detail == event_detail:
-                                        last_activated = time.time() - input_last_active
-                                        if last_activated < trigger_latch_duration:
-                                            # device is still considered active
-                                            log.debug(f'Not activating {active_device_key} ({last_event_detail}) because it was triggered less than {trigger_latch_duration} seconds ago. ({last_activated})')
-                                            continue
-                                self._input_active_history[active_device_key] = (time.time(), event_detail)
-                                # active devices are presently assumed to be inputs
-                                self._update_device(
-                                    input_outputs=self.inputs,
-                                    device_origin=self._input_origin,
-                                    origin_devices=self._inputs_by_origin,
-                                    event_origin=event_origin,
-                                    device=active_device)
-                                # informational event?
-                                # TODO: move to _process_device_event
-                                if input_config.info_notify:
-                                    # make a future date that is relative (after) now time.
-                                    now = datetime.now().replace(tzinfo=tz.tzlocal())
-                                    not_before = now.replace(
-                                        hour=self.notify_not_before_time.hour,
-                                        minute=self.notify_not_before_time.minute,
-                                        second=0,
-                                        microsecond=0)
-                                    not_after = now.replace(
-                                        hour=self.notify_not_after_time.hour,
-                                        minute=self.notify_not_after_time.minute,
-                                        second=0,
-                                        microsecond=0)
-                                    defer_until = None
-                                    if now < not_before:
-                                        defer_until = not_before
-                                    if now >= not_after:
-                                        # the not-before time may not be on the same day
-                                        defer_until = not_before + timedelta(days=1)
-                                    if defer_until:
-                                        # defer the notification
-                                        log.info("Deferring notification for '{}' until {}".format(
-                                            active_device_key,
-                                            defer_until))
-                                        continue
-                                self._process_device_event(
-                                    input_config=input_config,
-                                    event_origin=event_origin,
-                                    timestamp=timestamp,
-                                    active_device_key=active_device_key,
-                                    active_device=active_device)
+                            else:
+                                # wildcard action is constrained to devices where auto-scheduling is enabled
+                                input_config = InputConfig.query.filter(InputConfig.auto_schedule.isnot(None)).order_by(InputConfig.device_key).all()
+                                log.info(f'{state.title()} {len(input_config)} devices with auto-schedule not null.')
+                                if len(input_config) > 0:
+                                    log.info(f'{state.title()} {len(input_config)} devices...')
+                                    input_configs.extend(input_config)
+                            # process all collected inputs
+                            inputs_updated = []
+                            if len(input_configs) > 0:
+                                for ic in input_configs:
+                                    if ic.device_enabled != input_enable:
+                                        inputs_updated.append(ic.device_key)
+                                        log.info(f'{state.title()} {ic.device_key} (group {ic.group_name})')
+                                        ic.device_enabled = input_enable
+                                        # update the database
+                                        db.session.add(ic)
+                                        if ic.auto_schedule is not None:
+                                            # update the auto-scheduler task
+                                            with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, and_raise=False) as zmq_socket:
+                                                if input_enable:
+                                                    # restore auto-schedule actions
+                                                    zmq_socket.send_pyobj((ic.device_key, str(ic), ic.auto_schedule, ic.auto_schedule_enable, ic.auto_schedule_disable))
+                                                else:
+                                                    # disable runtime auto-scheduling actions
+                                                    zmq_socket.send_pyobj((ic.device_key, str(ic), None, None, None))
+                                if len(inputs_updated) > 0:
+                                    db.session.commit()
+                                    for device_key in inputs_updated:
+                                        invalidate_remote_config(device_key=device_key)
+                                bot_reply = f'{len(inputs_updated)} devices changed to {state}.'
+                            else:
+                                log.warning(f'No devices matched to {state}.')
+                        if bot_reply:
+                            log.info(bot_reply)
+                            self.bot.send_pyobj({'message': bot_reply})
+                        # stop processing
+                        if not bot_command_base.startswith('/report'):
+                            # no further processing needed after enable/disable
+                            continue
         try_close(self.bot)
-
-    def _process_device_event(self, input_config, event_origin, timestamp, active_device_key, active_device):
-        output_links = OutputLink.query.filter_by(input_device_id=input_config.id).all()
-        oc_ids = list()
-        for output_link in output_links:
-            oc_ids.append(output_link.output_device_id)
-        output_configs = OutputConfig.query.filter(OutputConfig.id.in_(oc_ids)).order_by(OutputConfig.device_key).all()
-        log.info(f'Input {input_config.device_key} is linked to {len(output_configs)} outputs.')
-        for output_config in output_configs:
-            output_device_key = output_config.device_key
-            if output_device_key not in self.outputs:
-                log.warning(f'{output_device_key} is not in the set of valid outputs: {self.outputs.keys()}')
-                continue
-            # device labels
-            if input_config.device_label:
-                input_device_label = input_config.device_label
-            else:
-                input_device_label = active_device_key
-            if output_config.device_label:
-                output_device_label = output_config.device_label
-            else:
-                output_device_label = output_device_key
-            if not self._outputs_enabled:
-                log.warning(f'Supressing trigger of {output_device_label} because all outputs are disabled.')
-                continue
-            # put the event information into the LRU
-            self._device_event_lru[active_device_key] = timestamp
-            # build up the device activation history
-            activation_history = []
-            for device_key, activation_time in list(self._device_event_lru.items()):
-                # filter out the device being activated
-                if device_key == active_device_key:
-                    continue
-                # TODO: make this configurable
-                if (timestamp - activation_time).seconds > 5 * 60:
-                    continue
-                # list of tuples
-                activation_history.append((
-                    input_device_label,
-                    (timestamp - activation_time).seconds
-                ))
-            log.info(f'Input {input_device_label} triggers {output_device_label}...')
-            # add basic output config
-            output_device_activation = {
-                output_config.device_key: {
-                'device_label': output_config.device_label,
-                'device_params': output_config.device_params,
-                'type': output_config.device_type
-            }}
-            # add information about the output device
-            output_device_activation.update(self.outputs[output_device_key])
-            activation_command = {
-                'trigger_output': output_device_activation,
-                'input_context': active_device,
-                'trigger_history': activation_history,
-            }
-            if input_config.trigger_latch_duration:
-                activation_command['trigger_duration'] = input_config.trigger_latch_duration
-            # get the output type
-            output_device_type = output_config.device_type.lower()
-            # let the bot know first
-            if output_device_type == 'sms':
-                payload = {'timestamp': timestamp}
-                payload.update(activation_command)
-                self.bot.send_pyobj(payload)
-                continue
-            # strip out image data that is no longer needed
-            if 'image' in active_device:
-                del active_device['image']
-            log.debug('Activation command for {} ({}) ({} mapped in {}) is {}'.format(
-                output_device_key,
-                output_device_label,
-                output_device_type,
-                self._output_type_handlers,
-                activation_command))
-            # dispatch the event
-            if output_device_type in self._output_type_handlers:
-                output_type = self._output_type_handlers[output_device_type]
-                log.debug(f'Active device {active_device}: {output_type}.')
-                event_payload = None
-                if output_type == OUTPUT_TYPE_SNAPSHOT:
-                    camera_config = output_config.device_params
-                    event_payload = (output_config.device_key, output_device_label, camera_config)
-                elif output_type in OUTPUT_TYPE_SWITCH:
-                    # use default trigger duration
-                    event_payload=(output_config.device_key, None)
-                if event_payload:
-                    try:
-                        self._basic_publish(
-                            routing_key=f'event.control.{output_type}',
-                            event_payload=event_payload)
-                    except Exception:
-                        log.warning(self.__class__.__name__, exc_info=True)
-            else:
-                log.warning(f'{event_origin} {active_device_key} => {output_config.device_key} but nowhere to route the event.')
-            # add an entry into the event log
-            db.session.add(EventLog(
-                input_device=input_device_label,
-                output_device=output_device_label,
-                timestamp=timestamp))
-            db.session.commit()
 
 
 class TBot(AppThread, Closable):
@@ -1594,26 +1259,6 @@ class TBot(AppThread, Closable):
         Closable.__init__(self, connect_url=URL_WORKER_TELEGRAM_BOT, is_async=True)
         self.chat_id = chat_id
         self.sns_fallback = sns_fallback
-
-    def build_message(timestamp, event_data):
-        device_label = event_data['input_context']['device_label']
-        event_detail = ""
-        if 'event_detail' in event_data['input_context']:
-            event_detail = ' {}'.format(event_data['input_context']['event_detail'])
-        event_url = None
-        if 'storage_url' in event_data['input_context']:
-            event_url = event_data['input_context']['storage_url']
-        # include a timestamp in this SMS message
-        message = '{}{} ({}:{})'.format(
-            device_label,
-            event_detail,
-            timestamp.hour,
-            str(timestamp.minute).zfill(2))
-        # add in some trigger history for context
-        if 'trigger_history' in event_data:
-            history_length = len(event_data['trigger_history'])
-            log.warning(f'Ignoring included trigger history of {history_length} items.')
-        return {'device_label': device_label, 'message': message, 'url': event_url, 'image': None}
 
     def build_device_message(timestamp, input_device):
         device_label = input_device.device_label
@@ -1641,7 +1286,6 @@ class TBot(AppThread, Closable):
             return False
 
     async def tbot_run(t_app: TelegramApp, zmq_socket, chat_id):
-        global ngrok_tunnel_url_with_bauth
         poller = Poller()
         poller.register(zmq_socket, zmq.POLLIN)
         pending_by_label = OrderedDict()
@@ -1661,63 +1305,48 @@ class TBot(AppThread, Closable):
             if event is None and not pending_by_label:
                 continue
             try:
-                if event:
-                    if not isinstance(event, dict):
-                        log.warn(f'Non dictionary type {type(event)} received, ignoring.')
-                        continue
-                    input_device = None
-                    output_device = None
+                if not isinstance(event, dict):
+                    log.warn(f'Non dictionary type {type(event)} received, ignoring.')
+                    continue
+                input_device = None
+                output_device = None
+                try:
+                    if 'active_input' in event.keys():
+                        input_device = Device(**event['active_input'])
+                        log.debug(f'Input device for message: {input_device!s}')
+                    if 'output_triggered' in event.keys():
+                        output_device = Device(**event['output_triggered'])
+                        log.debug(f'Output device for message: {output_device!s}')
+                except Exception as e:
+                    log.warn('Bot message unpack problem {e!s}', exc_info=True)
+                    continue
+                timestamp = None
+                if 'timestamp' in event:
+                    timestamp = make_timestamp(timestamp=event['timestamp'], as_tz=user_tz)
+                else:
+                    log.warn('No timestamp included in event message; using "now"')
+                    timestamp = make_timestamp(as_tz=user_tz)
+                log.debug(f'{input_device!s};{output_device!s};{timestamp!s}')
+                # build the message
+                message = None
+                if input_device:
+                    log.debug(f'Building message based on input device: {input_device!s}')
                     try:
-                        if 'active_input' in event.keys():
-                            input_device = Device(**event['active_input'])
-                            log.debug(f'Input device for message: {input_device!s}')
-                        if 'output_triggered' in event.keys():
-                            output_device = Device(**event['output_triggered'])
-                            log.debug(f'Output device for message: {output_device!s}')
+                        message = TBot.build_device_message(timestamp=timestamp, input_device=input_device)
                     except Exception as e:
-                        log.warn('Bot message unpack problem {e!s}', exc_info=True)
+                        log.warn(f'Bot message build error {e!s}', exc_info=True)
                         continue
-                    timestamp = None
-                    if 'timestamp' in event:
-                        timestamp = make_timestamp(timestamp=event['timestamp'], as_tz=user_tz)
-                    else:
-                        log.warn('No timestamp included in event message; using "now"')
-                        timestamp = make_timestamp(as_tz=user_tz)
-                    log.debug(f'{input_device!s};{output_device!s};{timestamp!s}')
-                    # build the message
-                    message = None
-                    if input_device:
-                        log.debug(f'Building message based on input device: {input_device!s}')
-                        try:
-                            message = TBot.build_device_message(timestamp=timestamp, input_device=input_device)
-                        except Exception as e:
-                            log.warn(f'Bot message build error {e!s}', exc_info=True)
-                            continue
-                    else:
-                        input_context = None
-                        image_data = None
-                        if 'message' in event:
-                            message = {'device_label': None, 'message': event['message'], 'url': None, 'image': None}
-                            if 'add_tunnel_url' in event and ngrok_tunnel_url_with_bauth:
-                                message = '[{}]({})'.format(message, ngrok_tunnel_url_with_bauth)
-                        else:
-                            message = TBot.build_message(timestamp=timestamp, event_data=event)
-                            if 'input_context' in event:
-                                input_context = event['input_context']
-                                if 'image' in input_context:
-                                    image_data = BytesIO(input_context['image'])
-                                    message['image'] = image_data
-                    # always queue the message
-                    device_label = message['device_label']
-                    message_timestamp = make_unix_timestamp(timestamp=timestamp)
-                    message['timestamp'] = message_timestamp
-                    try:
-                        pending = pending_by_label[device_label]
-                    except KeyError:
-                        pending = deque()
-                        pending_by_label[device_label] = pending
-                    log.info(f'Preparing message to send about {device_label} ({message_timestamp}) with {len(pending)} already queued...')
-                    pending.append(message)
+                # always queue the message
+                device_label = message['device_label']
+                message_timestamp = make_unix_timestamp(timestamp=timestamp)
+                message['timestamp'] = message_timestamp
+                try:
+                    pending = pending_by_label[device_label]
+                except KeyError:
+                    pending = deque()
+                    pending_by_label[device_label] = pending
+                log.info(f'Preparing message to send about {device_label} ({message_timestamp}) with {len(pending)} already queued...')
+                pending.append(message)
                 # rate-limit the send
                 # https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this
                 if (now < call_again_timestamp):
@@ -1855,203 +1484,6 @@ class TBot(AppThread, Closable):
         self.close()
 
 
-class MqttSubscriber(AppThread, Closable):
-
-    def __init__(self):
-        AppThread.__init__(self, name=self.__class__.__name__)
-        Closable.__init__(self, connect_url=URL_WORKER_HEARTBEAT_NANNY, socket_type=zmq.PUSH)
-        self._mqtt_client = None
-        self._mqtt_server_address = app_config.get('mqtt', 'server_address')
-        self._mqtt_subscribe_topics = list()
-        # match Paho interface
-        for mqtt_source in app_config.get('mqtt', 'subscription_sources').split(','):
-            self._mqtt_subscribe_topics.append((mqtt_source, 0))
-        self._source_subscribers = dict()
-
-        self._disconnected = False
-
-    def close(self):
-        Closable.close(self)
-        try:
-            self._mqtt_client.disconnect()
-        except Exception:
-            log.warning('Ignoring error closing MQTT socket.', exc_info=True)
-
-    def add_source_subscriber(self, topic, subscriber):
-        self._source_subscribers[topic] = subscriber
-
-    def on_connect(self, client, userdata, connect_flags, reason_code, properties):
-        log.info('Subscribing to topics {}'.format(self._mqtt_subscribe_topics))
-        self._mqtt_client.subscribe(self._mqtt_subscribe_topics)
-
-    def on_disconnect(self, client, userdata, disconnect_flags, reason_code, properties):
-        log.info('MQTT client has disconnected.')
-        self._disconnected = True
-
-    def on_message(self, client, userdata, message):
-        log.debug('{} received {} bytes.'.format(message.topic, len(message.payload)))
-        msg_data = None
-        try:
-            msg_data = json.loads(message.payload)
-        except JSONDecodeError:
-            log.exception('Unstructured message: {}'.format(message.payload))
-            return
-        # ignore any message without a device ID
-        if 'device_id' not in msg_data:
-            warning_message = f'Ignoring {len(message.payload)} bytes from topic {message.topic} with no device_id set.'
-            if len(message.payload) <= 100:
-                warning_message += f' Payload: {message.payload!s}'
-            log.warning(warning_message)
-            return
-        device_id = msg_data['device_id']
-        input_location = msg_data['input_location']
-        # FIXME: create a canonical topic form
-        topic_base = '/'.join(message.topic.split('/')[0:2])
-        # get the subscriber and update the timestamp
-        if topic_base in self._source_subscribers:
-            subscriber = self._source_subscribers[topic_base]
-            subscriber.last_message = time.time()
-        event_timestamp = make_timestamp()
-        # unpack the message
-        try:
-            if message.topic.startswith('sensor'):
-                device_inputs = list()
-                active_devices = list()
-                for msg_key in msg_data:
-                    # look for inputs
-                    if re.match("input_\d+", msg_key): # pylint: disable=anomalous-backslash-in-string
-                        input_label = msg_data[msg_key]['input_label']
-                        sample_value = msg_data[msg_key]['sample_value']
-                        input_active = msg_data[msg_key]['active']
-                        device_description = {
-                            'type': input_label,
-                            'location': input_location,
-                            'device_key': '{} {}'.format(input_location, input_label)
-                        }
-                        if input_active:
-                            log.info('{}: {} {} ({})'.format(device_id, input_location, input_label, sample_value))
-                            device_description['sample_value'] = sample_value
-                            active_devices.append(device_description)
-                        else:
-                            device_inputs.append(device_description)
-                self.socket.send_pyobj({
-                    topic_base: {
-                        'device_info': {'inputs': device_inputs},
-                        'inputs': device_inputs,
-                        'active_devices': active_devices,
-                        'timestamp': event_timestamp
-                    }
-                })
-            elif message.topic.startswith('meter'):
-                topic_parts = message.topic.split('/')
-                device_type = topic_parts[0]
-                device_name = topic_parts[1]
-                device_key = '{} {}'.format(device_name, device_type).title()
-                metered = msg_data['last_minute_metered']
-                register = msg_data['register_reading']
-                log.debug('{}: {} ({} of {})'.format(device_id, input_location, metered, register))
-                active_devices = [{
-                    'device_key': device_key,
-                    'type': 'meter',
-                    'sample_values': {
-                        'meter': metered,
-                        'register': register
-                    }
-                }]
-                self.socket.send_pyobj({
-                    topic_base: {
-                        'device_info': {
-                            'inputs': [{
-                                'device_key': device_key,
-                                'type': 'meter'
-                            }]
-                        },
-                        'active_devices': active_devices,
-                        'timestamp': event_timestamp
-                    }
-                })
-        except ContextTerminated:
-            self.close()
-
-    # noinspection PyBroadException
-    def run(self):
-        log.info('Connecting to MQTT server {}...'.format(self._mqtt_server_address))
-        self.get_socket()
-        self._mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
-        self._mqtt_client.on_connect = self.on_connect
-        self._mqtt_client.on_disconnect = self.on_disconnect
-        self._mqtt_client.on_message = self.on_message
-        self._mqtt_client.connect(self._mqtt_server_address)
-        with exception_handler(connect_url=URL_WORKER_MQTT_PUBLISH, socket_type=zmq.PULL, and_raise=False, shutdown_on_error=True) as zmq_socket:
-            while not threads.shutting_down:
-                rc = self._mqtt_client.loop()
-                if rc == MQTT_ERR_NO_CONN or self._disconnected:
-                    raise ResourceWarning(f'No connection to MQTT broker at {self._mqtt_server_address} (disconnected? {self._disconnected})')
-                # check for messages to publish
-                try:
-                    mqtt_pub_topic, message_data = zmq_socket.recv_pyobj(flags=zmq.NOBLOCK)
-                    log.debug('Publishing {} bytes to topic {}...'.format(len(message_data), mqtt_pub_topic))
-                    self._mqtt_client.publish(topic=mqtt_pub_topic, payload=message_data)
-                except Again:
-                    # ignore, no data
-                    pass
-        self.close()
-
-
-class EventSourceSubscriber(object):
-
-    def __init__(self, label):
-        self._label = label
-
-    @property
-    def label(self):
-        return self._label
-
-
-class MqttEventSourceSubscriber(EventSourceSubscriber):
-
-    def __init__(self, mqtt_topic, device_id):
-        super(MqttEventSourceSubscriber, self).__init__(label=mqtt_topic)
-        self._device_id = device_id
-
-    @property
-    def device_id(self):
-        return self._device_id
-
-
-class SQSListener(AppThread):
-
-    def __init__(self):
-        AppThread.__init__(self, name=self.__class__.__name__)
-        self._sqs = None
-        self._sqs_queue = None
-
-    # noinspection PyBroadException
-    def run(self):
-        sqs_queue_name = os.environ['SQS_QUEUE']
-        log.info('Listening for control messages on SQS queue {}'.format(sqs_queue_name))
-        # set up notifications
-        self._sqs = boto3.resource('sqs')
-        self._sqs_queue = self._sqs.get_queue_by_name(QueueName=sqs_queue_name)
-        with exception_handler(connect_url=URL_WORKER_APP, and_raise=False, shutdown_on_error=True) as zmq_socket:
-            while not threads.shutting_down:
-                try:
-                    for sqs_message in self._sqs_queue.receive_messages(WaitTimeSeconds=10):
-                        # forward for further processing
-                        message_body = sqs_message.body
-                        try:
-                            zmq_socket.send_pyobj({'sqs': json.loads(message_body)})
-                        except JSONDecodeError:
-                            log.exception('Unstructured SQS message: {}'.format(message_body))
-                        # Let the queue know that the message is processed
-                        sqs_message.delete()
-                    # test for ZMQ shutdown
-                    zmq_socket.poll(timeout=0)
-                except bcece:
-                    log.warning(f'SQS', exc_info=True)
-                    threads.interruptable_sleep.wait(10)
-
-
 class AutoScheduler(AppThread, Closable):
 
     def __init__(self):
@@ -2113,190 +1545,6 @@ class AutoScheduler(AppThread, Closable):
         self.close()
 
 
-class HeartbeatFilter(ZmqRelay):
-
-    def __init__(self):
-        ZmqRelay.__init__(self,
-            name=self.__class__.__name__,
-            source_zmq_url=URL_WORKER_HEARTBEAT_NANNY,
-            sink_zmq_url=URL_WORKER_APP)
-
-        self._heartbeat_report_interval = int(app_config.get('app', 'heartbeat_report_interval_seconds'))
-        self._max_heartbeat_delay = int(app_config.get('app', 'max_heartbeat_delay_seconds'))
-
-        self._heartbeats = {}
-
-        self._last_report = int(time.time())
-        self._heartbeat_report_due = False
-        self._max_reported_heartbeat = -1
-
-    def process_message(self, sink_socket):
-        event = self.socket.recv_pyobj()
-        origin, data = list(event.items())[0]
-        now = int(time.time())
-        last_time = None
-        if origin in self._heartbeats:
-            last_time = self._heartbeats[origin]
-        # update new heartbeat
-        self._heartbeats[origin] = now
-        if last_time:
-            heartbeat_age = now - last_time
-            data['heartbeat_age'] = heartbeat_age
-            last_time_formatted = make_timestamp(timestamp=last_time, make_string=True)
-            if heartbeat_age > self._max_heartbeat_delay:
-                # used as an out-of-band trigger for something amiss
-                data['stale_heartbeat'] = last_time_formatted
-            # update maximum heartbeat seen in this interval
-            if heartbeat_age > self._max_reported_heartbeat:
-                self._max_reported_heartbeat = heartbeat_age
-        else:
-            heartbeat_age = None
-            last_time_formatted = "never"
-        log.debug(f'Last activity from {origin} was {heartbeat_age}s ago ({last_time_formatted}).')
-        # send the maximum heartbeat, and reset
-        if now - self._last_report > self._heartbeat_report_interval:
-            data['max_heartbeat_age'] = self._max_reported_heartbeat
-            self._last_report = now
-            self._max_reported_heartbeat = -1
-        # forward the original payload
-        sink_socket.send_pyobj({origin: data})
-
-
-class BridgeFilter(AppThread):
-
-    def __init__(self):
-        AppThread.__init__(self, name=self.__class__.__name__)
-        self.bot = zmq_socket(zmq.PUSH)
-
-    def visit_keys(dictionary, parent_key=''):
-        for key, value in dictionary.items():
-            full_key = f'{parent_key}.{key}' if parent_key else key
-            if isinstance(value, dict):
-                BridgeFilter.visit_keys(value, full_key)
-            elif isinstance(value, str) or isinstance(value, int):
-                log.info(f'{full_key}::{value}')
-            else:
-                log.info(f'{full_key}::{type(value)}')
-
-    # noinspection PyBroadException
-    def run(self):
-        self.bot.connect(URL_WORKER_TELEGRAM_BOT)
-        with exception_handler(connect_url=URL_WORKER_APP_BRIDGE, socket_type=zmq.PULL, and_raise=False) as zmq_socket:
-            while not threads.shutting_down:
-                control_payload = zmq_socket.recv_pyobj()
-                if not isinstance(control_payload, dict):
-                    log.info('Malformed event; expecting dictionary.')
-                    continue
-                if 'sms' in control_payload:
-                    log.info(f'Sending payload to bot {control_payload.keys()}...')
-                    try:
-                        self.bot.send_pyobj(control_payload['sms'])
-                    except ZMQError as e:
-                        log.warn(f'ZMQ error {e!s}', exc_info=True)
-                    log.info(f'Sent payload to bot...')
-                else:
-                    log.warn(f'Unsupported payload with keys {control_payload.keys()}')
-                    BridgeFilter.visit_keys(control_payload)
-        try_close(self.bot)
-
-
-class EventSourceDiscovery(AppThread):
-    def __init__(self):
-        AppThread.__init__(self, name=self.__class__.__name__)
-        self._mdash_api_key = creds.mdash_api_key
-        self._mdash_devices_url = app_config.get('mdash', 'base_url')
-        self._app_config_mqtt_pub_topic = app_config.get('mdash', 'app_config_mqtt_pub_topic')
-        self._device_tags = app_config.get('mdash', 'device_tags').split(',')
-
-    def run(self):
-        if threads.shutting_down:
-            return
-
-        with exception_handler(connect_url=URL_WORKER_APP, and_raise=False, shutdown_on_error=True) as zmq_socket:
-            # register MQTT inputs
-            mdash_devices = None
-            log.info(f'Requesting mDash device listing from {self._mdash_devices_url}')
-            # get listing of all applications
-            mdash_devices = requests.get(
-                url=self._mdash_devices_url,
-                params={
-                    "access_token": self._mdash_api_key
-                }).json()
-            log.info(f'mDash returns {len(mdash_devices)} devices.')
-            for device in mdash_devices:
-                device_id = device['id']
-                device_online = device['online']
-                if 'shadow' not in device.keys():
-                    log.warning(f'Ignoring mDash device {device_id} with missing shadow configuration.')
-                    continue
-                device_shadow = device['shadow']
-                if 'tags' not in device_shadow or 'labels' not in device_shadow['tags']:
-                    log.warning(f'mDash device {device_id} is missing tagging information for inclusion.')
-                    continue
-                tag_supported = False
-                device_tags = device_shadow['tags']['labels'].split(',')
-                for device_tag in device_tags:
-                    if device_tag in self._device_tags:
-                        tag_supported = True
-                        break
-                if not tag_supported:
-                    log.warning(f'mDash device {device_id} ({device_tags=}) not in supported tags: {self._device_tags!s}.')
-                    continue
-                log.info(f'Retrieving mDash information for device {device_id} ({device_tags!s}) ({device_online=})')
-                # retrieve specific configuration item
-                mqtt_pub_topic = requests.post(
-                    url='{}/{}/rpc/Config.Get'.format(
-                        self._mdash_devices_url,
-                        device_id),
-                    json={
-                        'key': self._app_config_mqtt_pub_topic
-                    },
-                    params={
-                        "access_token": self._mdash_api_key
-                    })
-                # strip double-quotes from topic name
-                mqtt_pub_topic_name = mqtt_pub_topic.text.replace('"', '').rstrip()
-                log.info(f"MQTT topic for {device_id} is '{mqtt_pub_topic_name}'")
-                zmq_socket.send_pyobj({'register_mqtt_origin': {mqtt_pub_topic_name: device_id}})
-
-        # un-nanny and goodbye
-        self.untrack()
-
-
-class CallbackUrlDiscovery(AppThread):
-
-    def __init__(self):
-        AppThread.__init__(self, name=self.__class__.__name__)
-
-        self._discover_url = 'http://127.0.0.1:{}/api/tunnels/{}'.format(
-            app_config.get('ngrok', 'client_api_port'),
-            app_config.get('ngrok', 'tunnel_name'))
-
-    # noinspection PyBroadException
-    def run(self):
-        # sudo update
-        global ngrok_tunnel_url
-        while not threads.shutting_down:
-            try:
-                ngrok_tunnel_url = requests.get(self._discover_url).json()['public_url']
-            except (KeyError, ConnectionError) as e:
-                log.warning('Still attempting to discover ngrok tunnel URL ({})...'.format(repr(e)))
-                threads.interruptable_sleep.wait(10)
-                continue
-            log.info('External call-back URL is {}'.format(ngrok_tunnel_url))
-            break
-        purl = urlparse(ngrok_tunnel_url)
-        # decorate the URL with basic-auth details
-        global ngrok_tunnel_url_with_bauth
-        ngrok_tunnel_url_with_bauth = '{}://{}:{}@{}{}'.format(purl.scheme,
-                                                                creds.flask_basic_auth_username,
-                                                                creds.flask_basic_auth_password,
-                                                                purl.netloc,
-                                                                purl.path)
-        # thread is done
-        self.untrack()
-
-
 class ApiServer(Thread):
 
     def __init__(self):
@@ -2331,35 +1579,16 @@ def main():
     if not threads.shutting_down:
         log.info('Creating application threads...')
         # bind listeners first
-        #heartbeat_filter = HeartbeatFilter()
-        app_bridge = BridgeFilter()
         mq_server_address=app_config.get('rabbitmq', 'server_address').split(',')
         mq_exchange_name=app_config.get('rabbitmq', 'mq_exchange')
-        #mq_listener = ZMQListener(
-        #    zmq_url=URL_WORKER_HEARTBEAT_NANNY,
-        #    mq_server_address=mq_server_address,
-        #    mq_exchange_name=mq_exchange_name,
-        #    mq_topic_filter='event.#',
-        #    mq_exchange_type='topic')
-        mq_listener_bridge = ZMQListener(
-            zmq_url=URL_WORKER_APP_BRIDGE,
+        mq_listener_sms = ZMQListener(
+            zmq_url=URL_WORKER_APP,
             mq_server_address=mq_server_address,
             mq_exchange_name=f'{mq_exchange_name}_control',
             mq_topic_filter='event.trigger.sms',
             mq_exchange_type='direct')
-        #mqtt_subscriber = MqttSubscriber()
-        mqtt_subscriber = None
         auto_scheduler = AutoScheduler()
-        event_processor = EventProcessor(
-            mqtt_subscriber,
-            mq_server_address,
-            f'{mq_exchange_name}_control')
-        # connect ZMQ IPC clients next
-        #event_source_discovery = EventSourceDiscovery()
-        sqs_listener = None
-        if app_config.getboolean('app', 'sns_control_enabled'):
-            pass
-            #sqs_listener = SQSListener()
+        event_processor = EventProcessor()
         # configure Telegram bot
         telegram_bot = TBot(
             chat_id=app_config.getint('telegram', 'chat_room_id'),
@@ -2380,21 +1609,13 @@ def main():
             # start the binders
             event_processor.start()
             #heartbeat_filter.start()
-            app_bridge.start()
             telegram_bot.start()
             # start the connectors
-            #event_source_discovery.start()
-            #mqtt_subscriber.start()
             auto_scheduler.start()
-            #if sqs_listener:
-            #    sqs_listener.start()
-            mq_listener_bridge.start()
+            mq_listener_sms.start()
             # HTTP APIs
             server.start()
             # get supporting services going
-            if app_config.getboolean('ngrok', 'enabled'):
-                # discover ngrok callback URL
-                CallbackUrlDiscovery().start()
             nanny.start()
             global startup_complete
             startup_complete = True
@@ -2406,12 +1627,10 @@ def main():
             message = "Shutting down {}..."
             log.info(message.format('API server'))
             server.shutdown()
-            log.info(message.format('Main event processor'))
-            event_processor.stop()
             log.info(message.format('Telegram Bot'))
             telegram_bot.shutdown()
             log.info(message.format('Rabbit MQ listener bridge'))
-            mq_listener_bridge.stop()
+            mq_listener_sms.stop()
             zmq_term()
         bye()
 
