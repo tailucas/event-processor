@@ -260,14 +260,16 @@ class OutputConfig(Base):
     device_label = Column(String(100))
     device_params = Column(Text)
     trigger_topic = Column(String(100))
+    trigger_interval = Column(Integer)
     links = relationship('OutputLink', backref='output_config', cascade='all, delete-orphan', lazy='dynamic')
 
-    def __init__(self, device_key, device_type, device_label, device_params, trigger_topic):
+    def __init__(self, device_key, device_type, device_label, device_params, trigger_topic, trigger_interval):
         self.device_key = device_key
         self.device_type = device_type
         self.device_label = device_label
         self.device_params = device_params
         self.trigger_topic = trigger_topic
+        self.trigger_interval = trigger_interval
 
     def as_dict(self):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
@@ -470,7 +472,8 @@ async def api_device_info(di: DeviceInfo):
                     device_label=di.device_label,
                     device_type=di.device_type,
                     device_params=None,
-                    trigger_topic=None))
+                    trigger_topic=None,
+                    trigger_interval=None))
                 db.session.commit()
     with exception_handler(connect_url=URL_WORKER_APP, and_raise=False, shutdown_on_error=True) as zmq_socket:
         di_model = di.model_dump()
@@ -892,6 +895,15 @@ def output_config():
             output_config.device_params = device_params
         else:
             output_config.device_params = None
+        trigger_topic = request.form['trigger_topic'].strip()
+        if len(trigger_topic) > 0:
+            output_config.trigger_topic = trigger_topic
+        else:
+            output_config.trigger_topic = None
+        if len(request.form['trigger_interval']) > 0:
+            output_config.trigger_interval = int(request.form['trigger_interval'])
+        else:
+            output_config.trigger_interval = None
         db.session.add(output_config)
         db.session.commit()
         # invalidate remote cache
@@ -1109,9 +1121,9 @@ class EventProcessor(AppThread):
                     log.info('Malformed event; expecting dictionary.')
                     continue
                 if 'sms' in event:
-                    log.info(f'Sending payload to bot {event.keys()!s}...')
+                    log.debug(f'Sending payload to bot {event.keys()!s}...')
                     self.bot.send_pyobj(event['sms'])
-                    log.info(f'Sent payload to bot...')
+                    log.debug(f'Sent payload to bot...')
                     continue
                 for event_origin, event_data in list(event.items()):
                     if not isinstance(event_data, dict):
@@ -1305,48 +1317,46 @@ class TBot(AppThread, Closable):
             if event is None and not pending_by_label:
                 continue
             try:
-                if not isinstance(event, dict):
-                    log.warn(f'Non dictionary type {type(event)} received, ignoring.')
-                    continue
-                input_device = None
-                output_device = None
-                try:
-                    if 'active_input' in event.keys():
-                        input_device = Device(**event['active_input'])
-                        log.debug(f'Input device for message: {input_device!s}')
-                    if 'output_triggered' in event.keys():
-                        output_device = Device(**event['output_triggered'])
-                        log.debug(f'Output device for message: {output_device!s}')
-                except Exception as e:
-                    log.warn('Bot message unpack problem {e!s}', exc_info=True)
-                    continue
-                timestamp = None
-                if 'timestamp' in event:
-                    timestamp = make_timestamp(timestamp=event['timestamp'], as_tz=user_tz)
-                else:
-                    log.warn('No timestamp included in event message; using "now"')
-                    timestamp = make_timestamp(as_tz=user_tz)
-                log.debug(f'{input_device!s};{output_device!s};{timestamp!s}')
-                # build the message
-                message = None
-                if input_device:
-                    log.debug(f'Building message based on input device: {input_device!s}')
+                if isinstance(event, dict):
+                    input_device = None
+                    output_device = None
                     try:
-                        message = TBot.build_device_message(timestamp=timestamp, input_device=input_device)
+                        if 'active_input' in event.keys():
+                            input_device = Device(**event['active_input'])
+                            log.debug(f'Input device for message: {input_device!s}')
+                        if 'output_triggered' in event.keys():
+                            output_device = Device(**event['output_triggered'])
+                            log.debug(f'Output device for message: {output_device!s}')
                     except Exception as e:
-                        log.warn(f'Bot message build error {e!s}', exc_info=True)
+                        log.warn('Bot message unpack problem {e!s}', exc_info=True)
                         continue
-                # always queue the message
-                device_label = message['device_label']
-                message_timestamp = make_unix_timestamp(timestamp=timestamp)
-                message['timestamp'] = message_timestamp
-                try:
-                    pending = pending_by_label[device_label]
-                except KeyError:
-                    pending = deque()
-                    pending_by_label[device_label] = pending
-                log.info(f'Preparing message to send about {device_label} ({message_timestamp}) with {len(pending)} already queued...')
-                pending.append(message)
+                    timestamp = None
+                    if 'timestamp' in event:
+                        timestamp = make_timestamp(timestamp=event['timestamp'], as_tz=user_tz)
+                    else:
+                        log.warn('No timestamp included in event message; using "now"')
+                        timestamp = make_timestamp(as_tz=user_tz)
+                    log.debug(f'{input_device!s};{output_device!s};{timestamp!s}')
+                    # build the message
+                    message = None
+                    if input_device:
+                        log.debug(f'Building message based on input device: {input_device!s}')
+                        try:
+                            message = TBot.build_device_message(timestamp=timestamp, input_device=input_device)
+                        except Exception as e:
+                            log.warn(f'Bot message build error {e!s}', exc_info=True)
+                            continue
+                    # always queue the message
+                    device_label = message['device_label']
+                    message_timestamp = make_unix_timestamp(timestamp=timestamp)
+                    message['timestamp'] = message_timestamp
+                    try:
+                        queued = pending_by_label[device_label]
+                    except KeyError:
+                        queued = deque()
+                        pending_by_label[device_label] = queued
+                    log.info(f'Queueing message about {device_label} ({message_timestamp}) with {len(queued)} already queued...')
+                    queued.append(message)
                 # rate-limit the send
                 # https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this
                 if (now < call_again_timestamp):
@@ -1361,19 +1371,33 @@ class TBot(AppThread, Closable):
                 # dictionary by rough order of entry and take the latest event for a
                 # label, except for images in which all images with features detected
                 # should be batched and sent.
-                pending = pending_by_label.popitem(last=False)[1]
+                pending = None
+                device_label = None
+                while not pending:
+                    try:
+                        device_label, pending = pending_by_label.popitem(last=False)
+                    except KeyError:
+                        log.error('No queued messages for any device.')
+                        continue
+                log.info(f'Evaluating a message about {device_label} ({len(pending)} queued)...')
                 message = pending.popleft()
                 image_batch = []
                 # other messages to dedupe
-                while len(pending) > 0:
+                while True:
                     device_label = message['device_label']
                     message_timestamp = message['timestamp']
-                    log.info(f'Processing {len(pending)} more events for {device_label} ({message_timestamp})...')
+                    log.info(f'Processing {len(pending)} additional events for {device_label} ({message_timestamp})...')
                     # keep all image data as configured
                     if message['image']:
                         if not TBot.include_image(message=message['message']):
                             log.warn(f'Discarding event from {device_label} with image of no persons.')
-                            message = pending.popleft()
+                            try:
+                                # fetch another to test
+                                message = pending.popleft()
+                            except IndexError:
+                                # or void the last
+                                message = None
+                                break
                             continue
                         elif len(image_batch) < MediaGroupLimit.MAX_MEDIA_LENGTH:
                             image_batch.append(InputMediaPhoto(
@@ -1388,7 +1412,11 @@ class TBot(AppThread, Closable):
                                     )
                                 ]))
                             # pop images in insertion order since all will be taken
-                            message = pending.popleft()
+                            try:
+                                message = pending.popleft()
+                            except IndexError:
+                                # message remains set to the current
+                                break
                             continue
                         else:
                             # enough is enough, re-enqueue the remainder
@@ -1396,13 +1424,19 @@ class TBot(AppThread, Closable):
                             pending_by_label[device_label] = pending
                             break
                     else:
-                        oldest_message_timestamp = message['timestamp']
                         old_count = len(pending)
+                        if old_count == 0:
+                            # this is the only message
+                            break
+                        oldest_message_timestamp = message['timestamp']
                         # take the latest message, tossing the current and the remainders
                         message = pending.pop()
                         message_timestamp = message['timestamp']
                         log.info(f'Removing {old_count} redundant events for {device_label} (new/old: {message_timestamp}/{oldest_message_timestamp})')
                         pending.clear()
+                        break
+                if not message:
+                    continue
                 # send the message
                 device_label = message['device_label']
                 notification_message = message['message']

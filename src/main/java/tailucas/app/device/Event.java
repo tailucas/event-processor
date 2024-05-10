@@ -33,6 +33,7 @@ public class Event implements Runnable {
     protected static String exchangeName;
     protected static TriggerHistory triggerLatchHistory;
     protected static TriggerHistory triggerMultiHistory;
+    protected static TriggerHistory triggerOutputHistory;
 
     protected Connection connection;
     protected String source;
@@ -50,6 +51,7 @@ public class Event implements Runnable {
             exchangeName = AppProperties.getProperty("app.message-control-exchange-name");
             triggerLatchHistory = new TriggerHistory();
             triggerMultiHistory = new TriggerHistory();
+            triggerOutputHistory = new TriggerHistory();
         }
     }
 
@@ -170,7 +172,20 @@ public class Event implements Runnable {
                     rabbitMqChannel.exchangeDeclare(exchangeName, BuiltinExchangeType.DIRECT);
                     try {
                         linkedOutputs.forEach(Failable.asConsumer(outputConfig -> {
+                            final String outputDeviceKey = outputConfig.getDeviceKey();
                             final String outputDeviceLabel = outputConfig.getDeviceLabel();
+                            String outputDeviceDescription;
+                            if (outputDeviceLabel != null) {
+                                outputDeviceDescription = outputDeviceLabel;
+                            } else {
+                                outputDeviceDescription = outputDeviceKey;
+                            }
+                            final Integer outputDeviceTriggerInterval = outputConfig.getTriggerInterval();
+                            // trigger not at the rate of incoming messages
+                            if (outputDeviceTriggerInterval != null && triggerOutputHistory.triggeredWithin(outputDeviceKey, outputDeviceTriggerInterval)) {
+                                log.warn(String.format("Output device %s has been triggered already in the last %ss.", outputDeviceDescription, outputDeviceTriggerInterval));
+                                return;
+                            }
                             final String outputDeviceType = outputConfig.getDeviceType();
                             ObjectNode root = mapper.createObjectNode();
                             try {
@@ -198,6 +213,8 @@ public class Event implements Runnable {
                                 responseTopic = responseTopic.toLowerCase();
                                 log.info("{} ({}) triggers {}{} on exchange {} with routing {} ({} bytes on the wire).", deviceDescription, source, outputDeviceLabel, deviceDetail, exchangeName, responseTopic, wireCommand.length);
                                 rabbitMqChannel.basicPublish(exchangeName, responseTopic, rabbitMqProperties, wireCommand);
+                                // record the trigger event
+                                triggerOutputHistory.triggered(outputDeviceKey);
                             } catch (Exception e) {
                                 log.warn("{}: {}", source, e.getMessage());
                             }

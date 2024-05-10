@@ -13,6 +13,8 @@ public class OutputConfig extends Config {
     private String deviceParams;
     @JsonProperty("trigger_topic")
     private String triggerTopic;
+    @JsonProperty("trigger_interval")
+    private Integer trigger_interval;
     public String getDeviceKey() {
         return deviceKey;
     }
@@ -31,9 +33,13 @@ public class OutputConfig extends Config {
     public String getTriggerTopic() {
         return triggerTopic;
     }
+    public Integer getTriggerInterval() {
+        return trigger_interval;
+    }
     @Override
     public String toString() {
-        return "OutputConfig [device_key=" + deviceKey + ", device_type=" + deviceType + ", device_label="
-                + deviceLabel + ", device_params=" + deviceParams + "]";
+        return "OutputConfig [deviceKey=" + deviceKey + ", deviceType=" + deviceType + ", deviceLabel=" + deviceLabel
+                + ", deviceParams=" + deviceParams + ", triggerTopic=" + triggerTopic + ", trigger_interval="
+                + trigger_interval + "]";
     }
 }

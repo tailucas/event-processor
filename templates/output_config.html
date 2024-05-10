@@ -15,10 +15,16 @@
                         <div class="card-body">
                             <form role="form" method='POST'>
                                 <div class="form-group">
-                                    <input class="form-control" type="text" name="device_params" placeholder="Parameters" value="{{ output_device.device_params if output_device.device_params }}">
+                                    <label for="device_params">Device-specific parameters:</label>
+                                    <input id="device_params" class="form-control" type="text" name="device_params" placeholder="unset" value="{{ output_device.device_params if output_device.device_params }}">
                                 </div>
                                 <div class="form-group">
-                                    <input class="form-control" type="text" name="trigger_topic" placeholder="MQ Topic" value="{{ output_device.trigger_topic if output_device.trigger_topic }}">
+                                    <label for="trigger_topic">MQ Topic to trigger output:</label>
+                                    <input id="trigger_topic" class="form-control" type="text" name="trigger_topic" placeholder="topic" value="{{ output_device.trigger_topic if output_device.trigger_topic }}">
+                                </div>
+                                <div class="form-group">
+                                    <label for="trigger_interval">Minimum interval between triggers from multiple inputs:</label>
+                                    <input id="trigger_interval" class="form-control" type="text" name="trigger_interval" placeholder="seconds" value="{{ output_device.trigger_interval if output_device.trigger_interval }}">
                                 </div>
                                 <div class="form-group">
                                     <button type="submit" class="btn btn-primary" name="device_id" value="{{ output_device.id }}"><i class="far fa-save"></i> Save</button>
