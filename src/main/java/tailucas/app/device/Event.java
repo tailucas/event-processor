@@ -180,6 +180,10 @@ public class Event implements Runnable {
                             } else {
                                 outputDeviceDescription = outputDeviceKey;
                             }
+                            if (!outputConfig.isDeviceEnabled()) {
+                                log.warn("{} does not trigger output {} because output is not enabled.", deviceDescription, outputDeviceDescription);
+                                return;
+                            }
                             final Integer outputDeviceTriggerInterval = outputConfig.getTriggerInterval();
                             // trigger not at the rate of incoming messages
                             if (outputDeviceTriggerInterval != null && triggerOutputHistory.triggeredWithin(outputDeviceKey, outputDeviceTriggerInterval)) {

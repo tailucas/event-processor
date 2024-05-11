@@ -15,6 +15,8 @@ public class OutputConfig extends Config {
     private String triggerTopic;
     @JsonProperty("trigger_interval")
     private Integer trigger_interval;
+    @JsonProperty("device_enabled")
+    private Boolean device_enabled;
     public String getDeviceKey() {
         return deviceKey;
     }
@@ -36,10 +38,16 @@ public class OutputConfig extends Config {
     public Integer getTriggerInterval() {
         return trigger_interval;
     }
+    public boolean isDeviceEnabled() {
+        if (device_enabled == null) {
+            return true;
+        }
+        return device_enabled.booleanValue();
+    }
     @Override
     public String toString() {
         return "OutputConfig [deviceKey=" + deviceKey + ", deviceType=" + deviceType + ", deviceLabel=" + deviceLabel
                 + ", deviceParams=" + deviceParams + ", triggerTopic=" + triggerTopic + ", trigger_interval="
-                + trigger_interval + "]";
+                + trigger_interval + ", device_enabled=" + device_enabled + "]";
     }
 }
