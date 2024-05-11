@@ -25,7 +25,7 @@ public class Metrics {
     public void postMetric() {
         var creds = OnePassword.getInstance();
         final String userId = creds.getField("Grafana", "user_id", "event-processor");
-        final String apiKey = creds.getField("Grafana", "user_id", "event-processor");
+        final String apiKey = creds.getField("Grafana", "token", "event-processor");
         String response = null;
         try {
             HttpURLConnection.setFollowRedirects(false);

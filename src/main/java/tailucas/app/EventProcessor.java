@@ -40,6 +40,7 @@ import tailucas.app.device.Event;
 import tailucas.app.message.Mqtt;
 import tailucas.app.message.RabbitMq;
 import tailucas.app.provider.DeviceConfig;
+import tailucas.app.provider.Metrics;
 import tailucas.app.provider.OnePassword;
 
 import org.zeromq.ZContext;
@@ -344,6 +345,9 @@ public class EventProcessor
         }
         transaction.setMeasurement("hello", 12);
         transaction.finish();
+
+        Metrics metrics = new Metrics();
+        metrics.postMetric();
 
         PagerDutyEventsClient pagerDuty = PagerDutyEventsClient.create();
         Payload payload = Payload.Builder.newBuilder()
