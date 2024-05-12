@@ -23,6 +23,7 @@ import tailucas.app.AppProperties;
 import tailucas.app.device.config.InputConfig;
 import tailucas.app.device.config.OutputConfig;
 import tailucas.app.provider.DeviceConfig;
+import tailucas.app.provider.Metrics;
 
 public class Event implements Runnable {
 
@@ -34,6 +35,7 @@ public class Event implements Runnable {
     protected static TriggerHistory triggerLatchHistory;
     protected static TriggerHistory triggerMultiHistory;
     protected static TriggerHistory triggerOutputHistory;
+    protected static Metrics metrics;
 
     protected Connection connection;
     protected String source;
@@ -52,6 +54,7 @@ public class Event implements Runnable {
             triggerLatchHistory = new TriggerHistory();
             triggerMultiHistory = new TriggerHistory();
             triggerOutputHistory = new TriggerHistory();
+            metrics = Metrics.getInstance();
         }
     }
 
@@ -78,67 +81,55 @@ public class Event implements Runnable {
     @Override
     public void run() {
         final long unixTime = System.currentTimeMillis() / 1000L;
+        if (device == null) {
+            log.warn("{} posts no device details for {}", source, deviceUpdateString);
+            return;
+        }
         try {
             final DeviceConfig configProvider = DeviceConfig.getInstance();
             final Map<String, OutputConfig> processedOutputs = new HashMap<>(10);
-            if (device != null) {
-                log.debug("{} device: {}", source, device);
-                final String deviceKey = device.getDeviceKey();
-                if (deviceKey == null) {
-                    log.warn("No identifier for device {}", device);
-                }
-                final String deviceLabel = device.getDeviceLabel();
-                if (deviceLabel == null && deviceKey != null) {
-                    log.warn("No device label for {}.", deviceKey);
-                }
-                final String deviceType = device.getDeviceType();
-                if (deviceType == null && deviceKey != null) {
-                    log.warn("No device type for set for {}", deviceKey);
-                }
-                log.debug("{} {} ({})", deviceType, deviceKey, deviceLabel);
-                String deviceDescription;
-                if (deviceLabel != null) {
-                    deviceDescription = deviceLabel;
-                } else {
-                    deviceDescription = deviceKey;
-                }
-                configProvider.postDeviceInfo(device);
-                if (device.isHeartbeat() || source.contains(".heartbeat.")) {
-                    log.debug("{}: Heartbeat for {}.", source, deviceDescription);
-                    return;
-                }
-                log.debug("{} fetch configuration with key {}, description: {}", source, deviceKey, deviceDescription);
-                InputConfig deviceConfig = configProvider.fetchInputDeviceConfig(deviceKey);
-                log.debug("{} configuration: {}", deviceDescription, deviceConfig);
-                if (!device.wouldTriggerOutput(deviceConfig)) {
-                    log.debug("{} does not trigger any outputs based on current configuration or state.", deviceDescription);
-                    return;
-                }
-                // record the trigger attempt
-                triggerMultiHistory.triggered(deviceKey);
-                // rate limit 1 - trigger rate latch
-                final Long secondsSinceLastTrigger = triggerLatchHistory.secondsSinceLastTriggered(deviceKey);
-                if (secondsSinceLastTrigger != null) {
-                    log.debug("{} was last triggered {}s ago.", deviceDescription, secondsSinceLastTrigger.toString());
-                    final Integer triggerLatchDuration = deviceConfig.getTriggerLatchDuration();
-                    if (triggerLatchDuration != null) {
-                        if (triggerLatchHistory.triggeredWithin(deviceKey, triggerLatchDuration.intValue())) {
-                            final String logMessage = String.format("%s has been triggered already in the last %ss.", deviceDescription, triggerLatchDuration);
-                            if (deviceConfig.isDeviceEnabled()) {
-                                log.info(logMessage);
-                            } else {
-                                log.debug(logMessage);
-                            }
-                            return;
-                        }
-                    }
-                }
-                // rate limit 2 - trigger filter
-                final Integer multiTriggerRate = deviceConfig.getMultiTriggerRate();
-                final Integer multiTriggerInterval = deviceConfig.getMultiTriggerInterval();
-                if (multiTriggerRate != null && multiTriggerInterval != null) {
-                    if (!triggerMultiHistory.isMultiTriggered(deviceKey, multiTriggerRate, multiTriggerInterval)) {
-                        final String logMessage = String.format("%s has not yet triggered %s times within %ss.", deviceDescription, multiTriggerRate, multiTriggerInterval);
+            log.debug("{} device: {}", source, device);
+            final String deviceKey = device.getDeviceKey();
+            if (deviceKey == null) {
+                log.warn("No identifier for device {}", device);
+            }
+            final String deviceLabel = device.getDeviceLabel();
+            if (deviceLabel == null && deviceKey != null) {
+                log.warn("No device label for {}.", deviceKey);
+            }
+            final String deviceType = device.getDeviceType();
+            if (deviceType == null && deviceKey != null) {
+                log.warn("No device type for set for {}", deviceKey);
+            }
+            log.debug("{} {} ({})", deviceType, deviceKey, deviceLabel);
+            String deviceDescription;
+            if (deviceLabel != null) {
+                deviceDescription = deviceLabel;
+            } else {
+                deviceDescription = deviceKey;
+            }
+            configProvider.postDeviceInfo(device);
+            if (device.isHeartbeat() || source.contains(".heartbeat.")) {
+                log.debug("{}: Heartbeat for {}.", source, deviceDescription);
+                return;
+            }
+            log.debug("{} fetch configuration with key {}, description: {}", source, deviceKey, deviceDescription);
+            InputConfig deviceConfig = configProvider.fetchInputDeviceConfig(deviceKey);
+            log.debug("{} configuration: {}", deviceDescription, deviceConfig);
+            if (!device.wouldTriggerOutput(deviceConfig)) {
+                log.debug("{} does not trigger any outputs based on current configuration or state.", deviceDescription);
+                return;
+            }
+            // record the trigger attempt
+            triggerMultiHistory.triggered(deviceKey);
+            // rate limit 1 - trigger rate latch
+            final Long secondsSinceLastTrigger = triggerLatchHistory.secondsSinceLastTriggered(deviceKey);
+            if (secondsSinceLastTrigger != null) {
+                log.debug("{} was last triggered {}s ago.", deviceDescription, secondsSinceLastTrigger.toString());
+                final Integer triggerLatchDuration = deviceConfig.getTriggerLatchDuration();
+                if (triggerLatchDuration != null) {
+                    if (triggerLatchHistory.triggeredWithin(deviceKey, triggerLatchDuration.intValue())) {
+                        final String logMessage = String.format("%s has been triggered already in the last %ss.", deviceDescription, triggerLatchDuration);
                         if (deviceConfig.isDeviceEnabled()) {
                             log.info(logMessage);
                         } else {
@@ -147,91 +138,105 @@ public class Event implements Runnable {
                         return;
                     }
                 }
-                // record trigger event
-                triggerLatchHistory.triggered(deviceKey);
-                if (!deviceConfig.isDeviceEnabled()) {
-                    log.warn("{} is disabled but would otherwise trigger outputs because {}", deviceDescription, device.getTriggerStateDescription());
-                    return;
-                }
-                log.info("{} will trigger outputs because {}", deviceDescription, device.getTriggerStateDescription());
-                List<OutputConfig> linkedOutputs = configProvider.getLinkedOutputs(deviceConfig);
-                log.debug("{} outputs {}", deviceDescription, linkedOutputs);
-                if (linkedOutputs == null) {
-                    log.warn("No output links found for active {}.", deviceDescription);
-                    return;
-                }
-                final List<String> outputNames = new ArrayList<>();
-                linkedOutputs.forEach(output -> {
-                    final String outputLabel = output.getDeviceLabel();
-                    log.debug("Adding output {}...", outputLabel);
-                    outputNames.add(outputLabel);
-                });
-                if (linkedOutputs.size() > 0) {
-                    log.info("{} is linked to {} outputs: {}.", deviceDescription, linkedOutputs.size(), outputNames);
-                    final Channel rabbitMqChannel = connection.createChannel();
-                    rabbitMqChannel.exchangeDeclare(exchangeName, BuiltinExchangeType.DIRECT);
-                    try {
-                        linkedOutputs.forEach(Failable.asConsumer(outputConfig -> {
-                            final String outputDeviceKey = outputConfig.getDeviceKey();
-                            final String outputDeviceLabel = outputConfig.getDeviceLabel();
-                            String outputDeviceDescription;
-                            if (outputDeviceLabel != null) {
-                                outputDeviceDescription = outputDeviceLabel;
-                            } else {
-                                outputDeviceDescription = outputDeviceKey;
-                            }
-                            if (!outputConfig.isDeviceEnabled()) {
-                                log.warn("{} does not trigger output {} because output is not enabled.", deviceDescription, outputDeviceDescription);
-                                return;
-                            }
-                            final Integer outputDeviceTriggerInterval = outputConfig.getTriggerInterval();
-                            // trigger not at the rate of incoming messages
-                            if (outputDeviceTriggerInterval != null && triggerOutputHistory.triggeredWithin(outputDeviceKey, outputDeviceTriggerInterval)) {
-                                log.warn(String.format("Output device %s has been triggered already in the last %ss.", outputDeviceDescription, outputDeviceTriggerInterval));
-                                return;
-                            }
-                            final String outputDeviceType = outputConfig.getDeviceType();
-                            ObjectNode root = mapper.createObjectNode();
-                            try {
-                                root.put("timestamp", unixTime);
-                                root.putPOJO("active_input", device);
-                                root.putPOJO("output_triggered", outputConfig);
-                                final byte[] wireCommand = mapper.writeValueAsBytes(root);
-                                final Matcher nameMatcher = namePattern.matcher(outputDeviceType.toLowerCase());
-                                String deviceDetail = "";
-                                if (!outputDeviceType.equals(outputDeviceLabel)) {
-                                    deviceDetail = String.format(" (%s)", outputDeviceType);
-                                }
-                                String responseTopic = outputConfig.getTriggerTopic();
-                                if (responseTopic == null) {
-                                    final String responseTopicSuffix = nameMatcher.replaceAll("_");
-                                    if (responseTopicSuffix.length() == 0) {
-                                        throw new RuntimeException(String.format(
-                                            "%s maps to invalid command topic suffix %s.",
-                                            device.getDeviceLabel(),
-                                            outputDeviceType));
-                                    }
-                                    responseTopic = String.format("event.trigger.%s", responseTopicSuffix);
-                                    log.warn("{} has no configured message topic. Using {}", deviceDescription, responseTopic);
-                                }
-                                responseTopic = responseTopic.toLowerCase();
-                                log.info("{} ({}) triggers {}{} on exchange {} with routing {} ({} bytes on the wire).", deviceDescription, source, outputDeviceLabel, deviceDetail, exchangeName, responseTopic, wireCommand.length);
-                                rabbitMqChannel.basicPublish(exchangeName, responseTopic, rabbitMqProperties, wireCommand);
-                                // record the trigger event
-                                triggerOutputHistory.triggered(outputDeviceKey);
-                            } catch (Exception e) {
-                                log.warn("{}: {}", source, e.getMessage());
-                            }
-                        }));
-                    } finally {
-                        rabbitMqChannel.close();
+            }
+            // rate limit 2 - trigger filter
+            final Integer multiTriggerRate = deviceConfig.getMultiTriggerRate();
+            final Integer multiTriggerInterval = deviceConfig.getMultiTriggerInterval();
+            if (multiTriggerRate != null && multiTriggerInterval != null) {
+                if (!triggerMultiHistory.isMultiTriggered(deviceKey, multiTriggerRate, multiTriggerInterval)) {
+                    final String logMessage = String.format("%s has not yet triggered %s times within %ss.", deviceDescription, multiTriggerRate, multiTriggerInterval);
+                    if (deviceConfig.isDeviceEnabled()) {
+                        log.info(logMessage);
+                    } else {
+                        log.debug(logMessage);
                     }
-                    linkedOutputs.forEach(Failable.asConsumer(linkedOutput -> {
-                        processedOutputs.put(linkedOutput.getDeviceKey(), linkedOutput);
-                    }));
-                } else {
-                    log.warn("{} is linked to no outputs: {}.", deviceDescription, outputNames);
+                    return;
                 }
+            }
+            // record trigger event
+            triggerLatchHistory.triggered(deviceKey);
+            if (!deviceConfig.isDeviceEnabled()) {
+                log.warn("{} is disabled but would otherwise trigger outputs because {}", deviceDescription, device.getTriggerStateDescription());
+                return;
+            }
+            log.info("{} will trigger outputs because {}", deviceDescription, device.getTriggerStateDescription());
+            List<OutputConfig> linkedOutputs = configProvider.getLinkedOutputs(deviceConfig);
+            log.debug("{} outputs {}", deviceDescription, linkedOutputs);
+            if (linkedOutputs == null) {
+                log.warn("No output links found for active {}.", deviceDescription);
+                return;
+            }
+            final List<String> outputNames = new ArrayList<>();
+            linkedOutputs.forEach(output -> {
+                final String outputLabel = output.getDeviceLabel();
+                log.debug("Adding output {}...", outputLabel);
+                outputNames.add(outputLabel);
+            });
+            if (linkedOutputs.size() > 0) {
+                log.info("{} is linked to {} outputs: {}.", deviceDescription, linkedOutputs.size(), outputNames);
+                final Channel rabbitMqChannel = connection.createChannel();
+                rabbitMqChannel.exchangeDeclare(exchangeName, BuiltinExchangeType.DIRECT);
+                try {
+                    linkedOutputs.forEach(Failable.asConsumer(outputConfig -> {
+                        final String outputDeviceKey = outputConfig.getDeviceKey();
+                        final String outputDeviceLabel = outputConfig.getDeviceLabel();
+                        String outputDeviceDescription;
+                        if (outputDeviceLabel != null) {
+                            outputDeviceDescription = outputDeviceLabel;
+                        } else {
+                            outputDeviceDescription = outputDeviceKey;
+                        }
+                        if (!outputConfig.isDeviceEnabled()) {
+                            log.warn("{} does not trigger output {} because output is not enabled.", deviceDescription, outputDeviceDescription);
+                            return;
+                        }
+                        final Integer outputDeviceTriggerInterval = outputConfig.getTriggerInterval();
+                        // trigger not at the rate of incoming messages
+                        if (outputDeviceTriggerInterval != null && triggerOutputHistory.triggeredWithin(outputDeviceKey, outputDeviceTriggerInterval)) {
+                            log.warn(String.format("Output device %s has been triggered already in the last %ss.", outputDeviceDescription, outputDeviceTriggerInterval));
+                            return;
+                        }
+                        final String outputDeviceType = outputConfig.getDeviceType();
+                        ObjectNode root = mapper.createObjectNode();
+                        try {
+                            root.put("timestamp", unixTime);
+                            root.putPOJO("active_input", device);
+                            root.putPOJO("output_triggered", outputConfig);
+                            final byte[] wireCommand = mapper.writeValueAsBytes(root);
+                            final Matcher nameMatcher = namePattern.matcher(outputDeviceType.toLowerCase());
+                            String deviceDetail = "";
+                            if (!outputDeviceType.equals(outputDeviceLabel)) {
+                                deviceDetail = String.format(" (%s)", outputDeviceType);
+                            }
+                            String responseTopic = outputConfig.getTriggerTopic();
+                            if (responseTopic == null) {
+                                final String responseTopicSuffix = nameMatcher.replaceAll("_");
+                                if (responseTopicSuffix.length() == 0) {
+                                    throw new RuntimeException(String.format(
+                                        "%s maps to invalid command topic suffix %s.",
+                                        device.getDeviceLabel(),
+                                        outputDeviceType));
+                                }
+                                responseTopic = String.format("event.trigger.%s", responseTopicSuffix);
+                                log.warn("{} has no configured message topic. Using {}", deviceDescription, responseTopic);
+                            }
+                            responseTopic = responseTopic.toLowerCase();
+                            log.info("{} ({}) triggers {}{} on exchange {} with routing {} ({} bytes on the wire).", deviceDescription, source, outputDeviceLabel, deviceDetail, exchangeName, responseTopic, wireCommand.length);
+                            rabbitMqChannel.basicPublish(exchangeName, responseTopic, rabbitMqProperties, wireCommand);
+                            // record the trigger event
+                            triggerOutputHistory.triggered(outputDeviceKey);
+                        } catch (Exception e) {
+                            log.warn("{}: {}", source, e.getMessage());
+                        }
+                    }));
+                } finally {
+                    rabbitMqChannel.close();
+                }
+                linkedOutputs.forEach(Failable.asConsumer(linkedOutput -> {
+                    processedOutputs.put(linkedOutput.getDeviceKey(), linkedOutput);
+                }));
+            } else {
+                log.warn("{} is linked to no outputs: {}.", deviceDescription, outputNames);
             }
         } catch (IllegalStateException | UnsupportedOperationException | IOException e) {
             // logged only with message
@@ -240,10 +245,6 @@ public class Event implements Runnable {
             // catch-all before thread death
             // TODO: catch in Sentry
             log.error("{} event issue.", source, e);
-        }
-        if (deviceUpdateString != null) {
-            // mutually exclusive with device and device updates
-            log.debug("{} {}", source, deviceUpdateString);
         }
     }
 }
