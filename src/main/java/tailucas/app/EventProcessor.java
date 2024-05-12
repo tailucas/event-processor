@@ -346,9 +346,6 @@ public class EventProcessor
         transaction.setMeasurement("hello", 12);
         transaction.finish();
 
-        Metrics metrics = new Metrics();
-        metrics.postMetric();
-
         PagerDutyEventsClient pagerDuty = PagerDutyEventsClient.create();
         Payload payload = Payload.Builder.newBuilder()
             .setSummary("Event Processor startup")
@@ -366,5 +363,7 @@ public class EventProcessor
         } catch (NotifyEventException e) {
             log.error("Cannot trigger PagerDuty alert.", e);
         }
+
+        Metrics.getInstance().postMetric("startup", 1f);
     }
 }
