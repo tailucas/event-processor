@@ -32,8 +32,6 @@ import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.impl.StrictExceptionHandler;
 
-import io.sentry.ISpan;
-import io.sentry.ITransaction;
 import io.sentry.Sentry;
 import jakarta.annotation.PreDestroy;
 import tailucas.app.device.Event;
@@ -173,6 +171,7 @@ public class EventProcessor
             final String sentryDsn = creds.getField("Sentry", "dsn", "event-processor");
             Sentry.init(options -> {
                 options.setDsn(sentryDsn);
+                options.setTracesSampleRate(1.0);
             });
         } catch (AssertionError e) {
                 log.error("Problem with credential item", e);
@@ -236,6 +235,7 @@ public class EventProcessor
             log.info("App Device Name: " + appConfig.get("app", "device_name"));
         } catch (IOException e) {
             log.error(e.getMessage());
+            Sentry.captureException(e);
         }
 
         srv = Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("app-event-", 1).factory());
@@ -257,6 +257,7 @@ public class EventProcessor
             rabbitMqConnection = rabbitMqConnectionFactory.newConnection(srv);
         } catch (Exception e) {
             log.error("Problem with RabbitMQ client", e);
+            Sentry.captureException(e);
             exitCode |= EXIT_CODE_RABBITMQ;
             System.exit(SpringApplication.exit(springApp));
         }
@@ -277,6 +278,7 @@ public class EventProcessor
                 rabbitMqChannel.basicConsume(queueName, true, new RabbitMq(srv, rabbitMqConnection), consumerTag -> { });
             } catch (Exception e) {
                 log.error("Problem with RabbitMQ client", e);
+                Sentry.captureException(e);
                 exitCode |= EXIT_CODE_RABBITMQ;
                 System.exit(SpringApplication.exit(springApp));
             }
@@ -306,6 +308,7 @@ public class EventProcessor
                     mqttClient.publish(mqttDiscoveryTopic, new MqttMessage(mqttDiscoveryPayload.getBytes()));
                 } catch (MqttException e) {
                     log.error("Problem sending MQTT discovery message to topic {}", mqttDiscoveryTopic, e);
+                    Sentry.captureException(e);
                     exitCode |= EXIT_CODE_MQTT;
                     System.exit(SpringApplication.exit(springApp));
                 };
@@ -322,8 +325,9 @@ public class EventProcessor
                         }
                     }
                 }
-            } catch (MqttException e) {
+            } catch (Exception e) {
                 log.error("Problem with MQTT client", e);
+                Sentry.captureException(e);
                 exitCode |= EXIT_CODE_MQTT;
                 System.exit(SpringApplication.exit(springApp));
             } finally {
@@ -335,19 +339,6 @@ public class EventProcessor
 
         rabbitMqThread.start();
         mqttThread.start();
-
-        ITransaction transaction = Sentry.startTransaction("meh", "task");
-        try {
-            throw new Exception("This is a test.");
-        } catch (Exception e) {
-            Sentry.captureException(e);
-        }
-        final ISpan span = transaction.getLatestActiveSpan();
-        if (span != null) {
-            span.setMeasurement("meh", 123);
-        }
-        transaction.setMeasurement("hello", 12);
-        transaction.finish();
 
         PagerDutyEventsClient pagerDuty = PagerDutyEventsClient.create();
         Payload payload = Payload.Builder.newBuilder()
@@ -368,5 +359,6 @@ public class EventProcessor
         }
 
         Metrics.getInstance().postMetric("startup", 1f);
+        log.info("{} startup complete.", springEnv.getProperty("app.project-name"));
     }
 }

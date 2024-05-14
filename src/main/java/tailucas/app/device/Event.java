@@ -16,6 +16,12 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.rabbitmq.client.AMQP;
 import com.rabbitmq.client.AMQP.BasicProperties;
+
+import io.sentry.ISpan;
+import io.sentry.ITransaction;
+import io.sentry.Sentry;
+import io.sentry.SpanStatus;
+
 import com.rabbitmq.client.BuiltinExchangeType;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
@@ -42,6 +48,7 @@ public class Event implements Runnable {
     protected String source;
     protected Generic device;
     protected String deviceUpdateString;
+    protected long initTime;
 
     public static void init() {
         if (log == null) {
@@ -61,6 +68,7 @@ public class Event implements Runnable {
 
     public Event(Connection connection, String source, Generic device, String deviceUpdateString) {
         init();
+        this.initTime = System.currentTimeMillis();
         this.connection = connection;
         this.source = source;
         this.device = device;
@@ -81,7 +89,9 @@ public class Event implements Runnable {
 
     @Override
     public void run() {
-        final long unixTime = System.currentTimeMillis() / 1000L;
+        final long now = System.currentTimeMillis();
+        metrics.postMetric("event_queue_time", now - initTime);
+        final long unixTime = now / 1000L;
         if (device == null) {
             log.debug("{} posts no device details for {}", source, deviceUpdateString);
             return;
@@ -181,6 +191,7 @@ public class Event implements Runnable {
             log.info("{} is linked to {} outputs: {}.", deviceDescription, linkedOutputs.size(), outputNames);
             final Channel rabbitMqChannel = connection.createChannel();
             rabbitMqChannel.exchangeDeclare(exchangeName, BuiltinExchangeType.DIRECT);
+            final ITransaction sentry = Sentry.startTransaction("event", "device event");
             try {
                 linkedOutputs.forEach(Failable.asConsumer(outputConfig -> {
                     final String outputDeviceKey = outputConfig.getDeviceKey();
@@ -201,6 +212,7 @@ public class Event implements Runnable {
                         log.warn(String.format("Output device %s has been triggered already in the last %ss.", outputDeviceDescription, outputDeviceTriggerInterval));
                         return;
                     }
+                    final ISpan sentrySpan = sentry.startChild("trigger", "output");
                     final String outputDeviceType = outputConfig.getDeviceType();
                     ObjectNode root = mapper.createObjectNode();
                     try {
@@ -236,13 +248,21 @@ public class Event implements Runnable {
                         outputMetricTags.putAll(metricTags);
                         metrics.postMetric(responseTopic, 1f, outputMetricTags);
                         outputMetricTags.put("destination", responseTopic);
-                        metrics.postMetric("triggered", 1f, outputMetricTags);
+                        metrics.postMetric("triggered", 1f, outputMetricTags).forEach((k, v) -> {
+                            sentrySpan.setTag(k, v);
+                        });
+                        sentrySpan.setStatus(SpanStatus.OK);
                     } catch (Exception e) {
                         log.warn("{}: {}", source, e.getMessage());
+                        sentrySpan.setThrowable(e);
+                        sentrySpan.setStatus(SpanStatus.INTERNAL_ERROR);
+                    } finally {
+                        sentrySpan.finish();
                     }
                 }));
             } finally {
                 rabbitMqChannel.close();
+                sentry.finish();
             }
         } catch (IllegalStateException | UnsupportedOperationException | IOException e) {
             // logged only with message
@@ -250,13 +270,13 @@ public class Event implements Runnable {
             metrics.postMetric("error", 1f, Map.of(
                 "class", this.getClass().getSimpleName(),
                 "exception", e.getClass().getSimpleName()));
+            Sentry.captureException(e);
         } catch (Throwable e) {
-            // catch-all before thread death
-            // TODO: catch in Sentry
             log.error("{} event issue.", source, e);
             metrics.postMetric("error", 1f, Map.of(
                 "class", this.getClass().getSimpleName(),
                 "exception", e.getClass().getSimpleName()));
+            Sentry.captureException(e);
         } finally {
             metrics.postMetric("error", 0f, Map.of("class", Event.class.getSimpleName()));
         }

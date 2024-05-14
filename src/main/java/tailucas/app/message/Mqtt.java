@@ -19,6 +19,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rabbitmq.client.Connection;
 
+import io.sentry.Sentry;
 import tailucas.app.device.Device;
 import tailucas.app.device.Event;
 import tailucas.app.device.Device.Type;
@@ -153,6 +154,7 @@ public class Mqtt implements MqttCallback {
                 "class", this.getClass().getSimpleName(),
                 "exception", e.getClass().getSimpleName()));
             log.error("{} event issue ({} bytes).", topic, payload.length, e);
+            Sentry.captureException(e);
         } finally {
             metrics.postMetric("error", 0f, Map.of(
                 "class", this.getClass().getSimpleName()));

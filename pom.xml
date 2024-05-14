@@ -25,21 +25,21 @@
     <project.mainclass>tailucas.app.EventProcessor</project.mainclass>
 
     <!-- runtime dependencies -->
-    <apache-commons.version>[3.14.0,)</apache-commons.version>
-    <ini4j.version>[0.5.4,)</ini4j.version>
+    <apache-commons.version>3.14.0</apache-commons.version>
+    <ini4j.version>0.5.4</ini4j.version>
     <pagerduty.version>3.0.0</pagerduty.version>
-    <sentry.version>[7.1.0,)</sentry.version>
-    <rabbitmq.version>[5.20.0,)</rabbitmq.version>
-    <paho.version>[1.2.5,)</paho.version>
-    <msgpack.version>[0.9.6,)</msgpack.version>
-    <jackson.version>[2.15.3]</jackson.version>
-    <zeromq.version>[0.5.4,)</zeromq.version>
-    <slf4j.version>[2.0.9,)</slf4j.version>
-    <opconnect-java.version>[0.6.1,)</opconnect-java.version>
-    <influxdb.version>[7.0.0,)</influxdb.version>
+    <sentry.version>7.9.0</sentry.version>
+    <rabbitmq.version>5.20.0</rabbitmq.version>
+    <paho.version>1.2.5</paho.version>
+    <msgpack.version>0.9.6</msgpack.version>
+    <jackson.version>2.15.3</jackson.version>
+    <zeromq.version>0.5.4</zeromq.version>
+    <slf4j.version>2.0.9</slf4j.version>
+    <opconnect-java.version>0.6.1</opconnect-java.version>
+    <influxdb.version>7.0.0</influxdb.version>
 
     <!-- test dependencies -->
-    <junit.version>[5.10.2]</junit.version>
+    <junit.version>5.10.2</junit.version>
 
     <!-- build toolchain -->
     <maven.dependency.plugin.version>3.6.1</maven.dependency.plugin.version>
@@ -54,7 +54,6 @@
     <app.message-control-expiry-ms>60000</app.message-control-expiry-ms>
     <app.message-event-exchange-name>home_automation</app.message-event-exchange-name>
     <app.message-control-exchange-name>home_automation_control</app.message-control-exchange-name>
-    <sentry.traces-sample-rate>1.0</sentry.traces-sample-rate>
     <sentry.environment>java</sentry.environment>
     <spring.threads.virtual.enabled>true</spring.threads.virtual.enabled>
     <spring.main.keep-alive>true</spring.main.keep-alive>

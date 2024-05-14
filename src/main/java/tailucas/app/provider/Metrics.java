@@ -65,15 +65,8 @@ public class Metrics {
         }
     }
 
-    public void postMetric(String name, float value) {
-        postMetric(name, value, null);
-    }
-
-    public void postMetric(String name, float value, Map<String,String> tags) {
-        if (name == null) {
-            throw new IllegalArgumentException("No metric name specified.");
-        }
-        final var metricTags = new HashMap<>();
+    public Map<String, String> getNormalizedMetricTags(Map<String, String> tags) {
+        final Map<String, String> metricTags = new HashMap<>();
         metricTags.put("application", normalize(appName));
         metricTags.put("device", normalize(deviceName));
         if (tags != null) {
@@ -81,6 +74,18 @@ public class Metrics {
                 metricTags.put(k, normalize(v));
             });
         }
+        return metricTags;
+    }
+
+    public void postMetric(String name, float value) {
+        postMetric(name, value, null);
+    }
+
+    public Map<String, String> postMetric(String name, float value, Map<String,String> tags) {
+        if (name == null) {
+            throw new IllegalArgumentException("No metric name specified.");
+        }
+        final var metricTags = getNormalizedMetricTags(tags);
         final StringBuilder metricBuilder = new StringBuilder();
         metricBuilder.append(name);
         metricBuilder.append(",");
@@ -95,5 +100,6 @@ public class Metrics {
         final String metricString = metricBuilder.toString();
         log.debug("Metric: {}", metricString);
         writeApi.writeRecord(WritePrecision.NS, metricString);
+        return metricTags;
     }
 }

@@ -15,6 +15,7 @@ import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.DeliverCallback;
 import com.rabbitmq.client.Delivery;
 
+import io.sentry.Sentry;
 import tailucas.app.device.Device;
 import tailucas.app.device.Event;
 import tailucas.app.device.State;
@@ -62,6 +63,7 @@ public class RabbitMq implements DeliverCallback {
                 "class", this.getClass().getSimpleName(),
                 "exception", e.getClass().getSimpleName()));
             log.error("{} event issue ({} bytes).", source, msgBody.length, e);
+            Sentry.captureException(e);
         } finally {
             metrics.postMetric("error", 0f, Map.of(
                 "class", this.getClass().getSimpleName()));
