@@ -2,6 +2,7 @@ package tailucas.app.message;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 
 import org.msgpack.jackson.dataformat.MessagePackMapper;
@@ -17,10 +18,13 @@ import com.rabbitmq.client.Delivery;
 import tailucas.app.device.Device;
 import tailucas.app.device.Event;
 import tailucas.app.device.State;
+import tailucas.app.provider.Metrics;
 
 public class RabbitMq implements DeliverCallback {
 
     private static Logger log = null;
+
+    private Metrics metrics = null;
 
     private ExecutorService srv = null;
     private Connection connection = null;
@@ -34,10 +38,12 @@ public class RabbitMq implements DeliverCallback {
         this.srv = srv;
         this.connection = connection;
         this.mapper = new MessagePackMapper();
+        this.metrics = Metrics.getInstance();
     }
 
     @Override
     public void handle(String consumerTag, Delivery message) throws IOException {
+        metrics.postMetric("message", 1f, Map.of("type", "rabbitmq"));
         final String source = message.getEnvelope().getRoutingKey();
         final byte[] msgBody = message.getBody();
         try {
@@ -52,7 +58,13 @@ public class RabbitMq implements DeliverCallback {
                 srv.submit(new Event(connection, source, device));
             });
         } catch (Exception e) {
+            metrics.postMetric("error", 1f, Map.of(
+                "class", this.getClass().getSimpleName(),
+                "exception", e.getClass().getSimpleName()));
             log.error("{} event issue ({} bytes).", source, msgBody.length, e);
+        } finally {
+            metrics.postMetric("error", 0f, Map.of(
+                "class", this.getClass().getSimpleName()));
         }
     }
 }

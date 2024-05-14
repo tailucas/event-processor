@@ -8,10 +8,16 @@ import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
+import java.util.HashMap;
 import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.influxdb.client.InfluxDBClient;
+import com.influxdb.client.InfluxDBClientFactory;
+import com.influxdb.client.WriteApi;
+import com.influxdb.client.domain.WritePrecision;
 
 public class Metrics {
 
@@ -21,9 +27,8 @@ public class Metrics {
     private String appName = null;
     private String deviceName = null;
 
-    private String userId = null;
-    private String apiKey = null;
-    private String metricUrl = null;
+    private InfluxDBClient influxDBClient = null;
+    private WriteApi writeApi = null;
 
     private Metrics() {
         log = LoggerFactory.getLogger(Metrics.class);
@@ -31,9 +36,17 @@ public class Metrics {
         appName = env.get("APP_NAME");
         deviceName = env.get("DEVICE_NAME");
         final var creds = OnePassword.getInstance();
-        userId = creds.getField("Grafana", "user_id", appName);
-        apiKey = creds.getField("Grafana", "token", appName);
-        metricUrl = creds.getField("Grafana", "url", appName);
+        final char[] token = creds.getField("InfluxDB", "token", appName).toCharArray();
+        final String bucket = creds.getField("InfluxDB", "bucket", appName);
+        final String org = creds.getField("InfluxDB", "org", "local");
+        final String url = creds.getField("InfluxDB", "url", "local");
+        log.info("Metrics client using org {}, bucket {} at URL {}", org, bucket, url);
+        influxDBClient = InfluxDBClientFactory.create(url, token, org, bucket);
+        writeApi = influxDBClient.makeWriteApi();
+    }
+
+    private static String normalize(String value) {
+        return value.toLowerCase().replace(' ', '-');
     }
 
     public static synchronized Metrics getInstance() {
@@ -41,6 +54,15 @@ public class Metrics {
             singleton = new Metrics();
         }
         return singleton;
+    }
+
+    public void close() {
+        if (writeApi != null) {
+            writeApi.close();
+        }
+        if (influxDBClient != null) {
+            influxDBClient.close();
+        }
     }
 
     public void postMetric(String name, float value) {
@@ -51,9 +73,13 @@ public class Metrics {
         if (name == null) {
             throw new IllegalArgumentException("No metric name specified.");
         }
-        final var metricTags = Map.of("application", appName, "device", deviceName);
+        final var metricTags = new HashMap<>();
+        metricTags.put("application", normalize(appName));
+        metricTags.put("device", normalize(deviceName));
         if (tags != null) {
-            metricTags.putAll(tags);
+            tags.forEach((k,v) -> {
+                metricTags.put(k, normalize(v));
+            });
         }
         final StringBuilder metricBuilder = new StringBuilder();
         metricBuilder.append(name);
@@ -67,69 +93,7 @@ public class Metrics {
         metricBuilder.append(" metric=");
         metricBuilder.append(value);
         final String metricString = metricBuilder.toString();
-        HttpURLConnection con = null;
-        OutputStream os = null;
-        boolean osClosed = false;
-        BufferedReader in = null;
-        try {
-            HttpURLConnection.setFollowRedirects(false);
-            URL url = URI.create(metricUrl).toURL();
-            con = (HttpURLConnection) url.openConnection();
-            con.setRequestMethod("POST");
-            con.setRequestProperty("Content-Type", "application/json");
-            con.setRequestProperty("Authorization", "Bearer " + userId + ":" + apiKey);
-            con.setConnectTimeout(1000);
-            con.setReadTimeout(1000);
-
-            con.setDoOutput(true);
-            os = con.getOutputStream();
-            log.debug("Metric: {}", metricString);
-            os.write(metricString.getBytes());
-            os.flush();
-            os.close();
-            osClosed = true;
-
-            int status = con.getResponseCode();
-            InputStreamReader sRx = null;
-            boolean httpError = false;
-            if (status > 299) {
-                httpError = true;
-                sRx = new InputStreamReader(con.getErrorStream());
-            } else {
-                sRx = new InputStreamReader(con.getInputStream());
-            }
-            in = new BufferedReader(sRx);
-            String inputLine;
-            StringBuffer content = new StringBuffer();
-            while ((inputLine = in.readLine()) != null) {
-                content.append(inputLine);
-            }
-            String response = content.toString();
-            if (httpError) {
-                log.warn("Metrics issue ({}) response code {}: {}", metricString, status, response);
-            }
-        } catch (MalformedURLException e) {
-            log.error("Metrics URL issue: {}", metricUrl, e);
-        } catch (IOException e) {
-            log.error("Metrics I/O issue ({})", metricString, e);
-        } finally {
-            if (os != null && !osClosed) {
-                try {
-                    os.close();
-                } catch (IOException e) {
-                    log.debug("Output stream close problem.", e);
-                }
-            }
-            if (in != null) {
-                try {
-                    in.close();
-                } catch (IOException e) {
-                    log.debug("Reader close issue", e);
-                }
-            }
-            if (con != null) {
-                con.disconnect();
-            }
-        }
+        log.debug("Metric: {}", metricString);
+        writeApi.writeRecord(WritePrecision.NS, metricString);
     }
 }

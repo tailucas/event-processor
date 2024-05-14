@@ -12,12 +12,13 @@ import org.apache.commons.lang3.function.Failable;
 import org.msgpack.jackson.dataformat.MessagePackMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.rabbitmq.client.AMQP;
+import com.rabbitmq.client.AMQP.BasicProperties;
 import com.rabbitmq.client.BuiltinExchangeType;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
-import com.rabbitmq.client.AMQP;
-import com.rabbitmq.client.AMQP.BasicProperties;
 
 import tailucas.app.AppProperties;
 import tailucas.app.device.config.InputConfig;
@@ -82,12 +83,11 @@ public class Event implements Runnable {
     public void run() {
         final long unixTime = System.currentTimeMillis() / 1000L;
         if (device == null) {
-            log.warn("{} posts no device details for {}", source, deviceUpdateString);
+            log.debug("{} posts no device details for {}", source, deviceUpdateString);
             return;
         }
         try {
             final DeviceConfig configProvider = DeviceConfig.getInstance();
-            final Map<String, OutputConfig> processedOutputs = new HashMap<>(10);
             log.debug("{} device: {}", source, device);
             final String deviceKey = device.getDeviceKey();
             if (deviceKey == null) {
@@ -108,6 +108,14 @@ public class Event implements Runnable {
             } else {
                 deviceDescription = deviceKey;
             }
+            final var metricTags = new HashMap<String, String>();
+            if (deviceType != null) {
+                metricTags.put("input_type", deviceType);
+            }
+            if (deviceDescription != null) {
+                metricTags.put("input_label", deviceDescription);
+            }
+            metrics.postMetric("event", 1f, metricTags);
             configProvider.postDeviceInfo(device);
             if (device.isHeartbeat() || source.contains(".heartbeat.")) {
                 log.debug("{}: Heartbeat for {}.", source, deviceDescription);
@@ -168,83 +176,89 @@ public class Event implements Runnable {
             }
             final List<String> outputNames = new ArrayList<>();
             linkedOutputs.forEach(output -> {
-                final String outputLabel = output.getDeviceLabel();
-                log.debug("Adding output {}...", outputLabel);
-                outputNames.add(outputLabel);
+                outputNames.add(output.getDeviceLabel());
             });
-            if (linkedOutputs.size() > 0) {
-                log.info("{} is linked to {} outputs: {}.", deviceDescription, linkedOutputs.size(), outputNames);
-                final Channel rabbitMqChannel = connection.createChannel();
-                rabbitMqChannel.exchangeDeclare(exchangeName, BuiltinExchangeType.DIRECT);
-                try {
-                    linkedOutputs.forEach(Failable.asConsumer(outputConfig -> {
-                        final String outputDeviceKey = outputConfig.getDeviceKey();
-                        final String outputDeviceLabel = outputConfig.getDeviceLabel();
-                        String outputDeviceDescription;
-                        if (outputDeviceLabel != null) {
-                            outputDeviceDescription = outputDeviceLabel;
-                        } else {
-                            outputDeviceDescription = outputDeviceKey;
+            log.info("{} is linked to {} outputs: {}.", deviceDescription, linkedOutputs.size(), outputNames);
+            final Channel rabbitMqChannel = connection.createChannel();
+            rabbitMqChannel.exchangeDeclare(exchangeName, BuiltinExchangeType.DIRECT);
+            try {
+                linkedOutputs.forEach(Failable.asConsumer(outputConfig -> {
+                    final String outputDeviceKey = outputConfig.getDeviceKey();
+                    final String outputDeviceLabel = outputConfig.getDeviceLabel();
+                    String outputDeviceDescription;
+                    if (outputDeviceLabel != null) {
+                        outputDeviceDescription = outputDeviceLabel;
+                    } else {
+                        outputDeviceDescription = outputDeviceKey;
+                    }
+                    if (!outputConfig.isDeviceEnabled()) {
+                        log.warn("{} does not trigger output {} because output is not enabled.", deviceDescription, outputDeviceDescription);
+                        return;
+                    }
+                    final Integer outputDeviceTriggerInterval = outputConfig.getTriggerInterval();
+                    // trigger not at the rate of incoming messages
+                    if (outputDeviceTriggerInterval != null && triggerOutputHistory.triggeredWithin(outputDeviceKey, outputDeviceTriggerInterval)) {
+                        log.warn(String.format("Output device %s has been triggered already in the last %ss.", outputDeviceDescription, outputDeviceTriggerInterval));
+                        return;
+                    }
+                    final String outputDeviceType = outputConfig.getDeviceType();
+                    ObjectNode root = mapper.createObjectNode();
+                    try {
+                        root.put("timestamp", unixTime);
+                        root.putPOJO("active_input", device);
+                        root.putPOJO("output_triggered", outputConfig);
+                        final byte[] wireCommand = mapper.writeValueAsBytes(root);
+                        final Matcher nameMatcher = namePattern.matcher(outputDeviceType.toLowerCase());
+                        String deviceDetail = "";
+                        if (!outputDeviceType.equals(outputDeviceLabel)) {
+                            deviceDetail = String.format(" (%s)", outputDeviceType);
                         }
-                        if (!outputConfig.isDeviceEnabled()) {
-                            log.warn("{} does not trigger output {} because output is not enabled.", deviceDescription, outputDeviceDescription);
-                            return;
-                        }
-                        final Integer outputDeviceTriggerInterval = outputConfig.getTriggerInterval();
-                        // trigger not at the rate of incoming messages
-                        if (outputDeviceTriggerInterval != null && triggerOutputHistory.triggeredWithin(outputDeviceKey, outputDeviceTriggerInterval)) {
-                            log.warn(String.format("Output device %s has been triggered already in the last %ss.", outputDeviceDescription, outputDeviceTriggerInterval));
-                            return;
-                        }
-                        final String outputDeviceType = outputConfig.getDeviceType();
-                        ObjectNode root = mapper.createObjectNode();
-                        try {
-                            root.put("timestamp", unixTime);
-                            root.putPOJO("active_input", device);
-                            root.putPOJO("output_triggered", outputConfig);
-                            final byte[] wireCommand = mapper.writeValueAsBytes(root);
-                            final Matcher nameMatcher = namePattern.matcher(outputDeviceType.toLowerCase());
-                            String deviceDetail = "";
-                            if (!outputDeviceType.equals(outputDeviceLabel)) {
-                                deviceDetail = String.format(" (%s)", outputDeviceType);
+                        String responseTopic = outputConfig.getTriggerTopic();
+                        if (responseTopic == null) {
+                            final String responseTopicSuffix = nameMatcher.replaceAll("_");
+                            if (responseTopicSuffix.length() == 0) {
+                                throw new RuntimeException(String.format(
+                                    "%s maps to invalid command topic suffix %s.",
+                                    device.getDeviceLabel(),
+                                    outputDeviceType));
                             }
-                            String responseTopic = outputConfig.getTriggerTopic();
-                            if (responseTopic == null) {
-                                final String responseTopicSuffix = nameMatcher.replaceAll("_");
-                                if (responseTopicSuffix.length() == 0) {
-                                    throw new RuntimeException(String.format(
-                                        "%s maps to invalid command topic suffix %s.",
-                                        device.getDeviceLabel(),
-                                        outputDeviceType));
-                                }
-                                responseTopic = String.format("event.trigger.%s", responseTopicSuffix);
-                                log.warn("{} has no configured message topic. Using {}", deviceDescription, responseTopic);
-                            }
-                            responseTopic = responseTopic.toLowerCase();
-                            log.info("{} ({}) triggers {}{} on exchange {} with routing {} ({} bytes on the wire).", deviceDescription, source, outputDeviceLabel, deviceDetail, exchangeName, responseTopic, wireCommand.length);
-                            rabbitMqChannel.basicPublish(exchangeName, responseTopic, rabbitMqProperties, wireCommand);
-                            // record the trigger event
-                            triggerOutputHistory.triggered(outputDeviceKey);
-                        } catch (Exception e) {
-                            log.warn("{}: {}", source, e.getMessage());
+                            responseTopic = String.format("event.trigger.%s", responseTopicSuffix);
+                            log.warn("{} has no configured message topic. Using {}", deviceDescription, responseTopic);
                         }
-                    }));
-                } finally {
-                    rabbitMqChannel.close();
-                }
-                linkedOutputs.forEach(Failable.asConsumer(linkedOutput -> {
-                    processedOutputs.put(linkedOutput.getDeviceKey(), linkedOutput);
+                        responseTopic = responseTopic.toLowerCase();
+                        log.info("{} ({}) triggers {}{} on exchange {} with routing {} ({} bytes on the wire).", deviceDescription, source, outputDeviceLabel, deviceDetail, exchangeName, responseTopic, wireCommand.length);
+                        rabbitMqChannel.basicPublish(exchangeName, responseTopic, rabbitMqProperties, wireCommand);
+                        // record the trigger event
+                        triggerOutputHistory.triggered(outputDeviceKey);
+                        final var outputMetricTags = new HashMap<String, String>();
+                        outputMetricTags.put("output_type", outputConfig.getDeviceType());
+                        outputMetricTags.put("output_label", outputDeviceDescription);
+                        outputMetricTags.putAll(metricTags);
+                        metrics.postMetric(responseTopic, 1f, outputMetricTags);
+                        outputMetricTags.put("destination", responseTopic);
+                        metrics.postMetric("triggered", 1f, outputMetricTags);
+                    } catch (Exception e) {
+                        log.warn("{}: {}", source, e.getMessage());
+                    }
                 }));
-            } else {
-                log.warn("{} is linked to no outputs: {}.", deviceDescription, outputNames);
+            } finally {
+                rabbitMqChannel.close();
             }
         } catch (IllegalStateException | UnsupportedOperationException | IOException e) {
             // logged only with message
             log.warn("{}: {}", source, e.getMessage());
+            metrics.postMetric("error", 1f, Map.of(
+                "class", this.getClass().getSimpleName(),
+                "exception", e.getClass().getSimpleName()));
         } catch (Throwable e) {
             // catch-all before thread death
             // TODO: catch in Sentry
             log.error("{} event issue.", source, e);
+            metrics.postMetric("error", 1f, Map.of(
+                "class", this.getClass().getSimpleName(),
+                "exception", e.getClass().getSimpleName()));
+        } finally {
+            metrics.postMetric("error", 0f, Map.of("class", Event.class.getSimpleName()));
         }
     }
 }

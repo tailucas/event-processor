@@ -147,6 +147,7 @@ public class EventProcessor
         if (creds != null) {
             creds.close();
         }
+        Metrics.getInstance().close();
         log.info("Full shutdown complete.");
     }
 
@@ -212,7 +213,7 @@ public class EventProcessor
             } finally {
                 if (!ready) {
                     try {
-                        Thread.sleep(10*1000);
+                        Thread.sleep(2*1000);
                     } catch (InterruptedException e1) {
                         System.exit(1);
                     }
@@ -245,8 +246,10 @@ public class EventProcessor
         rabbitMqConnectionFactory.setExceptionHandler(new StrictExceptionHandler() {
             @Override
             public void handleUnexpectedConnectionDriverException(Connection conn, Throwable exception) {
+                log.warn("Handling RabbitMQ connection exception.", exception);
                 super.handleUnexpectedConnectionDriverException(conn, exception);
                 exitCode |= EXIT_CODE_RABBITMQ;
+                log.warn("Triggering shutdown with exit code {}.", exitCode);
                 System.exit(SpringApplication.exit(springApp));
             }
         });
