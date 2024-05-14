@@ -27,13 +27,13 @@
     <!-- runtime dependencies -->
     <apache-commons.version>3.14.0</apache-commons.version>
     <ini4j.version>0.5.4</ini4j.version>
-    <pagerduty.version>3.0.0</pagerduty.version>
+    <pagerduty.version>3.1.2</pagerduty.version>
     <sentry.version>7.9.0</sentry.version>
-    <rabbitmq.version>5.20.0</rabbitmq.version>
+    <rabbitmq.version>5.21.0</rabbitmq.version>
     <paho.version>1.2.5</paho.version>
-    <msgpack.version>0.9.6</msgpack.version>
+    <msgpack.version>0.9.8</msgpack.version>
     <jackson.version>2.15.3</jackson.version>
-    <zeromq.version>0.5.4</zeromq.version>
+    <zeromq.version>0.6.0</zeromq.version>
     <slf4j.version>2.0.9</slf4j.version>
     <opconnect-java.version>0.6.1</opconnect-java.version>
     <influxdb.version>7.0.0</influxdb.version>
