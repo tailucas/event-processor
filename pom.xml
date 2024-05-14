@@ -43,10 +43,11 @@
 
     <!-- build toolchain -->
     <maven.dependency.plugin.version>3.6.1</maven.dependency.plugin.version>
-    <maven.exec.maven.plugin>3.1.1</maven.exec.maven.plugin>
+    <maven.exec.maven.plugin>3.2.0</maven.exec.maven.plugin>
+    <maven.enforcer.plugin>3.4.1</maven.enforcer.plugin>
 
     <versions.maven.plugin.version>2.16.2</versions.maven.plugin.version>
-    <spotbugs-maven-plugin.version>4.8.1.0</spotbugs-maven-plugin.version>
+    <spotbugs-maven-plugin.version>4.8.5.0</spotbugs-maven-plugin.version>
 
     <!-- properties file -->
     <properties-plugin.version>1.2.1</properties-plugin.version>
@@ -263,6 +264,27 @@
                   </configuration>
               </execution>
           </executions>
+      </plugin>
+      <!-- https://maven.apache.org/enforcer/enforcer-rules/requireMavenVersion.html -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <version>${maven.enforcer.plugin}</version>
+        <executions>
+          <execution>
+            <id>enforce-maven</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <requireMavenVersion>
+                  <version>3.9</version>
+                </requireMavenVersion>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>
