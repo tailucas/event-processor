@@ -38,13 +38,17 @@ public class Ring implements Generic {
 
     public enum InactiveStates {
         OFF,
-        DISARMED
+        DISARMED,
+        ARMED_HOME,
+        ARMED_AWAY
     }
 
     @JsonIgnore
     protected static final Map<String, InactiveStates> nonTriggerStates = Map.of(
         InactiveStates.OFF.name(), InactiveStates.OFF,
-        InactiveStates.DISARMED.name(), InactiveStates.DISARMED);
+        InactiveStates.DISARMED.name(), InactiveStates.DISARMED,
+        InactiveStates.ARMED_HOME.name(), InactiveStates.ARMED_HOME,
+        InactiveStates.ARMED_AWAY.name(), InactiveStates.ARMED_AWAY);
 
     @JsonIgnore
     private static Logger log = null;
