@@ -157,7 +157,7 @@ public class EventProcessor
             severity = Severity.ERROR;
         }
         final Payload payload = Payload.Builder.newBuilder()
-            .setSummary(String.format("%s Shutdown", appName))
+            .setSummary(String.format("%s shutdown", appName))
             .setSource(deviceName)
             .setSeverity(severity)
             .setTimestamp(OffsetDateTime.now())
