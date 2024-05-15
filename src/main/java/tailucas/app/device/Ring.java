@@ -37,12 +37,14 @@ public class Ring implements Generic {
         TriggerSubjects.SIREN.name().toLowerCase(), TriggerSubjects.SIREN);
 
     public enum InactiveStates {
-        OFF
+        OFF,
+        DISARMED
     }
 
     @JsonIgnore
     protected static final Map<String, InactiveStates> nonTriggerStates = Map.of(
-        InactiveStates.OFF.name(), InactiveStates.OFF);
+        InactiveStates.OFF.name(), InactiveStates.OFF,
+        InactiveStates.DISARMED.name(), InactiveStates.DISARMED);
 
     @JsonIgnore
     private static Logger log = null;
@@ -152,6 +154,9 @@ public class Ring implements Generic {
     @JsonIgnore
     public String getDeviceDescription() {
         final var ringConfig = (HAConfig) getConfig();
+        if (ringConfig == null) {
+            return null;
+        }
         final var ringDevice = ringConfig.getDevice();
         return String.format("%s %s (%s)", ringDevice.getMf(), ringDevice.getMdl(), ringDevice.getName());
     }
@@ -162,6 +167,9 @@ public class Ring implements Generic {
     @Override
     public String getDeviceLabel() {
         HAConfig config = (HAConfig) getConfig();
+        if (config == null) {
+            return null;
+        }
         return config.getDevice().getName();
     }
     @Override
@@ -187,7 +195,8 @@ public class Ring implements Generic {
         if (haConfig == null) {
             haConfig = DeviceConfig.getInstance().getHaConfig(this);
             if (haConfig == null) {
-                throw new IllegalStateException(String.format("%s has no discovery information.", description));
+                log.warn(String.format("%s has no discovery information.", description));
+                return null;
             }
             var matchedIds = new ArrayList<>();
             haConfig.getDevice().getIds().forEach(id -> {
@@ -196,7 +205,8 @@ public class Ring implements Generic {
                 }
             });
             if (matchedIds.isEmpty()) {
-                throw new IllegalStateException(String.format("%s has no matched discovery information.", description));
+                log.warn(String.format("%s has no matched discovery information.", description));
+                return null;
             }
         }
         return haConfig;
@@ -212,7 +222,6 @@ public class Ring implements Generic {
         boolean statusUpdate = false;
         final String deviceDescripion = getDeviceDescription();
         final String updateType = getUpdateType();
-        log.debug("{} {}, config {}.", toString(), getConfig());
         switch(updateType) {
             case "attributes":
                 statusUpdate = true;
@@ -253,12 +262,8 @@ public class Ring implements Generic {
     @Override
     public boolean wouldTriggerOutput(InputConfig config) {
         boolean triggerOutput = false;
-        log.debug("Evaluating trigger for {} based on configs {} and {}.", toString(), getConfig(), config);
-        var ringConfig = (HAConfig) getConfig();
-        var ringDevice = ringConfig.getDevice();
         final String deviceDescripion = getDeviceDescription();
         final String updateType = getUpdateType();
-        log.debug("{} {}, config {}.", toString(), getConfig(), config);
         switch(updateType) {
             case "attributes":
                 break;
@@ -272,7 +277,7 @@ public class Ring implements Generic {
                         String updateSubjectDescription = updateSubject.replace('_', ' ');
                         updateSubjectDescription = WordUtils.capitalizeFully(updateSubjectDescription);
                         if (triggers.containsKey(updateSubject)) {
-                            if (!nonTriggerStates.containsKey(state)) {
+                            if (!nonTriggerStates.containsKey(state.toUpperCase())) {
                                 log.info("{}: {} ({}) is {}.", deviceDescripion, updateSubjectDescription, updateSubject, state);
                                 triggerOutput = true;
                                 triggerStateDescription = String.format("%s (%s) is %s", updateSubjectDescription, updateSubject, state);

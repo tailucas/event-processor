@@ -101,7 +101,8 @@ public class Event implements Runnable {
             log.debug("{} device: {}", source, device);
             final String deviceKey = device.getDeviceKey();
             if (deviceKey == null) {
-                log.warn("No identifier for device {}", device);
+                log.error("No identifier for device {}", device);
+                return;
             }
             final String deviceLabel = device.getDeviceLabel();
             if (deviceLabel == null && deviceKey != null) {
