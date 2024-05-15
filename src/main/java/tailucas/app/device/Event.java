@@ -271,7 +271,6 @@ public class Event implements Runnable {
             metrics.postMetric("error", 1f, Map.of(
                 "class", this.getClass().getSimpleName(),
                 "exception", e.getClass().getSimpleName()));
-            Sentry.captureException(e);
         } catch (Throwable e) {
             log.error("{} event issue.", source, e);
             metrics.postMetric("error", 1f, Map.of(
