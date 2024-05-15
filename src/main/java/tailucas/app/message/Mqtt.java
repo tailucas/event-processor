@@ -20,6 +20,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rabbitmq.client.Connection;
 
 import io.sentry.Sentry;
+import tailucas.app.EventProcessor;
 import tailucas.app.device.Device;
 import tailucas.app.device.Event;
 import tailucas.app.device.Device.Type;
@@ -164,6 +165,7 @@ public class Mqtt implements MqttCallback {
     @Override
     public void connectionLost(Throwable cause) {
         log.error("MQTT error", cause);
+        EventProcessor.exitCode |= EventProcessor.EXIT_CODE_MQTT;
         System.exit(SpringApplication.exit(springApp));
     }
 

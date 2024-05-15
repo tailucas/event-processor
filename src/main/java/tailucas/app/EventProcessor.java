@@ -22,7 +22,9 @@ import org.slf4j.LoggerFactory;
 import org.zeromq.ZMQ;
 
 import com.github.dikhan.pagerduty.client.events.PagerDutyEventsClient;
+import com.github.dikhan.pagerduty.client.events.domain.EventResult;
 import com.github.dikhan.pagerduty.client.events.domain.Payload;
+import com.github.dikhan.pagerduty.client.events.domain.ResolveIncident;
 import com.github.dikhan.pagerduty.client.events.domain.Severity;
 import com.github.dikhan.pagerduty.client.events.domain.TriggerIncident;
 import com.github.dikhan.pagerduty.client.events.exceptions.NotifyEventException;
@@ -67,6 +69,12 @@ import org.springframework.web.util.UriComponentsBuilder;
 public class EventProcessor
 {
     public static final String ZMQ_MQTT_URL = "inproc://mqtt-send";
+    public static int exitCode = 1;
+
+    public static final int EXIT_CODE_MQTT = 2;
+    public static final int EXIT_CODE_RABBITMQ = 4;
+    public static final int EXIT_CODE_CREDENTIALS = 8;
+    public static final int EXIT_CODE_SENTRY = 16;
 
     private static Logger log = LoggerFactory.getLogger(EventProcessor.class);
     private static ExecutorService srv = null;
@@ -75,12 +83,10 @@ public class EventProcessor
     private static Connection rabbitMqConnection = null;
     private static ZContext zmqContext = null;
     private static OnePassword creds = null;
-    private static int exitCode = 0;
-
-    private static final int EXIT_CODE_MQTT = 2;
-    private static final int EXIT_CODE_RABBITMQ = 4;
-    private static final int EXIT_CODE_CREDENTIALS = 8;
-    private static final int EXIT_CODE_SENTRY = 16;
+    private static PagerDutyEventsClient pagerDuty = null;
+    private static String pagerDutyRoutingKey = null;
+    private static String appName = null;
+    private static String deviceName = null;
 
     @Bean
 	public CommandLineRunner commandLineRunner(ApplicationContext ctx) {
@@ -146,6 +152,27 @@ public class EventProcessor
             creds.close();
         }
         Metrics.getInstance().close();
+        Severity severity = Severity.WARNING;
+        if (exitCode != 0) {
+            severity = Severity.ERROR;
+        }
+        final Payload payload = Payload.Builder.newBuilder()
+            .setSummary(String.format("%s Shutdown", appName))
+            .setSource(deviceName)
+            .setSeverity(severity)
+            .setTimestamp(OffsetDateTime.now())
+            .build();
+        final TriggerIncident incident = TriggerIncident.TriggerIncidentBuilder
+            .newBuilder(pagerDutyRoutingKey, payload)
+            .setDedupKey(appName)
+            .build();
+        try {
+            final EventResult result = pagerDuty.trigger(incident);
+            log.info("Updated PagerDuty with result {}: {} ({})", result.getStatus(), result.getMessage(), result.getErrors());
+        } catch (NotifyEventException e) {
+            log.warn("Cannot update PagerDuty.", e);
+            Sentry.captureException(e);
+        }
         log.info("Full shutdown complete.");
     }
 
@@ -167,8 +194,10 @@ public class EventProcessor
             exitCode |= EXIT_CODE_CREDENTIALS;
             System.exit(exitCode);
         }
+        final Map<String, String> envVars = System.getenv();
+        appName = envVars.get("APP_NAME");
         try {
-            final String sentryDsn = creds.getField("Sentry", "dsn", "event-processor");
+            final String sentryDsn = creds.getField("Sentry", "dsn", appName);
             Sentry.init(options -> {
                 options.setDsn(sentryDsn);
                 options.setTracesSampleRate(1.0);
@@ -187,7 +216,9 @@ public class EventProcessor
             System.exit(exitCode);
         }
         log.info("Sentry enabled: {}, healthy: {}.", Sentry.isEnabled(), Sentry.isHealthy());
-        final Map<String, String> envVars = System.getenv();
+        pagerDuty = PagerDutyEventsClient.create();
+        pagerDutyRoutingKey = creds.getField("PagerDuty", "routing_key", appName);
+        deviceName = envVars.get("DEVICE_NAME");
         final String hostName = envVars.get("CONFIG_HOST");
         UriComponents uriComponents = UriComponentsBuilder.newInstance()
             .scheme("http")
@@ -214,7 +245,7 @@ public class EventProcessor
                     try {
                         Thread.sleep(2*1000);
                     } catch (InterruptedException e1) {
-                        System.exit(1);
+                        System.exit(0);
                     }
                 }
             }
@@ -340,25 +371,19 @@ public class EventProcessor
         rabbitMqThread.start();
         mqttThread.start();
 
-        PagerDutyEventsClient pagerDuty = PagerDutyEventsClient.create();
-        Payload payload = Payload.Builder.newBuilder()
-            .setSummary("Event Processor startup")
-            .setSource("testing host")
-            .setSeverity(Severity.INFO)
-            .setTimestamp(OffsetDateTime.now())
+        final ResolveIncident resolve = ResolveIncident.ResolveIncidentBuilder
+            .newBuilder(pagerDutyRoutingKey, appName)
             .build();
-        final String pagerDutyRoutingKey = creds.getField("PagerDuty", "routing_key", "event-processor");
-        TriggerIncident incident = TriggerIncident.TriggerIncidentBuilder
-                .newBuilder(pagerDutyRoutingKey, payload)
-                .setDedupKey(EventProcessor.class.getName())
-                .build();
         try {
-            pagerDuty.trigger(incident);
+            final EventResult result = pagerDuty.resolve(resolve);
+            log.info("Updated PagerDuty with result {}: {} ({})", result.getStatus(), result.getMessage(), result.getErrors());
         } catch (NotifyEventException e) {
-            log.error("Cannot trigger PagerDuty alert.", e);
+            log.error("Cannot update PagerDuty.", e);
+            Sentry.captureException(e);
         }
 
         Metrics.getInstance().postMetric("startup", 1f);
         log.info("{} startup complete.", springEnv.getProperty("app.project-name"));
+        exitCode = 0;
     }
 }
