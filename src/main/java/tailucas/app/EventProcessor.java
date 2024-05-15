@@ -173,7 +173,7 @@ public class EventProcessor
             log.warn("Cannot update PagerDuty.", e);
             Sentry.captureException(e);
         }
-        log.info("Full shutdown complete.");
+        log.info("Full shutdown complete with exit code {}", exitCode);
     }
 
     public static void main( String[] args )
