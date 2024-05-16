@@ -1475,6 +1475,9 @@ class TBot(AppThread, Closable):
                     call_again_timestamp = now + e.retry_after
                     log.warn(f'Telegram asks to call again in {e.retry_after}s. Deferring calls until {call_again_timestamp}.')
                     continue
+                except TimedOut as e:
+                    log.warn(f'Telegram send timeout: {e.message}.')
+                    continue
                 # update send time
                 last_sent = now
             except Exception:
