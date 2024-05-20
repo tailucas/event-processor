@@ -1,6 +1,25 @@
-all: help
+.PHONY: all check build run dev
 
-help:
-	@echo "Use task tool: https://taskfile.dev/installation/#install-script"
+DOCKER_URL := https://docs.docker.com/engine/install
+DEVCLI_URL := https://code.visualstudio.com/docs/devcontainers/devcontainer-cli
+CHECK_USER := vscode
 
-.PHONY: all help
+all: dev
+
+check:
+	@if [ "${USER}" = "$(CHECK_USER)" ]; then \
+	  echo "Running as user ${USER}; try 'task' command instead."; \
+	  exit 1; \
+	fi
+	@which docker > /dev/null || (echo "Needs Docker, see $(DOCKER_URL)"; exit 1)
+	@which devcontainer > /dev/null || (echo "Needs Dev Container CLI; see $(DEVCLI_URL)"; exit 1)
+
+build: check
+	devcontainer build --workspace-folder .
+
+run: build
+	devcontainer up --workspace-folder .
+
+dev: run
+	devcontainer exec --workspace-folder . bash
+
