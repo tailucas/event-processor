@@ -642,7 +642,7 @@ def show_config():
 
 
 @api_app.get("/api/input_configs")
-async def api_input_config(device_key: str, adb: AsyncSession = Depends(get_db)):
+async def api_input_configs(device_key: str, adb: AsyncSession = Depends(get_db)):
     log.info(f'Async get input config for {device_key}')
     result = await adb.execute(select(InputConfig).where(InputConfig.device_key==device_key))
     config = result.scalars().one_or_none()
