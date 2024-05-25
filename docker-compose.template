@@ -23,7 +23,7 @@ services:
     hostname: ${DEVICE_NAME}
     ports:
       - "4041:4040"
-      - "80:8080"
+      - "8095:8080"
       - "8085:8085"
     volumes:
       - ./data:/data

@@ -47,6 +47,7 @@ public class DeviceConfig {
     private Map<String, Pair<Instant, List<Config>>> configCache;
     private Map<String, HAConfig> haConfigCache;
     private String configHost = null;
+    private String configHostPort = null;
 
     private DeviceConfig() {
         log = LoggerFactory.getLogger(DeviceConfig.class);
@@ -58,6 +59,7 @@ public class DeviceConfig {
         configCache = new ConcurrentHashMap<>(100);
         haConfigCache = new HashMap<>(100);
         configHost = System.getenv().get("CONFIG_HOST");
+        configHostPort = System.getenv().get("CONFIG_HOST_PORT");
     }
 
     public static synchronized DeviceConfig getInstance() {
@@ -174,6 +176,7 @@ public class DeviceConfig {
         UriComponents uriComponents = UriComponentsBuilder.newInstance()
             .scheme("http")
             .host(configHost)
+            .port(configHostPort)
             .path("/{scope}/{function}")
             .queryParam("device_key", deviceKey)
             .build()
@@ -208,6 +211,7 @@ public class DeviceConfig {
         UriComponents uriComponents = UriComponentsBuilder.newInstance()
             .scheme("http")
             .host(configHost)
+            .port(configHostPort)
             .path("/{scope}/{function}")
             .build()
             .expand("api", "device_info")

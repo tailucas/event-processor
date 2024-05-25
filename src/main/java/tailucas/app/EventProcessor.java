@@ -220,9 +220,11 @@ public class EventProcessor
         pagerDutyRoutingKey = creds.getField("PagerDuty", "routing_key", appName);
         deviceName = envVars.get("DEVICE_NAME");
         final String hostName = envVars.get("CONFIG_HOST");
+        final String hostNamePort = envVars.get("CONFIG_HOST_PORT");
         UriComponents uriComponents = UriComponentsBuilder.newInstance()
             .scheme("http")
             .host(hostName)
+            .port(hostNamePort)
             .path("/api/running")
             .build()
             .encode();
