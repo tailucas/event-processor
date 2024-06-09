@@ -4,6 +4,19 @@
     <link rel="stylesheet" type="text/css" href="{{url_for('static', filename='bootstrap-clockpicker.min.css')}}">
 {% endblock %}
 {% block body %}
+<div class="card">
+    <div class="card-body">
+        Device-independent configuration:
+        <form class="form" role="form" method='POST'>
+            <div class="form-group">
+                <label><input type="checkbox" name="autoscheduler_enabled" value="{{ config_autoscheduler_enabled }}"{% if config_autoscheduler_enabled %} checked{% endif %}>Auto-Scheduler</label>
+            </div>
+            <div class="form-group">
+                <button type="submit" class="btn btn-primary" name="general_config" value="general_config"><i class="far fa-save"></i> Save</button>
+            </div>
+        </form>
+    </div>
+</div>
 <div id="accordion">
     {% for input_device in inputs %}
     <div class="card">

@@ -1,7 +1,11 @@
 {% extends "layout.html" %}
 {% set active_page = "output_link" %}
 {% block body %}
-            <p>Configure output actions for your inputs.</p>
+            <div class="card">
+                <div class="card-body">
+                    <p>Configure output actions for your inputs.</p>
+                </div>
+            </div>
             <div id="accordion">
                 {% for input_device in inputs %}
                 <div class="card">

@@ -160,8 +160,20 @@ URL_WORKER_APP = 'inproc://app-worker'
 URL_WORKER_TELEGRAM_BOT = 'inproc://telegram-bot'
 URL_WORKER_AUTO_SCHEDULER = 'inproc://auto-scheduler'
 
+CONFIG_AUTO_SCHEDULER='auto-scheduler'
 
 startup_complete = False
+
+
+class GeneralConfig(Base):
+    __tablename__ = 'general_config'
+    id = Column(Integer, primary_key=True)
+    config_key = Column(String(50), index=True)
+    config_value = Column(Text)
+
+    def __init__(self, config_key, config_value):
+        self.config_key = config_key
+        self.config_value = config_value
 
 
 class EventLog(Base):
@@ -622,23 +634,39 @@ def event_log():
 def show_config():
     saved_device_id = None
     if request.method == 'POST':
-        saved_device_id = int(request.form['device_id'])
-        input = InputConfig.query.filter_by(id=saved_device_id).first()
-        # sync up the device model for page load
-        input.auto_schedule = bool(request.form.get('auto_schedule'))
-        input.auto_schedule_enable = request.form['auto_schedule_enable']
-        input.auto_schedule_disable = request.form['auto_schedule_disable']
-        db.session.add(input)
-        db.session.commit()
-        # invalidate remote cache
-        invalidate_remote_config(device_key=input.device_key)
-        # open IPC
-        with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, and_raise=False) as zmq_socket:
-            zmq_socket.send_pyobj((input.device_key, str(input), input.auto_schedule, input.auto_schedule_enable, input.auto_schedule_disable))
+        if 'device_id' in request.form:
+            saved_device_id = int(request.form['device_id'])
+            input = InputConfig.query.filter_by(id=saved_device_id).first()
+            # sync up the device model for page load
+            input.auto_schedule = bool(request.form.get('auto_schedule'))
+            input.auto_schedule_enable = request.form['auto_schedule_enable']
+            input.auto_schedule_disable = request.form['auto_schedule_disable']
+            db.session.add(input)
+            db.session.commit()
+            # invalidate remote cache
+            invalidate_remote_config(device_key=input.device_key)
+            # open IPC
+            with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, and_raise=False) as zmq_socket:
+                zmq_socket.send_pyobj((input.device_key, str(input), input.auto_schedule, input.auto_schedule_enable, input.auto_schedule_disable))
+        if 'general_config' in request.form:
+            autoscheduler_enabled = bool(request.form.get('autoscheduler_enabled'))
+            config = GeneralConfig.query.filter_by(config_key=CONFIG_AUTO_SCHEDULER).first()
+            if config is None:
+                config = GeneralConfig(config_key=CONFIG_AUTO_SCHEDULER, config_value=autoscheduler_enabled)
+            else:
+                config.config_value = autoscheduler_enabled
+            db.session.add(config)
+            db.session.commit()
     inputs = InputConfig.query.order_by(InputConfig.device_key).all()
+    config_autoscheduler = GeneralConfig.query.filter_by(config_key=CONFIG_AUTO_SCHEDULER).first()
+    config_autoscheduler_enabled = False
+    if config_autoscheduler:
+        config_autoscheduler_enabled = bool(int(config_autoscheduler.config_value))
+    InputConfig.query.filter_by(id=saved_device_id).first()
     return render_template('config.html',
                            inputs=inputs,
-                           saved_device_id=saved_device_id)
+                           saved_device_id=saved_device_id,
+                           config_autoscheduler_enabled=config_autoscheduler_enabled)
 
 
 @api_app.get("/api/input_configs")
@@ -1529,6 +1557,15 @@ class AutoScheduler(AppThread, Closable):
         AppThread.__init__(self, name=self.__class__.__name__)
         Closable.__init__(self, connect_url=URL_WORKER_APP, socket_type=zmq.PUSH)
 
+    @property
+    def is_enabled(self):
+        config_autoscheduler_enabled = False
+        with flask_app.app_context():
+            config_autoscheduler = GeneralConfig.query.filter_by(config_key=CONFIG_AUTO_SCHEDULER).first()
+            if config_autoscheduler:
+                config_autoscheduler_enabled = bool(int(config_autoscheduler.config_value))
+        return config_autoscheduler_enabled
+
     def update_device(self, device_key, device_label, device_state):
         log.info('Updating {} to enabled={}'.format(device_key, device_label, device_state))
         self.socket.send_pyobj({
@@ -1544,11 +1581,14 @@ class AutoScheduler(AppThread, Closable):
     # noinspection PyBroadException
     def run(self):
         self.get_socket()
+        if not self.is_enabled:
+            log.warn(f'Auto-scheduler is not enabled; scheduled changes will not run.')
         with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, socket_type=zmq.PULL, and_raise=False, shutdown_on_error=True) as zmq_socket:
             while not threads.shutting_down:
                 next_message = False
                 # trigger any scheduled work
-                schedule.run_pending()
+                if self.is_enabled:
+                    schedule.run_pending()
                 # look for device updates
                 device_key = None
                 try:
