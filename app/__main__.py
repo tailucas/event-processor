@@ -176,6 +176,15 @@ class GeneralConfig(Base):
         self.config_value = config_value
 
 
+class Heartbeat(Base):
+    __tablename__ = 'heartbeat'
+    id = Column(Integer, primary_key=True)
+    timestamp = Column(DateTime)
+
+    def __init__(self, timestamp):
+        self.timestamp = timestamp
+
+
 class EventLog(Base):
     __tablename__ = 'event_log'
     id = Column(Integer, primary_key=True)
@@ -1160,6 +1169,12 @@ class EventProcessor(AppThread):
             })
         with exception_handler(connect_url=URL_WORKER_APP, socket_type=zmq.PULL, and_raise=False, shutdown_on_error=True) as app_socket:
             while not threads.shutting_down:
+                # write database heartbeat
+                heartbeat = Heartbeat.query.first()
+                heartbeat.timestamp = make_timestamp()
+                db.session.add(heartbeat)
+                db.session.commit()
+                # process the next event
                 event = app_socket.recv_pyobj()
                 if not isinstance(event, dict):
                     log.info('Malformed event; expecting dictionary.')
@@ -1687,7 +1702,6 @@ def main():
             log.info(f'Starting {APP_NAME} threads...')
             # start the binders
             event_processor.start()
-            #heartbeat_filter.start()
             telegram_bot.start()
             # start the connectors
             auto_scheduler.start()
