@@ -23,18 +23,19 @@ RUN rm -f ./config/cron/base_job
 COPY config/cron/backup_db ./config/cron/
 # apply override
 RUN /opt/app/app_setup.sh
-# application
+# override application
 COPY ./target/app-*.jar ./app.jar
-# switch to user
-USER app
+# add the project application
+COPY app/__main__.py ./app/
 # override configuration
 COPY config/app.conf ./config/app.conf
 COPY static ./static
 COPY templates ./templates
 COPY poetry.lock pyproject.toml ./
+RUN chown app:app poetry.lock
+# switch to run user
+USER app
 RUN /opt/app/python_setup.sh
-# add the project application
-COPY app/__main__.py ./app/
 # override entrypoint
 COPY app_entrypoint.sh .
 CMD ["/opt/app/entrypoint.sh"]
