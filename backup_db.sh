@@ -28,3 +28,6 @@ else
 fi
 unset AWS_ACCESS_KEY_ID
 unset AWS_SECRET_ACCESS_KEY
+
+DB_HEARTBEAT=$(sqlite3 "${TABLESPACE_PATH}" 'select dt from heartbeat')
+echo "Database heartbeat is ${DB_HEARTBEAT} UTC."

@@ -127,7 +127,7 @@ async def get_db():
         yield session
 
 
-from sqlalchemy import Column, Integer, String, JSON, DateTime, Boolean, Text
+from sqlalchemy import Column, Integer, String, JSON, DateTime, Boolean, Text, Float
 
 from sqlalchemy import update, ForeignKey, UniqueConstraint, Result, delete
 from sqlalchemy.future import select
@@ -179,10 +179,12 @@ class GeneralConfig(Base):
 class Heartbeat(Base):
     __tablename__ = 'heartbeat'
     id = Column(Integer, primary_key=True)
-    timestamp = Column(DateTime)
+    dt = Column(DateTime)
+    ts = Column(Float)
 
-    def __init__(self, timestamp):
-        self.timestamp = timestamp
+    def __init__(self, dt, ts):
+        self.dt = dt
+        self.ts = ts
 
 
 class EventLog(Base):
@@ -1171,7 +1173,9 @@ class EventProcessor(AppThread):
             while not threads.shutting_down:
                 # write database heartbeat
                 heartbeat = Heartbeat.query.first()
-                heartbeat.timestamp = make_timestamp()
+                now = make_timestamp()
+                heartbeat.dt = now
+                heartbeat.ts = now.timestamp()
                 db.session.add(heartbeat)
                 db.session.commit()
                 # process the next event
