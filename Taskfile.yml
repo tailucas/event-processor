@@ -33,16 +33,8 @@ tasks:
       - test -n "$(docker ps | grep op-connect-api)"
     cmds:
       - rm -f .env
-      - echo 'ENCODING="{{.ENCODING}}"' >> .env
-      - echo 'D_LANG="{{.LANG}}"' >> .env
-      - echo 'D_LANGUAGE="{{.LANGUAGE}}"' >> .env
-      - echo 'D_LC_ALL="{{.LC_ALL}}"' >> .env
       - echo 'DOCKER_IMAGE="{{.PROJECT_NAME}}"' >> .env
-      - echo 'DEVICE_NAME="{{.PROJECT_NAME}}"' >> .env
-      - echo 'APP_NAME="{{.PROJECT_NAME}}"' >> .env
-      - echo 'SYSLOG_ADDRESS="udp://localhost:514"' >> .env
-      - echo 'RUN_JAVA_APP="true"' >> .env
-      - poetry run python ./cred_tool ENV.{{.PROJECT_NAME}} {{.PROJECT_NAME}} | jq -r '. | to_entries[] | [.key,.value] | @tsv' | tr '\t' '=' | sed 's/=\(.*\)/="\1"/' >> .env
+      - poetry run python ./cred_tool ENV.{{.PROJECT_NAME}} {{.PROJECT_NAME}} build | jq -r '. | to_entries[] | [.key,.value] | @tsv' | tr '\t' '=' | sed 's/=\(.*\)/="\1"/' >> .env
   docker:
     deps: [create-dot-env]
     desc: Generate a usable docker-compose.yml for Docker build.
@@ -78,6 +70,10 @@ tasks:
     desc: Clean up volume directory and build container image.
     preconditions:
       - docker compose -v
+    env:
+      D_LANG: "{{.LANG}}"
+      D_LANGUAGE: "{{.LANGUAGE}}"
+      D_LC_ALL: "{{.LC_ALL}}"
     cmds:
       - docker compose build --progress plain
   run:
