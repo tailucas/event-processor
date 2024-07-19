@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 from dateutil import tz
 from flask_sqlalchemy import SQLAlchemy
 from io import BytesIO
-from pathlib import Path
+from os import path
 from pylru import lrucache
 from pytz import timezone
 from requests.exceptions import ConnectionError
@@ -53,8 +53,6 @@ from werkzeug.serving import make_server
 
 from zmq.asyncio import Poller
 from zmq.error import ZMQError
-
-import os.path
 
 # setup builtins used by pylib init
 builtins.SENTRY_EXTRAS = [
@@ -111,11 +109,11 @@ ignore_logger('telegram.ext.Updater')
 ignore_logger('telegram.ext._updater')
 ignore_logger('asyncio')
 
-db_tablespace = app_config.get('sqlite', 'tablespace_path')
-
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine, AsyncSession
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
+db_tablespace_path = app_config.get('sqlite', 'tablespace_path')
+db_tablespace = path.join(db_tablespace_path, f'{APP_NAME}.db')
 dburl: str = f'sqlite+aiosqlite:///{db_tablespace}'
 engine: AsyncEngine = create_async_engine(dburl)
 async_session: AsyncSession = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
