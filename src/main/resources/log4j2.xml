@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration>
+    <Appenders>
+        <Syslog name="Syslog" format="RFC5424" host="${env:SYSLOG_HOST}" port="514" protocol="UDP" appName="event-processor" facility="LOCAL0" />
+    </Appenders>
+    <Loggers>
+        <Root level="info">
+            <AppenderRef ref="Syslog"/>
+        </Root>
+    </Loggers>
+</Configuration>
