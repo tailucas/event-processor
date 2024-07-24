@@ -1457,17 +1457,19 @@ class TBot(AppThread, Closable):
                                 break
                             continue
                         elif len(image_batch) < MediaGroupLimit.MAX_MEDIA_LENGTH:
-                            image_batch.append(InputMediaPhoto(
-                                media=BytesIO(message.image),
-                                caption=str(message),
-                                caption_entities=[
+                            caption_entities = None
+                            if message.url:
+                                caption_entities = [
                                     MessageEntity(
                                         type=MessageEntity.TEXT_LINK,
                                         offset=0,
                                         length=len(device_label),
-                                        url=message.url
-                                    )
-                                ]))
+                                        url=message.url)
+                                ]
+                            image_batch.append(InputMediaPhoto(
+                                media=BytesIO(message.image),
+                                caption=str(message),
+                                caption_entities=caption_entities))
                             # pop images in insertion order since all will be taken
                             try:
                                 message = pending.popleft()
@@ -1500,17 +1502,19 @@ class TBot(AppThread, Closable):
                         await t_app.bot.send_media_group(chat_id=chat_id, media=image_batch, read_timeout=300, write_timeout=300, connect_timeout=300, pool_timeout=300)
                     elif message.image:
                         log.info(f'Sending image about {device_label} ({message.timestamp}) to {chat_id!s} with caption "{message!s}"')
+                        caption_entities = None
+                        if message.url:
+                            caption_entities = [
+                                MessageEntity(
+                                    type=MessageEntity.TEXT_LINK,
+                                    offset=0,
+                                    length=len(device_label),
+                                    url=message.url)
+                            ]
                         await t_app.bot.send_photo(chat_id=chat_id,
                                             photo=BytesIO(message.image),
                                             caption=str(message),
-                                            caption_entities=[
-                                                MessageEntity(
-                                                    type=MessageEntity.TEXT_LINK,
-                                                    offset=0,
-                                                    length=len(device_label),
-                                                    url=message.url
-                                                )
-                                            ])
+                                            caption_entities=caption_entities)
                     else:
                         log.info(f'Sending message about {device_label} ({message.timestamp}) to {chat_id!s} with caption "{message!s}"')
                         await t_app.bot.send_message(chat_id=chat_id,
