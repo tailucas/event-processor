@@ -55,7 +55,7 @@ public class DeviceConfig {
         mapper = new ObjectMapper();
         mapper.enable(DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT);
         mapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
-        collectionTypes = new HashMap<>(4);
+        collectionTypes = new ConcurrentHashMap<>(4);
         configCache = new ConcurrentHashMap<>(100);
         haConfigCache = new HashMap<>(100);
         configHost = System.getenv().get("CONFIG_HOST");
