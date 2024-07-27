@@ -62,7 +62,7 @@ public class RabbitMq implements DeliverCallback {
             metrics.postMetric("error", 1f, Map.of(
                 "class", this.getClass().getSimpleName(),
                 "exception", e.getClass().getSimpleName()));
-            log.error("{} event issue ({} bytes).", source, msgBody.length, e);
+            log.error("{} event issue ({} bytes) ({})", source, msgBody.length, e.getMessage());
             Sentry.captureException(e);
         } finally {
             metrics.postMetric("error", 0f, Map.of(

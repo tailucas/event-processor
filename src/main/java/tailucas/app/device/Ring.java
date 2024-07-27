@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import tailucas.app.device.config.Config;
 import tailucas.app.device.config.HAConfig;
@@ -53,8 +54,19 @@ public class Ring implements Generic {
     @JsonIgnore
     private static Logger log = null;
 
+    // inconsistent casing
+    @JsonProperty("ArmedBy")
+    private String armedBy;
+    @JsonProperty("ArmedTime")
+    private String armedTime;
+    @JsonProperty("DisarmedBy")
+    private String disarmedBy;
+    @JsonProperty("DisarmedTime")
+    private String disarmedTime;
     private String acStatus;
     private String alarmState;
+    private String alarmClearedBy;
+    private String alarmClearedTime;
     private String auxBatteryLevel;
     private String auxBatteryStatus;
     private int batteryLevel;
@@ -325,6 +337,12 @@ public class Ring implements Generic {
     public String getAlarmState() {
         return alarmState;
     }
+    public String getAlarmClearedBy() {
+        return alarmClearedBy;
+    }
+    public String getAlarmClearedTime() {
+        return alarmClearedTime;
+    }
     public String getAuxBatteryLevel() {
         return auxBatteryLevel;
     }
@@ -354,6 +372,18 @@ public class Ring implements Generic {
     }
     public String getFirmwareStatus() {
         return firmwareStatus;
+    }
+    public String getArmedBy() {
+        return armedBy;
+    }
+    public String getArmedTime() {
+        return armedTime;
+    }
+    public String getDisarmedBy() {
+        return disarmedBy;
+    }
+    public String getDisarmedTime() {
+        return disarmedTime;
     }
     public String getLastArmedBy() {
         return lastArmedBy;
@@ -414,17 +444,20 @@ public class Ring implements Generic {
     }
     @Override
     public String toString() {
-        return "Ring [acStatus=" + acStatus + ", alarmState=" + alarmState + ", auxBatteryLevel=" + auxBatteryLevel
+        return "Ring [acStatus=" + acStatus + ", alarmState=" + alarmState + ", alarmClearedBy=" + alarmClearedBy
+                + ", alarmClearedTime=" + alarmClearedTime + ", auxBatteryLevel=" + auxBatteryLevel
                 + ", auxBatteryStatus=" + auxBatteryStatus + ", batteryLevel=" + batteryLevel + ", batteryStatus="
                 + batteryStatus + ", brightness=" + brightness + ", chirps=" + chirps + ", commStatus=" + commStatus
                 + ", entrySecondsLeft=" + entrySecondsLeft + ", exitSecondsLeft=" + exitSecondsLeft
-                + ", firmwareStatus=" + firmwareStatus + ", lastArmedBy=" + lastArmedBy + ", lastArmedTime="
-                + lastArmedTime + ", lastDisarmedBy=" + lastDisarmedBy + ", lastDisarmedTime=" + lastDisarmedTime
-                + ", lastCommTime=" + lastCommTime + ", lastUpdate=" + lastUpdate + ", linkQuality=" + linkQuality
-                + ", maxVolume=" + maxVolume + ", powerSave=" + powerSave + ", serialNumber=" + serialNumber
-                + ", tamperStatus=" + tamperStatus + ", targetState=" + targetState + ", volume=" + volume
-                + ", componentId=" + componentId + ", componentName=" + componentName + ", deviceId=" + deviceId
-                + ", mqttTopic=" + mqttTopic + ", state=" + state + ", updateType=" + updateType + ", updateSubject="
-                + updateSubject + ", haConfig=" + haConfig + "]";
+                + ", firmwareStatus=" + firmwareStatus + ", armedBy=" + armedBy + ", armedTime=" + armedTime
+                + ", disarmedBy=" + disarmedBy + ", disarmedTime=" + disarmedTime + ", lastArmedBy=" + lastArmedBy
+                + ", lastArmedTime=" + lastArmedTime + ", lastDisarmedBy=" + lastDisarmedBy + ", lastDisarmedTime="
+                + lastDisarmedTime + ", lastCommTime=" + lastCommTime + ", lastUpdate=" + lastUpdate + ", linkQuality="
+                + linkQuality + ", maxVolume=" + maxVolume + ", powerSave=" + powerSave + ", serialNumber="
+                + serialNumber + ", tamperStatus=" + tamperStatus + ", targetState=" + targetState + ", volume="
+                + volume + ", componentId=" + componentId + ", componentName=" + componentName + ", deviceId="
+                + deviceId + ", mqttTopic=" + mqttTopic + ", state=" + state + ", updateType=" + updateType
+                + ", updateSubject=" + updateSubject + ", haConfig=" + haConfig + ", triggerStateDescription="
+                + triggerStateDescription + "]";
     }
 }

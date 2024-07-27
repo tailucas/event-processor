@@ -14,6 +14,10 @@ public class HAConfig extends Config {
     private String stateTopic;
     @JsonProperty("device_class")
     private String deviceClass;
+    @JsonProperty("code_arm_required")
+    private String codeArmRequired;
+    @JsonProperty("code_disarm_required")
+    private String codeDisarmRequired;
     @JsonProperty("command_topic")
     private String commandTopic;
     @JsonProperty
@@ -28,6 +32,8 @@ public class HAConfig extends Config {
     private String max;
     @JsonProperty
     private String mode;
+    @JsonProperty("entity_category")
+    private String entityCategory;
     @JsonProperty("availability_topic")
     private String availabilityTopic;
     @JsonProperty("payload_available")
@@ -110,6 +116,9 @@ public class HAConfig extends Config {
     public String getMode() {
         return mode;
     }
+    public String getEntityCategory() {
+        return entityCategory;
+    }
     public String getAvailabilityTopic() {
         return availabilityTopic;
     }
@@ -140,13 +149,13 @@ public class HAConfig extends Config {
     }
     @Override
     public String toString() {
-        return "HAConfig [name=" + name + ", unique_id=" + uniqueId + ", state_topic=" + stateTopic
-                + ", device_class=" + deviceClass + ", command_topic=" + commandTopic + ", icon=" + icon
-                + ", json_attributes_topic=" + jsonAttributesTopic + ", options=" + options + ", min=" + min
-                + ", max=" + max + ", mode=" + mode + ", availability_topic=" + availabilityTopic
-                + ", payload_available=" + payloadAvailable + ", payload_not_available=" + payloadNotAvailable
-                + ", state_class=" + stateClass + ", supported_features=" + supportedFeatures
-                + ", unit_of_measurement=" + unitOfMeasurement + ", value_template=" + valueTemplate + ", device="
-                + device + ", mqttTopic=" + mqttTopic + "]";
+        return "HAConfig [name=" + name + ", uniqueId=" + uniqueId + ", stateTopic=" + stateTopic + ", deviceClass="
+                + deviceClass + ", codeArmRequired=" + codeArmRequired + ", commandTopic=" + commandTopic + ", icon="
+                + icon + ", jsonAttributesTopic=" + jsonAttributesTopic + ", options=" + options + ", min=" + min
+                + ", max=" + max + ", mode=" + mode + ", entityCategory=" + entityCategory + ", availabilityTopic="
+                + availabilityTopic + ", payloadAvailable=" + payloadAvailable + ", payloadNotAvailable="
+                + payloadNotAvailable + ", stateClass=" + stateClass + ", supportedFeatures=" + supportedFeatures
+                + ", unitOfMeasurement=" + unitOfMeasurement + ", valueTemplate=" + valueTemplate + ", device=" + device
+                + ", mqttTopic=" + mqttTopic + "]";
     }
 }

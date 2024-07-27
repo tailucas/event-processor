@@ -75,7 +75,7 @@ public class Mqtt implements MqttCallback {
                         log.debug("HA config is: {}", haConfig);
                         DeviceConfig.getInstance().putHaConfig(haConfig);
                     } catch (Throwable e) {
-                        log.warn("{} JSON issue with {}", topic, new String(payload), e);
+                        log.warn("{} JSON issue with {} ({})", topic, new String(payload), e.getMessage());
                     }
                 } else {
                     log.warn("{} unassigned payload: {}", topic, new String(payload));
@@ -88,7 +88,7 @@ public class Mqtt implements MqttCallback {
                         ringDevice = mapper.readerFor(new TypeReference<Ring>() { }).readValue(payload);
                         ringDevice.setMqttTopic(topic);
                     } catch (Throwable e) {
-                        log.warn("{} JSON issue with {}", topic, new String(payload), e);
+                        log.warn("{} JSON issue with {} ({})", topic, new String(payload), e.getMessage());
                     }
                 } else {
                     ringDevice = new Ring();
@@ -129,7 +129,7 @@ public class Mqtt implements MqttCallback {
                                     log.debug("Sensor state is: {}", sensor);
                                     srv.submit(new Event(rabbitMqConnection, topic, sensor));
                                 } catch (JsonProcessingException e) {
-                                    log.error("{} deserialization failure of field {}: ", topic, fieldName, e);
+                                    log.error("{} deserialization failure of field {} ({})", topic, fieldName, e.getMessage());
                                     return;
                                 }
                             }
@@ -144,7 +144,7 @@ public class Mqtt implements MqttCallback {
                         return;
                     }
                 } catch (JsonParseException e) {
-                    log.warn("{} during processing of payload, unsupported JSON: {}", topic, new String(payload), e);
+                    log.warn("{} during processing of payload, unsupported JSON: {} ({})", topic, new String(payload), e.getMessage());
                     return;
                 }
             } else {
@@ -154,7 +154,7 @@ public class Mqtt implements MqttCallback {
             metrics.postMetric("error", 1f, Map.of(
                 "class", this.getClass().getSimpleName(),
                 "exception", e.getClass().getSimpleName()));
-            log.error("{} event issue ({} bytes).", topic, payload.length, e);
+            log.error("{} event issue ({} bytes) ({})", topic, payload.length, e.getMessage());
             Sentry.captureException(e);
         } finally {
             metrics.postMetric("error", 0f, Map.of(
