@@ -38,6 +38,7 @@ from telegram.ext import Application as TelegramApp, \
     filters
 from telegram.error import NetworkError, RetryAfter, TimedOut
 from threading import Thread
+from UnleashClient import UnleashClient
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, Depends, status, HTTPException
@@ -74,6 +75,9 @@ class CredsConfig:
     influxdb_token: f'opitem:"InfluxDB" opfield:{influx_creds_section}.token' = None # type: ignore
     influxdb_url: f'opitem:"InfluxDB" opfield:{influx_creds_section}.url' = None # type: ignore
     grafana_url: f'opitem:"Grafana" opfield:dashboard.URL' = None # type: ignore
+    unleash_token: f'opitem:"Unleash" opfield:.password' = None # type: ignore
+    unleash_url: f'opitem:"Unleash" opfield:default.url' = None # type: ignore
+    unleash_app: f'opitem:"Unleash" opfield:default.app_name' = None # type: ignore
 
 
 # instantiate class
@@ -161,6 +165,14 @@ URL_WORKER_AUTO_SCHEDULER = 'inproc://auto-scheduler'
 CONFIG_AUTO_SCHEDULER='auto-scheduler'
 
 startup_complete = False
+
+
+# feature flags configuration
+features = UnleashClient(
+    url=creds.unleash_url,
+    app_name=creds.unleash_app,
+    custom_headers={'Authorization': creds.unleash_token})
+features.initialize_client()
 
 
 class GeneralConfig(Base):
@@ -1106,7 +1118,8 @@ class EventProcessor(AppThread):
     # noinspection PyBroadException
     def run(self):
         # bot
-        self.bot.connect(URL_WORKER_TELEGRAM_BOT)
+        if features.is_enabled("telegram-bot"):
+            self.bot.connect(URL_WORKER_TELEGRAM_BOT)
         # influx DB
         self.influxdb = InfluxDBClient(
             url=creds.influxdb_url,
@@ -1182,9 +1195,13 @@ class EventProcessor(AppThread):
                     log.info('Malformed event; expecting dictionary.')
                     continue
                 if 'sms' in event:
-                    log.debug(f'Sending payload to bot {event.keys()!s}...')
-                    self.bot.send_pyobj(event['sms'])
-                    log.debug(f'Sent payload to bot...')
+                    sms_message = event['sms']
+                    if features.is_enabled("telegram-bot"):
+                        log.debug(f'Sending payload to bot {event.keys()!s}...')
+                        self.bot.send_pyobj(sms_message)
+                        log.debug(f'Sent payload to bot...')
+                    else:
+                        log.warn(f'Not sending message to Telegram bot disabled with feature flag: {sms_message}')
                     continue
                 for event_origin, event_data in list(event.items()):
                     if not isinstance(event_data, dict):
@@ -1318,7 +1335,10 @@ class EventProcessor(AppThread):
                         else:
                             log.warning(f'No devices matched to {state}.')
                         log.info(bot_reply)
-                        self.bot.send_pyobj(BotMessage(device_label='notification', message=bot_reply).model_dump())
+                        if features.is_enabled("telegram-bot"):
+                            self.bot.send_pyobj(BotMessage(device_label='notification', message=bot_reply).model_dump())
+                        else:
+                            log.warn(f'Not sending message to Telegram bot disabled with feature flag: {bot_reply}')
                         # stop processing
                         if not bot_command_base.startswith('/report'):
                             # no further processing needed after enable/disable
@@ -1333,6 +1353,7 @@ class TBot(AppThread, Closable):
         Closable.__init__(self, connect_url=URL_WORKER_TELEGRAM_BOT, is_async=True)
         self.chat_id = chat_id
         self.sns_fallback = sns_fallback
+        self._shutdown = False
 
     def build_device_message(timestamp, input_device: Device) -> BotMessage:
         device_label = input_device.device_label
@@ -1353,11 +1374,11 @@ class TBot(AppThread, Closable):
         return BotMessage(device_label=device_label, message=message, url=input_device.storage_url, image=image_data)
 
     def include_image(message):
-            if not app_config.getboolean('telegram', 'image_send_only_with_people'):
-                return True
-            if 'person' in message:
-                return True
-            return False
+        if not app_config.getboolean('telegram', 'image_send_only_with_people'):
+            return True
+        if 'person' in message:
+            return True
+        return False
 
     async def tbot_run(t_app: TelegramApp, zmq_socket, chat_id):
         poller = Poller()
@@ -1367,7 +1388,7 @@ class TBot(AppThread, Closable):
         call_again_timestamp = 0
         min_send_interval = app_config.getint('telegram', 'min_send_interval')
         last_sent = 0
-        while not threads.shutting_down:
+        while not threads.shutting_down and features.is_enabled("telegram-bot"):
             now = round(time.time())
             event = None
             events = await poller.poll(timeout=1000)
@@ -1563,13 +1584,16 @@ class TBot(AppThread, Closable):
             log.warning('Completed with exception.', exc)
         log.info('Closing event loop...')
         loop.close()
+        self.shutdown()
         log.info('Shutdown complete.')
 
     def shutdown(self):
         # TODO: shut down Telegram bot from external
         # event loop if stop_signals=None
-        log.info('Closing ZMQ socket...')
-        self.close()
+        if not self._shutdown:
+            log.info('Closing ZMQ socket...')
+            self.close()
+            self._shutdown = True
 
 
 class AutoScheduler(AppThread, Closable):
@@ -1690,9 +1714,13 @@ def main():
         auto_scheduler = AutoScheduler()
         event_processor = EventProcessor()
         # configure Telegram bot
-        telegram_bot = TBot(
-            chat_id=app_config.getint('telegram', 'chat_room_id'),
-            sns_fallback=app_config.getboolean('telegram', 'sns_fallback_enabled'))
+        telegram_bot = None
+        if features.is_enabled("telegram-bot"):
+            telegram_bot = TBot(
+                chat_id=app_config.getint('telegram', 'chat_room_id'),
+                sns_fallback=app_config.getboolean('telegram', 'sns_fallback_enabled'))
+        else:
+            log.warn(f'Not running Telegram bot client due to feature flag.')
         # start the nanny
         nanny = threading.Thread(
             daemon=True,
@@ -1708,7 +1736,8 @@ def main():
             log.info(f'Starting {APP_NAME} threads...')
             # start the binders
             event_processor.start()
-            telegram_bot.start()
+            if telegram_bot:
+                telegram_bot.start()
             # start the connectors
             auto_scheduler.start()
             mq_listener_sms.start()
@@ -1726,8 +1755,9 @@ def main():
             message = "Shutting down {}..."
             log.info(message.format('API server'))
             server.shutdown()
-            log.info(message.format('Telegram Bot'))
-            telegram_bot.shutdown()
+            if telegram_bot:
+                log.info(message.format('Telegram Bot'))
+                telegram_bot.shutdown()
             log.info(message.format('Rabbit MQ listener bridge'))
             mq_listener_sms.stop()
             zmq_term()

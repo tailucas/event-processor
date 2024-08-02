@@ -30,6 +30,7 @@ aiosqlite = "^0.20.0"
 onepasswordconnectsdk = {git = "https://github.com/tglucas/connect-sdk-python.git"}
 tailucas-pylib = "^0.4.0"
 pydantic = "^2.7.1"
+unleashclient = "^5.12.2"
 
 
 [build-system]

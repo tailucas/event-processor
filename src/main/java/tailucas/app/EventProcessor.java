@@ -34,6 +34,9 @@ import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.impl.StrictExceptionHandler;
 
+import io.getunleash.DefaultUnleash;
+import io.getunleash.Unleash;
+import io.getunleash.util.UnleashConfig;
 import io.prometheus.metrics.core.metrics.Counter;
 import io.prometheus.metrics.exporter.httpserver.HTTPServer;
 import io.prometheus.metrics.instrumentation.jvm.JvmMetrics;
@@ -92,6 +95,7 @@ public class EventProcessor
     private static String appName = null;
     private static String deviceName = null;
     private static HTTPServer metricsServer = null;
+    private static Unleash unleash = null;
 
     @Bean
 	public CommandLineRunner commandLineRunner(ApplicationContext ctx) {
@@ -160,6 +164,9 @@ public class EventProcessor
             metricsServer.close();
         }
         Metrics.getInstance().close();
+        if (unleash != null) {
+            unleash.shutdown();
+        }
         Severity severity = Severity.WARNING;
         if (exitCode != 0) {
             severity = Severity.ERROR;
@@ -228,6 +235,16 @@ public class EventProcessor
         pagerDuty = PagerDutyEventsClient.create();
         pagerDutyRoutingKey = creds.getField("PagerDuty", "routing_key", appName);
         deviceName = envVars.get("DEVICE_NAME");
+        final String unleashServerUrl = creds.getField("Unleash", "url", "default");
+        log.info("Loading feature flags from unleash server: {}", unleashServerUrl);
+        UnleashConfig config = UnleashConfig.builder()
+                .appName(creds.getField("Unleash", "app_name", "default"))
+                .instanceId(appName)
+                .unleashAPI(unleashServerUrl)
+                .apiKey(creds.getField("Unleash", "token", "default"))
+                .synchronousFetchOnInitialisation(true)
+                .build();
+        unleash = new DefaultUnleash(config);
         final String hostName = envVars.get("CONFIG_HOST");
         final String hostNamePort = envVars.get("CONFIG_HOST_PORT");
         UriComponents uriComponents = UriComponentsBuilder.newInstance()
