@@ -34,6 +34,9 @@ import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.impl.StrictExceptionHandler;
 
+import io.prometheus.metrics.core.metrics.Counter;
+import io.prometheus.metrics.exporter.httpserver.HTTPServer;
+import io.prometheus.metrics.instrumentation.jvm.JvmMetrics;
 import io.sentry.Sentry;
 import jakarta.annotation.PreDestroy;
 import tailucas.app.device.Event;
@@ -55,6 +58,7 @@ import org.ini4j.Ini;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.ExitCodeGenerator;
 import org.springframework.context.ApplicationContext;
@@ -87,6 +91,7 @@ public class EventProcessor
     private static String pagerDutyRoutingKey = null;
     private static String appName = null;
     private static String deviceName = null;
+    private static HTTPServer metricsServer = null;
 
     @Bean
 	public CommandLineRunner commandLineRunner(ApplicationContext ctx) {
@@ -151,6 +156,9 @@ public class EventProcessor
         if (creds != null) {
             creds.close();
         }
+        if (metricsServer != null) {
+            metricsServer.close();
+        }
         Metrics.getInstance().close();
         Severity severity = Severity.WARNING;
         if (exitCode != 0) {
@@ -179,6 +187,7 @@ public class EventProcessor
     public static void main( String[] args )
     {
         Thread.currentThread().setName("main");
+        JvmMetrics.builder().register();
         creds = OnePassword.getInstance();
         try {
             var vaults = creds.listVaults();
@@ -254,9 +263,10 @@ public class EventProcessor
         }
         final ApplicationContext springApp = SpringApplication.run(EventProcessor.class, args);
         final Environment springEnv = springApp.getEnvironment();
+        final String applicationName = springEnv.getProperty("app.project-name");
         final Locale locale = Locale.getDefault();
         log.info("{} starting {} in working directory {}, locale language {}, country {} and environment {}",
-            springEnv.getProperty("app.project-name"),
+            applicationName,
             Runtime.version().toString(),
             System.getProperty("user.dir"),
             locale.getLanguage(),
@@ -384,8 +394,24 @@ public class EventProcessor
             Sentry.captureException(e);
         }
 
+        final String metricAppName = appName.replace('-', '_').toLowerCase();
         Metrics.getInstance().postMetric("startup", 1f);
-        log.info("{} startup complete.", springEnv.getProperty("app.project-name"));
+        log.info("Creating counter for application {}", metricAppName);
+        Counter counter = Counter.builder()
+            .name(metricAppName)
+            .help("application health")
+            .labelNames("status")
+            .register();
+        counter.labelValues("startup").inc();
+        final Integer metricsServerPort = Integer.valueOf(springEnv.getProperty("metrics.port"));
+        try {
+            metricsServer = HTTPServer.builder().port(metricsServerPort.intValue()).buildAndStart();
+        } catch (IOException e) {
+            log.error("Cannot start metrics server.", e);
+            Sentry.captureException(e);
+        }
+        log.info("Metrics server started on port {}.", metricsServerPort);
+        log.info("{} startup complete.", applicationName);
         exitCode = 0;
     }
 }

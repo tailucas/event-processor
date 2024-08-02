@@ -26,6 +26,7 @@ services:
       - "4041:4040"
       - "8095:8080"
       - "8085:8085"
+      - "9400:9400"
     volumes:
       - ./data:/data
       - /dev/log:/dev/log

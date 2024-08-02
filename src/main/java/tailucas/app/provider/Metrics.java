@@ -1,23 +1,10 @@
 package tailucas.app.provider;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
-import java.net.URI;
-import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.influxdb.client.InfluxDBClient;
-import com.influxdb.client.InfluxDBClientFactory;
-import com.influxdb.client.WriteApi;
-import com.influxdb.client.domain.WritePrecision;
 
 public class Metrics {
 
@@ -27,22 +14,13 @@ public class Metrics {
     private String appName = null;
     private String deviceName = null;
 
-    private InfluxDBClient influxDBClient = null;
-    private WriteApi writeApi = null;
-
     private Metrics() {
         log = LoggerFactory.getLogger(Metrics.class);
         final var env = System.getenv();
         appName = env.get("APP_NAME");
         deviceName = env.get("DEVICE_NAME");
         final var creds = OnePassword.getInstance();
-        final char[] token = creds.getField("InfluxDB", "token", appName).toCharArray();
-        final String bucket = creds.getField("InfluxDB", "bucket", appName);
-        final String org = creds.getField("InfluxDB", "org", "local");
-        final String url = creds.getField("InfluxDB", "url", "local");
-        log.info("Metrics client using org {}, bucket {} at URL {}", org, bucket, url);
-        influxDBClient = InfluxDBClientFactory.create(url, token, org, bucket);
-        writeApi = influxDBClient.makeWriteApi();
+        // TODO counter setup
     }
 
     private static String normalize(String value) {
@@ -57,12 +35,7 @@ public class Metrics {
     }
 
     public void close() {
-        if (writeApi != null) {
-            writeApi.close();
-        }
-        if (influxDBClient != null) {
-            influxDBClient.close();
-        }
+        // TODO
     }
 
     public Map<String, String> getNormalizedMetricTags(Map<String, String> tags) {
@@ -99,7 +72,7 @@ public class Metrics {
         metricBuilder.append(value);
         final String metricString = metricBuilder.toString();
         log.debug("Metric: {}", metricString);
-        writeApi.writeRecord(WritePrecision.NS, metricString);
+        // TODO post
         return metricTags;
     }
 }

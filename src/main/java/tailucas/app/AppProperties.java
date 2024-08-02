@@ -55,7 +55,6 @@ public class AppProperties {
     public void setMessageEventExchangeName(String messageEventExchangeName) {
         this.messageEventExchangeName = messageEventExchangeName;
     }
-
     public static String getProperty(String key) {
         Properties props = new Properties();
         InputStream propsInput = Thread.currentThread().getContextClassLoader().getResourceAsStream(PROPERTIES_FILE_NAME);
