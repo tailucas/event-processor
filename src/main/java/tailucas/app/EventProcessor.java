@@ -61,7 +61,6 @@ import org.ini4j.Ini;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.ExitCodeGenerator;
 import org.springframework.context.ApplicationContext;
@@ -82,6 +81,8 @@ public class EventProcessor
     public static final int EXIT_CODE_RABBITMQ = 4;
     public static final int EXIT_CODE_CREDENTIALS = 8;
     public static final int EXIT_CODE_SENTRY = 16;
+
+    public static final String FEATURE_FLAG_HA_DISCOVERY = "send-home-assistant-discovery";
 
     private static Logger log = LoggerFactory.getLogger(EventProcessor.class);
     private static ExecutorService srv = null;
@@ -191,8 +192,14 @@ public class EventProcessor
         log.info("Full shutdown complete with exit code {}", exitCode);
     }
 
-    public static void main( String[] args )
-    {
+    public boolean isFeatureEnabled(String featureName) {
+        if (unleash == null) {
+            return true;
+        }
+        return unleash.isEnabled(featureName);
+    }
+
+    public static void main( String[] args ) {
         Thread.currentThread().setName("main");
         JvmMetrics.builder().register();
         creds = OnePassword.getInstance();
@@ -360,18 +367,22 @@ public class EventProcessor
                 mqttClient.connect(options);
                 mqttClient.setCallback(new Mqtt(springApp, srv, rabbitMqConnection));
                 mqttClient.subscribe("#");
-                // send MQTT discovery message
-                final String mqttDiscoveryTopic = "homeassistant/status";
-                final String mqttDiscoveryPayload = "online";
-                try {
-                    log.info("Sending Home Assistant discovery message ({}) to topic: {}", mqttDiscoveryPayload, mqttDiscoveryTopic);
-                    mqttClient.publish(mqttDiscoveryTopic, new MqttMessage(mqttDiscoveryPayload.getBytes()));
-                } catch (MqttException e) {
-                    log.error("Problem sending MQTT discovery message to topic {}", mqttDiscoveryTopic, e);
-                    Sentry.captureException(e);
-                    exitCode |= EXIT_CODE_MQTT;
-                    System.exit(SpringApplication.exit(springApp));
-                };
+                if (unleash.isEnabled(FEATURE_FLAG_HA_DISCOVERY)) {
+                    // send MQTT discovery message
+                    final String mqttDiscoveryTopic = "homeassistant/status";
+                    final String mqttDiscoveryPayload = "online";
+                    try {
+                        log.info("Sending Home Assistant discovery message ({}) to topic: {}", mqttDiscoveryPayload, mqttDiscoveryTopic);
+                        mqttClient.publish(mqttDiscoveryTopic, new MqttMessage(mqttDiscoveryPayload.getBytes()));
+                    } catch (MqttException e) {
+                        log.error("Problem sending MQTT discovery message to topic {}", mqttDiscoveryTopic, e);
+                        Sentry.captureException(e);
+                        exitCode |= EXIT_CODE_MQTT;
+                        System.exit(SpringApplication.exit(springApp));
+                    };
+                } else {
+                    log.warn("Not sending Home Assistant discovery message, disabled with feature flag {}", FEATURE_FLAG_HA_DISCOVERY);
+                }
                 // use inproc socket in ZMQ to serialize outbound messages for thread safety
                 socket = zmqContext.createSocket(SocketType.PULL);
                 socket.connect(ZMQ_MQTT_URL);
