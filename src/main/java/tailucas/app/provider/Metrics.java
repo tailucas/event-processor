@@ -1,10 +1,16 @@
 package tailucas.app.provider;
 
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import io.prometheus.metrics.core.metrics.Counter;
+import io.prometheus.metrics.core.metrics.Gauge;
+import io.prometheus.metrics.model.snapshots.PrometheusNaming;
+import io.sentry.Sentry;
 
 public class Metrics {
 
@@ -14,17 +20,16 @@ public class Metrics {
     private String appName = null;
     private String deviceName = null;
 
+    private Map<String, Counter> counters = null;
+    private Map<String, Gauge> gauges = null;
+
     private Metrics() {
         log = LoggerFactory.getLogger(Metrics.class);
         final var env = System.getenv();
         appName = env.get("APP_NAME");
         deviceName = env.get("DEVICE_NAME");
-        final var creds = OnePassword.getInstance();
-        // TODO counter setup
-    }
-
-    private static String normalize(String value) {
-        return value.toLowerCase().replace(' ', '-');
+        counters = new ConcurrentHashMap<>();
+        gauges = new ConcurrentHashMap<>();
     }
 
     public static synchronized Metrics getInstance() {
@@ -34,45 +39,56 @@ public class Metrics {
         return singleton;
     }
 
-    public void close() {
-        // TODO
-    }
-
     public Map<String, String> getNormalizedMetricTags(Map<String, String> tags) {
-        final Map<String, String> metricTags = new HashMap<>();
-        metricTags.put("application", normalize(appName));
-        metricTags.put("device", normalize(deviceName));
+        final Map<String, String> metricTags = new LinkedHashMap<>();
+        metricTags.put("application", PrometheusNaming.sanitizeLabelName(appName));
+        metricTags.put("device", PrometheusNaming.sanitizeLabelName(deviceName));
         if (tags != null) {
             tags.forEach((k,v) -> {
-                metricTags.put(k, normalize(v));
+                metricTags.put(k, PrometheusNaming.sanitizeLabelName(v));
             });
         }
         return metricTags;
     }
 
-    public void postMetric(String name, float value) {
-        postMetric(name, value, null);
+    public Map<String, String> postMetric(String name) {
+        return postMetric(name, null, null);
     }
 
-    public Map<String, String> postMetric(String name, float value, Map<String,String> tags) {
+    public Map<String, String> postMetric(String name, Map<String,String> tags) {
+        return postMetric(name, null, tags);
+    }
+
+    public Map<String, String> postMetric(String name, double value) {
+        return postMetric(name, value, null);
+    }
+
+    public Map<String, String> postMetric(String name, Double value, Map<String,String> tags) {
         if (name == null) {
             throw new IllegalArgumentException("No metric name specified.");
         }
+        final String metricName = PrometheusNaming.sanitizeMetricName(name);
         final var metricTags = getNormalizedMetricTags(tags);
-        final StringBuilder metricBuilder = new StringBuilder();
-        metricBuilder.append(name);
-        metricBuilder.append(",");
-        metricBuilder.append(metricTags
-            .entrySet()
-            .stream()
-            .map(tag -> tag.getKey() + "=" + tag.getValue())
-            .reduce((pair1, pair2) -> pair1 + "," + pair2)
-            .orElse(""));
-        metricBuilder.append(" metric=");
-        metricBuilder.append(value);
-        final String metricString = metricBuilder.toString();
-        log.debug("Metric: {}", metricString);
-        // TODO post
+        final String[] metricTagKeys = metricTags.keySet().toArray(new String[metricTags.size()]);
+        final String[] metricTagValues = metricTags.values().toArray(new String[metricTags.size()]);
+        try {
+            if (value == null) {
+                Counter counter = counters.computeIfAbsent(metricName, c -> Counter.builder()
+                    .name(metricName)
+                    .labelNames(metricTagKeys)
+                    .register());
+                counter.labelValues(metricTagValues).inc();
+            } else {
+                Gauge gauge = gauges.computeIfAbsent(metricName, g -> Gauge.builder()
+                    .name(metricName)
+                    .labelNames(metricTagKeys)
+                    .register());
+                gauge.labelValues(metricTagValues).set(value);
+            }
+        } catch (RuntimeException e) {
+            log.error("Cannot create metric object for metric {}: {}", metricName, e.getMessage(), e);
+            Sentry.captureException(e);
+        }
         return metricTags;
     }
 }

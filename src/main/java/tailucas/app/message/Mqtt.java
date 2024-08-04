@@ -55,7 +55,7 @@ public class Mqtt implements MqttCallback {
 
     @Override
     public void messageArrived(String topic, MqttMessage message) throws Exception {
-        metrics.postMetric("message", 1f, Map.of("type", "mqtt"));
+        metrics.postMetric("message", Map.of("type", "mqtt"));
         final byte[] payload = message.getPayload();
         try {
             if (payload.length == 0) {
@@ -151,14 +151,11 @@ public class Mqtt implements MqttCallback {
                 log.warn("{} ignored.", topic);
             }
         } catch (Exception e) {
-            metrics.postMetric("error", 1f, Map.of(
+            metrics.postMetric("error", Map.of(
                 "class", this.getClass().getSimpleName(),
                 "exception", e.getClass().getSimpleName()));
             log.error("{} event issue ({} bytes) ({})", topic, payload.length, e.getMessage());
             Sentry.captureException(e);
-        } finally {
-            metrics.postMetric("error", 0f, Map.of(
-                "class", this.getClass().getSimpleName()));
         }
     }
 

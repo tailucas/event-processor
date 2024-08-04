@@ -37,7 +37,6 @@ import com.rabbitmq.client.impl.StrictExceptionHandler;
 import io.getunleash.DefaultUnleash;
 import io.getunleash.Unleash;
 import io.getunleash.util.UnleashConfig;
-import io.prometheus.metrics.core.metrics.Counter;
 import io.prometheus.metrics.exporter.httpserver.HTTPServer;
 import io.prometheus.metrics.instrumentation.jvm.JvmMetrics;
 import io.sentry.Sentry;
@@ -83,6 +82,7 @@ public class EventProcessor
     public static final int EXIT_CODE_SENTRY = 16;
 
     public static final String FEATURE_FLAG_HA_DISCOVERY = "send-home-assistant-discovery";
+    public static final String FEATURE_FLAG_PAGER_DUTY_TICKETS = "pager-duty-tickets";
 
     private static Logger log = LoggerFactory.getLogger(EventProcessor.class);
     private static ExecutorService srv = null;
@@ -164,30 +164,33 @@ public class EventProcessor
         if (metricsServer != null) {
             metricsServer.close();
         }
-        Metrics.getInstance().close();
-        if (unleash != null) {
-            unleash.shutdown();
-        }
         Severity severity = Severity.WARNING;
         if (exitCode != 0) {
             severity = Severity.ERROR;
         }
-        final Payload payload = Payload.Builder.newBuilder()
-            .setSummary(String.format("%s shutdown", appName))
-            .setSource(deviceName)
-            .setSeverity(severity)
-            .setTimestamp(OffsetDateTime.now())
-            .build();
-        final TriggerIncident incident = TriggerIncident.TriggerIncidentBuilder
-            .newBuilder(pagerDutyRoutingKey, payload)
-            .setDedupKey(appName)
-            .build();
-        try {
-            final EventResult result = pagerDuty.trigger(incident);
-            log.info("Updated PagerDuty with result {}: {} ({})", result.getStatus(), result.getMessage(), result.getErrors());
-        } catch (NotifyEventException e) {
-            log.warn("Cannot update PagerDuty.", e);
-            Sentry.captureException(e);
+        if (unleash != null && unleash.isEnabled(FEATURE_FLAG_PAGER_DUTY_TICKETS)) {
+            final Payload payload = Payload.Builder.newBuilder()
+                .setSummary(String.format("%s shutdown", appName))
+                .setSource(deviceName)
+                .setSeverity(severity)
+                .setTimestamp(OffsetDateTime.now())
+                .build();
+            final TriggerIncident incident = TriggerIncident.TriggerIncidentBuilder
+                .newBuilder(pagerDutyRoutingKey, payload)
+                .setDedupKey(appName)
+                .build();
+            try {
+                final EventResult result = pagerDuty.trigger(incident);
+                log.info("Updated PagerDuty with result {}: {} ({})", result.getStatus(), result.getMessage(), result.getErrors());
+            } catch (NotifyEventException e) {
+                log.warn("Cannot update PagerDuty.", e);
+                Sentry.captureException(e);
+            }
+        } else {
+            log.warn("Not creating PagerDuty shutdown event due to disabled feature flag: {}", FEATURE_FLAG_PAGER_DUTY_TICKETS);
+        }
+        if (unleash != null) {
+            unleash.shutdown();
         }
         log.info("Full shutdown complete with exit code {}", exitCode);
     }
@@ -201,7 +204,6 @@ public class EventProcessor
 
     public static void main( String[] args ) {
         Thread.currentThread().setName("main");
-        JvmMetrics.builder().register();
         creds = OnePassword.getInstance();
         try {
             var vaults = creds.listVaults();
@@ -411,26 +413,23 @@ public class EventProcessor
         rabbitMqThread.start();
         mqttThread.start();
 
-        final ResolveIncident resolve = ResolveIncident.ResolveIncidentBuilder
-            .newBuilder(pagerDutyRoutingKey, appName)
-            .build();
-        try {
-            final EventResult result = pagerDuty.resolve(resolve);
-            log.info("Updated PagerDuty with result {}: {} ({})", result.getStatus(), result.getMessage(), result.getErrors());
-        } catch (NotifyEventException e) {
-            log.error("Cannot update PagerDuty.", e);
-            Sentry.captureException(e);
+        if (unleash.isEnabled(FEATURE_FLAG_PAGER_DUTY_TICKETS)) {
+            final ResolveIncident resolve = ResolveIncident.ResolveIncidentBuilder
+                .newBuilder(pagerDutyRoutingKey, appName)
+                .build();
+            try {
+                final EventResult result = pagerDuty.resolve(resolve);
+                log.info("Updated PagerDuty with result {}: {} ({})", result.getStatus(), result.getMessage(), result.getErrors());
+            } catch (NotifyEventException e) {
+                log.error("Cannot update PagerDuty.", e);
+                Sentry.captureException(e);
+            }
+        } else {
+            log.warn("Not updating PagerDuty status due to disabled feature flag: {}", FEATURE_FLAG_PAGER_DUTY_TICKETS);
         }
 
-        final String metricAppName = appName.replace('-', '_').toLowerCase();
-        Metrics.getInstance().postMetric("startup", 1f);
-        log.info("Creating counter for application {}", metricAppName);
-        Counter counter = Counter.builder()
-            .name(metricAppName)
-            .help("application health")
-            .labelNames("status")
-            .register();
-        counter.labelValues("startup").inc();
+        JvmMetrics.builder().register();
+        Metrics.getInstance().postMetric("startup");
         final Integer metricsServerPort = Integer.valueOf(springEnv.getProperty("metrics.port"));
         try {
             metricsServer = HTTPServer.builder().port(metricsServerPort.intValue()).buildAndStart();
@@ -438,6 +437,7 @@ public class EventProcessor
             log.error("Cannot start metrics server.", e);
             Sentry.captureException(e);
         }
+
         log.info("Metrics server started on port {}.", metricsServerPort);
         log.info("{} startup complete.", applicationName);
         exitCode = 0;

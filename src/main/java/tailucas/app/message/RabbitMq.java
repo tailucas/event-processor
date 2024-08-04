@@ -26,7 +26,6 @@ public class RabbitMq implements DeliverCallback {
     private static Logger log = null;
 
     private Metrics metrics = null;
-
     private ExecutorService srv = null;
     private Connection connection = null;
 
@@ -44,7 +43,7 @@ public class RabbitMq implements DeliverCallback {
 
     @Override
     public void handle(String consumerTag, Delivery message) throws IOException {
-        metrics.postMetric("message", 1f, Map.of("type", "rabbitmq"));
+        metrics.postMetric("message", Map.of("type", "rabbitmq"));
         final String source = message.getEnvelope().getRoutingKey();
         final byte[] msgBody = message.getBody();
         try {
@@ -59,14 +58,11 @@ public class RabbitMq implements DeliverCallback {
                 srv.submit(new Event(connection, source, device));
             });
         } catch (Exception e) {
-            metrics.postMetric("error", 1f, Map.of(
+            metrics.postMetric("error", Map.of(
                 "class", this.getClass().getSimpleName(),
                 "exception", e.getClass().getSimpleName()));
             log.error("{} event issue ({} bytes) ({})", source, msgBody.length, e.getMessage());
             Sentry.captureException(e);
-        } finally {
-            metrics.postMetric("error", 0f, Map.of(
-                "class", this.getClass().getSimpleName()));
         }
     }
 }

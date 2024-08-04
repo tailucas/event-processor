@@ -126,7 +126,7 @@ public class Event implements Runnable {
             if (deviceDescription != null) {
                 metricTags.put("input_label", deviceDescription);
             }
-            metrics.postMetric("event", 1f, metricTags);
+            metrics.postMetric("event", metricTags);
             configProvider.postDeviceInfo(device);
             if (device.isHeartbeat() || source.contains(".heartbeat.")) {
                 log.debug("{}: Heartbeat for {}.", source, deviceDescription);
@@ -247,9 +247,9 @@ public class Event implements Runnable {
                         outputMetricTags.put("output_type", outputConfig.getDeviceType());
                         outputMetricTags.put("output_label", outputDeviceDescription);
                         outputMetricTags.putAll(metricTags);
-                        metrics.postMetric(responseTopic, 1f, outputMetricTags);
+                        metrics.postMetric(responseTopic, outputMetricTags);
                         outputMetricTags.put("destination", responseTopic);
-                        metrics.postMetric("triggered", 1f, outputMetricTags).forEach((k, v) -> {
+                        metrics.postMetric("triggered", outputMetricTags).forEach((k, v) -> {
                             sentrySpan.setTag(k, v);
                         });
                         sentrySpan.setStatus(SpanStatus.OK);
@@ -268,17 +268,15 @@ public class Event implements Runnable {
         } catch (IllegalStateException | UnsupportedOperationException | IOException e) {
             // logged only with message
             log.warn("{}: {}", source, e.getMessage());
-            metrics.postMetric("error", 1f, Map.of(
+            metrics.postMetric("error", Map.of(
                 "class", this.getClass().getSimpleName(),
                 "exception", e.getClass().getSimpleName()));
         } catch (Throwable e) {
             log.error("{} event issue.", source, e);
-            metrics.postMetric("error", 1f, Map.of(
+            metrics.postMetric("error", Map.of(
                 "class", this.getClass().getSimpleName(),
                 "exception", e.getClass().getSimpleName()));
             Sentry.captureException(e);
-        } finally {
-            metrics.postMetric("error", 0f, Map.of("class", Event.class.getSimpleName()));
         }
     }
 }
