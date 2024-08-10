@@ -1464,13 +1464,10 @@ class TBot(AppThread, Closable):
                     log.error('No queued messages for any device.')
                     continue
                 message = pending.popleft()
-                log.info(f'Evaluating a message about {device_label} ({len(pending)} queued)...')
                 image_batch = []
                 # other messages to dedupe
                 while True:
-                    if len(pending) == 0:
-                        break
-                    log.info(f'Processing {len(pending)} additional events for {message.device_label} ({message.timestamp})...')
+                    log.info(f'Processing message about {device_label} ({message.timestamp}) ({len(pending)} queued)...')
                     # keep all image data as configured
                     if TBot.include_image(message=str(message)) and message.image:
                         if len(image_batch) < MediaGroupLimit.MAX_MEDIA_LENGTH:
@@ -1500,16 +1497,13 @@ class TBot(AppThread, Closable):
                             pending_by_label[device_label] = pending
                             break
                     else:
-                        log.warn(f'Discarding pending event from {message.device_label} with image ({message.timestamp}) of no persons.')
                         try:
                             # fetch another to test
                             message = pending.popleft()
+                            log.warn(f'Fetched newer pending message about {message.device_label} ({message.timestamp}).')
                         except IndexError:
-                            # or void the last
-                            message = None
+                            # message remains set to the current
                             break
-                if not message:
-                    continue
                 # send the message
                 try:
                     if len(image_batch) > 0:
