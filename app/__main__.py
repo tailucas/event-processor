@@ -1437,7 +1437,7 @@ class TBot(AppThread, Closable):
                     except KeyError:
                         queued = deque()
                         pending_by_label[message.device_label] = queued
-                    log.info(f'Queueing message about {message.device_label} ({message.timestamp}) with {len(queued)} already queued...')
+                    log.info(f'Queueing message about {message.device_label} ({message.timestamp}) ({len(pending)} queued)...')
                     queued.append(message)
                 # rate-limit the send
                 # https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this
@@ -1467,7 +1467,7 @@ class TBot(AppThread, Closable):
                 image_batch = []
                 # other messages to dedupe
                 while True:
-                    log.info(f'Processing message about {device_label} ({message.timestamp}) ({len(pending)} queued)...')
+                    log.info(f'Now processing message about {message.device_label} ({message.timestamp}) ({len(pending)} queued)...')
                     # keep all image data as configured
                     if TBot.include_image(message=str(message)) and message.image:
                         if len(image_batch) < MediaGroupLimit.MAX_MEDIA_LENGTH:
@@ -1509,22 +1509,7 @@ class TBot(AppThread, Closable):
                     if len(image_batch) > 0:
                         log.info(f'Sending image group to {chat_id!s} containing {len(image_batch)} images.')
                         await t_app.bot.send_media_group(chat_id=chat_id, media=image_batch, read_timeout=300, write_timeout=300, connect_timeout=300, pool_timeout=300)
-                    elif message.image:
-                        log.info(f'Sending image about {device_label} (t={message.timestamp}/it={message.image_timestamp}) to {chat_id!s} with caption "{message!s}"')
-                        caption_entities = None
-                        if message.url:
-                            caption_entities = [
-                                MessageEntity(
-                                    type=MessageEntity.TEXT_LINK,
-                                    offset=0,
-                                    length=len(device_label),
-                                    url=message.url)
-                            ]
-                        await t_app.bot.send_photo(chat_id=chat_id,
-                                            photo=BytesIO(message.image),
-                                            caption=str(message),
-                                            caption_entities=caption_entities)
-                    else:
+                    elif not message.image:
                         log.info(f'Sending message about {device_label} ({message.timestamp}) to {chat_id!s} with caption "{message!s}"')
                         await t_app.bot.send_message(chat_id=chat_id,
                                                 text=str(message),
