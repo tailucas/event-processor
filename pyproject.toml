@@ -28,7 +28,7 @@ uvicorn = "^0.29.0"
 python-telegram-bot = "^21.1.1"
 aiosqlite = "^0.20.0"
 onepasswordconnectsdk = {git = "https://github.com/tglucas/connect-sdk-python.git"}
-tailucas-pylib = "^0.4.0"
+tailucas-pylib = "^0.4.5"
 pydantic = "^2.7.1"
 unleashclient = "^5.12.2"
 

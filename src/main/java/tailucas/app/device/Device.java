@@ -44,6 +44,8 @@ public class Device implements Generic {
     protected String location;
     @JsonProperty("image")
     protected byte[] image;
+    @JsonProperty("image_timestamp")
+    protected String imageTimestamp;
     @JsonProperty("input_location")
     protected String inputLocation;
     @JsonProperty
@@ -79,6 +81,7 @@ public class Device implements Generic {
         this.groupName = device.groupName;
         this.location = device.location;
         this.image = device.image;
+        this.imageTimestamp = device.imageTimestamp;
         this.inputLocation = device.inputLocation;
         this.name = device.name;
         this.sampleValue = device.sampleValue;
@@ -226,6 +229,9 @@ public class Device implements Generic {
     public byte[] getImage() {
         return image;
     }
+    public String getImageTimestamp() {
+        return imageTimestamp;
+    }
     public String getInputLocation() {
         return inputLocation;
     }
@@ -247,9 +253,9 @@ public class Device implements Generic {
     @Override
     public String toString() {
         return "Device [device_key=" + deviceKey + ", device_id=" + deviceId + ", device_label=" + deviceLabel
-                + ", location=" + location + ", input_location=" + inputLocation + ", name=" + name + ", sample_value="
-                + sampleValue + ", storage_url=" + storageUrl + ", storage_path=" + storagePath + ", type=" + type
-                + ", timestamp=" + timestamp + ", uptime=" + uptime + "]";
+                + ", location=" + location + ", input_location=" + inputLocation + ", image_timestamp=" + imageTimestamp
+                + ", name=" + name + ", sample_value=" + sampleValue + ", storage_url=" + storageUrl + ", storage_path="
+                + storagePath + ", type=" + type + ", timestamp=" + timestamp + ", uptime=" + uptime + "]";
     }
     /*
      * Legacy message fields not used here

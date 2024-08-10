@@ -1909,13 +1909,13 @@ full = ["httpx (>=0.22.0)", "itsdangerous", "jinja2", "python-multipart (>=0.0.7
 
 [[package]]
 name = "tailucas-pylib"
-version = "0.4.4"
+version = "0.4.5"
 description = "Common Python utility modules"
 optional = false
 python-versions = "<4.0,>=3.11"
 files = [
-    {file = "tailucas_pylib-0.4.4-py3-none-any.whl", hash = "sha256:b74d8dc1b4571a4fe5d0d16a202f48918747a0a2e40e8dce1db4f574204fe177"},
-    {file = "tailucas_pylib-0.4.4.tar.gz", hash = "sha256:6e8634ef33f296ddc7e28fe4b643bf5c8e4ea1e9f77ebbc03f924e547f4ca191"},
+    {file = "tailucas_pylib-0.4.5-py3-none-any.whl", hash = "sha256:9529d1eadc2f1efe15ad3a3853eff70c01d5e812322a5527b84f04ff92c81267"},
+    {file = "tailucas_pylib-0.4.5.tar.gz", hash = "sha256:da7ef6bd43ecee1f247ddb5fec2af4e90de6f33127acc69c85cce280f0f30480"},
 ]
 
 [package.dependencies]
@@ -2173,4 +2173,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "4ef13f1b0bf9d1d97055672424a384594a327c234f75529913277e86559754bc"
+content-hash = "ec789fd2c7006e0c6e2d6e5e883f51924b629db866bba5217770833352343639"

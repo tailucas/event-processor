@@ -1040,6 +1040,7 @@ class BotMessage(BaseModel):
     message: str
     url: str | None = None
     image: bytes | None = None
+    image_timestamp: str | None = None
     timestamp: int | None = None
 
     def __str__(self):
@@ -1371,7 +1372,10 @@ class TBot(AppThread, Closable):
         image_data = None
         if input_device.image:
             image_data = input_device.image
-        return BotMessage(device_label=device_label, message=message, url=input_device.storage_url, image=image_data)
+        image_timestamp = None
+        if input_device.image_timestamp:
+            image_timestamp = input_device.image_timestamp
+        return BotMessage(device_label=device_label, message=message, url=input_device.storage_url, image=image_data, image_timestamp=image_timestamp)
 
     def include_image(message):
         if not app_config.getboolean('telegram', 'image_send_only_with_people'):
@@ -1459,25 +1463,17 @@ class TBot(AppThread, Closable):
                 if not pending:
                     log.error('No queued messages for any device.')
                     continue
-                log.info(f'Evaluating a message about {device_label} ({len(pending)} queued)...')
                 message = pending.popleft()
+                log.info(f'Evaluating a message about {device_label} ({len(pending)} queued)...')
                 image_batch = []
                 # other messages to dedupe
                 while True:
+                    if len(pending) == 0:
+                        break
                     log.info(f'Processing {len(pending)} additional events for {message.device_label} ({message.timestamp})...')
                     # keep all image data as configured
-                    if message.image:
-                        if not TBot.include_image(message=str(message)):
-                            log.warn(f'Discarding event from {message.device_label} with image of no persons.')
-                            try:
-                                # fetch another to test
-                                message = pending.popleft()
-                            except IndexError:
-                                # or void the last
-                                message = None
-                                break
-                            continue
-                        elif len(image_batch) < MediaGroupLimit.MAX_MEDIA_LENGTH:
+                    if TBot.include_image(message=str(message)) and message.image:
+                        if len(image_batch) < MediaGroupLimit.MAX_MEDIA_LENGTH:
                             caption_entities = None
                             if message.url:
                                 caption_entities = [
@@ -1487,6 +1483,7 @@ class TBot(AppThread, Closable):
                                         length=len(device_label),
                                         url=message.url)
                                 ]
+                            log.info(f'Batching image about {device_label} (t={message.timestamp}/it={message.image_timestamp}) for {chat_id!s} with caption "{message!s}". Batch size is {len(image_batch)}.')
                             image_batch.append(InputMediaPhoto(
                                 media=BytesIO(message.image),
                                 caption=str(message),
@@ -1497,23 +1494,20 @@ class TBot(AppThread, Closable):
                             except IndexError:
                                 # message remains set to the current
                                 break
-                            continue
                         else:
                             # enough is enough, re-enqueue the remainder
                             log.info(f'Re-enqueing {len(pending)} remaining events for {device_label} because image batch to send is now {len(image_batch)} items.')
                             pending_by_label[device_label] = pending
                             break
                     else:
-                        old_count = len(pending)
-                        if old_count == 0:
-                            # this is the only message
+                        log.warn(f'Discarding pending event from {message.device_label} with image ({message.timestamp}) of no persons.')
+                        try:
+                            # fetch another to test
+                            message = pending.popleft()
+                        except IndexError:
+                            # or void the last
+                            message = None
                             break
-                        oldest_message_timestamp = message.timestamp
-                        # take the latest message, tossing the current and the remainders
-                        message = pending.pop()
-                        log.info(f'Removing {old_count} redundant events for {device_label} (new/old: {message.timestamp}/{oldest_message_timestamp})')
-                        pending.clear()
-                        break
                 if not message:
                     continue
                 # send the message
@@ -1522,7 +1516,7 @@ class TBot(AppThread, Closable):
                         log.info(f'Sending image group to {chat_id!s} containing {len(image_batch)} images.')
                         await t_app.bot.send_media_group(chat_id=chat_id, media=image_batch, read_timeout=300, write_timeout=300, connect_timeout=300, pool_timeout=300)
                     elif message.image:
-                        log.info(f'Sending image about {device_label} ({message.timestamp}) to {chat_id!s} with caption "{message!s}"')
+                        log.info(f'Sending image about {device_label} (t={message.timestamp}/it={message.image_timestamp}) to {chat_id!s} with caption "{message!s}"')
                         caption_entities = None
                         if message.url:
                             caption_entities = [
