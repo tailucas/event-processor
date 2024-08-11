@@ -1437,7 +1437,7 @@ class TBot(AppThread, Closable):
                     except KeyError:
                         queued = deque()
                         pending_by_label[message.device_label] = queued
-                    log.info(f'Queueing message about {message.device_label} ({message.timestamp}) ({len(pending)} queued)...')
+                    log.info(f'Queueing message about {message.device_label} ({message.timestamp}) ({len(queued)} devices queued)...')
                     queued.append(message)
                 # rate-limit the send
                 # https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this
