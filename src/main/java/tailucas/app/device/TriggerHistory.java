@@ -14,7 +14,7 @@ public class TriggerHistory {
     private static Logger log = null;
 
     private Map<String, Stack<Instant>> triggerHistory;
-    private static final int maxTriggerHistory = 100;
+    private static final int maxTriggerHistory = 120;
 
     public TriggerHistory() {
         if (log == null) {
@@ -52,7 +52,7 @@ public class TriggerHistory {
     }
 
     public boolean isMultiTriggered(String deviceKey, int times, int seconds) {
-        if (times <= 0 && seconds <= 0) {
+        if (times <= 0 || seconds <= 0 || times > maxTriggerHistory) {
             throw new RuntimeException(String.format("Invalid inputs for times %s and seconds %s."));
         }
         if (!triggerHistory.containsKey(deviceKey)) {
@@ -65,7 +65,7 @@ public class TriggerHistory {
             log.debug("{} has triggered {} times, fewer than {}.", deviceKey, historyLenth, times);
             return false;
         }
-        var moment = history.get(history.size()-times);
+        var moment = history.get(times-1);
         final long interval = Duration.between(moment, Instant.now()).toSeconds();
         if (interval > seconds) {
             log.debug("{} has triggered {} times over a {}s interval beyond {}s.", deviceKey, times, interval, seconds);
