@@ -61,17 +61,24 @@ public class TriggerHistory {
         }
         var history = triggerHistory.get(deviceKey);
         final int historyLenth = history.size();
-        if (historyLenth < times) {
+        // Stack is still an underlying list so indexing works from the tail.
+        // Make "times" properly zero-index the list so that 1-times appropriately
+        // selects the most recent event
+        final int desiredIndex = (historyLenth-1)-(times-1);
+        if (desiredIndex < 0) {
             log.debug("{} has triggered {} times, fewer than {}.", deviceKey, historyLenth, times);
             return false;
         }
-        var moment = history.get(times-1);
-        final long interval = Duration.between(moment, Instant.now()).toSeconds();
-        if (interval > seconds) {
-            log.debug("{} has triggered {} times over a {}s interval beyond {}s.", deviceKey, times, interval, seconds);
+        log.debug("{} first event {}, last {}", deviceKey, history.firstElement(), history.lastElement());
+        var moment = history.get(desiredIndex);
+        final Instant now = Instant.now();
+        final long interval = Duration.between(moment, now).toSeconds();
+        log.debug("{} comparing moment {} with now {} against history ({} items)", deviceKey, moment, now, history.size());
+        if (interval >= seconds) {
+            log.debug("{} has triggered {} times over a {}s interval in at least {}s.", deviceKey, times, interval, seconds);
             return false;
         } else {
-            log.debug("{} has triggered {} times over a {}s interval within {}s.", deviceKey, times, interval, seconds);
+            log.debug("{} has triggered {} times over a {}s interval in under {}s.", deviceKey, times, interval, seconds);
         }
         return true;
     }
