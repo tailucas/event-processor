@@ -61,6 +61,7 @@
     <spring.main.keep-alive>true</spring.main.keep-alive>
     <server.port>8085</server.port>
     <metrics.port>9400</metrics.port>
+    <management.endpoints.web.exposure.include>health,info,loggers</management.endpoints.web.exposure.include>
   </properties>
 
   <dependencies>
