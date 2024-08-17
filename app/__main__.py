@@ -1239,7 +1239,7 @@ class EventProcessor(AppThread):
                         device_key = event_data['device_key']
                         device_label = event_data['device_label']
                         device_enable = event_data['device_state']
-                        log.info(f'Updating device {device_label}; enable: {device_enable}')
+                        log.info(f'Auto-scheduler updating device {device_label}; enable: {device_enable}')
                         device_config = InputConfig.query.filter_by(device_key=device_key).first()
                         device_config.device_enabled = device_enable
                         db.session.add(device_config)
@@ -1585,7 +1585,7 @@ class AutoScheduler(AppThread, Closable):
         return config_autoscheduler_enabled
 
     def update_device(self, device_key, device_label, device_state):
-        log.info('Updating {} to enabled={}'.format(device_key, device_label, device_state))
+        log.info('Scheduler triggered. {} to enabled={}'.format(device_key, device_label, device_state))
         self.socket.send_pyobj({
             'auto-scheduler': {
                 'device_key': device_key,
@@ -1594,6 +1594,7 @@ class AutoScheduler(AppThread, Closable):
             }})
 
     def _schedule(self, device_key, device_label, schedule_time, device_state):
+        log.info(f'Setting auto-schedule for {device_label}: enable? {device_state} at {schedule_time}.')
         schedule.every().day.at(schedule_time).do(self.update_device, device_key=device_key, device_label=device_label, device_state=device_state).tag(device_key)
 
     # noinspection PyBroadException
@@ -1617,9 +1618,10 @@ class AutoScheduler(AppThread, Closable):
                     next_message = False
                 if device_key:
                     # clear any previous schedule
+                    log.info(f'Removing auto-schedule for {device_label}.')
                     schedule.clear(device_key)
                     if auto_schedule:
-                        log.info(f'Setting auto-schedule for {device_label} to disable at {auto_schedule_disable} and enable at {auto_schedule_enable}...')
+                        log.info(f'Resetting auto-schedule for {device_label} to disable at {auto_schedule_disable} and enable at {auto_schedule_enable}.')
                         try:
                             # install a new scedule
                             self._schedule(
