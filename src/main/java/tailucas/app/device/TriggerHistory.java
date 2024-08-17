@@ -42,7 +42,9 @@ public class TriggerHistory {
     public synchronized void triggered(String deviceKey) {
         var history = triggerHistory.computeIfAbsent(deviceKey, s -> new Stack<Instant>());
         if (history.size() >= maxTriggerHistory) {
-            history.removeLast();
+            // remove from the head of the list
+            final var oldest = history.removeFirst();
+            log.debug("{} oldest event trimmed: {}", deviceKey, oldest);
         }
         history.push(Instant.now());
     }
