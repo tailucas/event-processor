@@ -1469,48 +1469,44 @@ class TBot(AppThread, Closable):
                 while True:
                     log.info(f'Now processing message about {message.device_label} ({message.timestamp}) ({len(pending)} queued)...')
                     # keep all image data as configured
-                    if TBot.include_image(message=str(message)) and message.image:
-                        if len(image_batch) < MediaGroupLimit.MAX_MEDIA_LENGTH:
-                            caption_entities = None
-                            if message.url:
-                                caption_entities = [
-                                    MessageEntity(
-                                        type=MessageEntity.TEXT_LINK,
-                                        offset=0,
-                                        length=len(device_label),
-                                        url=message.url)
-                                ]
-                            log.info(f'Batching image about {device_label} (t={message.timestamp}/it={message.image_timestamp}) for {chat_id!s} with caption "{message!s}". Batch size is {len(image_batch)}.')
-                            image_batch.append(InputMediaPhoto(
-                                media=BytesIO(message.image),
-                                caption=str(message),
-                                caption_entities=caption_entities))
-                            # pop images in insertion order since all will be taken
-                            try:
-                                message = pending.popleft()
-                            except IndexError:
-                                # message remains set to the current
+                    if message.image:
+                        if TBot.include_image(message=str(message)):
+                            if len(image_batch) < MediaGroupLimit.MAX_MEDIA_LENGTH:
+                                caption_entities = None
+                                if message.url:
+                                    caption_entities = [
+                                        MessageEntity(
+                                            type=MessageEntity.TEXT_LINK,
+                                            offset=0,
+                                            length=len(device_label),
+                                            url=message.url)
+                                    ]
+                                log.info(f'Batching image about {device_label} (t={message.timestamp}/it={message.image_timestamp}) for {chat_id!s} with caption "{message!s}". Batch size is {len(image_batch)}.')
+                                image_batch.append(InputMediaPhoto(
+                                    media=BytesIO(message.image),
+                                    caption=str(message),
+                                    caption_entities=caption_entities))
+                            else:
+                                # enough is enough, re-enqueue the remainder
+                                log.info(f'Re-enqueing {len(pending)} remaining events for {device_label} because image batch to send is now {len(image_batch)} items.')
+                                pending_by_label[device_label] = pending
                                 break
                         else:
-                            # enough is enough, re-enqueue the remainder
-                            log.info(f'Re-enqueing {len(pending)} remaining events for {device_label} because image batch to send is now {len(image_batch)} items.')
-                            pending_by_label[device_label] = pending
-                            break
-                    else:
-                        try:
-                            # fetch another to test
-                            message = pending.popleft()
-                            log.warn(f'Fetched newer pending message about {message.device_label} ({message.timestamp}).')
-                        except IndexError:
-                            # message remains set to the current
-                            break
+                            log.info(f'Filtering out image message about {message.device_label} ({message.timestamp}) ({len(pending)} queued).')
+                    try:
+                        # attempt to fetch a newer image
+                        message = pending.popleft()
+                        log.warn(f'Fetched newer pending message about {message.device_label} ({message.timestamp}).')
+                    except IndexError:
+                        # message remains set to the current
+                        break
                 # send the message
                 try:
                     if len(image_batch) > 0:
                         log.info(f'Sending image group to {chat_id!s} containing {len(image_batch)} images.')
                         await t_app.bot.send_media_group(chat_id=chat_id, media=image_batch, read_timeout=300, write_timeout=300, connect_timeout=300, pool_timeout=300)
-                    elif not message.image:
-                        log.info(f'Sending message about {device_label} ({message.timestamp}) to {chat_id!s} with caption "{message!s}"')
+                    if not message.image:
+                        log.info(f'Sending non-image message about {device_label} ({message.timestamp}) to {chat_id!s} with caption "{message!s}"')
                         await t_app.bot.send_message(chat_id=chat_id,
                                                 text=str(message),
                                                 parse_mode='Markdown')
