@@ -1565,11 +1565,10 @@ class TBot(AppThread, Closable):
             self._shutdown = True
 
 
-class AutoScheduler(AppThread, Closable):
+class AutoScheduler(AppThread):
 
     def __init__(self):
         AppThread.__init__(self, name=self.__class__.__name__)
-        Closable.__init__(self, connect_url=URL_WORKER_APP, socket_type=zmq.PUSH)
 
     @property
     def is_enabled(self):
@@ -1580,22 +1579,22 @@ class AutoScheduler(AppThread, Closable):
                 config_autoscheduler_enabled = bool(int(config_autoscheduler.config_value))
         return config_autoscheduler_enabled
 
-    def update_device(self, device_key, device_label, device_state):
-        log.info('Scheduler triggered. {} to enabled={}'.format(device_key, device_label, device_state))
-        self.socket.send_pyobj({
-            'auto-scheduler': {
-                'device_key': device_key,
-                'device_label': device_label,
-                'device_state': device_state
-            }})
+    def update_device(device_key, device_label, device_state):
+        log.info('Scheduler triggered. {} to enabled={}'.format(device_label, device_state))
+        with exception_handler(connect_url=URL_WORKER_APP, socket_type=zmq.PUSH, and_raise=False, shutdown_on_error=False) as zmq_socket:
+            zmq_socket.send_pyobj({
+                'auto-scheduler': {
+                    'device_key': device_key,
+                    'device_label': device_label,
+                    'device_state': device_state
+                }})
 
     def _schedule(self, device_key, device_label, schedule_time, device_state):
         log.info(f'Setting auto-schedule for {device_label}: enable? {device_state} at {schedule_time}.')
-        schedule.every().day.at(schedule_time).do(self.update_device, device_key=device_key, device_label=device_label, device_state=device_state).tag(device_key)
+        schedule.every().day.at(schedule_time).do(AutoScheduler.update_device, device_key, device_label, device_state).tag(device_key)
 
     # noinspection PyBroadException
     def run(self):
-        self.get_socket()
         if not self.is_enabled:
             log.warn(f'Auto-scheduler is not enabled; scheduled changes will not run.')
         with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, socket_type=zmq.PULL, and_raise=False, shutdown_on_error=True) as zmq_socket:
@@ -1637,7 +1636,6 @@ class AutoScheduler(AppThread, Closable):
                 # don't spin
                 if not next_message:
                     threads.interruptable_sleep.wait(10)
-        self.close()
 
 
 class ApiServer(Thread):
