@@ -1407,7 +1407,7 @@ class TBot(AppThread, Closable):
                 if isinstance(event, dict):
                     input_device: Device = None
                     output_device: Device = None
-                    message: BotMessage = None
+                    message = None
                     try:
                         if 'active_input' in event.keys():
                             input_device = Device(**event['active_input'])
@@ -1428,7 +1428,7 @@ class TBot(AppThread, Closable):
                         timestamp = make_timestamp(as_tz=user_tz)
                     log.debug(f'{input_device!s};{output_device!s};{timestamp!s}')
                     # build the message
-                    if not message and input_device:
+                    if message is None and input_device is not None:
                         message = TBot.build_device_message(timestamp=timestamp, input_device=input_device)
                     # always queue the message
                     message.timestamp = make_unix_timestamp(timestamp=timestamp)

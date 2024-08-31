@@ -175,10 +175,10 @@ public class Event implements Runnable {
             // record trigger event
             triggerLatchHistory.triggered(deviceKey);
             if (!deviceConfig.isDeviceEnabled()) {
-                log.warn("{} is disabled but would otherwise trigger outputs because {}", deviceDescription, device.getTriggerStateDescription());
+                log.warn("{} is disabled but would otherwise trigger outputs because {}.", deviceDescription, device.getTriggerStateDescription());
                 return;
             }
-            log.info("{} will trigger outputs because {}", deviceDescription, device.getTriggerStateDescription());
+            log.info("{} will trigger outputs because {}.", deviceDescription, device.getTriggerStateDescription());
             List<OutputConfig> linkedOutputs = configProvider.getLinkedOutputs(deviceConfig);
             log.debug("{} outputs {}", deviceDescription, linkedOutputs);
             if (linkedOutputs == null) {

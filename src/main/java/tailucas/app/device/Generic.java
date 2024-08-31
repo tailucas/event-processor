@@ -24,6 +24,8 @@ public interface Generic {
     public Boolean isInput();
     @JsonProperty("is_output")
     public Boolean isOutput();
+    @JsonProperty("event_detail")
+    public String getEventDetail();
     @JsonIgnore
     public Config getConfig();
     @JsonIgnore

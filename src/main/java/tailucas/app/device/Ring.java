@@ -39,17 +39,21 @@ public class Ring implements Generic {
 
     public enum InactiveStates {
         OFF,
+        ARMING,
         DISARMED,
         ARMED_HOME,
-        ARMED_AWAY
+        ARMED_AWAY,
+        PENDING
     }
 
     @JsonIgnore
     protected static final Map<String, InactiveStates> nonTriggerStates = Map.of(
         InactiveStates.OFF.name(), InactiveStates.OFF,
+        InactiveStates.ARMING.name(), InactiveStates.ARMING,
         InactiveStates.DISARMED.name(), InactiveStates.DISARMED,
         InactiveStates.ARMED_HOME.name(), InactiveStates.ARMED_HOME,
-        InactiveStates.ARMED_AWAY.name(), InactiveStates.ARMED_AWAY);
+        InactiveStates.ARMED_AWAY.name(), InactiveStates.ARMED_AWAY,
+        InactiveStates.PENDING.name(), InactiveStates.PENDING);
 
     @JsonIgnore
     private static Logger log = null;
@@ -294,7 +298,7 @@ public class Ring implements Generic {
                         updateSubjectDescription = WordUtils.capitalizeFully(updateSubjectDescription);
                         if (triggers.containsKey(updateSubject)) {
                             if (!nonTriggerStates.containsKey(state.toUpperCase())) {
-                                log.info("{}: {} ({}) is {}.", deviceDescripion, updateSubjectDescription, updateSubject, state);
+                                log.info("{}: {} ({}) is in a trigger state {}.", deviceDescripion, updateSubjectDescription, updateSubject, state);
                                 triggerOutput = true;
                                 triggerStateDescription = String.format("%s (%s) is %s", updateSubjectDescription, updateSubject, state);
                             } else {
@@ -311,6 +315,10 @@ public class Ring implements Generic {
                 break;
         }
         return triggerOutput;
+    }
+    @Override
+    public String getEventDetail() {
+        return triggerStateDescription;
     }
     @JsonIgnore
     @Override
