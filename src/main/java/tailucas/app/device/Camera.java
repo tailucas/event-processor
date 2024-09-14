@@ -18,7 +18,7 @@ public class Camera extends Device {
             log.warn("{} has no image data.", getDeviceLabel());
             return false;
         }
-        triggerStateDescription = String.format("%s bytes of image data present.", image.length);
+        triggerStateDescription = String.format("%s bytes of image data present", image.length);
         return true;
     }
     @Override

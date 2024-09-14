@@ -238,9 +238,21 @@ public class Ring implements Generic {
         throw new UnsupportedOperationException("Unimplemented method 'lastTriggered'");
     }
     @JsonIgnore
+    private String getUpdateSubjectDescription() {
+        if (updateSubject == null) {
+            return null;
+        }
+        String updateSubjectDescription = updateSubject.replace('_', ' ');
+        updateSubjectDescription = WordUtils.capitalizeFully(updateSubjectDescription);
+        return updateSubjectDescription;
+    }
+    @JsonIgnore
     public boolean isHeartbeat() {
         boolean statusUpdate = false;
-        final String deviceDescripion = getDeviceDescription();
+        String updateSubjectDescription = getDeviceDescription();
+        if (updateSubjectDescription == null) {
+            updateSubjectDescription = getUpdateSubjectDescription();
+        }
         final String updateType = getUpdateType();
         switch(updateType) {
             case "attributes":
@@ -248,7 +260,7 @@ public class Ring implements Generic {
                 break;
             case "status":
                 statusUpdate = true;
-                log.info("{} status is {}.", deviceDescripion, state);
+                log.info("{} status is {}.", updateSubjectDescription, state);
                 break;
             case "state":
                 switch (updateSubject) {
@@ -265,7 +277,7 @@ public class Ring implements Generic {
                             sb.append(String.format(" Tamper status is %s.", getTamperStatus()));
                         }
                         if (sb.length() > 0) {
-                            log.info("{} health:{}", deviceDescripion, sb.toString());
+                            log.info("{} health:{}", updateSubjectDescription, sb.toString());
                         }
                         break;
                     default:
@@ -282,7 +294,11 @@ public class Ring implements Generic {
     @Override
     public boolean wouldTriggerOutput(InputConfig config) {
         boolean triggerOutput = false;
-        final String deviceDescripion = getDeviceDescription();
+        final String deviceDescription = getDeviceDescription();
+        String updateSubjectDescription = getUpdateSubjectDescription();
+        if (deviceDescription != null) {
+            updateSubjectDescription = String.format("%s: %s", deviceDescription, updateSubjectDescription);
+        }
         final String updateType = getUpdateType();
         switch(updateType) {
             case "attributes":
@@ -294,18 +310,16 @@ public class Ring implements Generic {
                     case "info":
                         break;
                     default:
-                        String updateSubjectDescription = updateSubject.replace('_', ' ');
-                        updateSubjectDescription = WordUtils.capitalizeFully(updateSubjectDescription);
                         if (triggers.containsKey(updateSubject)) {
                             if (!nonTriggerStates.containsKey(state.toUpperCase())) {
-                                log.info("{}: {} ({}) is in a trigger state {}.", deviceDescripion, updateSubjectDescription, updateSubject, state);
+                                log.info("{} is in a trigger state {}.", updateSubjectDescription, state);
                                 triggerOutput = true;
-                                triggerStateDescription = String.format("%s (%s) is %s", updateSubjectDescription, updateSubject, state);
+                                triggerStateDescription = String.format("%s is %s", updateSubjectDescription, state);
                             } else {
-                                log.warn("{}: {} ({}) is not in a trigger state {}.", deviceDescripion, updateSubjectDescription, updateSubject, state);
+                                log.warn("{} is not in a trigger state {}.", updateSubjectDescription, state);
                             }
                         } else {
-                            log.warn("{}: {} ({}) is not a trigger (state is {}).", deviceDescripion, updateSubjectDescription, updateSubject, state);
+                            log.warn("{} is not a trigger (state is {}).", updateSubjectDescription, state);
                         }
                         break;
                 }
@@ -318,7 +332,8 @@ public class Ring implements Generic {
     }
     @Override
     public String getEventDetail() {
-        return triggerStateDescription;
+        // Nothing to add in text message
+        return null;
     }
     @JsonIgnore
     @Override

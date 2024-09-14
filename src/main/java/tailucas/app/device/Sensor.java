@@ -52,7 +52,7 @@ public class Sensor extends Device {
     }
     @Override
     public boolean wouldTriggerOutput(InputConfig deviceConfig) {
-        triggerStateDescription = String.format("%s sample value %s outside normal value %s.", inputLabel, sampleValue, normalValue);
+        triggerStateDescription = String.format("%s sample value %s outside normal value %s", inputLabel, sampleValue, normalValue);
         return isActive();
     }
     @Override

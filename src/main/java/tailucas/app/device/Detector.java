@@ -26,7 +26,7 @@ public class Detector extends Device {
     @Override
     public boolean wouldTriggerOutput(InputConfig deviceConfig) {
         if (state != null && activeStates.contains(state.toLowerCase())) {
-            triggerStateDescription = String.format("%s is in an active state %s.", getDeviceLabel(), state);
+            triggerStateDescription = String.format("%s is in an active state %s", getDeviceLabel(), state);
             return true;
         }
         return false;

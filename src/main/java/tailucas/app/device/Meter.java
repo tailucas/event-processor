@@ -35,12 +35,12 @@ public class Meter extends Device {
         log.debug("Evaluating meter configuration {}", meterConfig);
         final Integer meterLowLimit = meterConfig.getMeterLowLimit();
         if (meterLowLimit != null && registerReading < meterLowLimit) {
-            triggerStateDescription = String.format("register value %s is below the configured limit of %s.", registerReading, meterLowLimit);
+            triggerStateDescription = String.format("register value %s is below the configured limit of %s", registerReading, meterLowLimit);
             return true;
         }
         final Integer meterHighLimit = meterConfig.getMeterHighLimit();
         if (meterHighLimit != null && registerReading > meterHighLimit) {
-            triggerStateDescription = String.format("register value %s is above the configured limit of %s.", registerReading, meterHighLimit);
+            triggerStateDescription = String.format("register value %s is above the configured limit of %s", registerReading, meterHighLimit);
             return true;
         }
         return false;
