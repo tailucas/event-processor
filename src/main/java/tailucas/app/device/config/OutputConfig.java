@@ -1,5 +1,6 @@
 package tailucas.app.device.config;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class OutputConfig extends Config {
@@ -50,4 +51,13 @@ public class OutputConfig extends Config {
                 + ", deviceParams=" + deviceParams + ", triggerTopic=" + triggerTopic + ", trigger_interval="
                 + trigger_interval + ", device_enabled=" + device_enabled + "]";
     }
+    @JsonIgnore
+    @JsonProperty
+    private Boolean auto_schedule;
+    @JsonIgnore
+    @JsonProperty
+    private String auto_schedule_enable;
+    @JsonIgnore
+    @JsonProperty
+    private String auto_schedule_disable;
 }

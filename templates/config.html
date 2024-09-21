@@ -18,34 +18,34 @@
     </div>
 </div>
 <div id="accordion">
-    {% for input_device in inputs %}
+    {% for device in devices %}
     <div class="card">
         <div class="card-header" id="heading{{loop.index}}">
             <h4 class="mb-0">
                 <button class="btn btn-link" data-toggle="collapse" data-target="#collapse{{loop.index}}" aria-expanded="true" aria-controls="collapse{{loop.index}}">
-                    {{ input_device.device_label }}{% if input_device.auto_schedule %} <span class="badge badge-pill badge-info">Customized</span>{% endif %}
+                    {{ device.device_label }}{% if device.auto_schedule %} <span class="badge badge-pill badge-info">Customized</span>{% endif %}
                 </button>
             </h4>
         </div>
-        <div id="collapse{{loop.index}}" class="collapse{% if input_device.id == saved_device_id or (loop.first and saved_device_id is none) %} show{% endif %}" aria-labelledby="heading{{loop.index}}" data-parent="#accordion">
+        <div id="collapse{{loop.index}}" class="collapse{% if device.device_key == saved_device_id or (loop.first and saved_device_id is none) %} show{% endif %}" aria-labelledby="heading{{loop.index}}" data-parent="#accordion">
             <div class="card-body">
                 <form class="form" role="form" method='POST'>
                     <div class="form-group">
                         <div class="custom-control custom-checkbox">
-                            <input type="checkbox" class="custom-control-input" id="customCheck{{loop.index}}" name="auto_schedule" value="{{ input_device.device_key }}"{% if input_device.auto_schedule %} checked=""{% endif %}>
+                            <input type="checkbox" class="custom-control-input" id="customCheck{{loop.index}}" name="auto_schedule" value="{{ device.device_key }}"{% if device.auto_schedule %} checked=""{% endif %}>
                             <label class="custom-control-label" for="customCheck{{loop.index}}">Auto-schedule</label>
                         </div>
                     </div>
                     <label>Enable at (UTC):</label>
                     <div class="input-group clockpicker" data-autoclose="true">
-                        <input type="text" name="auto_schedule_enable" class="form-control" placeholder="22:30" value="{{ input_device.auto_schedule_enable if input_device.auto_schedule_enable }}">
+                        <input type="text" name="auto_schedule_enable" class="form-control" placeholder="22:30" value="{{ device.auto_schedule_enable if device.auto_schedule_enable }}">
                     </div>
                     <label>Disable at (UTC):</label>
                     <div class="input-group clockpicker" data-autoclose="true">
-                        <input type="text" name="auto_schedule_disable" class="form-control" placeholder="05:30" value="{{ input_device.auto_schedule_disable if input_device.auto_schedule_disable }}">
+                        <input type="text" name="auto_schedule_disable" class="form-control" placeholder="05:30" value="{{ device.auto_schedule_disable if device.auto_schedule_disable }}">
                     </div>
                     <div class="form-group">
-                        <button type="submit" class="btn btn-primary" name="device_id" value="{{ input_device.id }}"><i class="far fa-save"></i> Save</button>
+                        <button type="submit" class="btn btn-primary" name="device_id" value="{{ device.device_key }}"><i class="far fa-save"></i> Save</button>
                     </div>
                 </form>
             </div>

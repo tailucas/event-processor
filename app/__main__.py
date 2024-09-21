@@ -295,9 +295,12 @@ class OutputConfig(Base):
     trigger_topic = Column(String(100))
     trigger_interval = Column(Integer)
     device_enabled = Column(Boolean)
+    auto_schedule = Column(Boolean)
+    auto_schedule_enable = Column(String(5))
+    auto_schedule_disable = Column(String(5))
     links = relationship('OutputLink', backref='output_config', cascade='all, delete-orphan', lazy='dynamic')
 
-    def __init__(self, device_key, device_type, device_label, device_params, trigger_topic, trigger_interval, device_enabled):
+    def __init__(self, device_key, device_type, device_label, device_params, trigger_topic, trigger_interval, device_enabled, auto_schedule, auto_schedule_enable, auto_schedule_disable):
         self.device_key = device_key
         self.device_type = device_type
         self.device_label = device_label
@@ -305,6 +308,9 @@ class OutputConfig(Base):
         self.trigger_topic = trigger_topic
         self.trigger_interval = trigger_interval
         self.device_enabled = device_enabled
+        self.auto_schedule = auto_schedule
+        self.auto_schedule_enable = auto_schedule_enable
+        self.auto_schedule_disable = auto_schedule_disable
 
     def as_dict(self):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
@@ -509,7 +515,10 @@ async def api_device_info(di: DeviceInfo):
                     device_params=None,
                     trigger_topic=None,
                     trigger_interval=None,
-                    device_enabled=None))
+                    device_enabled=None,
+                    auto_schedule=None,
+                    auto_schedule_enable=None,
+                    auto_schedule_disable=None))
                 db.session.commit()
     with exception_handler(connect_url=URL_WORKER_APP, and_raise=False, shutdown_on_error=True) as zmq_socket:
         di_model = di.model_dump()
@@ -592,7 +601,7 @@ def index():
             update_meter_config(input_device_key=device_key, meter_config=meter_cfg, register_value=reset_value)
             # send IoT message
             # FIXME
-            log.warn(f'No handler to send IOT message: {iot_message}')
+            log.warning(f'No handler to send IOT message: {iot_message}')
         elif 'device_key' in request.form:
             device_key = request.form['device_key']
             input_cfg = inputs.input_config[device_key]
@@ -656,19 +665,25 @@ def show_config():
     saved_device_id = None
     if request.method == 'POST':
         if 'device_id' in request.form:
-            saved_device_id = int(request.form['device_id'])
-            input = InputConfig.query.filter_by(id=saved_device_id).first()
+            saved_device_id = request.form['device_id']
+            device_config = InputConfig.query.filter_by(device_key=saved_device_id).first()
+            if device_config is None:
+                device_config = OutputConfig.query.filter_by(device_key=saved_device_id).first()
             # sync up the device model for page load
-            input.auto_schedule = bool(request.form.get('auto_schedule'))
-            input.auto_schedule_enable = request.form['auto_schedule_enable']
-            input.auto_schedule_disable = request.form['auto_schedule_disable']
-            db.session.add(input)
+            auto_schedule_enabled = bool(request.form.get('auto_schedule'))
+            auto_schedule_enable = request.form['auto_schedule_enable']
+            auto_schedule_disable = request.form['auto_schedule_disable']
+            log.info(f'Saving auto-schedule configuration for {saved_device_id} (enabled? {auto_schedule_enabled} enable at {auto_schedule_enable}, disable at {auto_schedule_disable})')
+            device_config.auto_schedule = auto_schedule_enabled
+            device_config.auto_schedule_enable = auto_schedule_enable
+            device_config.auto_schedule_disable = auto_schedule_disable
+            db.session.add(device_config)
             db.session.commit()
             # invalidate remote cache
-            invalidate_remote_config(device_key=input.device_key)
+            invalidate_remote_config(device_key=device_config.device_key)
             # open IPC
             with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, and_raise=False) as zmq_socket:
-                zmq_socket.send_pyobj((input.device_key, str(input), input.auto_schedule, input.auto_schedule_enable, input.auto_schedule_disable))
+                zmq_socket.send_pyobj((device_config.device_key, str(device_config), device_config.auto_schedule, device_config.auto_schedule_enable, device_config.auto_schedule_disable))
         if 'general_config' in request.form:
             autoscheduler_enabled = bool(request.form.get('autoscheduler_enabled'))
             config = GeneralConfig.query.filter_by(config_key=CONFIG_AUTO_SCHEDULER).first()
@@ -678,14 +693,16 @@ def show_config():
                 config.config_value = autoscheduler_enabled
             db.session.add(config)
             db.session.commit()
-    inputs = InputConfig.query.order_by(InputConfig.device_key).all()
+    devices = []
+    devices.extend(InputConfig.query.order_by(InputConfig.device_key).all())
+    devices.extend(OutputConfig.query.order_by(OutputConfig.device_key).all())
     config_autoscheduler = GeneralConfig.query.filter_by(config_key=CONFIG_AUTO_SCHEDULER).first()
     config_autoscheduler_enabled = False
     if config_autoscheduler:
         config_autoscheduler_enabled = bool(int(config_autoscheduler.config_value))
     InputConfig.query.filter_by(id=saved_device_id).first()
     return render_template('config.html',
-                           inputs=inputs,
+                           devices=devices,
                            saved_device_id=saved_device_id,
                            config_autoscheduler_enabled=config_autoscheduler_enabled)
 
@@ -1032,7 +1049,7 @@ def invalidate_remote_config(device_key):
         )
         log.info(f'{response.status_code} response from {api_method} API call to {api_server} to invalidate configuration for {device_key}: {response!s}')
     except ConnectionError as e:
-        log.warn(f'Unable to call {api_method} API at {api_server} to invalidate configuration for {device_key}: {e!s}')
+        log.warning(f'Unable to call {api_method} API at {api_server} to invalidate configuration for {device_key}: {e!s}')
 
 
 class BotMessage(BaseModel):
@@ -1101,7 +1118,7 @@ class EventProcessor(AppThread):
         if device_key not in device_origin:
             device_origin[device_key] = event_origin
         elif device_origin[device_key] != event_origin:
-            log.warn(f'{device_key} already known from {device_origin[device_key]} but also sent by {event_origin}.')
+            log.warning(f'{device_key} already known from {device_origin[device_key]} but also sent by {event_origin}.')
         if device_key not in input_outputs:
             input_outputs[device_key] = device
             return 1
@@ -1131,7 +1148,9 @@ class EventProcessor(AppThread):
         # https://flask-sqlalchemy.palletsprojects.com/en/3.0.x/quickstart/#create-the-tables
         flask_app.app_context().push()
         # load DB config
-        device_configs = InputConfig.query.all()
+        device_configs = []
+        device_configs.extend(InputConfig.query.all())
+        device_configs.extend(OutputConfig.query.all())
         # load auto-scheduler
         with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, and_raise=False) as zmq_socket:
             for device_config in device_configs:
@@ -1202,7 +1221,7 @@ class EventProcessor(AppThread):
                         self.bot.send_pyobj(sms_message)
                         log.debug(f'Sent payload to bot...')
                     else:
-                        log.warn(f'Not sending message to Telegram bot disabled with feature flag: {sms_message}')
+                        log.warning(f'Not sending message to Telegram bot disabled with feature flag: {sms_message}')
                     continue
                 for event_origin, event_data in list(event.items()):
                     if not isinstance(event_data, dict):
@@ -1241,6 +1260,8 @@ class EventProcessor(AppThread):
                         device_enable = event_data['device_state']
                         log.info(f'Auto-scheduler updating device {device_label}; enable: {device_enable}')
                         device_config = InputConfig.query.filter_by(device_key=device_key).first()
+                        if device_config is None:
+                            device_config = OutputConfig.query.filter_by(device_key=device_key).first()
                         device_config.device_enabled = device_enable
                         db.session.add(device_config)
                         db.session.commit()
@@ -1339,7 +1360,7 @@ class EventProcessor(AppThread):
                         if features.is_enabled("telegram-bot"):
                             self.bot.send_pyobj(BotMessage(device_label='notification', message=bot_reply).model_dump())
                         else:
-                            log.warn(f'Not sending message to Telegram bot disabled with feature flag: {bot_reply}')
+                            log.warning(f'Not sending message to Telegram bot disabled with feature flag: {bot_reply}')
                         # stop processing
                         if not bot_command_base.startswith('/report'):
                             # no further processing needed after enable/disable
@@ -1418,13 +1439,13 @@ class TBot(AppThread, Closable):
                         else:
                             message = BotMessage(**event)
                     except Exception as e:
-                        log.warn('Bot message unpack problem {e!s}', exc_info=True)
+                        log.warning('Bot message unpack problem {e!s}', exc_info=True)
                         continue
                     timestamp = None
                     if 'timestamp' in event:
                         timestamp = make_timestamp(timestamp=event['timestamp'], as_tz=user_tz)
                     else:
-                        log.warn('No timestamp included in event message; using "now"')
+                        log.warning('No timestamp included in event message; using "now"')
                         timestamp = make_timestamp(as_tz=user_tz)
                     log.debug(f'{input_device!s};{output_device!s};{timestamp!s}')
                     # build the message
@@ -1442,11 +1463,11 @@ class TBot(AppThread, Closable):
                 # rate-limit the send
                 # https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this
                 if (now < call_again_timestamp):
-                    log.warn(f'Enforced rate limiting message queue (of {len(pending_by_label)} devices). Telegram asked for {call_again_timestamp - now}s backoff.')
+                    log.warning(f'Enforced rate limiting message queue (of {len(pending_by_label)} devices). Telegram asked for {call_again_timestamp - now}s backoff.')
                     continue
                 time_since_sent = now - last_sent
                 if time_since_sent < min_send_interval:
-                    log.warn(f'Elective rate limiting message queue (of {len(pending_by_label)} devices). Time since last send is {time_since_sent}s, min interval is {min_send_interval}s.')
+                    log.warning(f'Elective rate limiting message queue (of {len(pending_by_label)} devices). Time since last send is {time_since_sent}s, min interval is {min_send_interval}s.')
                     continue
                 # dequeue the message
                 # since we favour brevity over temporal precision, access the event
@@ -1496,7 +1517,7 @@ class TBot(AppThread, Closable):
                     try:
                         # attempt to fetch a newer image
                         message = pending.popleft()
-                        log.warn(f'Fetched newer pending message about {message.device_label} ({message.timestamp}).')
+                        log.warning(f'Fetched newer pending message about {message.device_label} ({message.timestamp}).')
                     except IndexError:
                         # message remains set to the current
                         break
@@ -1512,10 +1533,10 @@ class TBot(AppThread, Closable):
                                                 parse_mode='Markdown')
                 except RetryAfter as e:
                     call_again_timestamp = now + e.retry_after
-                    log.warn(f'Telegram asks to call again in {e.retry_after}s. Deferring calls until {call_again_timestamp}.')
+                    log.warning(f'Telegram asks to call again in {e.retry_after}s. Deferring calls until {call_again_timestamp}.')
                     continue
                 except TimedOut as e:
-                    log.warn(f'Telegram send timeout: {e.message}.')
+                    log.warning(f'Telegram send timeout: {e.message}.')
                     continue
                 # update send time
                 last_sent = now
@@ -1596,7 +1617,7 @@ class AutoScheduler(AppThread):
     # noinspection PyBroadException
     def run(self):
         if not self.is_enabled:
-            log.warn(f'Auto-scheduler is not enabled; scheduled changes will not run.')
+            log.warning(f'Auto-scheduler is not enabled; scheduled changes will not run.')
         with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, socket_type=zmq.PULL, and_raise=False, shutdown_on_error=True) as zmq_socket:
             while not threads.shutting_down:
                 next_message = False
@@ -1689,7 +1710,7 @@ def main():
                 chat_id=app_config.getint('telegram', 'chat_room_id'),
                 sns_fallback=app_config.getboolean('telegram', 'sns_fallback_enabled'))
         else:
-            log.warn(f'Not running Telegram bot client due to feature flag.')
+            log.warning(f'Not running Telegram bot client due to feature flag.')
         # start the nanny
         nanny = threading.Thread(
             daemon=True,

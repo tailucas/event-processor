@@ -1,5 +1,6 @@
 package tailucas.app.device.config;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class InputConfig extends Config {
@@ -11,12 +12,6 @@ public class InputConfig extends Config {
     protected String deviceLabel;
     @JsonProperty
     protected Boolean customized;
-    @JsonProperty("auto_schedule")
-    protected Boolean autoSchedule;
-    @JsonProperty("auto_schedule_enable")
-    protected String autoScheduleEnable;
-    @JsonProperty("auto_schedule_disable")
-    protected String autoScheduleDisable;
     @JsonProperty("device_enabled")
     protected Boolean deviceEnabled;
     @JsonProperty("trigger_latch_duration")
@@ -47,18 +42,6 @@ public class InputConfig extends Config {
         }
         return customized.booleanValue();
     }
-    public boolean isAutoSchedule() {
-        if (autoSchedule == null) {
-            return false;
-        }
-        return autoSchedule.booleanValue();
-    }
-    public String getAutoScheduleEnable() {
-        return autoScheduleEnable;
-    }
-    public String getAutoScheduleDisable() {
-        return autoScheduleDisable;
-    }
     public boolean isDeviceEnabled() {
         if (deviceEnabled == null) {
             return false;
@@ -86,11 +69,19 @@ public class InputConfig extends Config {
     @Override
     public String toString() {
         return "InputConfig [deviceKey=" + deviceKey + ", deviceType=" + deviceType + ", deviceLabel=" + deviceLabel
-                + ", customized=" + customized + ", autoSchedule=" + autoSchedule + ", autoScheduleEnable="
-                + autoScheduleEnable + ", autoScheduleDisable=" + autoScheduleDisable + ", deviceEnabled="
+                + ", customized=" + customized + ", autoSchedule="
                 + deviceEnabled + ", triggerLatchDuration=" + triggerLatchDuration
                 + ", multiTriggerRate=" + multiTriggerRate
                 + ", multiTriggerInterval=" + multiTriggerInterval + ", groupName=" + groupName + ", infoNotify="
                 + infoNotify + "]";
     }
+    @JsonIgnore
+    @JsonProperty
+    private Boolean auto_schedule;
+    @JsonIgnore
+    @JsonProperty
+    private String auto_schedule_enable;
+    @JsonIgnore
+    @JsonProperty
+    private String auto_schedule_disable;
 }
