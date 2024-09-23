@@ -15,7 +15,7 @@
                         <div class="card-body">
                             <form role="form" method='POST'>
                                 <div class="form-group">
-                                    <label><input type="checkbox" name="device_enabled" value="{{ device.device_enabled }}"{% if device.device_enabled %} checked{% endif %}>Device Enabled</label>
+                                    <label><input type="checkbox" name="device_enabled" value="{{ device.device_key }}"{% if device.device_enabled %} checked{% endif %}>Device Enabled</label>
                                 </div>
                                 <div class="form-group">
                                     <label for="device_params">Device-specific parameters:</label>
