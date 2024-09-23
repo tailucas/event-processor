@@ -973,7 +973,7 @@ def output_config():
             output_config.trigger_interval = int(request.form['trigger_interval'])
         else:
             output_config.trigger_interval = None
-        if output_config.device_enabled in request.form.getlist('device_enabled'):
+        if output_config.device_key in request.form.getlist('device_enabled'):
             output_config.device_enabled = True
         else:
             output_config.device_enabled = None
@@ -983,7 +983,7 @@ def output_config():
         invalidate_remote_config(device_key=output_config.device_key)
     outputs = OutputConfig.query.order_by(OutputConfig.device_key).all()
     return render_template('output_config.html',
-                           outputs=outputs,
+                           devices=outputs,
                            saved_device_id=saved_device_id)
 
 

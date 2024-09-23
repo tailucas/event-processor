@@ -2,35 +2,35 @@
 {% set active_page = "output_config" %}
 {% block body %}
             <div id="accordion">
-                {% for output_device in outputs %}
+                {% for device in devices %}
                 <div class="card">
                     <div class="card-header" id="heading{{loop.index}}">
                         <h4 class="mb-0">
                             <button class="btn btn-link" data-toggle="collapse" data-target="#collapse{{loop.index}}" aria-expanded="true" aria-controls="collapse{{loop.index}}">
-                                {{ output_device.device_label }}{% if output_device.device_params %} <span class="badge badge-pill badge-info">Customized</span>{% endif %}
+                                {{ device.device_label }}{% if device.device_params %} <span class="badge badge-pill badge-info">Customized</span>{% endif %}
                             </button>
                         </h4>
                     </div>
-                    <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if output_device.id == saved_device_id or (loop.first and saved_device_id is none) %} show{% endif %}" aria-labelledby="heading{{loop.index}}" data-parent="#accordion">
+                    <div id="collapse{{loop.index}}" class="panel-collapse collapse{% if device.id == saved_device_id or (loop.first and saved_device_id is none) %} show{% endif %}" aria-labelledby="heading{{loop.index}}" data-parent="#accordion">
                         <div class="card-body">
                             <form role="form" method='POST'>
                                 <div class="form-group">
-                                    <label><input type="checkbox" name="device_enabled" value="{{ output_device.device_enabled }}"{% if output_device.device_enabled %} checked{% endif %}>Device Enabled</label>
+                                    <label><input type="checkbox" name="device_enabled" value="{{ device.device_enabled }}"{% if device.device_enabled %} checked{% endif %}>Device Enabled</label>
                                 </div>
                                 <div class="form-group">
                                     <label for="device_params">Device-specific parameters:</label>
-                                    <input id="device_params" class="form-control" type="text" name="device_params" placeholder="unset" value="{{ output_device.device_params if output_device.device_params }}">
+                                    <input id="device_params" class="form-control" type="text" name="device_params" placeholder="unset" value="{{ device.device_params if device.device_params }}">
                                 </div>
                                 <div class="form-group">
                                     <label for="trigger_topic">MQ Topic to trigger output:</label>
-                                    <input id="trigger_topic" class="form-control" type="text" name="trigger_topic" placeholder="topic" value="{{ output_device.trigger_topic if output_device.trigger_topic }}">
+                                    <input id="trigger_topic" class="form-control" type="text" name="trigger_topic" placeholder="topic" value="{{ device.trigger_topic if device.trigger_topic }}">
                                 </div>
                                 <div class="form-group">
                                     <label for="trigger_interval">Minimum interval between triggers from multiple inputs:</label>
-                                    <input id="trigger_interval" class="form-control" type="text" name="trigger_interval" placeholder="seconds" value="{{ output_device.trigger_interval if output_device.trigger_interval }}">
+                                    <input id="trigger_interval" class="form-control" type="text" name="trigger_interval" placeholder="seconds" value="{{ device.trigger_interval if device.trigger_interval }}">
                                 </div>
                                 <div class="form-group">
-                                    <button type="submit" class="btn btn-primary" name="device_id" value="{{ output_device.id }}"><i class="far fa-save"></i> Save</button>
+                                    <button type="submit" class="btn btn-primary" name="device_id" value="{{ device.id }}"><i class="far fa-save"></i> Save</button>
                                 </div>
                             </form>
                         </div>
