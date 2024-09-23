@@ -3,6 +3,7 @@ import logging.handlers
 
 import asyncio
 import builtins
+import locale
 import os
 import requests
 import schedule
@@ -704,7 +705,8 @@ def show_config():
     return render_template('config.html',
                            devices=devices,
                            saved_device_id=saved_device_id,
-                           config_autoscheduler_enabled=config_autoscheduler_enabled)
+                           config_autoscheduler_enabled=config_autoscheduler_enabled,
+                           tz_name=str(user_tz))
 
 
 @api_app.get("/api/input_configs")
@@ -1611,8 +1613,8 @@ class AutoScheduler(AppThread):
                 }})
 
     def _schedule(self, device_key, device_label, schedule_time, device_state):
-        log.info(f'Setting auto-schedule for {device_label}: enable? {device_state} at {schedule_time}.')
-        schedule.every().day.at(schedule_time).do(AutoScheduler.update_device, device_key, device_label, device_state).tag(device_key)
+        log.info(f'Setting auto-schedule for {device_label}: enable? {device_state} at {schedule_time} {user_tz!s}.')
+        schedule.every().day.at(schedule_time, user_tz).do(AutoScheduler.update_device, device_key, device_label, device_state).tag(device_key)
 
     # noinspection PyBroadException
     def run(self):
@@ -1688,6 +1690,11 @@ class ApiServer(Thread):
 
 def main():
     log.setLevel(logging.INFO)
+    # FIXME: move to pylib
+    if "LC_ALL" in os.environ.keys():
+        locale_lc_all = os.environ["LC_ALL"]
+        log.info(f'Using locale LC_ALL, set to {locale_lc_all} with time zone {user_tz!s}.')
+        locale.setlocale(locale.LC_ALL, locale_lc_all)
     # ensure proper signal handling; must be main thread
     signal_handler = SignalHandler()
     if not threads.shutting_down:

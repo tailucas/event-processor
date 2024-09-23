@@ -36,11 +36,11 @@
                             <label class="custom-control-label" for="customCheck{{loop.index}}">Auto-schedule</label>
                         </div>
                     </div>
-                    <label>Enable at (UTC):</label>
+                    <label>Enable at ({{ tz_name }}):</label>
                     <div class="input-group clockpicker" data-autoclose="true">
                         <input type="text" name="auto_schedule_enable" class="form-control" placeholder="22:30" value="{{ device.auto_schedule_enable if device.auto_schedule_enable }}">
                     </div>
-                    <label>Disable at (UTC):</label>
+                    <label>Disable at ({{ tz_name }}):</label>
                     <div class="input-group clockpicker" data-autoclose="true">
                         <input type="text" name="auto_schedule_disable" class="form-control" placeholder="05:30" value="{{ device.auto_schedule_disable if device.auto_schedule_disable }}">
                     </div>
