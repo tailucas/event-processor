@@ -41,7 +41,7 @@ public class OutputConfig extends Config {
     }
     public boolean isDeviceEnabled() {
         if (device_enabled == null) {
-            return true;
+            return false;
         }
         return device_enabled.booleanValue();
     }
