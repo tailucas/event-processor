@@ -485,12 +485,12 @@ class DeviceInfo(BaseModel):
 
 @api_app.post("/api/device_info")
 async def api_device_info(di: DeviceInfo):
-    with exception_handler(connect_url=URL_WORKER_APP, and_raise=False, shutdown_on_error=True, is_async=True) as zmq_socket:
+    with exception_handler(connect_url=URL_WORKER_APP, and_raise=False, shutdown_on_error=True) as zmq_socket:
         di_model = di.model_dump()
         if di.is_input:
-            await zmq_socket.send_pyobj({'device_info_input': di_model})
+            zmq_socket.send_pyobj({'device_info_input': di_model})
         if di.is_output:
-            await zmq_socket.send_pyobj({'device_info_output': di_model})
+            zmq_socket.send_pyobj({'device_info_output': di_model})
     return "OK"
 
 
@@ -987,8 +987,8 @@ async def telegram_bot_cmd(update: Update, context: TelegramContextTypes.DEFAULT
                                                                                      update.effective_message.chat_id))
         # status update
         if update.effective_message.text.startswith('/'):
-            with exception_handler(connect_url=URL_WORKER_APP, and_raise=False, is_async=True) as zmq_socket:
-                await zmq_socket.send_pyobj({
+            with exception_handler(connect_url=URL_WORKER_APP, and_raise=False) as zmq_socket:
+                zmq_socket.send_pyobj({
                     'bot': {
                         'command': update.effective_message.text
                     }
