@@ -485,49 +485,13 @@ class DeviceInfo(BaseModel):
 
 @api_app.post("/api/device_info")
 async def api_device_info(di: DeviceInfo):
-    with flask_app.app_context():
-        if di.is_input:
-            ic = InputConfig.query.filter_by(device_key=di.device_key).first()
-            if ic is None:
-                log.info(f'Adding new input configuration for {di.device_key} ({di.device_label})')
-                db.session.add(InputConfig(
-                    device_key=di.device_key,
-                    device_label=di.device_label,
-                    device_type=di.device_type,
-                    group_name=di.group_name,
-                    customized=None,
-                    auto_schedule=None,
-                    auto_schedule_enable=None,
-                    auto_schedule_disable=None,
-                    device_enabled=None,
-                    trigger_latch_duration=None,
-                    multi_trigger_rate=None,
-                    multi_trigger_interval=None,
-                    info_notify=None))
-                db.session.commit()
-        if di.is_output:
-            oc = OutputConfig.query.filter_by(device_key=di.device_key).first()
-            if oc is None:
-                log.info(f'Adding new output configuration for {di.device_key} ({di.device_label})')
-                db.session.add(OutputConfig(
-                    device_key=di.device_key,
-                    device_label=di.device_label,
-                    device_type=di.device_type,
-                    device_params=None,
-                    trigger_topic=None,
-                    trigger_interval=None,
-                    device_enabled=None,
-                    auto_schedule=None,
-                    auto_schedule_enable=None,
-                    auto_schedule_disable=None))
-                db.session.commit()
-    with exception_handler(connect_url=URL_WORKER_APP, and_raise=False, shutdown_on_error=True) as zmq_socket:
+    with exception_handler(connect_url=URL_WORKER_APP, and_raise=False, shutdown_on_error=True, is_async=True) as zmq_socket:
         di_model = di.model_dump()
         if di.is_input:
-            zmq_socket.send_pyobj({'device_info_input': di_model})
+            await zmq_socket.send_pyobj({'device_info_input': di_model})
         if di.is_output:
-            zmq_socket.send_pyobj({'device_info_output': di_model})
-    return di
+            await zmq_socket.send_pyobj({'device_info_output': di_model})
+    return "OK"
 
 
 @flask_app.route('/debug-sentry')
@@ -1023,8 +987,8 @@ async def telegram_bot_cmd(update: Update, context: TelegramContextTypes.DEFAULT
                                                                                      update.effective_message.chat_id))
         # status update
         if update.effective_message.text.startswith('/'):
-            with exception_handler(connect_url=URL_WORKER_APP, and_raise=False) as zmq_socket:
-                zmq_socket.send_pyobj({
+            with exception_handler(connect_url=URL_WORKER_APP, and_raise=False, is_async=True) as zmq_socket:
+                await zmq_socket.send_pyobj({
                     'bot': {
                         'command': update.effective_message.text
                     }
@@ -1103,11 +1067,7 @@ class EventProcessor(AppThread):
 
     def _update_device(self, input_outputs, device_origin, origin_devices, event_origin, device):
         # device_key must always be present
-        try:
-            device_key = device['device_key']
-        except KeyError:
-            log.error(f'No device key in {device}')
-            return 0
+        device_key = device['device_key']
         # set the device label if that hasn't already been done
         if 'device_label' not in device:
             device['device_label'] = device_key
@@ -1123,8 +1083,7 @@ class EventProcessor(AppThread):
             log.warning(f'{device_key} already known from {device_origin[device_key]} but also sent by {event_origin}.')
         if device_key not in input_outputs:
             input_outputs[device_key] = device
-            return 1
-        return 0
+        return device_key
 
     def _influxdb_write(self, bucket, active_device_key, field_name, field_value):
         measurement_name = '_'.join(active_device_key.split()).lower()
@@ -1249,6 +1208,25 @@ class EventProcessor(AppThread):
                             origin_devices=self._inputs_by_origin,
                             event_origin=device_name,
                             device=event_data)
+                        di: DeviceInfo = DeviceInfo.model_construct(event_data)
+                        ic = InputConfig.query.filter_by(device_key=di.device_key).first()
+                        if ic is None:
+                            log.info(f'Adding new input configuration for {di.device_key} ({di.device_label})')
+                            db.session.add(InputConfig(
+                                device_key=di.device_key,
+                                device_label=di.device_label,
+                                device_type=di.device_type,
+                                group_name=di.group_name,
+                                customized=None,
+                                auto_schedule=None,
+                                auto_schedule_enable=None,
+                                auto_schedule_disable=None,
+                                device_enabled=None,
+                                trigger_latch_duration=None,
+                                multi_trigger_rate=None,
+                                multi_trigger_interval=None,
+                                info_notify=None))
+                            db.session.commit()
                     elif 'device_info_output' == event_origin:
                         self._update_device(
                             input_outputs=self.outputs,
@@ -1256,6 +1234,22 @@ class EventProcessor(AppThread):
                             origin_devices=self._outputs_by_origin,
                             event_origin=device_name,
                             device=event_data)
+                        di: DeviceInfo = DeviceInfo.model_construct(event_data)
+                        oc = OutputConfig.query.filter_by(device_key=di.device_key).first()
+                        if oc is None:
+                            log.info(f'Adding new output configuration for {di.device_key} ({di.device_label})')
+                            db.session.add(OutputConfig(
+                                device_key=di.device_key,
+                                device_label=di.device_label,
+                                device_type=di.device_type,
+                                device_params=None,
+                                trigger_topic=None,
+                                trigger_interval=None,
+                                device_enabled=None,
+                                auto_schedule=None,
+                                auto_schedule_enable=None,
+                                auto_schedule_disable=None))
+                            db.session.commit()
                     elif 'auto-scheduler' == event_origin:
                         device_key = event_data['device_key']
                         device_label = event_data['device_label']

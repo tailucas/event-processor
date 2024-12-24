@@ -127,9 +127,10 @@ public class Event implements Runnable {
                 metricTags.put("input_label", deviceDescription);
             }
             metrics.postMetric("event", metricTags);
-            configProvider.postDeviceInfo(device);
             if (device.isHeartbeat() || source.contains(".heartbeat.")) {
                 log.debug("{}: Heartbeat for {}.", source, deviceDescription);
+                // post device info for side-car only upon heartbeats
+                configProvider.postDeviceInfo(device);
                 return;
             }
             log.debug("{} fetch configuration with key {}, description: {}", source, deviceKey, deviceDescription);
