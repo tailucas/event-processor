@@ -146,7 +146,7 @@ public class DeviceConfig {
         configCache.forEach((k, v) -> {
             // collect top-level cache keys
             if (k.startsWith(deviceKey)) {
-                log.debug("Adding {} to keys to remove from cache.", k);
+                log.debug("Adding {} to keys to remove from config cache.", k);
                 keysToRemove.add(k);
             }
             // ALSO collect nested cache keys
@@ -155,13 +155,13 @@ public class DeviceConfig {
                     if (c instanceof OutputConfig) {
                         OutputConfig outputConfig = (OutputConfig) c;
                         if (outputConfig.getDeviceKey().equals(deviceKey)) {
-                            log.debug("Adding {} to keys to remove from cache (included by {}).", k, deviceKey);
+                            log.debug("Adding {} to keys to remove from config cache (included by {}).", k, deviceKey);
                             keysToRemove.add(k);
                         }
                     } else if (c instanceof InputConfig) {
                         InputConfig inputConfig = (InputConfig) c;
                         if (inputConfig.getDeviceKey().equals(deviceKey)) {
-                            log.debug("Adding {} to keys to remove from cache (included by {}).", k, deviceKey);
+                            log.debug("Adding {} to keys to remove from config cache (included by {}).", k, deviceKey);
                             keysToRemove.add(k);
                         }
                     }
@@ -185,11 +185,11 @@ public class DeviceConfig {
             if (cacheAge <= 3600) {
                 List<Config> cachedConfig = cached.getRight();
                 if (cachedConfig != null) {
-                    log.debug("Returning cached config ({} items) for {} (age {}s).", cachedConfig.size(), cacheKey, cacheAge);
+                    log.debug("Returning config ({} items) from config cache for {} (age {}s).", cachedConfig.size(), cacheKey, cacheAge);
                 }
                 return cachedConfig;
             } else {
-                log.debug("Invalidating cache for {} (age {}s).", cacheKey, cacheAge);
+                log.debug("Invalidating config cache for {} (age {}s).", cacheKey, cacheAge);
                 configCache.remove(cacheKey);
             }
         }
@@ -221,14 +221,14 @@ public class DeviceConfig {
         } else {
             configs = mapper.readValue(responseBody, getCollectionType(api));
         }
-        log.debug("Updating configuration cache for {}.", cacheKey);
+        log.debug("Updating configuration config cache for {}.", cacheKey);
         configCache.put(cacheKey, Pair.of(now, configs));
         return configs;
     }
 
     public void postDeviceInfo(Generic device) throws IOException, InterruptedException {
         final String deviceKey = device.getDeviceKey();
-        log.debug("Posting update on {} to {}", deviceKey);
+        log.debug("Posting update on {}.", deviceKey);
         UriComponents uriComponents = UriComponentsBuilder.newInstance()
             .scheme("http")
             .host(configHost)

@@ -1182,7 +1182,7 @@ class EventProcessor(AppThread):
                         self.bot.send_pyobj(sms_message)
                         log.debug(f'Sent payload to bot...')
                     else:
-                        log.warning(f'Not sending message to Telegram bot disabled with feature flag: {sms_message}')
+                        log.warning(f'Not sending message to Telegram bot disabled with feature flag: {len(sms_message)}.')
                     continue
                 for event_origin, event_data in list(event.items()):
                     if not isinstance(event_data, dict):
@@ -1208,7 +1208,7 @@ class EventProcessor(AppThread):
                             origin_devices=self._inputs_by_origin,
                             event_origin=device_name,
                             device=event_data)
-                        di: DeviceInfo = DeviceInfo.model_construct(event_data)
+                        di: DeviceInfo = DeviceInfo.model_validate(event_data)
                         ic = InputConfig.query.filter_by(device_key=di.device_key).first()
                         if ic is None:
                             log.info(f'Adding new input configuration for {di.device_key} ({di.device_label})')
@@ -1234,7 +1234,7 @@ class EventProcessor(AppThread):
                             origin_devices=self._outputs_by_origin,
                             event_origin=device_name,
                             device=event_data)
-                        di: DeviceInfo = DeviceInfo.model_construct(event_data)
+                        di: DeviceInfo = DeviceInfo.model_validate(event_data)
                         oc = OutputConfig.query.filter_by(device_key=di.device_key).first()
                         if oc is None:
                             log.info(f'Adding new output configuration for {di.device_key} ({di.device_label})')
@@ -1356,7 +1356,7 @@ class EventProcessor(AppThread):
                         if features.is_enabled("telegram-bot"):
                             self.bot.send_pyobj(BotMessage(device_label='notification', message=bot_reply).model_dump())
                         else:
-                            log.warning(f'Not sending message to Telegram bot disabled with feature flag: {bot_reply}')
+                            log.warning(f'Not sending message to Telegram bot disabled with feature flag: {len(bot_reply)}.')
                         # stop processing
                         if not bot_command_base.startswith('/report'):
                             # no further processing needed after enable/disable
