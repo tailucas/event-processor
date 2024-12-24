@@ -1683,12 +1683,6 @@ class ApiServer(Thread):
 
 
 def main():
-    log.setLevel(logging.INFO)
-    # FIXME: move to pylib
-    if "LC_ALL" in os.environ.keys():
-        locale_lc_all = os.environ["LC_ALL"]
-        log.info(f'Using locale LC_ALL, set to {locale_lc_all} with time zone {user_tz!s}.')
-        locale.setlocale(locale.LC_ALL, locale_lc_all)
     # ensure proper signal handling; must be main thread
     signal_handler = SignalHandler()
     if not threads.shutting_down:
@@ -1720,9 +1714,6 @@ def main():
             args=(signal_handler,))
         # not tracked by nanny because this is used for Flask bootstrap
         server = ApiServer()
-        # startup completed
-        # back to INFO logging
-        log.setLevel(logging.INFO)
         try:
             log.info(f'Starting {APP_NAME} threads...')
             # start the binders

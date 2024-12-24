@@ -4,7 +4,7 @@
         <Syslog name="Syslog" format="RFC5424" host="${env:SYSLOG_HOST}" port="514" protocol="UDP" appName="event-processor" facility="LOCAL0" />
     </Appenders>
     <Loggers>
-        <Root level="info">
+        <Root level="${env:LOG_LEVEL}">
             <AppenderRef ref="Syslog"/>
         </Root>
     </Loggers>
