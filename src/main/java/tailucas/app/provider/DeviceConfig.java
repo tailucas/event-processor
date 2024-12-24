@@ -143,11 +143,32 @@ public class DeviceConfig {
 
     public void invalidateConfiguration(String deviceKey) {
         final List<String> keysToRemove = new ArrayList<>();
-        configCache.keySet().forEach(k -> {
+        configCache.forEach((k, v) -> {
+            // collect top-level cache keys
             if (k.startsWith(deviceKey)) {
+                log.debug("Adding {} to keys to remove from cache.", k);
                 keysToRemove.add(k);
             }
+            // ALSO collect nested cache keys
+            if (v.getRight() != null) {
+                v.getRight().forEach(c -> {
+                    if (c instanceof OutputConfig) {
+                        OutputConfig outputConfig = (OutputConfig) c;
+                        if (outputConfig.getDeviceKey().equals(deviceKey)) {
+                            log.debug("Adding {} to keys to remove from cache (included by {}).", k, deviceKey);
+                            keysToRemove.add(k);
+                        }
+                    } else if (c instanceof InputConfig) {
+                        InputConfig inputConfig = (InputConfig) c;
+                        if (inputConfig.getDeviceKey().equals(deviceKey)) {
+                            log.debug("Adding {} to keys to remove from cache (included by {}).", k, deviceKey);
+                            keysToRemove.add(k);
+                        }
+                    }
+                });
+            }
         });
+        // now remove all implied keys
         keysToRemove.forEach(k -> configCache.remove(k));
         log.debug("Removed keys from config cache: {}", keysToRemove);
     }
