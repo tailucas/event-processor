@@ -177,8 +177,8 @@ public class DeviceConfig {
         final String apiName = api.toString().toLowerCase();
         final Instant now = Instant.now();
         final String cacheKey = deviceKey + "/" + apiName;
-        if (configCache.containsKey(cacheKey)) {
-            var cached = configCache.get(cacheKey);
+        final var cached = configCache.get(cacheKey);
+        if (cached != null) {
             final Instant fetchedAt = cached.getLeft();
             final long cacheAge = fetchedAt.until(now, ChronoUnit.SECONDS);
             // FIXME
