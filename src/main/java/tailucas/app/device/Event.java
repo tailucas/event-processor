@@ -211,7 +211,14 @@ public class Event implements Runnable {
             }
             final Long triggeredDuration = triggerLatchHistory.getTriggeredDuration(deviceKey);
             metrics.postMetric("triggered_duration", metricTags);
-            log.info("{} will trigger outputs because {} (triggered for {}s).", deviceDescription, device.getTriggerStateDescription(), triggeredDuration);
+            String escalationDetail = "";
+            final Integer activationEscalation = deviceConfig.getActivationEscalation();
+            if (activationEscalation != null) {
+                escalationDetail = String.format(" (triggered for %s, escalates at {}s)", triggeredDuration, activationEscalation);
+            } else {
+                escalationDetail = String.format(" (triggered for %s)", triggeredDuration);
+            }
+            log.info("{} will trigger outputs because {}{}.", deviceDescription, device.getTriggerStateDescription(), escalationDetail);
             List<OutputConfig> linkedOutputs = configProvider.getLinkedOutputs(deviceConfig);
             log.debug("{} outputs {}", deviceDescription, linkedOutputs);
             if (linkedOutputs == null) {
@@ -299,7 +306,6 @@ public class Event implements Runnable {
                 sentry.finish();
             }
             // now escalate long-running triggers as configured
-            final Integer activationEscalation = deviceConfig.getActivationEscalation();
             if (activationEscalation != null) {
                 if (triggerLatchHistory.isTriggeredFor(deviceKey, activationEscalation)) {
                     if (!recentEscalations.containsKey(deviceKey)) {
