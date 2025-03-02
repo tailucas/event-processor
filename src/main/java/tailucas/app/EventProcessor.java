@@ -195,11 +195,27 @@ public class EventProcessor
         log.info("Full shutdown complete with exit code {}", exitCode);
     }
 
-    public boolean isFeatureEnabled(String featureName) {
+    public static boolean isFeatureEnabled(String featureName) {
         if (unleash == null) {
             return true;
         }
         return unleash.isEnabled(featureName);
+    }
+
+    public static String getAppName() {
+        return appName;
+    }
+
+    public static String getDeviceName() {
+        return deviceName;
+    }
+
+    public static PagerDutyEventsClient getPagerDuty() {
+        return pagerDuty;
+    }
+
+    public static String getPagerDutyRoutingKey() {
+        return pagerDutyRoutingKey;
     }
 
     public static void main( String[] args ) {

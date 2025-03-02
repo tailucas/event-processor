@@ -225,13 +225,14 @@ class InputConfig(Base):
     trigger_latch_duration = Column(Integer)
     multi_trigger_rate = Column(Integer)
     multi_trigger_interval = Column(Integer)
+    activation_escalation = Column(Integer)
     group_name = Column(String(100), index=True)
     info_notify = Column(Boolean)
     links_il = relationship('InputLink', backref='input_config', cascade='all, delete-orphan', lazy='dynamic')
     links_ol = relationship('OutputLink', backref='input_config', cascade='all, delete-orphan', lazy='dynamic')
     links_mc = relationship('MeterConfig', backref='input_config', cascade='all, delete-orphan', lazy='dynamic')
 
-    def __init__(self, device_key, device_type, device_label, customized, auto_schedule, auto_schedule_enable, auto_schedule_disable, device_enabled, trigger_latch_duration, multi_trigger_rate, multi_trigger_interval, group_name, info_notify):
+    def __init__(self, device_key, device_type, device_label, customized, auto_schedule, auto_schedule_enable, auto_schedule_disable, device_enabled, trigger_latch_duration, multi_trigger_rate, multi_trigger_interval, activation_escalation, group_name, info_notify):
         self.device_key = device_key
         self.device_type = device_type
         self.device_label = device_label
@@ -243,6 +244,7 @@ class InputConfig(Base):
         self.trigger_latch_duration = trigger_latch_duration
         self.multi_trigger_rate = multi_trigger_rate
         self.multi_trigger_interval = multi_trigger_interval
+        self.activation_escalation = activation_escalation
         self.group_name = group_name
         self.info_notify = info_notify
 
@@ -752,6 +754,11 @@ def input_config():
             customized = True
         else:
             input_cfg.multi_trigger_interval = None
+        if len(request.form['activation_escalation']) > 0:
+            input_cfg.activation_escalation = int(request.form['activation_escalation'])
+            customized = True
+        else:
+            input_cfg.activation_escalation = None
         if meter_cfg:
             if request.form.get('meter_low_limit', None) and len(request.form['meter_low_limit']) > 0:
                 meter_cfg.meter_low_limit = int(request.form['meter_low_limit'])
@@ -1225,6 +1232,7 @@ class EventProcessor(AppThread):
                                 trigger_latch_duration=None,
                                 multi_trigger_rate=None,
                                 multi_trigger_interval=None,
+                                activation_escalation=None,
                                 info_notify=None))
                             db.session.commit()
                     elif 'device_info_output' == event_origin:

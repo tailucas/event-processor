@@ -13,6 +13,7 @@ public class TriggerHistory {
 
     private static Logger log = null;
 
+    private Map<String, Instant> triggeredSince;
     private Map<String, Stack<Instant>> triggerHistory;
     private static final int maxTriggerHistory = 120;
 
@@ -20,6 +21,7 @@ public class TriggerHistory {
         if (log == null) {
             log = LoggerFactory.getLogger(TriggerHistory.class);
         }
+        triggeredSince = new ConcurrentHashMap<>(100);
         triggerHistory = new ConcurrentHashMap<>(100);
     }
 
@@ -47,6 +49,32 @@ public class TriggerHistory {
             log.debug("{} oldest event trimmed: {}", deviceKey, oldest);
         }
         history.push(Instant.now());
+        triggeredSince.computeIfAbsent(deviceKey, s -> Instant.now());
+    }
+
+    public void unTriggered(String deviceKey) {
+        triggeredSince.remove(deviceKey);
+    }
+
+    public Long getTriggeredDuration(String deviceKey) {
+        final Instant moment = triggeredSince.get(deviceKey);
+        if (moment == null) {
+            return null;
+        }
+        final Instant now = Instant.now();
+        return Long.valueOf(Duration.between(moment, now).toSeconds());
+    }
+
+    public boolean isTriggeredFor(String deviceKey, int seconds) {
+        final Long interval = getTriggeredDuration(deviceKey);
+        if (interval == null) {
+            return false;
+        }
+        log.debug("{} has been triggered for {}s (comparing against {}s)", deviceKey, interval, seconds);
+        if (interval >= seconds) {
+            return true;
+        }
+        return false;
     }
 
     public boolean triggeredWithin(String deviceKey, int seconds) {
@@ -72,7 +100,13 @@ public class TriggerHistory {
             return false;
         }
         log.debug("{} first event {}, last {}", deviceKey, history.firstElement(), history.lastElement());
-        var moment = history.get(desiredIndex);
+        Instant moment = null;
+        try {
+            moment = history.get(desiredIndex);
+        } catch (ArrayIndexOutOfBoundsException e) {
+            log.debug("{} history index {} (times is {}) invalid relative to history length {}.", deviceKey, desiredIndex, times, historyLenth);
+            return false;
+        }
         final Instant now = Instant.now();
         final long interval = Duration.between(moment, now).toSeconds();
         log.debug("{} comparing moment {} with now {} against history ({} items)", deviceKey, moment, now, history.size());

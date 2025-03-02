@@ -20,6 +20,8 @@ public class InputConfig extends Config {
     protected Integer multiTriggerRate;
     @JsonProperty("multi_trigger_interval")
     protected Integer multiTriggerInterval;
+    @JsonProperty("activation_escalation")
+    protected Integer activationEscalation;
     @JsonProperty("group_name")
     protected String groupName;
     @JsonProperty("info_notify")
@@ -66,14 +68,16 @@ public class InputConfig extends Config {
     public Integer getMultiTriggerInterval() {
         return multiTriggerInterval;
     }
+    public Integer getActivationEscalation() {
+        return activationEscalation;
+    }
     @Override
     public String toString() {
         return "InputConfig [deviceKey=" + deviceKey + ", deviceType=" + deviceType + ", deviceLabel=" + deviceLabel
-                + ", customized=" + customized + ", autoSchedule="
-                + deviceEnabled + ", triggerLatchDuration=" + triggerLatchDuration
-                + ", multiTriggerRate=" + multiTriggerRate
-                + ", multiTriggerInterval=" + multiTriggerInterval + ", groupName=" + groupName + ", infoNotify="
-                + infoNotify + "]";
+                + ", customized=" + customized + ", deviceEnabled=" + deviceEnabled + ", triggerLatchDuration="
+                + triggerLatchDuration + ", multiTriggerRate=" + multiTriggerRate + ", multiTriggerInterval="
+                + multiTriggerInterval + ", activationEscalation=" + activationEscalation + ", groupName=" + groupName
+                + ", infoNotify=" + infoNotify + "]";
     }
     @JsonIgnore
     @JsonProperty

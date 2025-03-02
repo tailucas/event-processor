@@ -34,6 +34,10 @@
                                     <label for="multi_trigger_interval">Within interval:</label>
                                     <input id="multi_trigger_interval" class="form-control" type="text" name="multi_trigger_interval" placeholder="seconds" value="{{ input_device.multi_trigger_interval if input_device.multi_trigger_interval }}">
                                 </div>
+                                <div class="form-group">
+                                    <label for="activation_escalation">Escalate prolonged activation:</label>
+                                    <input id="activation_escalation" class="form-control" type="text" name="activation_escalation" placeholder="seconds" value="{{ input_device.activation_escalation if input_device.activation_escalation }}">
+                                </div>
                                 {% if input_device.device_type == 'meter' %}
                                 {% if input_device.id in meters.keys() %}
                                 {% with meter = meters[input_device.id] %}

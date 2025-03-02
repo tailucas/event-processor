@@ -1,10 +1,12 @@
 package tailucas.app.device;
 
 import java.io.IOException;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -14,6 +16,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.github.dikhan.pagerduty.client.events.domain.EventResult;
+import com.github.dikhan.pagerduty.client.events.domain.Payload;
+import com.github.dikhan.pagerduty.client.events.domain.ResolveIncident;
+import com.github.dikhan.pagerduty.client.events.domain.Severity;
+import com.github.dikhan.pagerduty.client.events.domain.TriggerIncident;
+import com.github.dikhan.pagerduty.client.events.exceptions.NotifyEventException;
 import com.rabbitmq.client.AMQP;
 import com.rabbitmq.client.AMQP.BasicProperties;
 
@@ -27,6 +35,7 @@ import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 
 import tailucas.app.AppProperties;
+import tailucas.app.EventProcessor;
 import tailucas.app.device.config.InputConfig;
 import tailucas.app.device.config.OutputConfig;
 import tailucas.app.provider.DeviceConfig;
@@ -43,6 +52,7 @@ public class Event implements Runnable {
     protected static TriggerHistory triggerMultiHistory;
     protected static TriggerHistory triggerOutputHistory;
     protected static Metrics metrics;
+    protected static Map<String, String> recentEscalations;
 
     protected Connection connection;
     protected String source;
@@ -63,6 +73,7 @@ public class Event implements Runnable {
             triggerMultiHistory = new TriggerHistory();
             triggerOutputHistory = new TriggerHistory();
             metrics = Metrics.getInstance();
+            recentEscalations = new ConcurrentHashMap<>();
         }
     }
 
@@ -137,6 +148,25 @@ public class Event implements Runnable {
             InputConfig deviceConfig = configProvider.fetchInputDeviceConfig(deviceKey);
             log.debug("{} configuration: {}", deviceDescription, deviceConfig);
             if (!device.wouldTriggerOutput(deviceConfig)) {
+                // reset any trigger history
+                triggerLatchHistory.unTriggered(deviceKey);
+                // resolve any active escalations
+                final String escalationKey = recentEscalations.remove(deviceKey);
+                if (escalationKey != null) {
+                    log.info("{} no longer requires escalation.", deviceDescription);
+                    if (EventProcessor.isFeatureEnabled(EventProcessor.FEATURE_FLAG_PAGER_DUTY_TICKETS)) {
+                        final ResolveIncident resolve = ResolveIncident.ResolveIncidentBuilder
+                            .newBuilder(EventProcessor.getPagerDutyRoutingKey(), escalationKey)
+                            .build();
+                        try {
+                            final EventResult result = EventProcessor.getPagerDuty().resolve(resolve);
+                            log.info("Updated PagerDuty with result {}: {} ({})", result.getStatus(), result.getMessage(), result.getErrors());
+                        } catch (NotifyEventException e) {
+                            log.error("Cannot update PagerDuty.", e);
+                            Sentry.captureException(e);
+                        }
+                    }
+                }
                 log.debug("{} does not trigger any outputs based on current configuration or state.", deviceDescription);
                 return;
             }
@@ -179,7 +209,8 @@ public class Event implements Runnable {
                 log.warn("{} is disabled but would otherwise trigger outputs because {}.", deviceDescription, device.getTriggerStateDescription());
                 return;
             }
-            log.info("{} will trigger outputs because {}.", deviceDescription, device.getTriggerStateDescription());
+            final Long triggeredDuration = triggerLatchHistory.getTriggeredDuration(deviceKey);
+            log.info("{} will trigger outputs because {} (triggered for {}s).", deviceDescription, device.getTriggerStateDescription(), triggeredDuration);
             List<OutputConfig> linkedOutputs = configProvider.getLinkedOutputs(deviceConfig);
             log.debug("{} outputs {}", deviceDescription, linkedOutputs);
             if (linkedOutputs == null) {
@@ -265,6 +296,30 @@ public class Event implements Runnable {
             } finally {
                 rabbitMqChannel.close();
                 sentry.finish();
+            }
+            // now escalate long-running triggers as configured
+            final Integer activationEscalation = deviceConfig.getActivationEscalation();
+            if (activationEscalation != null) {
+                if (triggerLatchHistory.isTriggeredFor(deviceKey, activationEscalation)) {
+                    log.warn("{} has been triggered for > {}s, escalating...", deviceDescription, activationEscalation);
+                    if (EventProcessor.isFeatureEnabled(EventProcessor.FEATURE_FLAG_PAGER_DUTY_TICKETS)) {
+                        final String appName = EventProcessor.getAppName();
+                        final String dupeKey = appName+"-"+deviceKey;
+                        final Payload payload = Payload.Builder.newBuilder()
+                            .setSummary(String.format("%s escalation", deviceDescription))
+                            .setSource(EventProcessor.getDeviceName())
+                            .setSeverity(Severity.CRITICAL)
+                            .setTimestamp(OffsetDateTime.now())
+                            .build();
+                        final TriggerIncident incident = TriggerIncident.TriggerIncidentBuilder
+                            .newBuilder(EventProcessor.getPagerDutyRoutingKey(), payload)
+                            .setDedupKey(dupeKey)
+                            .build();
+                        final EventResult result = EventProcessor.getPagerDuty().trigger(incident);
+                        log.info("Updated PagerDuty with result {} - {}: {} ({})", result.getDedupKey(), result.getStatus(), result.getMessage(), result.getErrors());
+                        recentEscalations.put(deviceKey, dupeKey);
+                    }
+                }
             }
         } catch (IllegalStateException | UnsupportedOperationException | IOException e) {
             // logged only with message
