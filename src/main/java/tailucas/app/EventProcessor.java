@@ -164,9 +164,9 @@ public class EventProcessor
         if (metricsServer != null) {
             metricsServer.close();
         }
-        Severity severity = Severity.WARNING;
+        Severity severity = Severity.INFO;
         if (exitCode != 0) {
-            severity = Severity.ERROR;
+            severity = Severity.WARNING;
         }
         if (unleash != null && unleash.isEnabled(FEATURE_FLAG_PAGER_DUTY_TICKETS)) {
             final Payload payload = Payload.Builder.newBuilder()
