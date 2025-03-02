@@ -210,6 +210,7 @@ public class Event implements Runnable {
                 return;
             }
             final Long triggeredDuration = triggerLatchHistory.getTriggeredDuration(deviceKey);
+            metrics.postMetric("triggered_duration", metricTags);
             log.info("{} will trigger outputs because {} (triggered for {}s).", deviceDescription, device.getTriggerStateDescription(), triggeredDuration);
             List<OutputConfig> linkedOutputs = configProvider.getLinkedOutputs(deviceConfig);
             log.debug("{} outputs {}", deviceDescription, linkedOutputs);
@@ -301,22 +302,24 @@ public class Event implements Runnable {
             final Integer activationEscalation = deviceConfig.getActivationEscalation();
             if (activationEscalation != null) {
                 if (triggerLatchHistory.isTriggeredFor(deviceKey, activationEscalation)) {
-                    log.warn("{} has been triggered for > {}s, escalating...", deviceDescription, activationEscalation);
-                    if (EventProcessor.isFeatureEnabled(EventProcessor.FEATURE_FLAG_PAGER_DUTY_TICKETS)) {
+                    if (!recentEscalations.containsKey(deviceKey)) {
+                        log.warn("{} has been triggered for > {}s, requires escalation.", deviceDescription, activationEscalation);
                         final String appName = EventProcessor.getAppName();
                         final String dupeKey = appName+"-"+deviceKey;
-                        final Payload payload = Payload.Builder.newBuilder()
-                            .setSummary(String.format("%s escalation", deviceDescription))
-                            .setSource(EventProcessor.getDeviceName())
-                            .setSeverity(Severity.CRITICAL)
-                            .setTimestamp(OffsetDateTime.now())
-                            .build();
-                        final TriggerIncident incident = TriggerIncident.TriggerIncidentBuilder
-                            .newBuilder(EventProcessor.getPagerDutyRoutingKey(), payload)
-                            .setDedupKey(dupeKey)
-                            .build();
-                        final EventResult result = EventProcessor.getPagerDuty().trigger(incident);
-                        log.info("Updated PagerDuty with result {} - {}: {} ({})", result.getDedupKey(), result.getStatus(), result.getMessage(), result.getErrors());
+                        if (EventProcessor.isFeatureEnabled(EventProcessor.FEATURE_FLAG_PAGER_DUTY_TICKETS)) {
+                            final Payload payload = Payload.Builder.newBuilder()
+                                .setSummary(String.format("%s escalation", deviceDescription))
+                                .setSource(EventProcessor.getDeviceName())
+                                .setSeverity(Severity.CRITICAL)
+                                .setTimestamp(OffsetDateTime.now())
+                                .build();
+                            final TriggerIncident incident = TriggerIncident.TriggerIncidentBuilder
+                                .newBuilder(EventProcessor.getPagerDutyRoutingKey(), payload)
+                                .setDedupKey(dupeKey)
+                                .build();
+                            final EventResult result = EventProcessor.getPagerDuty().trigger(incident);
+                            log.info("Updated PagerDuty with result {} - {}: {} ({})", result.getDedupKey(), result.getStatus(), result.getMessage(), result.getErrors());
+                        }
                         recentEscalations.put(deviceKey, dupeKey);
                     }
                 }
