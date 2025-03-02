@@ -214,7 +214,7 @@ public class Event implements Runnable {
             String escalationDetail = "";
             final Integer activationEscalation = deviceConfig.getActivationEscalation();
             if (activationEscalation != null) {
-                escalationDetail = String.format(" (triggered for %s, escalates at {}s)", triggeredDuration, activationEscalation);
+                escalationDetail = String.format(" (triggered for %s, escalates at %s)", triggeredDuration, activationEscalation);
             } else {
                 escalationDetail = String.format(" (triggered for %s)", triggeredDuration);
             }
