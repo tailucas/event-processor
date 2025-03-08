@@ -210,7 +210,7 @@ public class Event implements Runnable {
                 return;
             }
             final Long triggeredDuration = triggerLatchHistory.getTriggeredDuration(deviceKey);
-            metrics.postMetric("triggered_duration", metricTags);
+            metrics.postMetric("triggered_duration", triggeredDuration.doubleValue(), metricTags);
             String escalationDetail = "";
             final Integer activationEscalation = deviceConfig.getActivationEscalation();
             if (activationEscalation != null) {
