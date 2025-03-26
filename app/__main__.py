@@ -18,6 +18,7 @@ from concurrent import futures
 from datetime import datetime, timedelta
 from dateutil import tz
 from flask_sqlalchemy import SQLAlchemy
+from functools import wraps
 from io import BytesIO
 from os import path
 from pylru import lrucache
@@ -79,6 +80,11 @@ class CredsConfig:
     unleash_token: f'opitem:"Unleash" opfield:.password' = None # type: ignore
     unleash_url: f'opitem:"Unleash" opfield:default.url' = None # type: ignore
     unleash_app: f'opitem:"Unleash" opfield:default.app_name' = None # type: ignore
+    permit_pdp_url: f'opitem:"Permit" opfield:.hostname' = None # type: ignore
+    permit_token: f'opitem:"Permit" opfield:.credential' = None # type: ignore
+    user_key: f'opitem:"Users" opfield:user.key' = None # type: ignore
+    user_email: f'opitem:"Users" opfield:user.email' = None # type: ignore
+    user_password: f'opitem:"Users" opfield:user.creds' = None # type: ignore
 
 
 # instantiate class
@@ -137,6 +143,10 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import relationship, Mapped, Query
 from sqlalchemy import or_
 
+from permit import UserRead
+from permit.sync import Permit
+permit = Permit(pdp=creds.permit_pdp_url, token=creds.permit_token)
+
 user_tz = timezone(app_config.get('app', 'user_tz'))
 flask_app = Flask(APP_NAME)
 flask_app.config["SQLALCHEMY_DATABASE_URI"] = f'sqlite:///{db_tablespace}'
@@ -150,6 +160,14 @@ flask_app.jinja_env.add_extension('jinja2.ext.loopcontrols')
 flask_app.jinja_env.filters.update({
     'is_list': is_list,
 })
+flask_app.debug = app_config.getboolean('flask', 'debug')
+
+from flask_login import LoginManager
+from flask_login import login_required, login_user, logout_user, current_user, UserMixin
+login_manager = LoginManager()
+login_manager.login_view = 'login'
+login_manager.init_app(flask_app)
+
 # enable compression
 Compress().init_app(flask_app)
 flask_ctx = flask_app.app_context()
@@ -496,6 +514,97 @@ async def api_device_info(di: DeviceInfo):
     return "OK"
 
 
+class SessionUser(BaseModel, UserMixin):
+    id: str
+    key: str
+    name: str
+
+active_users = dict()
+
+
+def auth_enabled(func):
+    @wraps(func)
+    def decorated_view(*args, **kwargs):
+        if features.is_enabled('console-auth'):
+            flask_app.config.pop("LOGIN_DISABLED", None)
+        else:
+            flask_app.config["LOGIN_DISABLED"] = True
+        return func(*args, **kwargs)
+    return decorated_view
+
+
+def authz_required(action, resource):
+    def authz_decorator(func):
+        @wraps(func)
+        def flask_wrapper(*args, **kwargs):
+            if flask_app.config.get("LOGIN_DISABLED"):
+                log.warning('Login disabled. Skipping authorization check.')
+                return func(*args, **kwargs)
+            user_details = f'Unauthenticated user'
+            flash_alert = 'danger'
+            if current_user.is_authenticated:
+                user_details = f'User {current_user.name} ({current_user.key})'
+                log.debug(f'{user_details} is authenticated.')
+                permitted = permit.check(current_user.key, action, resource)
+                permission_details = f'{action} {resource}'
+                if permitted:
+                    log.debug(f'{user_details} is authorized to {permission_details}.')
+                    return func(*args, **kwargs)
+                else:
+                    flash_alert = 'warning'
+            user_message = f'{user_details} is not authorized to {permission_details}.'
+            log.debug(user_message)
+            flash(message=user_message, category=flash_alert)
+            return redirect(url_for('index'))
+        return flask_wrapper
+    return authz_decorator
+
+
+@flask_app.route('/login')
+def login():
+    return render_template('login.html')
+
+
+@flask_app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('index'))
+
+
+@flask_app.route('/login', methods=['POST'])
+def login_post():
+    try:
+        email = request.form['user_email']
+        password = request.form.get('user_password')
+        remember = True if request.form.get('remember_user') else False
+        log.info(f'Login request for user {email}...')
+        if email == creds.user_email and password == creds.user_password:
+            # FIXME: actually support multiple users
+            u = SessionUser(id=email, key=creds.user_key, name=email)
+            active_users[u.id] = u
+            login_user(user=u, remember=remember)
+            log_message = f'Login successful for {email}.'
+            log.info(log_message)
+            flash(message=log_message, category='success')
+            return redirect(url_for('index'))
+    except:
+        log.exception(f'Login failure.')
+    log.info(f'Login failed for {email}.')
+    flash(message=f'Access Denied.', category='danger')
+    return redirect(url_for('login'))
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    if user_id in active_users:
+        active_user: SessionUser = active_users[user_id]
+        log.info(f'User {active_user.name} is an active user.')
+        return active_user
+    log.info(f'User {user_id} is not an active user.')
+    return None
+
+
 @flask_app.route('/debug-sentry')
 def trigger_error():
     1 / 0
@@ -605,12 +714,16 @@ def index():
     for meter_config in meter_configs:
         meters[meter_config.input_device_id] = meter_config
     render_timestamp = make_timestamp(timestamp=None, as_tz=user_tz, make_string=True)
+    username = None
+    if current_user.is_authenticated:
+        username = current_user.name
     return render_template('index.html',
                            inputs=inputs.input_config,
                            meters=meters,
                            server_context=device_name,
                            render_timestamp=render_timestamp,
-                           healthchecks_badges=app_config.get('app', 'healthchecks_badges').split(','))
+                           healthchecks_badges=app_config.get('app', 'healthchecks_badges').split(','),
+                           username=username)
 
 
 @flask_app.route('/metrics', methods=['GET', 'POST'])
@@ -628,6 +741,10 @@ def event_log():
 
 
 @flask_app.route('/config', methods=['GET', 'POST'])
+@auth_enabled
+@login_required
+@authz_required(action="read", resource="Configuration")
+@authz_required(action="update", resource="Configuration")
 def show_config():
     saved_device_id = None
     if request.method == 'POST':
@@ -718,6 +835,10 @@ async def api_meter_config(device_key: str) -> list[dict]:
 
 
 @flask_app.route('/input_config', methods=['GET', 'POST'])
+@auth_enabled
+@login_required
+@authz_required(action="read", resource="Configuration")
+@authz_required(action="update", resource="Configuration")
 def input_config():
     saved_device_id = None
     if request.method == 'POST':
@@ -825,6 +946,10 @@ def input_config():
 
 
 @flask_app.route('/input_link', methods=['GET', 'POST'])
+@auth_enabled
+@login_required
+@authz_required(action="read", resource="Configuration")
+@authz_required(action="update", resource="Configuration")
 def input_link():
     saved_device_id = None
     if request.method == 'POST':
@@ -874,6 +999,10 @@ async def api_output_link(device_key: str) -> list[dict]:
 
 
 @flask_app.route('/output_link', methods=['GET', 'POST'])
+@auth_enabled
+@login_required
+@authz_required(action="read", resource="Configuration")
+@authz_required(action="update", resource="Configuration")
 def output_link():
     saved_device_id = None
     if request.method == 'POST':
@@ -927,6 +1056,10 @@ async def api_output_config(device_key: str | None = None) -> list[dict]:
 
 
 @flask_app.route('/output_config', methods=['GET', 'POST'])
+@auth_enabled
+@login_required
+@authz_required(action="read", resource="Configuration")
+@authz_required(action="update", resource="Configuration")
 def output_config():
     saved_device_id = None
     if request.method == 'POST':

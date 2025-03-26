@@ -1,0 +1,24 @@
+{% extends "layout.html" %}
+{% set active_page = "login" %}
+{% block body %}
+<div class="column is-4 is-offset-4">
+  <div class="box">
+    <form class="form" role="form" method='POST'>
+      <div class="form-group">
+        <label for="userEmail">Email address</label>
+        <input type="email" class="form-control" id="userEmail" name="user_email" aria-describedby="emailHelp">
+        <small id="emailHelp" class="form-text text-muted">Matched against allowlist.</small>
+      </div>
+      <div class="form-group">
+        <label for="userPassword">Password</label>
+        <input type="password" class="form-control" id="userPassword" name="user_password">
+      </div>
+      <div class="form-group form-check">
+        <input type="checkbox" class="form-check-input" id="rememberMe" name="remember_user">
+        <label class="form-check-label" for="rememberMe">Remember me</label>
+      </div>
+      <button type="submit" class="btn btn-primary">Login</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

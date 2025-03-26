@@ -31,6 +31,8 @@ onepasswordconnectsdk = {git = "https://github.com/tglucas/connect-sdk-python.gi
 tailucas-pylib = "^0.4.9"
 pydantic = "^2.7.1"
 unleashclient = "^5.12.2"
+permit = "^2.7.2"
+flask-login = "^0.6.3"
 
 
 [build-system]
