@@ -17,6 +17,9 @@ class AppTest {
     @Value("${spring.threads.virtual.enabled}")
     private Boolean virtualThreadsEnabled;
 
+    @Value("${management.endpoints.web.exposure.include}")
+    private String managementSettings;
+
     @Test
     void addition() {
         assertEquals(2, 1+1);
@@ -25,6 +28,11 @@ class AppTest {
     @Test
     void testPropertyValue() {
         assertTrue(virtualThreadsEnabled);
+    }
+
+    @Test
+    void testManagementSettings() {
+        assertEquals("health,info,loggers", managementSettings);
     }
 
     @Test

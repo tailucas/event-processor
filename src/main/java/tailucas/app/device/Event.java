@@ -42,14 +42,13 @@ import tailucas.app.provider.DeviceConfig;
 import tailucas.app.provider.Metrics;
 
 public class Event implements Runnable {
+    public static String exchangeName;
+    public static String expiration;
+
     private static Logger log = null;
     protected static Pattern namePattern;
     protected static BasicProperties rabbitMqProperties;
     protected static MessagePackMapper mapper;
-    @Value("${app.message-control-exchange-name}")
-    protected static String exchangeName;
-    @Value("${app.message-control-expiry-ms}")
-    protected static String expiration;
     protected static TriggerHistory triggerLatchHistory;
     protected static TriggerHistory triggerMultiHistory;
     protected static TriggerHistory triggerOutputHistory;

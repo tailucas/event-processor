@@ -348,15 +348,17 @@ public class EventProcessor
         }
 
         // init statics
+        final String exchangeName = springEnv.getProperty("app.message-event-exchange-name");
+        if (exchangeName == null || exchangeName.length() == 0) {
+            throw new RuntimeException("Empty exchange name during RabbitMQ client setup.");
+        }
+        Event.exchangeName = exchangeName;
+        Event.expiration = springEnv.getProperty("app.message-control-expiry-ms");
         Event.init();
 
         Thread rabbitMqThread = appThreadFactory.newThread(() -> {
             try {
                 rabbitMqChannel = rabbitMqConnection.createChannel();
-                final String exchangeName = springEnv.getProperty("app.message-event-exchange-name");
-                if (exchangeName == null || exchangeName.length() == 0) {
-                    throw new RuntimeException("Empty exchange name during RabbitMQ client setup.");
-                }
                 rabbitMqChannel.exchangeDeclare(exchangeName, BuiltinExchangeType.TOPIC);
                 String queueName = rabbitMqChannel.queueDeclare().getQueue();
                 rabbitMqChannel.queueBind(queueName, exchangeName, "#");
