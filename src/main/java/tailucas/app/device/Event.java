@@ -14,6 +14,7 @@ import org.apache.commons.lang3.function.Failable;
 import org.msgpack.jackson.dataformat.MessagePackMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.dikhan.pagerduty.client.events.domain.EventResult;
@@ -34,7 +35,6 @@ import com.rabbitmq.client.BuiltinExchangeType;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 
-import tailucas.app.AppProperties;
 import tailucas.app.EventProcessor;
 import tailucas.app.device.config.InputConfig;
 import tailucas.app.device.config.OutputConfig;
@@ -42,12 +42,14 @@ import tailucas.app.provider.DeviceConfig;
 import tailucas.app.provider.Metrics;
 
 public class Event implements Runnable {
-
     private static Logger log = null;
     protected static Pattern namePattern;
     protected static BasicProperties rabbitMqProperties;
     protected static MessagePackMapper mapper;
+    @Value("${app.message-control-exchange-name}")
     protected static String exchangeName;
+    @Value("${app.message-control-expiry-ms}")
+    protected static String expiration;
     protected static TriggerHistory triggerLatchHistory;
     protected static TriggerHistory triggerMultiHistory;
     protected static TriggerHistory triggerOutputHistory;
@@ -66,9 +68,8 @@ public class Event implements Runnable {
             mapper = new MessagePackMapper();
             namePattern = Pattern.compile("\\W");
             rabbitMqProperties = new AMQP.BasicProperties.Builder()
-                .expiration(AppProperties.getProperty("app.message-control-expiry-ms"))
+                .expiration(expiration)
                 .build();
-            exchangeName = AppProperties.getProperty("app.message-control-exchange-name");
             triggerLatchHistory = new TriggerHistory();
             triggerMultiHistory = new TriggerHistory();
             triggerOutputHistory = new TriggerHistory();
