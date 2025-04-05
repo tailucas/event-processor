@@ -40,7 +40,7 @@
     <prometheus-metrics-core.version>1.3.6</prometheus-metrics-core.version>
     <prometheus-metrics-exporter-httpserver.version>1.3.6</prometheus-metrics-exporter-httpserver.version>
     <prometheus-metrics-instrumentation-jvm.version>1.3.6</prometheus-metrics-instrumentation-jvm.version>
-    <unleash-client-java.version>9.3.2</unleash-client-java.version>
+    <unleash-client-java.version>10.2.2</unleash-client-java.version>
 
     <!-- test dependencies -->
     <junit-jupiter.version>5.12.1</junit-jupiter.version>
@@ -278,6 +278,14 @@
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
+        <!-- TODO: Update base image to bootstrap application using Maven -->
+        <!--
+        <configuration>
+          <jvmArguments>
+              -Djava.io.tmpdir=/data/
+          </jvmArguments>
+        </configuration>
+        -->
       </plugin>
       <plugin>
         <groupId>com.github.spotbugs</groupId>

@@ -20,7 +20,7 @@ services:
         syslog-format: "rfc3164"
         tag: "${DEVICE_NAME}"
     tmpfs:
-    - /tmp
+    - /tmp:exec
     hostname: ${DEVICE_NAME}
     ports:
       - "4041:4040"
