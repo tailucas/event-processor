@@ -14,7 +14,6 @@ import org.apache.commons.lang3.function.Failable;
 import org.msgpack.jackson.dataformat.MessagePackMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.dikhan.pagerduty.client.events.domain.EventResult;
