@@ -10,9 +10,11 @@
     "workspaceFolder": "${localWorkspaceFolder}",
     "workspaceMount": "source=${localWorkspaceFolder},target=${localWorkspaceFolder},type=bind",
     "containerEnv": {
+        "OP_SERVICE_ACCOUNT_TOKEN": "${localEnv:OP_SERVICE_ACCOUNT_TOKEN}",
         "OP_CONNECT_HOST": "${localEnv:OP_CONNECT_HOST}",
         "OP_CONNECT_TOKEN": "${localEnv:OP_CONNECT_TOKEN}",
-        "OP_VAULT": "${localEnv:OP_VAULT}"
+        "OP_VAULT": "${localEnv:OP_VAULT}",
+        "UV_LINK_MODE": "copy"
     },
     "runArgs": ["--network=host"]
 }

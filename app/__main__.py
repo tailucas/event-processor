@@ -1,10 +1,6 @@
 #!/usr/bin/env python
-import logging.handlers
 
 import asyncio
-import builtins
-import locale
-import os
 import requests
 import schedule
 import threading
@@ -13,10 +9,15 @@ import uvicorn
 import zmq
 import zmq.asyncio
 
+import sentry_sdk
+from sentry_sdk import capture_exception
+from sentry_sdk.integrations.asyncio import AsyncioIntegration
+from sentry_sdk.integrations.flask import FlaskIntegration
+from sentry_sdk.integrations.logging import ignore_logger
+from sentry_sdk.integrations.threading import ThreadingIntegration
+from sentry_sdk.integrations.sys_exit import SysExitIntegration
+
 from collections import OrderedDict, deque
-from concurrent import futures
-from datetime import datetime, timedelta
-from dateutil import tz
 from flask_sqlalchemy import SQLAlchemy
 from functools import wraps
 from io import BytesIO
@@ -25,23 +26,16 @@ from pylru import lrucache
 from pytz import timezone
 from requests.exceptions import ConnectionError
 from schedule import ScheduleValueError
-from sentry_sdk import capture_exception
-from sentry_sdk.integrations.excepthook import ExcepthookIntegration
-from sentry_sdk.integrations.flask import FlaskIntegration
-from sentry_sdk.integrations.logging import ignore_logger
-from sentry_sdk.integrations.threading import ThreadingIntegration
-from telegram import ForceReply, Update, InputMediaPhoto, MessageEntity
+
+from telegram import Update, InputMediaPhoto, MessageEntity
 from telegram.constants import MediaGroupLimit
 from telegram.ext import Application as TelegramApp, \
-    Updater as TelegramUpdater, \
     CommandHandler as TelegramCommandHandler, \
     ContextTypes as TelegramContextTypes, \
     MessageHandler as TelegramMessageHandler, \
     filters
 from telegram.error import NetworkError, RetryAfter, TimedOut
 from threading import Thread
-from UnleashClient import UnleashClient
-from urllib.parse import urlparse
 
 from fastapi import FastAPI, Depends, status, HTTPException
 from fastapi.responses import RedirectResponse
@@ -49,79 +43,43 @@ from fastapi.middleware.wsgi import WSGIMiddleware
 
 from pydantic import BaseModel
 
-from flask import Flask, g, flash, request, render_template, url_for, redirect
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine, AsyncSession
+from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, Float
+from sqlalchemy import ForeignKey, UniqueConstraint
+from sqlalchemy.future import select
+from sqlalchemy.orm import relationship
+from sqlalchemy import or_
+
+from flask import Flask, flash, request, render_template, url_for, redirect
 from flask.logging import default_handler
 from flask_compress import Compress
-from werkzeug.serving import make_server
+
+from flask_login import LoginManager
+from flask_login import login_required, login_user, logout_user, current_user, UserMixin
+
+from permit.sync import Permit
 
 from zmq.asyncio import Poller
 from zmq.error import ZMQError
 
-# setup builtins used by pylib init
-builtins.SENTRY_EXTRAS = [
-    FlaskIntegration(transaction_style="url"),
-    ThreadingIntegration(propagate_scope=True)
-]
-builtins.SENTRY_ENVIRONMENT = 'python'
-AWS_REGION = os.environ['AWS_DEFAULT_REGION']
-influx_creds_section = 'local'
-from . import APP_NAME
-class CredsConfig:
-    sentry_dsn: f'opitem:"Sentry" opfield:{APP_NAME}.dsn' = None # type: ignore
-    cronitor_token: f'opitem:"cronitor" opfield:.password' = None # type: ignore
-    flask_secret_key: f'opitem:"Frontend" opfield:Flask.secret_key' = None # type: ignore
-    flask_basic_auth_username: f'opitem:"Frontend" opfield:.username' = None # type: ignore
-    flask_basic_auth_password: f'opitem:"Frontend" opfield:.password' = None # type: ignore
-    telegram_bot_api_token: f'opitem:"Telegram" opfield:{APP_NAME}.token' = None # type: ignore
-    influxdb_org: f'opitem:"InfluxDB" opfield:{influx_creds_section}.org' = None # type: ignore
-    influxdb_token: f'opitem:"InfluxDB" opfield:{influx_creds_section}.token' = None # type: ignore
-    influxdb_url: f'opitem:"InfluxDB" opfield:{influx_creds_section}.url' = None # type: ignore
-    grafana_url: f'opitem:"Grafana" opfield:dashboard.URL' = None # type: ignore
-    unleash_token: f'opitem:"Unleash" opfield:.password' = None # type: ignore
-    unleash_url: f'opitem:"Unleash" opfield:default.url' = None # type: ignore
-    unleash_app: f'opitem:"Unleash" opfield:default.app_name' = None # type: ignore
-    permit_pdp_url: f'opitem:"Permit" opfield:.hostname' = None # type: ignore
-    permit_token: f'opitem:"Permit" opfield:.credential' = None # type: ignore
-    user_key: f'opitem:"Users" opfield:user.key' = None # type: ignore
-    user_email: f'opitem:"Users" opfield:user.email' = None # type: ignore
-    user_password: f'opitem:"Users" opfield:user.creds' = None # type: ignore
-
-
-# instantiate class
-builtins.creds_config = CredsConfig()
-
-from tailucas_pylib import app_config, \
-    creds, \
-    device_name, \
-    device_name_base, \
-    log, \
-    log_handler
-
-from tailucas_pylib.datetime import is_list, \
-    make_timestamp, \
-    make_unix_timestamp, \
-    ISO_DATE_FORMAT
-from tailucas_pylib.aws.metrics import post_count_metric
+from tailucas_pylib import APP_NAME, app_config, creds, DEVICE_NAME, log, log_handler
+from tailucas_pylib.flags import is_flag_enabled
+from tailucas_pylib.datetime import make_timestamp, make_unix_timestamp, make_iso_timestamp
 from tailucas_pylib.device import Device
-from tailucas_pylib.process import SignalHandler, exec_cmd_log
-from tailucas_pylib.rabbit import MQConnection, ZMQListener
+from tailucas_pylib.process import SignalHandler
+from tailucas_pylib.rabbit import ZMQListener
 from tailucas_pylib import threads
 from tailucas_pylib.threads import thread_nanny, die, bye
-from tailucas_pylib.app import AppThread, ZmqRelay
+from tailucas_pylib.app import AppThread
 from tailucas_pylib.zmq import zmq_term, Closable, zmq_socket, try_close
 from tailucas_pylib.handler import exception_handler
-
-from influxdb_client import InfluxDBClient, Point, WritePrecision
-from influxdb_client.client.write_api import ASYNCHRONOUS
-
 
 # Reduce Sentry noise
 ignore_logger('telegram.ext.Updater')
 ignore_logger('telegram.ext._updater')
 ignore_logger('asyncio')
 
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine, AsyncSession
-from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
 db_tablespace_path = app_config.get('sqlite', 'tablespace_path')
 db_tablespace = path.join(db_tablespace_path, f'{APP_NAME}.db')
@@ -130,22 +88,11 @@ engine: AsyncEngine = create_async_engine(dburl)
 async_session: AsyncSession = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 Base = declarative_base()
 
-
 async def get_db():
     async with async_session() as session:
         yield session
 
-
-from sqlalchemy import Column, Integer, String, JSON, DateTime, Boolean, Text, Float
-
-from sqlalchemy import update, ForeignKey, UniqueConstraint, Result, delete
-from sqlalchemy.future import select
-from sqlalchemy.orm import relationship, Mapped, Query
-from sqlalchemy import or_
-
-from permit import UserRead
-from permit.sync import Permit
-permit = Permit(pdp=creds.permit_pdp_url, token=creds.permit_token)
+permit = Permit(pdp=creds.get_creds('Permit/hostname'), token=creds.get_creds('Permit/credential'))
 
 user_tz = timezone(app_config.get('app', 'user_tz'))
 flask_app = Flask(APP_NAME)
@@ -155,15 +102,15 @@ db = SQLAlchemy(app=flask_app, model_class=Base)
 # set up flask application
 flask_app.logger.removeHandler(default_handler)
 flask_app.logger.addHandler(log_handler)
-flask_app.secret_key = creds.flask_secret_key
+flask_app.secret_key = creds.get_creds('Frontend/Flask/secret_key')
 flask_app.jinja_env.add_extension('jinja2.ext.loopcontrols')
+def is_list(value):
+    return isinstance(value, list)
 flask_app.jinja_env.filters.update({
     'is_list': is_list,
 })
 flask_app.debug = app_config.getboolean('flask', 'debug')
 
-from flask_login import LoginManager
-from flask_login import login_required, login_user, logout_user, current_user, UserMixin
 login_manager = LoginManager()
 login_manager.login_view = 'login'
 login_manager.init_app(flask_app)
@@ -186,12 +133,8 @@ CONFIG_AUTO_SCHEDULER='auto-scheduler'
 startup_complete = False
 
 
-# feature flags configuration
-features = UnleashClient(
-    url=creds.unleash_url,
-    app_name=creds.unleash_app,
-    custom_headers={'Authorization': creds.unleash_token})
-features.initialize_client()
+sentry_dsn = creds.get_creds(app_config.get("creds", "sentry_dsn").replace("__APP_NAME__", APP_NAME))
+
 
 
 class GeneralConfig(Base):
@@ -525,7 +468,7 @@ active_users = dict()
 def auth_enabled(func):
     @wraps(func)
     def decorated_view(*args, **kwargs):
-        if features.is_enabled('console-auth'):
+        if is_flag_enabled('console-auth'):
             flask_app.config.pop("LOGIN_DISABLED", None)
         else:
             flask_app.config["LOGIN_DISABLED"] = True
@@ -540,7 +483,7 @@ def authz_required(action, resource):
             if flask_app.config.get("LOGIN_DISABLED"):
                 log.warning('Login disabled. Skipping authorization check.')
                 return func(*args, **kwargs)
-            user_details = f'Unauthenticated user'
+            user_details = 'Unauthenticated user'
             flash_alert = 'danger'
             if current_user.is_authenticated:
                 user_details = f'User {current_user.name} ({current_user.key})'
@@ -579,19 +522,19 @@ def login_post():
         password = request.form.get('user_password')
         remember = True if request.form.get('remember_user') else False
         log.info(f'Login request for user {email}...')
-        if email == creds.user_email and password == creds.user_password:
+        if email == creds.get_creds('Users/user/email') and password == creds.get_creds('Users/user/creds'):
             # FIXME: actually support multiple users
-            u = SessionUser(id=email, key=creds.user_key, name=email)
+            u = SessionUser(id=email, key=creds.get_creds('Users/user/key'), name=email)
             active_users[u.id] = u
             login_user(user=u, remember=remember)
             log_message = f'Login successful for {email}.'
             log.info(log_message)
             flash(message=log_message, category='success')
             return redirect(url_for('index'))
-    except:
-        log.exception(f'Login failure.')
+    except Exception:
+        log.exception('Login failure.')
     log.info(f'Login failed for {email}.')
-    flash(message=f'Access Denied.', category='danger')
+    flash(message='Access Denied.', category='danger')
     return redirect(url_for('login'))
 
 
@@ -618,12 +561,13 @@ def debug():
 
 @flask_app.errorhandler(500)
 def internal_server_error(e):
+    global sentry_dsn
     log.error(f'{e!s}')
     last_event_id = capture_exception(error=e)
     log.info(f'Sentry captured event ID is {last_event_id}.')
     return render_template('error.html',
                            sentry_event_id=last_event_id,
-                           sentry_dsn=creds.sentry_dsn
+                           sentry_dsn=sentry_dsn
                            ), 500
 
 
@@ -645,7 +589,7 @@ def index():
                     }
                 ]
                 zmq_socket.send_pyobj({
-                    device_name: {
+                    DEVICE_NAME: {
                         'active_devices': active_devices,
                         'inputs': active_devices,
                     }
@@ -720,7 +664,7 @@ def index():
     return render_template('index.html',
                            inputs=inputs.input_config,
                            meters=meters,
-                           server_context=device_name,
+                           server_context=DEVICE_NAME,
                            render_timestamp=render_timestamp,
                            healthchecks_badges=app_config.get('app', 'healthchecks_badges').split(','),
                            username=username)
@@ -728,7 +672,7 @@ def index():
 
 @flask_app.route('/metrics', methods=['GET', 'POST'])
 def show_metrics():
-    return redirect(creds.grafana_url, code=302)
+    return redirect(creds.get_creds('Grafana/dashboard/URL'), code=302)
 
 
 @flask_app.route('/event_log', methods=['GET', 'POST'])
@@ -1200,11 +1144,6 @@ class EventProcessor(AppThread):
         self._metric_meter_value_accumulator = 0
         self._metric_last_posted_register_value = 0
 
-        self.influxdb = None
-        self.influxdb_rw = None
-        self.influxdb_ro = None
-        self.influxdb_bucket = app_config.get('influxdb', 'bucket')
-
     def _update_device(self, input_outputs, device_origin, origin_devices, event_origin, device):
         # device_key must always be present
         device_key = device['device_key']
@@ -1225,27 +1164,11 @@ class EventProcessor(AppThread):
             input_outputs[device_key] = device
         return device_key
 
-    def _influxdb_write(self, bucket, active_device_key, field_name, field_value):
-        measurement_name = '_'.join(active_device_key.split()).lower()
-        try:
-            self.influxdb_rw.write(
-                bucket=bucket,
-                record=Point(measurement_name).tag("application", APP_NAME).tag("device", device_name_base).field(field_name, field_value))
-        except Exception:
-            log.warning(f'Unable to post measurement {measurement_name} to InfluxDB.', exc_info=True)
-
     # noinspection PyBroadException
     def run(self):
         # bot
-        if features.is_enabled("telegram-bot"):
+        if is_flag_enabled("telegram-bot"):
             self.bot.connect(URL_WORKER_TELEGRAM_BOT)
-        # influx DB
-        self.influxdb = InfluxDBClient(
-            url=creds.influxdb_url,
-            token=creds.influxdb_token,
-            org=creds.influxdb_org)
-        self.influxdb_rw = self.influxdb.write_api(write_options=ASYNCHRONOUS)
-        self.influxdb_ro = self.influxdb.query_api()
         # https://flask-sqlalchemy.palletsprojects.com/en/3.0.x/quickstart/#create-the-tables
         flask_app.app_context().push()
         # load DB config
@@ -1273,7 +1196,7 @@ class EventProcessor(AppThread):
             input_outputs=self.inputs,
             device_origin=self._input_origin,
             origin_devices=self._inputs_by_origin,
-            event_origin=device_name,
+            event_origin=DEVICE_NAME,
             device={
                 'device_key': 'App Panic Button',
                 'device_label': 'Panic Button',
@@ -1284,7 +1207,7 @@ class EventProcessor(AppThread):
             input_outputs=self.inputs,
             device_origin=self._input_origin,
             origin_devices=self._inputs_by_origin,
-            event_origin=device_name,
+            event_origin=DEVICE_NAME,
             device={
                 'device_key': 'App Dash Button',
                 'device_label': 'Dash Button',
@@ -1295,7 +1218,7 @@ class EventProcessor(AppThread):
             input_outputs=self.outputs,
             device_origin=self._output_origin,
             origin_devices=self._outputs_by_origin,
-            event_origin=device_name,
+            event_origin=DEVICE_NAME,
             device={
                 'device_key': 'SMS',
                 'device_label': 'SMS',
@@ -1317,10 +1240,10 @@ class EventProcessor(AppThread):
                     continue
                 if 'sms' in event:
                     sms_message = event['sms']
-                    if features.is_enabled("telegram-bot"):
+                    if is_flag_enabled("telegram-bot"):
                         log.debug(f'Sending payload to bot {event.keys()!s}...')
                         self.bot.send_pyobj(sms_message)
-                        log.debug(f'Sent payload to bot...')
+                        log.debug('Sent payload to bot...')
                     else:
                         log.warning(f'Not sending message to Telegram bot disabled with feature flag: {len(sms_message)}.')
                     continue
@@ -1336,7 +1259,7 @@ class EventProcessor(AppThread):
                     else:
                         timestamp = make_timestamp()
                         log_msg = "Message from {} does not include a 'timestamp' so it can't be filtered if it " \
-                                    "is stale. Using {}.".format(event_origin, timestamp.strftime(ISO_DATE_FORMAT))
+                                    "is stale. Using {}.".format(event_origin, make_iso_timestamp(timestamp))
                         if 'active_devices' in event_data or 'outputs_triggered' in event_data:
                             log.warning(log_msg)
                         else:
@@ -1346,7 +1269,7 @@ class EventProcessor(AppThread):
                             input_outputs=self.inputs,
                             device_origin=self._input_origin,
                             origin_devices=self._inputs_by_origin,
-                            event_origin=device_name,
+                            event_origin=DEVICE_NAME,
                             device=event_data)
                         di: DeviceInfo = DeviceInfo.model_validate(event_data)
                         ic = InputConfig.query.filter_by(device_key=di.device_key).first()
@@ -1373,7 +1296,7 @@ class EventProcessor(AppThread):
                             input_outputs=self.outputs,
                             device_origin=self._output_origin,
                             origin_devices=self._outputs_by_origin,
-                            event_origin=device_name,
+                            event_origin=DEVICE_NAME,
                             device=event_data)
                         di: DeviceInfo = DeviceInfo.model_validate(event_data)
                         oc = OutputConfig.query.filter_by(device_key=di.device_key).first()
@@ -1423,7 +1346,7 @@ class EventProcessor(AppThread):
                         elif bot_command_base.startswith('/inputoff'):
                             input_enable = False
                         state = 'enable'
-                        if input_enable == False or output_enable == False:
+                        if not input_enable or not output_enable:
                             state = 'disable'
                         bot_reply = f'No devices to {state}.'
                         device_configs = list()
@@ -1494,7 +1417,7 @@ class EventProcessor(AppThread):
                         else:
                             log.warning(f'No devices matched to {state}.')
                         log.info(bot_reply)
-                        if features.is_enabled("telegram-bot"):
+                        if is_flag_enabled("telegram-bot"):
                             self.bot.send_pyobj(BotMessage(device_label='notification', message=bot_reply).model_dump())
                         else:
                             log.warning(f'Not sending message to Telegram bot disabled with feature flag: {len(bot_reply)}.')
@@ -1550,15 +1473,15 @@ class TBot(AppThread, Closable):
         call_again_timestamp = 0
         min_send_interval = app_config.getint('telegram', 'min_send_interval')
         last_sent = 0
-        while not threads.shutting_down and features.is_enabled("telegram-bot"):
+        while not threads.shutting_down and is_flag_enabled("telegram-bot"):
             now = round(time.time())
             event = None
             events = await poller.poll(timeout=1000)
             if zmq_socket in dict(events):
                 try:
                     event = await zmq_socket.recv_pyobj()
-                except ZMQError as e:
-                    log.exception(f'Cannot get message from ZMQ channel.')
+                except ZMQError:
+                    log.exception('Cannot get message from ZMQ channel.')
             if event is None and not pending_by_label:
                 continue
             try:
@@ -1575,7 +1498,7 @@ class TBot(AppThread, Closable):
                             log.debug(f'Output device for message: {output_device!s}')
                         else:
                             message = BotMessage(**event)
-                    except Exception as e:
+                    except Exception:
                         log.warning('Bot message unpack problem {e!s}', exc_info=True)
                         continue
                     timestamp = None
@@ -1679,7 +1602,7 @@ class TBot(AppThread, Closable):
                 last_sent = now
             except Exception:
                 capture_exception()
-                log.exception(f'General issue with bot message processing.')
+                log.exception('General issue with bot message processing.')
 
 
     def run(self):
@@ -1687,7 +1610,7 @@ class TBot(AppThread, Closable):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         log.info('Creating Telegram application...')
-        telegram_application = TelegramApp.builder().token(creds.telegram_bot_api_token).build()
+        telegram_application = TelegramApp.builder().token(creds.get_creds(f'Telegram/{APP_NAME}/token')).build()
         telegram_application.add_handler(TelegramCommandHandler(command='inputon', callback=telegram_bot_cmd))
         telegram_application.add_handler(TelegramCommandHandler(command='inputoff', callback=telegram_bot_cmd))
         telegram_application.add_handler(TelegramCommandHandler(command='outputon', callback=telegram_bot_cmd))
@@ -1754,7 +1677,7 @@ class AutoScheduler(AppThread):
     # noinspection PyBroadException
     def run(self):
         if not self.is_enabled:
-            log.warning(f'Auto-scheduler is not enabled; scheduled changes will not run.')
+            log.warning('Auto-scheduler is not enabled; scheduled changes will not run.')
         with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, socket_type=zmq.PULL, and_raise=False, shutdown_on_error=True) as zmq_socket:
             while not threads.shutting_down:
                 next_message = False
@@ -1788,7 +1711,7 @@ class AutoScheduler(AppThread):
                                 schedule_time=auto_schedule_enable,
                                 device_state=True)
                         except ScheduleValueError:
-                            log.exception(f'Unable to schedule.')
+                            log.exception('Unable to schedule.')
                     else:
                         log.warning(f'Disabled auto-schedule for {device_label}.')
                 # don't spin
@@ -1823,8 +1746,23 @@ class ApiServer(Thread):
             self.server.force_exit = True
 
 
-def main():
+async def main():
+    global sentry_dsn
+    global startup_complete
+    # sentry instrumentation
+    log.info('Loading Sentry.io instrumentation...')
+    sentry_sdk.init(
+        dsn=sentry_dsn,
+        integrations=[
+            AsyncioIntegration(),
+            FlaskIntegration(transaction_style="url"),
+            SysExitIntegration(capture_successful_exits=True),
+            ThreadingIntegration(propagate_scope=True)
+        ],
+        send_default_pii=True,
+    )
     # ensure proper signal handling; must be main thread
+    log.info('Installing signal handlers...')
     signal_handler = SignalHandler()
     if not threads.shutting_down:
         log.info('Creating application threads...')
@@ -1841,12 +1779,12 @@ def main():
         event_processor = EventProcessor()
         # configure Telegram bot
         telegram_bot = None
-        if features.is_enabled("telegram-bot"):
+        if is_flag_enabled("telegram-bot"):
             telegram_bot = TBot(
                 chat_id=app_config.getint('telegram', 'chat_room_id'),
                 sns_fallback=app_config.getboolean('telegram', 'sns_fallback_enabled'))
         else:
-            log.warning(f'Not running Telegram bot client due to feature flag.')
+            log.warning('Not running Telegram bot client due to feature flag.')
         # start the nanny
         nanny = threading.Thread(
             daemon=True,
@@ -1868,7 +1806,6 @@ def main():
             server.start()
             # get supporting services going
             nanny.start()
-            global startup_complete
             startup_complete = True
             log.info('Startup complete.')
             # block on threading event
@@ -1888,4 +1825,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

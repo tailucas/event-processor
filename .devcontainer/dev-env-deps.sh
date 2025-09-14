@@ -6,11 +6,6 @@ if ! task --version; then
   sh -c "$(curl -sSL https://taskfile.dev/install.sh)" -- -b ~/.local/bin
 fi
 
-if ! poetry --version; then
-  curl -sSL https://install.python-poetry.org | POETRY_HOME=~/.local python3 -
-fi
-
-if ! poetry show --tree; then
-  poetry install --no-interaction
-  poetry show --tree
+if ! uv --version; then
+  curl -LsSf https://astral.sh/uv/install.sh | sh
 fi

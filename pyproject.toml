@@ -1,40 +1,44 @@
-[tool.poetry]
+[project]
 name = "app"
 version = "0.1.0"
-description = ""
-authors = ["Tai Lucas <tglucas@gmail.com>"]
-license = "MIT"
+description = "Event Processor applications"
 readme = "README.md"
-
-[tool.poetry.scripts]
-app = "app.__main__:main"
-
-[tool.poetry.dependencies]
-python = "^3.11"
-awscli = "^1.32.93"
-influxdb-client = "^1.42.0"
-pylru = "^1.2.1"
-pytz = "^2024.1"
-pyzmq = "^26.0.2"
-requests = "^2.31.0"
-schedule = "^1.2.2"
-sentry-sdk = {extras = ["flask"], version = "^2.0.1"}
-flask = "^3.0.3"
-flask-compress = "^1.15"
-flask-sqlalchemy = "^3.1.1"
-sqlalchemy = {extras = ["asyncio"], version = "^2.0.29"}
-fastapi = "^0.110.2"
-uvicorn = "^0.29.0"
-python-telegram-bot = "^21.1.1"
-aiosqlite = "^0.20.0"
-onepasswordconnectsdk = {git = "https://github.com/tglucas/connect-sdk-python.git"}
-tailucas-pylib = "^0.4.9"
-pydantic = "^2.7.1"
-unleashclient = "^5.12.2"
-permit = "^2.7.2"
-flask-login = "^0.6.3"
-
+license-files = ["LICENSE"]
+authors = [
+    { name = "Tai Lucas", email = "tglucas@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "aiosqlite>=0.21.0",
+    "awscli>=1.42.30",
+    "fastapi>=0.116.1",
+    "flask>=3.1.2",
+    "flask-compress>=1.18",
+    "flask-login>=0.6.3",
+    "flask-sqlalchemy>=3.1.1",
+    "permit>=2.8.1",
+    "pydantic>=2.11.9",
+    "pylru>=1.2.1",
+    "python-telegram-bot>=22.4",
+    "pytz>=2025.2",
+    "pyzmq>=27.0.2",
+    "requests>=2.32.5",
+    "schedule>=1.2.2",
+    "sentry-sdk[flask]>=2.37.0",
+    "sqlalchemy[asyncio]>=2.0.43",
+    "tailucas-pylib>=0.5.2",
+    "uvicorn>=0.35.0",
+]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["uv_build>=0.8.14,<0.9.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "app"
+module-root = ""
+
+[project.scripts]
+cred_tool = "tailucas_pylib.tools.cred_tool:main"
+config_interpol = "tailucas_pylib.tools.config_interpol:main"
+yaml_interpol = "tailucas_pylib.tools.yaml_interpol:main"

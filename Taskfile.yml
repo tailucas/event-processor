@@ -26,7 +26,7 @@ tasks:
   create-dot-env:
     desc: Dump container environment to local file.
     preconditions:
-      - poetry -V
+      - uv -V
       - python -V
       - python3 -V
       - test -f cred_tool
@@ -34,12 +34,13 @@ tasks:
     cmds:
       - rm -f .env
       - echo 'DOCKER_IMAGE="{{.PROJECT_NAME}}"' >> .env
-      - poetry run python ./cred_tool ENV.{{.PROJECT_NAME}} {{.PROJECT_NAME}} build | jq -r '. | to_entries[] | [.key,.value] | @tsv' | tr '\t' '=' | sed 's/=\(.*\)/="\1"/' >> .env
+      - echo 'WORK_DIR="{{.WORK_DIR}}"' >> .env
+      - uv run python cred_tool ENV.{{.PROJECT_NAME}} {{.PROJECT_NAME}} build | jq -r '. | to_entries[] | [.key,.value] | @tsv' | tr '\t' '=' | sed 's/=\(.*\)/="\1"/' >> .env
   docker:
     deps: [create-dot-env]
     desc: Generate a usable docker-compose.yml for Docker build.
     preconditions:
-      - poetry -V
+      - uv -V
       - python -V
       - python3 -V
       - test -f yaml_interpol
