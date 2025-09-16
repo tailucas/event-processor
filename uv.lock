@@ -877,7 +877,7 @@ wheels = [
 
 [[package]]
 name = "permit"
-version = "2.8.1"
+version = "2.8.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -887,9 +887,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "zipp" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2a/d3/dc1ba216001d08571e1cf0e48debd83db8e05c4a2af5f41fd6169bbcbe42/permit-2.8.1.tar.gz", hash = "sha256:8f6d363f0eef2d024c8db55a67c9a8cb021aa9025799d63f2dde8a1076437f79", size = 73046, upload-time = "2025-09-11T13:53:24.405Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/36/99/460b9f225e6494734aaacb49dffe6adbb0ef5076822f5cb79d79a29a1e65/permit-2.8.2.tar.gz", hash = "sha256:e84bce985ea585469d464315c014ed30c490de6550ff7a8fb4b736dc70f26c84", size = 73075, upload-time = "2025-09-14T07:41:40.816Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a1/10/d3177fdcbfaa1cfe313ebda52f6c665409e82f760dbbb869f61ee3d03ce9/permit-2.8.1-py3-none-any.whl", hash = "sha256:73912fde2a725dd0d662924b104ccfbdbc71be65fb80dedfeba5d4d13cf62e22", size = 98474, upload-time = "2025-09-11T13:53:23.32Z" },
+    { url = "https://files.pythonhosted.org/packages/d6/79/07519a70acad91b38d4697724162c6cb2b0de242e89835e70a48554d4484/permit-2.8.2-py3-none-any.whl", hash = "sha256:044a50a58d3f81ece27c07660b030542f901f7b414be6a88c1e597731397455b", size = 98513, upload-time = "2025-09-14T07:41:39.59Z" },
 ]
 
 [[package]]
@@ -1360,7 +1360,7 @@ wheels = [
 
 [[package]]
 name = "tailucas-pylib"
-version = "0.5.2"
+version = "0.5.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "boto3" },
@@ -1377,9 +1377,9 @@ dependencies = [
     { name = "sentry-sdk" },
     { name = "simplejson" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/47/c9/d26dd6be4cd650f1382bde1c7f46dffd7278f87eeff16ed524bfe3027bc5/tailucas_pylib-0.5.2.tar.gz", hash = "sha256:6e23a003122a83a70549d357918867c6e5d75b8922226cbcacc5f97810fc7988", size = 19926, upload-time = "2025-09-13T20:45:01.774Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a4/47/4a2134492230a2fd18e2d9132e017c7f38f7f4c0d2ec5354427eadee8da6/tailucas_pylib-0.5.5.tar.gz", hash = "sha256:e4645b7fe19fa27081ff0045447cde979da9ccbde00b9438b37604c0f46f8b7e", size = 20575, upload-time = "2025-09-14T12:55:34.173Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/28/e0/c8472c4973a96ea9ada9742404d4c9c653961863c993257921e01d0f89aa/tailucas_pylib-0.5.2-py3-none-any.whl", hash = "sha256:ff0dbcc2a9bd35fcfad0d9ca2e803efcdc6bd3c844e7042557802f89f5bb0b5f", size = 26339, upload-time = "2025-09-13T20:45:00.121Z" },
+    { url = "https://files.pythonhosted.org/packages/98/a1/d4473ad42fb91404d411e6976a74d251626570ead1c173616688775ee898/tailucas_pylib-0.5.5-py3-none-any.whl", hash = "sha256:cc173cbddc14dcfa40e3c1b834d83b144ef2fb577e2a3a4adbd929e5af67c0ea", size = 27278, upload-time = "2025-09-14T12:55:32.609Z" },
 ]
 
 [[package]]

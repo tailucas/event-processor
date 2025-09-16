@@ -29,13 +29,11 @@ tasks:
       - uv -V
       - python -V
       - python3 -V
-      - test -f cred_tool
       - test -n "$(docker ps | grep op-connect-api)"
     cmds:
       - rm -f .env
       - echo 'DOCKER_IMAGE="{{.PROJECT_NAME}}"' >> .env
-      - echo 'WORK_DIR="{{.WORK_DIR}}"' >> .env
-      - uv run python cred_tool ENV.{{.PROJECT_NAME}} {{.PROJECT_NAME}} build | jq -r '. | to_entries[] | [.key,.value] | @tsv' | tr '\t' '=' | sed 's/=\(.*\)/="\1"/' >> .env
+      - uv run cred_tool ENV.{{.PROJECT_NAME}} {{.PROJECT_NAME}} build | jq -r '. | to_entries[] | [.key,.value] | @tsv' | tr '\t' '=' | sed 's/=\(.*\)/="\1"/' >> .env
   docker:
     deps: [create-dot-env]
     desc: Generate a usable docker-compose.yml for Docker build.
@@ -43,7 +41,6 @@ tasks:
       - uv -V
       - python -V
       - python3 -V
-      - test -f yaml_interpol
       - test -f docker-compose.template
     cmds:
       - rm -f docker-compose.yml

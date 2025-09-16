@@ -4,8 +4,3 @@ version: '3'
 
 vars:
   PROJECT_NAME: event-processor
-  WORK_DIR: /opt/app
-  ENCODING: UTF-8
-  LANG: en_ZA.UTF-8
-  LANGUAGE: en_ZA
-  LC_ALL: en_ZA.UTF-8

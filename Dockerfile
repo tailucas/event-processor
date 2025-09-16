@@ -31,8 +31,8 @@ COPY app/__main__.py ./app/
 COPY config/app.conf ./config/app.conf
 COPY static ./static
 COPY templates ./templates
-COPY poetry.lock pyproject.toml ./
-RUN chown app:app poetry.lock
+COPY uv.lock pyproject.toml ./
+RUN chown app:app uv.lock
 # switch to run user
 USER app
 RUN /opt/app/python_setup.sh
