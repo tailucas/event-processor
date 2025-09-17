@@ -34,6 +34,7 @@ tasks:
       - rm -f .env
       - echo 'DOCKER_IMAGE="{{.PROJECT_NAME}}"' >> .env
       - uv run cred_tool ENV.{{.PROJECT_NAME}} {{.PROJECT_NAME}} build | jq -r '. | to_entries[] | [.key,.value] | @tsv' | tr '\t' '=' | sed 's/=\(.*\)/="\1"/' >> .env
+      - test $(wc -l < .env) -ge 2
   docker:
     deps: [create-dot-env]
     desc: Generate a usable docker-compose.yml for Docker build.

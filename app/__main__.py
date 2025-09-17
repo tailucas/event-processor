@@ -39,7 +39,8 @@ from telegram.ext import (
 from telegram.error import NetworkError, RetryAfter, TimedOut
 from threading import Thread
 
-from fastapi import FastAPI, Depends, status, HTTPException
+
+from fastapi import FastAPI, Depends, status, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.wsgi import WSGIMiddleware
 
@@ -138,7 +139,9 @@ Compress().init_app(flask_app)
 flask_ctx = flask_app.app_context()
 flask_ctx.push()
 
+
 api_app = FastAPI()
+api_app.state.startup_complete = False
 api_app.mount("/admin", WSGIMiddleware(flask_app))
 
 
@@ -147,8 +150,6 @@ URL_WORKER_TELEGRAM_BOT = "inproc://telegram-bot"
 URL_WORKER_AUTO_SCHEDULER = "inproc://auto-scheduler"
 
 CONFIG_AUTO_SCHEDULER = "auto-scheduler"
-
-startup_complete = False
 
 
 sentry_dsn = creds.get_creds(
@@ -524,8 +525,8 @@ async def api_ping():
 
 
 @api_app.get("/api/running")
-async def api_running():
-    return startup_complete
+async def api_running(request: Request):
+    return request.app.state.startup_complete
 
 
 class DeviceInfo(BaseModel):
@@ -661,7 +662,6 @@ def debug():
 
 @flask_app.errorhandler(500)
 def internal_server_error(e):
-    global sentry_dsn
     log.error(f"{e!s}")
     last_event_id = capture_exception(error=e)
     log.info(f"Sentry captured event ID is {last_event_id}.")
@@ -768,7 +768,7 @@ def index():
     meter_configs = MeterConfig.query.all()
     for meter_config in meter_configs:
         meters[meter_config.input_device_id] = meter_config
-    render_timestamp = make_timestamp(timestamp=None, as_tz=user_tz, make_string=True)
+    render_timestamp = make_iso_timestamp(timestamp=None, as_tz=user_tz)
     username = None
     if current_user.is_authenticated:
         username = current_user.name
@@ -2171,7 +2171,8 @@ class ApiServer(Thread):
         self.server = None
 
         config = uvicorn.Config(
-            app="app.__main__:api_app",
+            # app="app.__main__:api_app",
+            app=api_app,
             host="0.0.0.0",
             port=int(app_config.get("flask", "http_port")),
             log_level="warning",
@@ -2193,8 +2194,6 @@ class ApiServer(Thread):
 
 
 async def main():
-    global sentry_dsn
-    global startup_complete
     # sentry instrumentation
     log.info("Loading Sentry.io instrumentation...")
     sentry_sdk.init(
@@ -2252,7 +2251,7 @@ async def main():
             server.start()
             # get supporting services going
             nanny.start()
-            startup_complete = True
+            api_app.state.startup_complete = True
             log.info("Startup complete.")
             # block on threading event
             threads.interruptable_sleep.wait()
