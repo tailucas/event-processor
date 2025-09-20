@@ -9,8 +9,6 @@ vars:
   USER_ID: 999
   GROUP_ID: 999
 
-dotenv: ['.env']
-
 tasks:
   default:
     cmds:
@@ -23,31 +21,6 @@ tasks:
       - sudo chmod 755 ./data/
       - sudo chmod g+rws ./data/
       - sudo rm -f ./data/app-std* ./data/cron-std* ./data/supervisor.sock
-  create-dot-env:
-    desc: Dump container environment to local file.
-    preconditions:
-      - uv -V
-      - python -V
-      - python3 -V
-      - test -n "$(docker ps | grep op-connect-api)"
-    cmds:
-      - rm -f .env
-      - echo 'DOCKER_IMAGE="{{.PROJECT_NAME}}"' >> .env
-      - uv run cred_tool ENV.{{.PROJECT_NAME}} {{.PROJECT_NAME}} build | jq -r '. | to_entries[] | [.key,.value] | @tsv' | tr '\t' '=' | sed 's/=\(.*\)/="\1"/' >> .env
-      - test $(wc -l < .env) -ge 2
-  docker:
-    deps: [create-dot-env]
-    desc: Generate a usable docker-compose.yml for Docker build.
-    preconditions:
-      - uv -V
-      - python -V
-      - python3 -V
-      - test -f docker-compose.template
-    cmds:
-      - rm -f docker-compose.yml
-      - cp docker-compose.template docker-compose.yml
-    generates:
-      - docker-compose.yml
   java:
     desc: Build Java artifacts in preparation for container build.
     preconditions:
@@ -56,7 +29,29 @@ tasks:
       - mvn -v
     cmds:
       - mvn package
-      - mvn dependency:tree
+    generates:
+      - target/app-0.1.0.jar
+  python:
+    desc: Create and initialize Python virtual environment.
+    preconditions:
+      - uv -V
+    cmds:
+      - uv python install
+      - uv sync
+    generates:
+      - .venv
+  create-dot-env:
+    deps: [python]
+    desc: Write project .env
+    cmds:
+      - ./dot_env_setup.sh {{.PROJECT_NAME}}
+    preconditions:
+      - uv -V
+      - jq -V
+      - tr --version
+      - sed --version
+    generates:
+      - .env
   push:
     deps: [build]
     desc: Push built image to Docker Hub
@@ -65,16 +60,12 @@ tasks:
     cmds:
       - docker compose push
   build:
-    deps: [docker, java]
+    deps: [create-dot-env, java, python]
     desc: Clean up volume directory and build container image.
     preconditions:
-      - docker compose -v
-    env:
-      D_LANG: "{{.LANG}}"
-      D_LANGUAGE: "{{.LANGUAGE}}"
-      D_LC_ALL: "{{.LC_ALL}}"
+      - docker -v
     cmds:
-      - docker compose build --progress plain
+      - docker compose --env-file .env build --progress plain
   run:
     deps: [build, datadir]
     desc: Run docker container
@@ -95,5 +86,3 @@ tasks:
       - test -d ./data/
     cmds:
       - docker compose up -d
-  connect:
-    cmd: ./connect_to_app.sh {{.DOCKER_APP}}

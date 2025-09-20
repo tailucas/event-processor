@@ -79,7 +79,7 @@ from tailucas_pylib.rabbit import ZMQListener
 from tailucas_pylib import threads
 from tailucas_pylib.threads import thread_nanny, die, bye
 from tailucas_pylib.app import AppThread
-from tailucas_pylib.zmq import zmq_term, Closable, zmq_socket, try_close
+from tailucas_pylib.zmq import zmq_term, Closable, zmq_socket, try_close, URL_WORKER_APP
 from tailucas_pylib.handler import exception_handler
 
 # Reduce Sentry noise
@@ -145,7 +145,6 @@ api_app.state.startup_complete = False
 api_app.mount("/admin", WSGIMiddleware(flask_app))
 
 
-URL_WORKER_APP = "inproc://app-worker"
 URL_WORKER_TELEGRAM_BOT = "inproc://telegram-bot"
 URL_WORKER_AUTO_SCHEDULER = "inproc://auto-scheduler"
 

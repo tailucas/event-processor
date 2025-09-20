@@ -1,18 +1,15 @@
 services:
   app:
-    env_file:
-      - .env
-    image: "${DOCKER_IMAGE}"
+    env_file: ".env"
+    image: "${CONTAINER_NAME}"
     restart: unless-stopped
     stop_grace_period: 45s
     build:
       network: host
       context: .
       args:
-        ENCODING: "${ENCODING}"
-        LANG: "${D_LANG}"
-        LANGUAGE: "${D_LANGUAGE}"
-        LC_ALL: "${D_LC_ALL}"
+        LANG: "${LANG}"
+        LANGUAGE: "${LANGUAGE}"
     logging:
       driver: syslog
       options:

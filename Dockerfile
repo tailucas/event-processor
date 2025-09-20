@@ -3,12 +3,7 @@ FROM tailucas/base-app:latest
 USER root
 # generate correct locales
 ARG LANG
-ENV LANG ${LANG}
 ARG LANGUAGE
-ENV LANGUAGE ${LANGUAGE}
-ARG LC_ALL
-ENV LC_ALL ${LC_ALL}
-ARG ENCODING
 RUN locale-gen ${LANGUAGE} \
     && locale-gen ${LANG} \
     && update-locale \
