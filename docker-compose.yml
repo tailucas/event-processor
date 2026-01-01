@@ -1,6 +1,10 @@
 services:
   app:
     env_file: ".env"
+    secrets:
+      - op_service_account_token
+      - op_connect_token
+      - op_vault
     image: "${CONTAINER_NAME}"
     restart: unless-stopped
     stop_grace_period: 45s
@@ -8,17 +12,17 @@ services:
       network: host
       context: .
       args:
-        LANG: "${LANG}"
-        LANGUAGE: "${LANGUAGE}"
+        LANG: "${LANG:-en_ZA.UTF-8}"
+        LANGUAGE: "${LANGUAGE:-en_ZA}"
     logging:
       driver: syslog
       options:
-        syslog-address: "${SYSLOG_ADDRESS}"
+        syslog-address: "${SYSLOG_ADDRESS:-udp://localhost:514}"
         syslog-format: "rfc3164"
-        tag: "${DEVICE_NAME}"
+        tag: "${DEVICE_NAME:-event-processor}"
     tmpfs:
     - /tmp:exec
-    hostname: ${DEVICE_NAME}
+    hostname: ${DEVICE_NAME:-event-processor}
     ports:
       - "4041:4040"
       - "8095:8080"
@@ -27,3 +31,10 @@ services:
     volumes:
       - ./data:/data
       - /dev/log:/dev/log
+secrets:
+    op_service_account_token:
+        environment: OP_SERVICE_ACCOUNT_TOKEN
+    op_connect_token:
+        environment: OP_CONNECT_TOKEN
+    op_vault:
+        environment: OP_VAULT
