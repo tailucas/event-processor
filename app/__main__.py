@@ -37,6 +37,7 @@ from telegram.ext import (
     filters,
 )
 from telegram.error import NetworkError, RetryAfter, TimedOut
+from httpx import ConnectError
 from threading import Thread
 
 
@@ -1993,8 +1994,8 @@ class TBot(AppThread, Closable):
                         f"Telegram asks to call again in {e.retry_after}s. Deferring calls until {call_again_timestamp}."
                     )
                     continue
-                except TimedOut as e:
-                    log.warning(f"Telegram send timeout: {e.message}.")
+                except (TimedOut, ConnectError) as e:
+                    log.warning(f"Telegram send problem: {e.message}.")
                     continue
                 # update send time
                 last_sent = now
