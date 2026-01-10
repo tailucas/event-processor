@@ -39,7 +39,7 @@ COPY static ./static
 COPY templates ./templates
 # Python
 COPY app ./app
-COPY pyproject.toml uv.lock ./
+COPY .python-version pyproject.toml uv.lock ./
 RUN chown app:app uv.lock
 # Java
 COPY --from=builder "${APP_DIR}/target/app-0.1.0.jar" ./app.jar

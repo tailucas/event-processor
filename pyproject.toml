@@ -38,6 +38,11 @@ build-backend = "uv_build"
 module-name = "app"
 module-root = ""
 
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+]
+
 [project.scripts]
 aws_configure = "tailucas_pylib.tools.aws_configure:main"
 config_interpol = "tailucas_pylib.tools.config_interpol:main"
