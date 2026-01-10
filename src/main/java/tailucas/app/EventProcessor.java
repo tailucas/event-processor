@@ -8,6 +8,7 @@ import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
 import java.time.OffsetDateTime;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
@@ -34,9 +35,6 @@ import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.impl.StrictExceptionHandler;
 
-import io.getunleash.DefaultUnleash;
-import io.getunleash.Unleash;
-import io.getunleash.util.UnleashConfig;
 import io.prometheus.metrics.exporter.httpserver.HTTPServer;
 import io.prometheus.metrics.instrumentation.jvm.JvmMetrics;
 import io.sentry.Sentry;
@@ -84,6 +82,8 @@ public class EventProcessor
     public static final String FEATURE_FLAG_HA_DISCOVERY = "send-home-assistant-discovery";
     public static final String FEATURE_FLAG_PAGER_DUTY_TICKETS = "pager-duty-tickets";
 
+    private static Map<String, Boolean> featureFlagCache = null;
+
     private static Logger log = LoggerFactory.getLogger(EventProcessor.class);
     private static ExecutorService srv = null;
     private static IMqttClient mqttClient = null;
@@ -96,7 +96,6 @@ public class EventProcessor
     private static String appName = null;
     private static String deviceName = null;
     private static HTTPServer metricsServer = null;
-    private static Unleash unleash = null;
 
     @Bean
 	public CommandLineRunner commandLineRunner(ApplicationContext ctx) {
@@ -158,9 +157,6 @@ public class EventProcessor
             srv.shutdown();
         }
         DeviceConfig.getInstance().close();
-        if (creds != null) {
-            creds.close();
-        }
         if (metricsServer != null) {
             metricsServer.close();
         }
@@ -168,7 +164,7 @@ public class EventProcessor
         if (exitCode != 0) {
             severity = Severity.WARNING;
         }
-        if (unleash != null && unleash.isEnabled(FEATURE_FLAG_PAGER_DUTY_TICKETS)) {
+        if (isFeatureEnabled(FEATURE_FLAG_PAGER_DUTY_TICKETS)) {
             final Payload payload = Payload.Builder.newBuilder()
                 .setSummary(String.format("%s shutdown", appName))
                 .setSource(deviceName)
@@ -189,17 +185,14 @@ public class EventProcessor
         } else {
             log.warn("Not creating PagerDuty shutdown event due to disabled feature flag: {}", FEATURE_FLAG_PAGER_DUTY_TICKETS);
         }
-        if (unleash != null) {
-            unleash.shutdown();
+        if (creds != null) {
+            creds.close();
         }
         log.info("Full shutdown complete with exit code {}", exitCode);
     }
 
     public static boolean isFeatureEnabled(String featureName) {
-        if (unleash == null) {
-            return true;
-        }
-        return unleash.isEnabled(featureName);
+        return featureFlagCache.computeIfAbsent(featureName, key -> Boolean.valueOf(creds.getField("flags", "value", featureName)));
     }
 
     public static String getAppName() {
@@ -220,6 +213,7 @@ public class EventProcessor
 
     public static void main( String[] args ) {
         Thread.currentThread().setName("main");
+        featureFlagCache = new HashMap<>();
         creds = OnePassword.getInstance();
         try {
             var vaults = creds.listVaults();
@@ -262,14 +256,6 @@ public class EventProcessor
         deviceName = envVars.get("DEVICE_NAME");
         final String unleashServerUrl = creds.getField("Unleash", "url", "default");
         log.info("Loading feature flags from unleash server: {}", unleashServerUrl);
-        UnleashConfig config = UnleashConfig.builder()
-                .appName(creds.getField("Unleash", "app_name", "default"))
-                .instanceId(appName)
-                .unleashAPI(unleashServerUrl)
-                .apiKey(creds.getField("Unleash", "token", "default"))
-                .synchronousFetchOnInitialisation(true)
-                .build();
-        unleash = new DefaultUnleash(config);
         final String hostName = envVars.get("CONFIG_HOST");
         final String hostNamePort = envVars.get("CONFIG_HOST_PORT");
         UriComponents uriComponents = UriComponentsBuilder.newInstance()
@@ -391,7 +377,7 @@ public class EventProcessor
                 mqttClient.connect(options);
                 mqttClient.setCallback(new Mqtt(springApp, srv, rabbitMqConnection));
                 mqttClient.subscribe("#");
-                if (unleash.isEnabled(FEATURE_FLAG_HA_DISCOVERY)) {
+                if (isFeatureEnabled(FEATURE_FLAG_HA_DISCOVERY)) {
                     // send MQTT discovery message
                     final String mqttDiscoveryTopic = "homeassistant/status";
                     final String mqttDiscoveryPayload = "online";
@@ -435,7 +421,7 @@ public class EventProcessor
         rabbitMqThread.start();
         mqttThread.start();
 
-        if (unleash.isEnabled(FEATURE_FLAG_PAGER_DUTY_TICKETS)) {
+        if (isFeatureEnabled(FEATURE_FLAG_PAGER_DUTY_TICKETS)) {
             final ResolveIncident resolve = ResolveIncident.ResolveIncidentBuilder
                 .newBuilder(pagerDutyRoutingKey, appName)
                 .build();

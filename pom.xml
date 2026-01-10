@@ -28,8 +28,9 @@
     <sentry-spring-boot-starter-jakarta.version>8.29.0</sentry-spring-boot-starter-jakarta.version>
     <amqp-client.version>5.28.0</amqp-client.version>
     <paho.version>1.2.5</paho.version>
-    <jackson-dataformat-msgpack.version>0.9.10</jackson-dataformat-msgpack.version>
-    <jackson-databind.version>2.20.1</jackson-databind.version>
+    <jackson.version>3.0.3</jackson.version>
+    <jackson-annotations.version>2.20</jackson-annotations.version>
+    <jackson-dataformat-msgpack.version>0.9.11</jackson-dataformat-msgpack.version>
     <zeromq.version>0.6.0</zeromq.version>
     <slf4j-api.version>2.0.17</slf4j-api.version>
     <slf4j-simple.version>2.0.17</slf4j-simple.version>
@@ -37,7 +38,6 @@
     <prometheus-metrics-core.version>1.4.3</prometheus-metrics-core.version>
     <prometheus-metrics-exporter-httpserver.version>1.4.3</prometheus-metrics-exporter-httpserver.version>
     <prometheus-metrics-instrumentation-jvm.version>1.4.3</prometheus-metrics-instrumentation-jvm.version>
-    <unleash-client-java.version>10.2.2</unleash-client-java.version>
 
     <!-- test dependencies -->
     <junit-jupiter.version>6.0.1</junit-jupiter.version>
@@ -140,12 +140,6 @@
     </dependency>
 
     <dependency>
-      <groupId>io.getunleash</groupId>
-      <artifactId>unleash-client-java</artifactId>
-      <version>${unleash-client-java.version}</version>
-    </dependency>
-
-    <dependency>
         <groupId>com.rabbitmq</groupId>
         <artifactId>amqp-client</artifactId>
         <version>${amqp-client.version}</version>
@@ -155,12 +149,6 @@
       <groupId>org.eclipse.paho</groupId>
       <artifactId>org.eclipse.paho.client.mqttv3</artifactId>
       <version>${paho.version}</version>
-    </dependency>
-
-    <dependency>
-      <groupId>com.fasterxml.jackson.core</groupId>
-      <artifactId>jackson-databind</artifactId>
-      <version>${jackson-databind.version}</version>
     </dependency>
 
     <dependency>
@@ -215,6 +203,21 @@
         <groupId>org.slf4j</groupId>
         <artifactId>slf4j-api</artifactId>
         <version>${slf4j.version}</version>
+      </dependency>
+      <dependency>
+          <groupId>tools.jackson.core</groupId>
+          <artifactId>jackson-core</artifactId>
+          <version>${jackson.version}</version>
+      </dependency>
+      <dependency>
+          <groupId>tools.jackson.core</groupId>
+          <artifactId>jackson-databind</artifactId>
+          <version>${jackson.version}</version>
+      </dependency>
+      <dependency>
+          <groupId>com.fasterxml.jackson.core</groupId>
+          <artifactId>jackson-annotations</artifactId>
+          <version>${jackson-annotations.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>
