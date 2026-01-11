@@ -2,11 +2,13 @@ package tailucas.app;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
 import java.time.OffsetDateTime;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Locale;
@@ -254,8 +256,6 @@ public class EventProcessor
         pagerDuty = PagerDutyEventsClient.create();
         pagerDutyRoutingKey = creds.getField("PagerDuty", "routing_key", appName);
         deviceName = envVars.get("DEVICE_NAME");
-        final String unleashServerUrl = creds.getField("Unleash", "url", "default");
-        log.info("Loading feature flags from unleash server: {}", unleashServerUrl);
         final String hostName = envVars.get("CONFIG_HOST");
         final String hostNamePort = envVars.get("CONFIG_HOST_PORT");
         UriComponents uriComponents = UriComponentsBuilder.newInstance()
@@ -265,20 +265,28 @@ public class EventProcessor
             .path("/api/running")
             .build()
             .encode();
-        HttpRequest request = HttpRequest.newBuilder().GET().uri(uriComponents.toUri()).build();
-        HttpClient httpClient = HttpClient.newHttpClient();
+        HttpClient httpClient = HttpClient.newBuilder()
+            .version(HttpClient.Version.HTTP_1_1)
+            .build();
+        final URI startupUri = uriComponents.toUri();
+        final HttpRequest request = HttpRequest.newBuilder()
+            .GET()
+            .uri(startupUri)
+            .timeout(Duration.ofSeconds(2))
+            .build();
         boolean ready = false;
         while (!ready) {
             try {
+                log.info("Startup: test {} for readiness...", startupUri);
                 HttpResponse<String> response = httpClient.send(request, BodyHandlers.ofString());
                 final int responseCode = response.statusCode();
                 final String responseBody = response.body();
-                log.info("Peer response is {}...", responseBody);
+                log.info("Startup: configuration source is ready ({}).", responseBody);
                 if (responseCode % 200 == 0) {
                     ready = Boolean.valueOf(responseBody).booleanValue();
                 }
             } catch (Exception e) {
-                log.warn("Not ready for startup.");
+                log.warn("Startup: not ready: {}.", e.getMessage());
             } finally {
                 if (!ready) {
                     try {
@@ -289,6 +297,7 @@ public class EventProcessor
                 }
             }
         }
+        httpClient.close();
         final ApplicationContext springApp = SpringApplication.run(EventProcessor.class, args);
         final Environment springEnv = springApp.getEnvironment();
         final String applicationName = springEnv.getProperty("app.project-name");

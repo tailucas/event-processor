@@ -2190,6 +2190,7 @@ class ApiServer(Thread):
             # app="app.__main__:api_app",
             app=api_app,
             host="0.0.0.0",
+            #host=app_config.get("api", "host"),
             port=int(app_config.get("flask", "http_port")),
             log_level="warning",
             timeout_graceful_shutdown=1,
@@ -2197,13 +2198,13 @@ class ApiServer(Thread):
         self.server = uvicorn.Server(config)
 
     def run(self):
-        log.warning("Starting API server...")
+        log.info("Starting API server...")
         self.server.run()
-        log.warning("API server is finished.")
+        log.info("API server is finished.")
 
     def shutdown(self):
         if self.server:
-            log.warning(f"API server shutting down: {self.__class__.__name__}")
+            log.info(f"API server shutting down: {self.__class__.__name__}")
             # emulate signal handler latch in server.handle_exit()
             self.server.should_exit = True
             self.server.force_exit = True

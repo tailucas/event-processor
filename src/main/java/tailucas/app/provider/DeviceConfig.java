@@ -6,6 +6,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -206,10 +207,15 @@ public class DeviceConfig {
             .expand("api", apiName)
             .encode();
         log.debug("HTTP request {} for {} is: {}", apiName, deviceKey, uriComponents.toUriString());
-        HttpRequest request = HttpRequest.newBuilder().GET().uri(uriComponents.toUri()).build();
+        final HttpRequest request = HttpRequest.newBuilder()
+            .GET()
+            .uri(uriComponents.toUri())
+            .timeout(Duration.ofSeconds(2))
+            .build();
         HttpResponse<String> response = httpClient.send(request, BodyHandlers.ofString());
         final int responseCode = response.statusCode();
         final String responseBody = response.body();
+        log.debug("HTTP {} response for {} is: {}", responseCode, deviceKey, responseBody);
         List<Config> configs = null;
         if (responseCode % 200 != 0) {
             String responseDetail = null;
@@ -225,6 +231,7 @@ public class DeviceConfig {
         }
         log.debug("Updating configuration config cache for {}.", cacheKey);
         configCache.put(cacheKey, Pair.of(now, configs));
+        log.info("Received {} configuration items for {} (cached as {}).", (configs != null) ? configs.size() : 0, deviceKey, cacheKey);
         return configs;
     }
 
@@ -239,12 +246,12 @@ public class DeviceConfig {
             .build()
             .expand("api", "device_info")
             .encode();
-
         final String deviceJson = mapper.writeValueAsString(device);
-        HttpRequest request = HttpRequest.newBuilder()
+        final HttpRequest request = HttpRequest.newBuilder()
             .uri(uriComponents.toUri())
             .header("Content-Type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(deviceJson, StandardCharsets.UTF_8))
+            .timeout(Duration.ofSeconds(5))
             .build();
         log.debug("HTTP {} POST for {} is: {}", httpClient.version(), deviceKey, uriComponents.toUriString());
         log.debug("Request headers: {}", request.headers().map());
