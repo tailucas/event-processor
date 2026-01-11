@@ -45,7 +45,7 @@ from fastapi import FastAPI, Depends, status, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.wsgi import WSGIMiddleware
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine, AsyncSession
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -144,6 +144,20 @@ flask_ctx.push()
 api_app = FastAPI()
 api_app.state.startup_complete = False
 api_app.mount("/admin", WSGIMiddleware(flask_app))
+
+# Custom exception handler for validation errors
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+
+@api_app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    log.error(f"Validation error for {request.url}: {exc.errors()}")
+    log.error(f"Request headers: {request.headers!s}")
+    log.error(f"Request body: {await request.body()}")
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors()},
+    )
 
 
 URL_WORKER_TELEGRAM_BOT = "inproc://telegram-bot"
@@ -530,6 +544,8 @@ async def api_running(request: Request):
 
 
 class DeviceInfo(BaseModel):
+    model_config = ConfigDict(extra='ignore')
+
     device_key: str
     device_label: str | None = None
     device_type: str | None = None

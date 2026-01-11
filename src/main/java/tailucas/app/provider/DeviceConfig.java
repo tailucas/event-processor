@@ -51,7 +51,9 @@ public class DeviceConfig {
 
     private DeviceConfig() {
         log = LoggerFactory.getLogger(DeviceConfig.class);
-        httpClient = HttpClient.newHttpClient();
+        httpClient = HttpClient.newBuilder()
+            .version(HttpClient.Version.HTTP_1_1)
+            .build();
         mapper = new ObjectMapper();
         mapper.enable(DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT);
         mapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
@@ -237,10 +239,16 @@ public class DeviceConfig {
             .build()
             .expand("api", "device_info")
             .encode();
-        log.debug("HTTP POST for {} is: {}", deviceKey, uriComponents.toUriString());
+
         final String deviceJson = mapper.writeValueAsString(device);
-        HttpRequest request = HttpRequest.newBuilder().POST(
-            HttpRequest.BodyPublishers.ofString(deviceJson, StandardCharsets.UTF_8)).uri(uriComponents.toUri()).build();
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(uriComponents.toUri())
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(deviceJson, StandardCharsets.UTF_8))
+            .build();
+        log.debug("HTTP {} POST for {} is: {}", httpClient.version(), deviceKey, uriComponents.toUriString());
+        log.debug("Request headers: {}", request.headers().map());
+        log.debug("Request body: {}", deviceJson);
         HttpResponse<String> response = httpClient.send(request, BodyHandlers.ofString());
         final int responseCode = response.statusCode();
         final String responseBody = response.body();
