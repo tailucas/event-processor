@@ -91,7 +91,8 @@ ignore_logger("asyncio")
 
 db_tablespace_path = app_config.get("sqlite", "tablespace_path")
 db_tablespace = path.join(db_tablespace_path, f"{APP_NAME}.db")
-dburl: str = f"sqlite+aiosqlite:///{db_tablespace}"
+db_timeout = app_config.getint("sqlite", "timeout_seconds", fallback=30)
+dburl: str = f"sqlite+aiosqlite:///{db_tablespace}?timeout={db_timeout}"
 engine: AsyncEngine = create_async_engine(dburl)
 async_session: AsyncSession = sessionmaker(
     engine, expire_on_commit=False, class_=AsyncSession
