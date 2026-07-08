@@ -89,15 +89,14 @@ db_tablespace = path.join(db_tablespace_path, f"{APP_NAME}.db")
 db_timeout = app_config.getint("sqlite", "timeout_seconds", fallback=30)
 dburl: str = f"sqlite+aiosqlite:///{db_tablespace}?timeout={db_timeout}"
 engine: AsyncEngine = create_async_engine(dburl)
-async_session: AsyncSession = sessionmaker(
-    engine, expire_on_commit=False, class_=AsyncSession
-)
+async_session: AsyncSession = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 Base = declarative_base()
 
 
 async def get_db():
     async with async_session() as session:
         yield session
+
 
 creds = None
 permit = None
@@ -159,9 +158,6 @@ URL_WORKER_TELEGRAM_BOT = "inproc://telegram-bot"
 URL_WORKER_AUTO_SCHEDULER = "inproc://auto-scheduler"
 
 CONFIG_AUTO_SCHEDULER = "auto-scheduler"
-
-
-
 
 
 class GeneralConfig(Base):
@@ -279,9 +275,7 @@ class InputConfig(Base):
 class MeterConfig(Base):
     __tablename__ = "meter_config"
     id = Column(Integer, primary_key=True, autoincrement=True)
-    input_device_id = Column(
-        Integer, ForeignKey("input_config.id"), index=True, nullable=False
-    )
+    input_device_id = Column(Integer, ForeignKey("input_config.id"), index=True, nullable=False)
     meter_value = Column(Integer, default=0, nullable=False)
     register_value = Column(Integer, default=0, nullable=False)
     meter_reading = Column(String, default="0", nullable=False)
@@ -376,9 +370,7 @@ class OutputConfig(Base):
 class InputLink(Base):
     __tablename__ = "input_link"
     id = Column(Integer, primary_key=True, autoincrement=True)
-    input_device_id = Column(
-        Integer, ForeignKey("input_config.id"), index=True, nullable=False
-    )
+    input_device_id = Column(Integer, ForeignKey("input_config.id"), index=True, nullable=False)
     linked_device_id = Column(Integer, nullable=False)
     UniqueConstraint("input_device_id", "linked_device_id", name="unique_link")
 
@@ -393,9 +385,7 @@ class InputLink(Base):
 class OutputLink(Base):
     __tablename__ = "output_link"
     id = Column(Integer, primary_key=True, autoincrement=True)
-    input_device_id = Column(
-        Integer, ForeignKey("input_config.id"), index=True, nullable=False
-    )
+    input_device_id = Column(Integer, ForeignKey("input_config.id"), index=True, nullable=False)
     output_device_id = Column(Integer, ForeignKey("output_config.id"), nullable=False)
     UniqueConstraint("input_device_id", "output_device_id", name="unique_link")
 
@@ -489,13 +479,9 @@ class InputConfigCollection:
         ic_wrapper.input_config = input_config
 
 
-def update_meter_config(
-    input_device_key, meter_config, register_value, meter_value=None
-):
+def update_meter_config(input_device_key, meter_config, register_value, meter_value=None):
     if register_value < 0:
-        log.debug(
-            f"Resetting negative {input_device_key} meter register value {register_value} to 0."
-        )
+        log.debug(f"Resetting negative {input_device_key} meter register value {register_value} to 0.")
         register_value = 0
     meter_reading_unit = " " + meter_config.meter_reading_unit
     if meter_config.meter_reading_unit_factor is None:
@@ -504,16 +490,12 @@ def update_meter_config(
         meter_config.meter_reading_unit_precision = 0
     number_format_string = "{:." + str(meter_config.meter_reading_unit_precision) + "f}"
     # create normalized values
-    normalized_register_value = int(register_value) / float(
-        meter_config.meter_reading_unit_factor
-    )
+    normalized_register_value = int(register_value) / float(meter_config.meter_reading_unit_factor)
     # update DB
     if meter_value:
         meter_config.meter_value = meter_value
     meter_config.register_value = register_value
-    meter_config.meter_reading = (
-        number_format_string.format(normalized_register_value) + meter_reading_unit
-    )
+    meter_config.meter_reading = number_format_string.format(normalized_register_value) + meter_reading_unit
     db.session.add(meter_config)
     db.session.commit()
     return normalized_register_value
@@ -535,7 +517,7 @@ async def api_running(request: Request):
 
 
 class DeviceInfo(BaseModel):
-    model_config = ConfigDict(extra='ignore')
+    model_config = ConfigDict(extra="ignore")
 
     device_key: str
     device_label: str | None = None
@@ -548,9 +530,7 @@ class DeviceInfo(BaseModel):
 
 @api_app.post("/api/device_info")
 async def api_device_info(di: DeviceInfo):
-    with exception_handler(
-        connect_url=URL_WORKER_APP, and_raise=False, shutdown_on_error=True
-    ) as zmq_socket:
+    with exception_handler(connect_url=URL_WORKER_APP, and_raise=False, shutdown_on_error=True) as zmq_socket:
         di_model = di.model_dump()
         if di.is_input:
             zmq_socket.send_pyobj({"device_info_input": di_model})
@@ -628,9 +608,7 @@ def login_post():
         password = request.form.get("user_password")
         remember = bool(request.form.get("remember_user"))
         log.info(f"Login request for user {email}...")
-        if email == creds.get_creds("Users/user/email") and password == creds.get_creds(
-            "Users/user/creds"
-        ):
+        if email == creds.get_creds("Users/user/email") and password == creds.get_creds("Users/user/creds"):
             # FIXME: actually support multiple users
             u = SessionUser(id=email, key=creds.get_creds("Users/user/key"), name=email)
             active_users[u.id] = u
@@ -672,9 +650,7 @@ def internal_server_error(e):
     log.error(f"{e!s}")
     last_event_id = capture_exception(error=e)
     log.info(f"Sentry captured event ID is {last_event_id}.")
-    return render_template(
-        "error.html", sentry_event_id=last_event_id, sentry_dsn=sentry_dsn
-    ), 500
+    return render_template("error.html", sentry_event_id=last_event_id, sentry_dsn=sentry_dsn), 500
 
 
 @flask_app.route("/", methods=["GET", "POST"])
@@ -686,9 +662,7 @@ def index():
     if request.method == "POST":
         if "panic_button" in request.form:
             log.info("Panic button pressed.")
-            with exception_handler(
-                connect_url=URL_WORKER_APP, and_raise=False
-            ) as zmq_socket:
+            with exception_handler(connect_url=URL_WORKER_APP, and_raise=False) as zmq_socket:
                 active_devices = [
                     {
                         "device_key": "App Panic Button",
@@ -707,9 +681,7 @@ def index():
         elif "meter_reset" in request.form:
             device_key = request.form["meter_reset"]
             input_cfg = InputConfig.query.filter_by(device_label=device_key).first()
-            meter_cfg = MeterConfig.query.filter_by(
-                input_device_id=input_cfg.id
-            ).first()
+            meter_cfg = MeterConfig.query.filter_by(input_device_id=input_cfg.id).first()
             reset_value = 0
             if meter_cfg.meter_reset_value:
                 reset_value = meter_cfg.meter_reset_value
@@ -755,9 +727,7 @@ def index():
                 state = "enabled"
                 if not input_cfg.device_enabled:
                     state = "disabled"
-                log.info(
-                    f"{input_cfg.device_key} (group {input_cfg.group_name}) is now {state}."
-                )
+                log.info(f"{input_cfg.device_key} (group {input_cfg.group_name}) is now {state}.")
                 db.session.add(input_cfg)
             db.session.commit()
             for input_cfg in input_cfgs:
@@ -806,13 +776,9 @@ def show_config():
     if request.method == "POST":
         if "device_id" in request.form:
             saved_device_id = request.form["device_id"]
-            device_config = InputConfig.query.filter_by(
-                device_key=saved_device_id
-            ).first()
+            device_config = InputConfig.query.filter_by(device_key=saved_device_id).first()
             if device_config is None:
-                device_config = OutputConfig.query.filter_by(
-                    device_key=saved_device_id
-                ).first()
+                device_config = OutputConfig.query.filter_by(device_key=saved_device_id).first()
             # sync up the device model for page load
             auto_schedule_enabled = bool(request.form.get("auto_schedule"))
             auto_schedule_enable = request.form["auto_schedule_enable"]
@@ -828,9 +794,7 @@ def show_config():
             # invalidate remote cache
             invalidate_remote_config(device_key=device_config.device_key)
             # open IPC
-            with exception_handler(
-                connect_url=URL_WORKER_AUTO_SCHEDULER, and_raise=False
-            ) as zmq_socket:
+            with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, and_raise=False) as zmq_socket:
                 zmq_socket.send_pyobj(
                     (
                         device_config.device_key,
@@ -842,13 +806,9 @@ def show_config():
                 )
         if "general_config" in request.form:
             autoscheduler_enabled = bool(request.form.get("autoscheduler_enabled"))
-            config = GeneralConfig.query.filter_by(
-                config_key=CONFIG_AUTO_SCHEDULER
-            ).first()
+            config = GeneralConfig.query.filter_by(config_key=CONFIG_AUTO_SCHEDULER).first()
             if config is None:
-                config = GeneralConfig(
-                    config_key=CONFIG_AUTO_SCHEDULER, config_value=autoscheduler_enabled
-                )
+                config = GeneralConfig(config_key=CONFIG_AUTO_SCHEDULER, config_value=autoscheduler_enabled)
             else:
                 config.config_value = autoscheduler_enabled
             db.session.add(config)
@@ -856,9 +816,7 @@ def show_config():
     devices = []
     devices.extend(InputConfig.query.order_by(InputConfig.device_key).all())
     devices.extend(OutputConfig.query.order_by(OutputConfig.device_key).all())
-    config_autoscheduler = GeneralConfig.query.filter_by(
-        config_key=CONFIG_AUTO_SCHEDULER
-    ).first()
+    config_autoscheduler = GeneralConfig.query.filter_by(config_key=CONFIG_AUTO_SCHEDULER).first()
     config_autoscheduler_enabled = False
     if config_autoscheduler:
         config_autoscheduler_enabled = bool(int(config_autoscheduler.config_value))
@@ -875,9 +833,7 @@ def show_config():
 @api_app.get("/api/input_configs")
 async def api_input_configs(device_key: str, adb: AsyncSession = Depends(get_db)):
     log.info(f"Async get input config for {device_key}")
-    result = await adb.execute(
-        select(InputConfig).where(InputConfig.device_key == device_key)
-    )
+    result = await adb.execute(select(InputConfig).where(InputConfig.device_key == device_key))
     config = result.scalars().one_or_none()
     if config:
         return config.as_dict()
@@ -914,9 +870,7 @@ async def api_meter_config(device_key: str) -> list[dict]:
         configs = []
         db_input_config = InputConfig.query.filter_by(device_label=device_key).first()
         if db_input_config:
-            db_meter_config = MeterConfig.query.filter_by(
-                input_device_id=db_input_config.id
-            ).first()
+            db_meter_config = MeterConfig.query.filter_by(input_device_id=db_input_config.id).first()
             if db_meter_config:
                 configs.append(db_meter_config.as_dict())
         if len(configs) == 0:
@@ -939,9 +893,7 @@ def input_config():
         input_cfg = InputConfig.query.filter_by(id=saved_device_id).first()
         meter_cfg = None
         if input_cfg.device_type == "meter":
-            meter_cfg = MeterConfig.query.filter_by(
-                input_device_id=input_cfg.id
-            ).first()
+            meter_cfg = MeterConfig.query.filter_by(input_device_id=input_cfg.id).first()
         customized = False
         if "group_name" in request.form:
             group_name = request.form["group_name"].strip()
@@ -956,9 +908,7 @@ def input_config():
         else:
             input_cfg.info_notify = None
         if len(request.form["trigger_latch_duration"]) > 0:
-            input_cfg.trigger_latch_duration = int(
-                request.form["trigger_latch_duration"]
-            )
+            input_cfg.trigger_latch_duration = int(request.form["trigger_latch_duration"])
             customized = True
         else:
             input_cfg.trigger_latch_duration = None
@@ -968,9 +918,7 @@ def input_config():
         else:
             input_cfg.multi_trigger_rate = None
         if len(request.form["multi_trigger_interval"]) > 0:
-            input_cfg.multi_trigger_interval = int(
-                request.form["multi_trigger_interval"]
-            )
+            input_cfg.multi_trigger_interval = int(request.form["multi_trigger_interval"])
             customized = True
         else:
             input_cfg.multi_trigger_interval = None
@@ -980,26 +928,17 @@ def input_config():
         else:
             input_cfg.activation_escalation = None
         if meter_cfg:
-            if (
-                request.form.get("meter_low_limit", None)
-                and len(request.form["meter_low_limit"]) > 0
-            ):
+            if request.form.get("meter_low_limit", None) and len(request.form["meter_low_limit"]) > 0:
                 meter_cfg.meter_low_limit = int(request.form["meter_low_limit"])
                 customized = True
             else:
                 meter_cfg.meter_low_limit = None
-            if (
-                request.form.get("meter_high_limit", None)
-                and len(request.form["meter_high_limit"]) > 0
-            ):
+            if request.form.get("meter_high_limit", None) and len(request.form["meter_high_limit"]) > 0:
                 meter_cfg.meter_high_limit = int(request.form["meter_high_limit"])
                 customized = True
             else:
                 meter_cfg.meter_high_limit = None
-            if (
-                request.form.get("meter_reset_value", None)
-                and len(request.form["meter_reset_value"]) > 0
-            ):
+            if request.form.get("meter_reset_value", None) and len(request.form["meter_reset_value"]) > 0:
                 meter_cfg.meter_reset_value = int(request.form["meter_reset_value"])
                 customized = True
             else:
@@ -1009,21 +948,13 @@ def input_config():
                 customized = True
             else:
                 meter_cfg.meter_reset_additive = None
-            if (
-                request.form.get("meter_iot_topic", None)
-                and len(request.form["meter_iot_topic"].strip()) > 0
-            ):
+            if request.form.get("meter_iot_topic", None) and len(request.form["meter_iot_topic"].strip()) > 0:
                 meter_cfg.meter_iot_topic = request.form["meter_iot_topic"].strip()
                 customized = True
             else:
                 meter_cfg.meter_iot_topic = None
-            if (
-                request.form.get("meter_reading_unit", None)
-                and len(request.form["meter_reading_unit"].strip()) > 0
-            ):
-                meter_cfg.meter_reading_unit = request.form[
-                    "meter_reading_unit"
-                ].strip()
+            if request.form.get("meter_reading_unit", None) and len(request.form["meter_reading_unit"].strip()) > 0:
+                meter_cfg.meter_reading_unit = request.form["meter_reading_unit"].strip()
                 customized = True
             else:
                 meter_cfg.meter_reading_unit = None
@@ -1031,12 +962,8 @@ def input_config():
                 request.form.get("meter_reading_unit_factor", None)
                 and len(request.form["meter_reading_unit_factor"]) > 0
             ):
-                meter_reading_unit_factor = int(
-                    request.form["meter_reading_unit_factor"]
-                )
-                if 1 <= meter_reading_unit_factor <= 1000000000 and (
-                    meter_reading_unit_factor % 10 == 0
-                ):
+                meter_reading_unit_factor = int(request.form["meter_reading_unit_factor"])
+                if 1 <= meter_reading_unit_factor <= 1000000000 and (meter_reading_unit_factor % 10 == 0):
                     meter_cfg.meter_reading_unit_factor = meter_reading_unit_factor
                     customized = True
             else:
@@ -1045,13 +972,9 @@ def input_config():
                 request.form.get("meter_reading_unit_precision", None)
                 and len(request.form["meter_reading_unit_precision"]) > 0
             ):
-                meter_reading_unit_precision = int(
-                    request.form["meter_reading_unit_precision"]
-                )
+                meter_reading_unit_precision = int(request.form["meter_reading_unit_precision"])
                 if 1 <= meter_reading_unit_precision <= 9:
-                    meter_cfg.meter_reading_unit_precision = (
-                        meter_reading_unit_precision
-                    )
+                    meter_cfg.meter_reading_unit_precision = meter_reading_unit_precision
                     customized = True
             else:
                 meter_cfg.meter_reading_unit_precision = None
@@ -1091,9 +1014,7 @@ def input_link():
         db.session.commit()
         # set new links
         for linked_id in request.form.getlist("linked_device_id"):
-            db.session.add(
-                InputLink(input_device_id=saved_device_id, linked_device_id=linked_id)
-            )
+            db.session.add(InputLink(input_device_id=saved_device_id, linked_device_id=linked_id))
         # save the changes
         db.session.commit()
         # invalidate remote cache
@@ -1128,13 +1049,9 @@ async def api_output_link(device_key: str) -> list[dict]:
         configs = []
         db_input_config = InputConfig.query.filter_by(device_key=device_key).first()
         if db_input_config:
-            db_output_links = OutputLink.query.filter_by(
-                input_device_id=db_input_config.id
-            ).all()
+            db_output_links = OutputLink.query.filter_by(input_device_id=db_input_config.id).all()
             for db_output_link in db_output_links:
-                db_output_config = OutputConfig.query.filter_by(
-                    id=db_output_link.output_device_id
-                ).first()
+                db_output_config = OutputConfig.query.filter_by(id=db_output_link.output_device_id).first()
                 configs.append(db_output_config.as_dict())
         if len(configs) == 0:
             raise HTTPException(
@@ -1160,11 +1077,7 @@ def output_link():
         db.session.commit()
         # set new links
         for output_device_id in request.form.getlist("linked_device_id"):
-            db.session.add(
-                OutputLink(
-                    input_device_id=saved_device_id, output_device_id=output_device_id
-                )
-            )
+            db.session.add(OutputLink(input_device_id=saved_device_id, output_device_id=output_device_id))
         # save the changes
         db.session.commit()
         # invalidate remote cache
@@ -1248,14 +1161,10 @@ def output_config():
         # invalidate remote cache
         invalidate_remote_config(device_key=output_config.device_key)
     outputs = OutputConfig.query.order_by(OutputConfig.device_key).all()
-    return render_template(
-        "output_config.html", devices=outputs, saved_device_id=saved_device_id
-    )
+    return render_template("output_config.html", devices=outputs, saved_device_id=saved_device_id)
 
 
-async def telegram_bot_echo(
-    update: Update, context: TelegramContextTypes.DEFAULT_TYPE
-) -> None:
+async def telegram_bot_echo(update: Update, context: TelegramContextTypes.DEFAULT_TYPE) -> None:
     try:
         authorized_users = app_config.get("telegram", "authorized_users").split(",")
         if str(update.effective_user.id) not in authorized_users:
@@ -1266,12 +1175,8 @@ async def telegram_bot_echo(
             f"Telegram Bot {context.bot.username} got message {update.effective_message.text} (chat ID: {update.effective_message.chat_id})."  # noqa: E501
         )
 
-        group_info = await context.bot.get_chat(
-            chat_id=app_config.getint("telegram", "chat_room_id")
-        )
-        bot_response = (
-            f"I am in the [{group_info.title}]({group_info.invite_link}) group."
-        )
+        group_info = await context.bot.get_chat(chat_id=app_config.getint("telegram", "chat_room_id"))
+        bot_response = f"I am in the [{group_info.title}]({group_info.invite_link}) group."
         await update.message.reply_markdown(text=bot_response)
     except NetworkError:
         log.warning("bot handler", exc_info=True)
@@ -1280,9 +1185,7 @@ async def telegram_bot_echo(
         capture_exception()
 
 
-async def telegram_bot_cmd(
-    update: Update, context: TelegramContextTypes.DEFAULT_TYPE
-) -> None:
+async def telegram_bot_cmd(update: Update, context: TelegramContextTypes.DEFAULT_TYPE) -> None:
     try:
         authorized_users = app_config.get("telegram", "authorized_users").split(",")
         if str(update.effective_user.id) not in authorized_users:
@@ -1294,12 +1197,8 @@ async def telegram_bot_cmd(
         )
         # status update
         if update.effective_message.text.startswith("/"):
-            with exception_handler(
-                connect_url=URL_WORKER_APP, and_raise=False
-            ) as zmq_socket:
-                zmq_socket.send_pyobj(
-                    {"bot": {"command": update.effective_message.text}}
-                )
+            with exception_handler(connect_url=URL_WORKER_APP, and_raise=False) as zmq_socket:
+                zmq_socket.send_pyobj({"bot": {"command": update.effective_message.text}})
     except NetworkError:
         log.warning("bot handler", exc_info=True)
     except Exception:
@@ -1307,22 +1206,16 @@ async def telegram_bot_cmd(
         capture_exception()
 
 
-async def telegram_error_handler(
-    update: Update, context: TelegramContextTypes.DEFAULT_TYPE
-) -> None:
+async def telegram_error_handler(update: Update, context: TelegramContextTypes.DEFAULT_TYPE) -> None:
     # do not capture because there's nothing to handle
-    log.warning(
-        msg="Telegram Bot Exception while handling an update:", exc_info=context.error
-    )
+    log.warning(msg="Telegram Bot Exception while handling an update:", exc_info=context.error)
 
 
 def invalidate_remote_config(device_key):
     api_server = app_config.get("app", "event_processor_address")
     api_method = "invalidate_config"
     try:
-        response = requests.post(
-            url=f"{api_server}/{api_method}", params={"device_key": device_key}
-        )
+        response = requests.post(url=f"{api_server}/{api_method}", params={"device_key": device_key})
         log.info(
             f"{response.status_code} response from {api_method} API call to {api_server} to invalidate configuration for {device_key}: {response!s}"  # noqa: E501
         )
@@ -1373,9 +1266,7 @@ class EventProcessor(AppThread):
         self._metric_meter_value_accumulator = 0
         self._metric_last_posted_register_value = 0
 
-    def _update_device(
-        self, input_outputs, device_origin, origin_devices, event_origin, device
-    ):
+    def _update_device(self, input_outputs, device_origin, origin_devices, event_origin, device):
         # device_key must always be present
         device_key = device["device_key"]
         # set the device label if that hasn't already been done
@@ -1390,9 +1281,7 @@ class EventProcessor(AppThread):
         if device_key not in device_origin:
             device_origin[device_key] = event_origin
         elif device_origin[device_key] != event_origin:
-            log.warning(
-                f"{device_key} already known from {device_origin[device_key]} but also sent by {event_origin}."
-            )
+            log.warning(f"{device_key} already known from {device_origin[device_key]} but also sent by {event_origin}.")
         if device_key not in input_outputs:
             input_outputs[device_key] = device
         return device_key
@@ -1409,9 +1298,7 @@ class EventProcessor(AppThread):
         device_configs.extend(InputConfig.query.all())
         device_configs.extend(OutputConfig.query.all())
         # load auto-scheduler
-        with exception_handler(
-            connect_url=URL_WORKER_AUTO_SCHEDULER, and_raise=False
-        ) as zmq_socket:
+        with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, and_raise=False) as zmq_socket:
             for device_config in device_configs:
                 if device_config.auto_schedule:
                     zmq_socket.send_pyobj(
@@ -1425,16 +1312,10 @@ class EventProcessor(AppThread):
                     )
         # informational notifications
         # TODO: move to UI configuration
-        self.notify_not_before_time = make_timestamp(
-            timestamp=app_config.get("info_notify", "not_before_time")
-        )
-        self.notify_not_after_time = make_timestamp(
-            timestamp=app_config.get("info_notify", "not_after_time")
-        )
+        self.notify_not_before_time = make_timestamp(timestamp=app_config.get("info_notify", "not_before_time"))
+        self.notify_not_after_time = make_timestamp(timestamp=app_config.get("info_notify", "not_after_time"))
         # message validity
-        self._max_message_validity_seconds = int(
-            app_config.get("app", "max_message_validity_seconds")
-        )
+        self._max_message_validity_seconds = int(app_config.get("app", "max_message_validity_seconds"))
         # set up the special input for the panic button
         self._update_device(
             input_outputs=self.inputs,
@@ -1505,9 +1386,7 @@ class EventProcessor(AppThread):
                         continue
                     if "timestamp" in event_data:
                         str_timestamp = event_data["timestamp"]
-                        log.debug(
-                            f"{event_origin} timestamp is {str_timestamp}"
-                        )
+                        log.debug(f"{event_origin} timestamp is {str_timestamp}")
                         timestamp = make_timestamp(str_timestamp)
                     else:
                         timestamp = make_timestamp()
@@ -1515,10 +1394,7 @@ class EventProcessor(AppThread):
                             f"Message from {event_origin} does not include a 'timestamp' so it can't be filtered if it "
                             f"is stale. Using {make_iso_timestamp(timestamp)}."
                         )
-                        if (
-                            "active_devices" in event_data
-                            or "outputs_triggered" in event_data
-                        ):
+                        if "active_devices" in event_data or "outputs_triggered" in event_data:
                             log.warning(log_msg)
                         else:
                             log.debug(log_msg)
@@ -1531,13 +1407,9 @@ class EventProcessor(AppThread):
                             device=event_data,
                         )
                         di: DeviceInfo = DeviceInfo.model_validate(event_data)
-                        ic = InputConfig.query.filter_by(
-                            device_key=di.device_key
-                        ).first()
+                        ic = InputConfig.query.filter_by(device_key=di.device_key).first()
                         if ic is None:
-                            log.info(
-                                f"Adding new input configuration for {di.device_key} ({di.device_label})"
-                            )
+                            log.info(f"Adding new input configuration for {di.device_key} ({di.device_label})")
                             db.session.add(
                                 InputConfig(
                                     device_key=di.device_key,
@@ -1566,13 +1438,9 @@ class EventProcessor(AppThread):
                             device=event_data,
                         )
                         di: DeviceInfo = DeviceInfo.model_validate(event_data)
-                        oc = OutputConfig.query.filter_by(
-                            device_key=di.device_key
-                        ).first()
+                        oc = OutputConfig.query.filter_by(device_key=di.device_key).first()
                         if oc is None:
-                            log.info(
-                                f"Adding new output configuration for {di.device_key} ({di.device_label})"
-                            )
+                            log.info(f"Adding new output configuration for {di.device_key} ({di.device_label})")
                             db.session.add(
                                 OutputConfig(
                                     device_key=di.device_key,
@@ -1592,16 +1460,10 @@ class EventProcessor(AppThread):
                         device_key = event_data["device_key"]
                         device_label = event_data["device_label"]
                         device_enable = event_data["device_state"]
-                        log.info(
-                            f"Auto-scheduler updating device {device_label}; enable: {device_enable}"
-                        )
-                        device_config = InputConfig.query.filter_by(
-                            device_key=device_key
-                        ).first()
+                        log.info(f"Auto-scheduler updating device {device_label}; enable: {device_enable}")
+                        device_config = InputConfig.query.filter_by(device_key=device_key).first()
                         if device_config is None:
-                            device_config = OutputConfig.query.filter_by(
-                                device_key=device_key
-                            ).first()
+                            device_config = OutputConfig.query.filter_by(device_key=device_key).first()
                         device_config.device_enabled = device_enable
                         db.session.add(device_config)
                         db.session.commit()
@@ -1640,9 +1502,7 @@ class EventProcessor(AppThread):
                                         InputConfig.query.filter(
                                             or_(
                                                 InputConfig.device_key.like(sql_search),
-                                                InputConfig.device_label.like(
-                                                    sql_search
-                                                ),
+                                                InputConfig.device_label.like(sql_search),
                                                 InputConfig.group_name.like(sql_search),
                                             )
                                         )
@@ -1653,21 +1513,15 @@ class EventProcessor(AppThread):
                                     device_config = (
                                         OutputConfig.query.filter(
                                             or_(
-                                                OutputConfig.device_key.like(
-                                                    sql_search
-                                                ),
-                                                OutputConfig.device_label.like(
-                                                    sql_search
-                                                ),
+                                                OutputConfig.device_key.like(sql_search),
+                                                OutputConfig.device_label.like(sql_search),
                                             )
                                         )
                                         .order_by(OutputConfig.device_key)
                                         .all()
                                     )
                                 # collect all configurations matched
-                                log.info(
-                                    f'{state.title()} {len(device_config)} devices matching "{bot_command_arg}".'
-                                )
+                                log.info(f'{state.title()} {len(device_config)} devices matching "{bot_command_arg}".')
                                 if device_config:
                                     device_configs.extend(device_config)
                         else:
@@ -1675,23 +1529,15 @@ class EventProcessor(AppThread):
                             if input_enable is not None:
                                 # wildcard action is constrained to devices where auto-scheduling is enabled
                                 device_config = (
-                                    InputConfig.query.filter(
-                                        InputConfig.auto_schedule.isnot(None)
-                                    )
+                                    InputConfig.query.filter(InputConfig.auto_schedule.isnot(None))
                                     .order_by(InputConfig.device_key)
                                     .all()
                                 )
-                                log.info(
-                                    f"{state.title()} {len(device_config)} devices with auto-schedule not null."
-                                )
+                                log.info(f"{state.title()} {len(device_config)} devices with auto-schedule not null.")
                             elif output_enable is not None:
-                                device_config = OutputConfig.query.order_by(
-                                    OutputConfig.device_key
-                                ).all()
+                                device_config = OutputConfig.query.order_by(OutputConfig.device_key).all()
                             if len(device_config) > 0:
-                                log.info(
-                                    f"{state.title()} {len(device_config)} devices..."
-                                )
+                                log.info(f"{state.title()} {len(device_config)} devices...")
                                 device_configs.extend(device_config)
                         # process all collected inputs
                         devices_updated = []
@@ -1703,19 +1549,14 @@ class EventProcessor(AppThread):
                                 if dc.device_enabled != device_enable:
                                     devices_updated.append(dc.device_key)
                                     if input_enable is not None:
-                                        log.info(
-                                            f"{state.title()} {dc.device_key} (group {dc.group_name})"
-                                        )
+                                        log.info(f"{state.title()} {dc.device_key} (group {dc.group_name})")
                                     else:
                                         log.info(f"{state.title()} {dc.device_key}")
                                     dc.device_enabled = device_enable
                                     # update the database
                                     db.session.add(dc)
                                     # update auto-scheduled inputs
-                                    if (
-                                        input_enable is not None
-                                        and dc.auto_schedule is not None
-                                    ):
+                                    if input_enable is not None and dc.auto_schedule is not None:
                                         # update the auto-scheduler task
                                         with exception_handler(
                                             connect_url=URL_WORKER_AUTO_SCHEDULER,
@@ -1747,18 +1588,12 @@ class EventProcessor(AppThread):
                                 db.session.commit()
                                 for device_key in devices_updated:
                                     invalidate_remote_config(device_key=device_key)
-                            bot_reply = (
-                                f"{len(devices_updated)} devices changed to {state}."
-                            )
+                            bot_reply = f"{len(devices_updated)} devices changed to {state}."
                         else:
                             log.warning(f"No devices matched to {state}.")
                         log.info(bot_reply)
                         if is_flag_enabled("telegram-bot"):
-                            self.bot.send_pyobj(
-                                BotMessage(
-                                    device_label="notification", message=bot_reply
-                                ).model_dump()
-                            )
+                            self.bot.send_pyobj(BotMessage(device_label="notification", message=bot_reply).model_dump())
                         else:
                             log.warning(
                                 f"Not sending message to Telegram bot disabled with feature flag: {len(bot_reply)}."
@@ -1813,9 +1648,7 @@ class TBot(AppThread, Closable):
         poller = Poller()
         poller.register(zmq_socket, zmq.POLLIN)
         pending_by_label = OrderedDict()
-        log.info(
-            f"Waiting for events to forward to Telegram bot on chat ID {chat_id}..."
-        )
+        log.info(f"Waiting for events to forward to Telegram bot on chat ID {chat_id}...")
         call_again_timestamp = 0
         min_send_interval = app_config.getint("telegram", "min_send_interval")
         last_sent = 0
@@ -1849,20 +1682,14 @@ class TBot(AppThread, Closable):
                         continue
                     timestamp = None
                     if "timestamp" in event:
-                        timestamp = make_timestamp(
-                            timestamp=event["timestamp"], as_tz=user_tz
-                        )
+                        timestamp = make_timestamp(timestamp=event["timestamp"], as_tz=user_tz)
                     else:
-                        log.warning(
-                            'No timestamp included in event message; using "now"'
-                        )
+                        log.warning('No timestamp included in event message; using "now"')
                         timestamp = make_timestamp(as_tz=user_tz)
                     log.debug(f"{input_device!s};{output_device!s};{timestamp!s}")
                     # build the message
                     if message is None and input_device is not None:
-                        message = TBot.build_device_message(
-                            timestamp=timestamp, input_device=input_device
-                        )
+                        message = TBot.build_device_message(timestamp=timestamp, input_device=input_device)
                     # always queue the message
                     message.timestamp = make_unix_timestamp(timestamp=timestamp)
                     try:
@@ -1956,9 +1783,7 @@ class TBot(AppThread, Closable):
                 # send the message
                 try:
                     if len(image_batch) > 0:
-                        log.info(
-                            f"Sending image group to {chat_id!s} containing {len(image_batch)} images."
-                        )
+                        log.info(f"Sending image group to {chat_id!s} containing {len(image_batch)} images.")
                         await t_app.bot.send_media_group(
                             chat_id=chat_id,
                             media=image_batch,
@@ -1971,9 +1796,7 @@ class TBot(AppThread, Closable):
                         log.info(
                             f'Sending non-image message about {device_label} ({message.timestamp}) to {chat_id!s} with caption "{message!s}"'  # noqa: E501
                         )
-                        await t_app.bot.send_message(
-                            chat_id=chat_id, text=str(message), parse_mode="Markdown"
-                        )
+                        await t_app.bot.send_message(chat_id=chat_id, text=str(message), parse_mode="Markdown")
                 except RetryAfter as e:
                     call_again_timestamp = now + e.retry_after
                     log.warning(
@@ -1994,34 +1817,18 @@ class TBot(AppThread, Closable):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         log.info("Creating Telegram application...")
-        telegram_application = (
-            TelegramApp.builder()
-            .token(creds.get_creds(f"Telegram/{APP_NAME}/token"))
-            .build()
-        )
-        telegram_application.add_handler(
-            TelegramCommandHandler(command="inputon", callback=telegram_bot_cmd)
-        )
-        telegram_application.add_handler(
-            TelegramCommandHandler(command="inputoff", callback=telegram_bot_cmd)
-        )
-        telegram_application.add_handler(
-            TelegramCommandHandler(command="outputon", callback=telegram_bot_cmd)
-        )
-        telegram_application.add_handler(
-            TelegramCommandHandler(command="outputoff", callback=telegram_bot_cmd)
-        )
-        telegram_application.add_handler(
-            TelegramMessageHandler(filters.TEXT & ~filters.COMMAND, telegram_bot_echo)
-        )
+        telegram_application = TelegramApp.builder().token(creds.get_creds(f"Telegram/{APP_NAME}/token")).build()
+        telegram_application.add_handler(TelegramCommandHandler(command="inputon", callback=telegram_bot_cmd))
+        telegram_application.add_handler(TelegramCommandHandler(command="inputoff", callback=telegram_bot_cmd))
+        telegram_application.add_handler(TelegramCommandHandler(command="outputon", callback=telegram_bot_cmd))
+        telegram_application.add_handler(TelegramCommandHandler(command="outputoff", callback=telegram_bot_cmd))
+        telegram_application.add_handler(TelegramMessageHandler(filters.TEXT & ~filters.COMMAND, telegram_bot_echo))
         telegram_application.add_error_handler(callback=telegram_error_handler)
         self.t_app = telegram_application
         log.info("Registering coroutine for ZMQ-Telegram messages...")
         self.get_socket()
         outcome = asyncio.run_coroutine_threadsafe(
-            TBot.tbot_run(
-                t_app=self.t_app, zmq_socket=self.socket, chat_id=self.chat_id
-            ),
+            TBot.tbot_run(t_app=self.t_app, zmq_socket=self.socket, chat_id=self.chat_id),
             loop,
         )
         log.info("Starting Telegram application...")
@@ -2052,20 +1859,14 @@ class AutoScheduler(AppThread):
     def is_enabled(self):
         config_autoscheduler_enabled = False
         with flask_app.app_context():
-            config_autoscheduler = GeneralConfig.query.filter_by(
-                config_key=CONFIG_AUTO_SCHEDULER
-            ).first()
+            config_autoscheduler = GeneralConfig.query.filter_by(config_key=CONFIG_AUTO_SCHEDULER).first()
             if config_autoscheduler:
-                config_autoscheduler_enabled = bool(
-                    int(config_autoscheduler.config_value)
-                )
+                config_autoscheduler_enabled = bool(int(config_autoscheduler.config_value))
         return config_autoscheduler_enabled
 
     @staticmethod
     def update_device(device_key, device_label, device_state):
-        log.info(
-            f"Scheduler triggered. {device_label} to enabled={device_state}"
-        )
+        log.info(f"Scheduler triggered. {device_label} to enabled={device_state}")
         with exception_handler(
             connect_url=URL_WORKER_APP,
             socket_type=zmq.PUSH,
@@ -2083,9 +1884,7 @@ class AutoScheduler(AppThread):
             )
 
     def _schedule(self, device_key, device_label, schedule_time, device_state):
-        log.info(
-            f"Setting auto-schedule for {device_label}: enable? {device_state} at {schedule_time} {user_tz!s}."
-        )
+        log.info(f"Setting auto-schedule for {device_label}: enable? {device_state} at {schedule_time} {user_tz!s}.")
         schedule.every().day.at(schedule_time, user_tz).do(
             AutoScheduler.update_device, device_key, device_label, device_state
         ).tag(device_key)
@@ -2093,9 +1892,7 @@ class AutoScheduler(AppThread):
     # noinspection PyBroadException
     def run(self):
         if not self.is_enabled:
-            log.warning(
-                "Auto-scheduler is not enabled; scheduled changes will not run."
-            )
+            log.warning("Auto-scheduler is not enabled; scheduled changes will not run.")
         with exception_handler(
             connect_url=URL_WORKER_AUTO_SCHEDULER,
             socket_type=zmq.PULL,
@@ -2161,7 +1958,7 @@ class ApiServer(Thread):
             # app="app.__main__:api_app",
             app=api_app,
             host="0.0.0.0",
-            #host=app_config.get("api", "host"),
+            # host=app_config.get("api", "host"),
             port=int(app_config.get("flask", "http_port")),
             log_level="warning",
             timeout_graceful_shutdown=1,
@@ -2186,9 +1983,7 @@ async def main():
     global sentry_dsn
     # sentry instrumentation
     log.info("Loading Sentry.io instrumentation...")
-    sentry_dsn = creds.get_creds(
-        app_config.get("creds", "sentry_dsn").replace("__APP_NAME__", APP_NAME)
-    )
+    sentry_dsn = creds.get_creds(app_config.get("creds", "sentry_dsn").replace("__APP_NAME__", APP_NAME))
     sentry_sdk.init(
         dsn=sentry_dsn,
         integrations=[
@@ -2226,9 +2021,7 @@ async def main():
         else:
             log.warning("Not running Telegram bot client due to feature flag.")
         # start the nanny
-        nanny = threading.Thread(
-            daemon=True, name="nanny", target=thread_nanny, args=(signal_handler,)
-        )
+        nanny = threading.Thread(daemon=True, name="nanny", target=thread_nanny, args=(signal_handler,))
         # not tracked by nanny because this is used for Flask bootstrap
         server = ApiServer()
         try:
@@ -2266,7 +2059,5 @@ if __name__ == "__main__":
     creds = Creds()
     creds.validate_creds()
     flask_app.secret_key = creds.get_creds("Frontend/Flask/secret_key")
-    permit = Permit(
-        pdp=creds.get_creds("Permit/hostname"), token=creds.get_creds("Permit/credential")
-    )
+    permit = Permit(pdp=creds.get_creds("Permit/hostname"), token=creds.get_creds("Permit/credential"))
     asyncio.run(main())
