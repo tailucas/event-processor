@@ -25,30 +25,30 @@
     <commons-lang3.version>3.20.0</commons-lang3.version>
     <ini4j.version>0.5.4</ini4j.version>
     <pagerduty.version>3.1.2</pagerduty.version>
-    <sentry-spring-boot-starter-jakarta.version>8.29.0</sentry-spring-boot-starter-jakarta.version>
-    <amqp-client.version>5.28.0</amqp-client.version>
+    <sentry-spring-boot-starter-jakarta.version>8.48.0</sentry-spring-boot-starter-jakarta.version>
+    <amqp-client.version>5.33.1</amqp-client.version>
     <paho.version>1.2.5</paho.version>
     <jackson.version>3.0.3</jackson.version>
-    <jackson-annotations.version>2.20</jackson-annotations.version>
-    <jackson-dataformat-msgpack.version>0.9.11</jackson-dataformat-msgpack.version>
+    <jackson-annotations.version>2.22</jackson-annotations.version>
+    <jackson-dataformat-msgpack.version>0.9.12</jackson-dataformat-msgpack.version>
     <zeromq.version>0.6.0</zeromq.version>
     <slf4j-api.version>2.0.17</slf4j-api.version>
     <slf4j-simple.version>2.0.17</slf4j-simple.version>
     <opconnect-java.version>0.6.2</opconnect-java.version>
-    <prometheus-metrics-core.version>1.4.3</prometheus-metrics-core.version>
-    <prometheus-metrics-exporter-httpserver.version>1.4.3</prometheus-metrics-exporter-httpserver.version>
-    <prometheus-metrics-instrumentation-jvm.version>1.4.3</prometheus-metrics-instrumentation-jvm.version>
+    <prometheus-metrics-core.version>1.8.0</prometheus-metrics-core.version>
+    <prometheus-metrics-exporter-httpserver.version>1.8.0</prometheus-metrics-exporter-httpserver.version>
+    <prometheus-metrics-instrumentation-jvm.version>1.8.0</prometheus-metrics-instrumentation-jvm.version>
 
     <!-- test dependencies -->
     <junit-jupiter.version>6.0.1</junit-jupiter.version>
 
     <!-- build toolchain -->
-    <maven.dependency.plugin.version>3.9.0</maven.dependency.plugin.version>
+    <maven.dependency.plugin.version>3.11.0</maven.dependency.plugin.version>
     <maven.exec.maven.plugin>3.6.3</maven.exec.maven.plugin>
-    <maven.enforcer.plugin>3.6.2</maven.enforcer.plugin>
+    <maven.enforcer.plugin>3.6.3</maven.enforcer.plugin>
 
-    <versions.maven.plugin.version>2.20.1</versions.maven.plugin.version>
-    <spotbugs-maven-plugin.version>4.9.8.2</spotbugs-maven-plugin.version>
+    <versions.maven.plugin.version>2.21.0</versions.maven.plugin.version>
+    <spotbugs-maven-plugin.version>4.10.2.0</spotbugs-maven-plugin.version>
 
     <!-- properties file -->
     <app.project-name>${project.name}</app.project-name>
