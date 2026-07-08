@@ -1,87 +1,82 @@
 #!/usr/bin/env python
 
 import asyncio
-import requests
-import schedule
+from collections import OrderedDict, deque
+from contextlib import suppress
+from functools import wraps
+from io import BytesIO
+from os import path
 import threading
+from threading import Thread
 import time
-import uvicorn
-import zmq
-import zmq.asyncio
 
+from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.middleware.wsgi import WSGIMiddleware
+from fastapi.responses import RedirectResponse
+from flask import Flask, flash, redirect, render_template, request, url_for
+from flask.logging import default_handler
+from flask_compress import Compress
+from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
+from flask_sqlalchemy import SQLAlchemy
+from httpx import ConnectError
+from permit.sync import Permit
+from pydantic import BaseModel, ConfigDict
+from pylru import lrucache
+from pytz import timezone
+import requests
+from requests.exceptions import ConnectionError
+import schedule
+from schedule import ScheduleValueError
 import sentry_sdk
 from sentry_sdk import capture_exception
 from sentry_sdk.integrations.asyncio import AsyncioIntegration
 from sentry_sdk.integrations.flask import FlaskIntegration
 from sentry_sdk.integrations.logging import ignore_logger
-from sentry_sdk.integrations.threading import ThreadingIntegration
 from sentry_sdk.integrations.sys_exit import SysExitIntegration
-
-from collections import OrderedDict, deque
-from flask_sqlalchemy import SQLAlchemy
-from functools import wraps
-from io import BytesIO
-from os import path
-from pylru import lrucache
-from pytz import timezone
-from requests.exceptions import ConnectionError
-from schedule import ScheduleValueError
-
-from telegram import Update, InputMediaPhoto, MessageEntity
+from sentry_sdk.integrations.threading import ThreadingIntegration
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, or_
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
+from sqlalchemy.future import select
+from sqlalchemy.orm import declarative_base, relationship, sessionmaker
+from telegram import InputMediaPhoto, MessageEntity, Update
 from telegram.constants import MediaGroupLimit
+from telegram.error import NetworkError, RetryAfter, TimedOut
 from telegram.ext import (
     Application as TelegramApp,
+)
+from telegram.ext import (
     CommandHandler as TelegramCommandHandler,
+)
+from telegram.ext import (
     ContextTypes as TelegramContextTypes,
+)
+from telegram.ext import (
     MessageHandler as TelegramMessageHandler,
+)
+from telegram.ext import (
     filters,
 )
-from telegram.error import NetworkError, RetryAfter, TimedOut
-from httpx import ConnectError
-from threading import Thread
-
-
-from fastapi import FastAPI, Depends, status, HTTPException, Request
-from fastapi.responses import RedirectResponse
-from fastapi.middleware.wsgi import WSGIMiddleware
-
-from pydantic import BaseModel, ConfigDict
-
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine, AsyncSession
-from sqlalchemy.orm import declarative_base, sessionmaker
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, Float
-from sqlalchemy import ForeignKey, UniqueConstraint
-from sqlalchemy.future import select
-from sqlalchemy.orm import relationship
-from sqlalchemy import or_
-
-from flask import Flask, flash, request, render_template, url_for, redirect
-from flask.logging import default_handler
-from flask_compress import Compress
-
-from flask_login import LoginManager
-from flask_login import login_required, login_user, logout_user, current_user, UserMixin
-
-from permit.sync import Permit
-
+import uvicorn
+import zmq
+import zmq.asyncio
 from zmq.asyncio import Poller
 from zmq.error import ZMQError
 
-from tailucas_pylib import APP_NAME, app_config, creds, DEVICE_NAME, log, log_handler
-from tailucas_pylib.flags import is_flag_enabled
+from tailucas_pylib import APP_NAME, DEVICE_NAME, app_config, log, log_handler, threads
+from tailucas_pylib.app import AppThread
+from tailucas_pylib.creds import Creds
 from tailucas_pylib.datetime import (
+    make_iso_timestamp,
     make_timestamp,
     make_unix_timestamp,
-    make_iso_timestamp,
 )
 from tailucas_pylib.device import Device
+from tailucas_pylib.flags import is_flag_enabled
+from tailucas_pylib.handler import exception_handler
 from tailucas_pylib.process import SignalHandler
 from tailucas_pylib.rabbit import ZMQListener
-from tailucas_pylib import threads
-from tailucas_pylib.threads import thread_nanny, die, bye
-from tailucas_pylib.app import AppThread
-from tailucas_pylib.zmq import zmq_term, Closable, zmq_socket, try_close, URL_WORKER_APP
-from tailucas_pylib.handler import exception_handler
+from tailucas_pylib.threads import bye, die, thread_nanny
+from tailucas_pylib.zmq import URL_WORKER_APP, Closable, try_close, zmq_socket, zmq_term
 
 # Reduce Sentry noise
 ignore_logger("telegram.ext.Updater")
@@ -104,10 +99,9 @@ async def get_db():
     async with async_session() as session:
         yield session
 
-
-permit = Permit(
-    pdp=creds.get_creds("Permit/hostname"), token=creds.get_creds("Permit/credential")
-)
+creds = None
+permit = None
+sentry_dsn = None
 
 user_tz = timezone(app_config.get("app", "user_tz"))
 flask_app = Flask(APP_NAME)
@@ -117,7 +111,6 @@ db = SQLAlchemy(app=flask_app, model_class=Base)
 # set up flask application
 flask_app.logger.removeHandler(default_handler)
 flask_app.logger.addHandler(log_handler)
-flask_app.secret_key = creds.get_creds("Frontend/Flask/secret_key")
 flask_app.jinja_env.add_extension("jinja2.ext.loopcontrols")
 
 
@@ -147,14 +140,15 @@ api_app.state.startup_complete = False
 api_app.mount("/admin", WSGIMiddleware(flask_app))
 
 # Custom exception handler for validation errors
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError  # noqa: E402
+from fastapi.responses import JSONResponse  # noqa: E402
+
 
 @api_app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     log.error(f"Validation error for {request.url}: {exc.errors()}")
     log.error(f"Request headers: {request.headers!s}")
-    log.error(f"Request body: {await request.body()}")
+    log.error(f"Request body: {await request.body()!r}")
     return JSONResponse(
         status_code=422,
         content={"detail": exc.errors()},
@@ -167,9 +161,7 @@ URL_WORKER_AUTO_SCHEDULER = "inproc://auto-scheduler"
 CONFIG_AUTO_SCHEDULER = "auto-scheduler"
 
 
-sentry_dsn = creds.get_creds(
-    app_config.get("creds", "sentry_dsn").replace("__APP_NAME__", APP_NAME)
-)
+
 
 
 class GeneralConfig(Base):
@@ -415,7 +407,7 @@ class OutputLink(Base):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
 
-class InputConfigWrapper(object):
+class InputConfigWrapper:
     def __init__(self):
         self._input_config = None
         self._device_label = None
@@ -475,7 +467,7 @@ class InputConfigWrapper(object):
             self._input_config = input_config
 
 
-class InputConfigCollection(object):
+class InputConfigCollection:
     def __init__(self):
         self._input_configs = dict()
 
@@ -489,7 +481,7 @@ class InputConfigCollection(object):
         if input_config.group_name:
             input_device_key = input_config.group_name
         ic_wrapper = None
-        if input_device_key not in self._input_configs.keys():
+        if input_device_key not in self._input_configs:
             ic_wrapper = InputConfigWrapper()
             self._input_configs[input_device_key] = ic_wrapper
         else:
@@ -502,9 +494,7 @@ def update_meter_config(
 ):
     if register_value < 0:
         log.debug(
-            "Resetting negative {} meter register value {} to 0.".format(
-                input_device_key, register_value
-            )
+            f"Resetting negative {input_device_key} meter register value {register_value} to 0."
         )
         register_value = 0
     meter_reading_unit = " " + meter_config.meter_reading_unit
@@ -636,7 +626,7 @@ def login_post():
     try:
         email = request.form["user_email"]
         password = request.form.get("user_password")
-        remember = True if request.form.get("remember_user") else False
+        remember = bool(request.form.get("remember_user"))
         log.info(f"Login request for user {email}...")
         if email == creds.get_creds("Users/user/email") and password == creds.get_creds(
             "Users/user/creds"
@@ -668,7 +658,7 @@ def load_user(user_id):
 
 @flask_app.route("/debug-sentry")
 def trigger_error():
-    1 / 0
+    _ = 1 / 0
 
 
 @flask_app.route("/logging")
@@ -725,11 +715,8 @@ def index():
                 reset_value = meter_cfg.meter_reset_value
             # override with the prompt value if specified
             if "prompt_val" in request.form:
-                try:
+                with suppress(ValueError):
                     reset_value = int(request.form["prompt_val"])
-                except ValueError:
-                    # oh well
-                    pass
             # pylint: disable=unused-variable
             if meter_cfg.meter_reset_additive:
                 iot_message = {"adjust_register": reset_value}
@@ -753,11 +740,7 @@ def index():
             input_cfg = inputs.input_config[device_key]
             input_enabled = input_cfg.device_enabled
             # null or false => disabled
-            if not input_enabled:
-                # therefore, toggle to enabled
-                input_enabled = True
-            else:
-                input_enabled = False
+            input_enabled = not input_enabled
             input_cfg.device_enabled = input_enabled
             # dereference and unwrap
             input_cfgs = list()
@@ -780,7 +763,7 @@ def index():
             for input_cfg in input_cfgs:
                 invalidate_remote_config(device_key=input_cfg.device_key)
         else:
-            log.error("No action associated with this request: {}".format(request.form))
+            log.error(f"No action associated with this request: {request.form}")
     meters = dict()
     meter_configs = MeterConfig.query.all()
     for meter_config in meter_configs:
@@ -835,7 +818,7 @@ def show_config():
             auto_schedule_enable = request.form["auto_schedule_enable"]
             auto_schedule_disable = request.form["auto_schedule_disable"]
             log.info(
-                f"Saving auto-schedule configuration for {saved_device_id} (enabled? {auto_schedule_enabled} enable at {auto_schedule_enable}, disable at {auto_schedule_disable})"
+                f"Saving auto-schedule configuration for {saved_device_id} (enabled? {auto_schedule_enabled} enable at {auto_schedule_enable}, disable at {auto_schedule_disable})"  # noqa: E501
             )
             device_config.auto_schedule = auto_schedule_enabled
             device_config.auto_schedule_enable = auto_schedule_enable
@@ -1276,15 +1259,11 @@ async def telegram_bot_echo(
     try:
         authorized_users = app_config.get("telegram", "authorized_users").split(",")
         if str(update.effective_user.id) not in authorized_users:
-            log.warning("Unauthorized message {}".format(str(update)))
+            log.warning(f"Unauthorized message {update!s}")
             return
 
         log.info(
-            "Telegram Bot {} got message {} (chat ID: {}).".format(
-                context.bot.username,
-                update.effective_message.text,
-                update.effective_message.chat_id,
-            )
+            f"Telegram Bot {context.bot.username} got message {update.effective_message.text} (chat ID: {update.effective_message.chat_id})."  # noqa: E501
         )
 
         group_info = await context.bot.get_chat(
@@ -1307,16 +1286,11 @@ async def telegram_bot_cmd(
     try:
         authorized_users = app_config.get("telegram", "authorized_users").split(",")
         if str(update.effective_user.id) not in authorized_users:
-            log.warning("Unauthorized message {}".format(str(update)))
+            log.warning(f"Unauthorized message {update!s}")
             return
 
         log.info(
-            "Telegram Bot {} got command {} with args {} (chat ID: {}).".format(
-                context.bot.username,
-                update.effective_message.text,
-                str(context.args),
-                update.effective_message.chat_id,
-            )
+            f"Telegram Bot {context.bot.username} got command {update.effective_message.text} with args {context.args!s} (chat ID: {update.effective_message.chat_id})."  # noqa: E501
         )
         # status update
         if update.effective_message.text.startswith("/"):
@@ -1350,7 +1324,7 @@ def invalidate_remote_config(device_key):
             url=f"{api_server}/{api_method}", params={"device_key": device_key}
         )
         log.info(
-            f"{response.status_code} response from {api_method} API call to {api_server} to invalidate configuration for {device_key}: {response!s}"
+            f"{response.status_code} response from {api_method} API call to {api_server} to invalidate configuration for {device_key}: {response!s}"  # noqa: E501
         )
     except ConnectionError as e:
         log.warning(
@@ -1526,24 +1500,20 @@ class EventProcessor(AppThread):
                 for event_origin, event_data in list(event.items()):
                     if not isinstance(event_data, dict):
                         log.warning(
-                            "Ignoring non-dict event format from {}: {} ({})".format(
-                                event_origin, event_data.__class__, event_data
-                            )
+                            f"Ignoring non-dict event format from {event_origin}: {event_data.__class__} ({event_data})"
                         )
                         continue
                     if "timestamp" in event_data:
                         str_timestamp = event_data["timestamp"]
                         log.debug(
-                            "{} timestamp is {}".format(event_origin, str_timestamp)
+                            f"{event_origin} timestamp is {str_timestamp}"
                         )
                         timestamp = make_timestamp(str_timestamp)
                     else:
                         timestamp = make_timestamp()
                         log_msg = (
-                            "Message from {} does not include a 'timestamp' so it can't be filtered if it "
-                            "is stale. Using {}.".format(
-                                event_origin, make_iso_timestamp(timestamp)
-                            )
+                            f"Message from {event_origin} does not include a 'timestamp' so it can't be filtered if it "
+                            f"is stale. Using {make_iso_timestamp(timestamp)}."
                         )
                         if (
                             "active_devices" in event_data
@@ -1552,7 +1522,7 @@ class EventProcessor(AppThread):
                             log.warning(log_msg)
                         else:
                             log.debug(log_msg)
-                    if "device_info_input" == event_origin:
+                    if event_origin == "device_info_input":
                         self._update_device(
                             input_outputs=self.inputs,
                             device_origin=self._input_origin,
@@ -1587,7 +1557,7 @@ class EventProcessor(AppThread):
                                 )
                             )
                             db.session.commit()
-                    elif "device_info_output" == event_origin:
+                    elif event_origin == "device_info_output":
                         self._update_device(
                             input_outputs=self.outputs,
                             device_origin=self._output_origin,
@@ -1618,7 +1588,7 @@ class EventProcessor(AppThread):
                                 )
                             )
                             db.session.commit()
-                    elif "auto-scheduler" == event_origin:
+                    elif event_origin == "auto-scheduler":
                         device_key = event_data["device_key"]
                         device_label = event_data["device_label"]
                         device_enable = event_data["device_state"]
@@ -1638,7 +1608,7 @@ class EventProcessor(AppThread):
                         invalidate_remote_config(device_key=device_key)
                         # skip further processing because of enable/disable
                         continue
-                    elif "bot" == event_origin:
+                    elif event_origin == "bot":
                         log.debug(f"Got bot command: {event_data!s}")
                         bot_command = event_data["command"].split()
                         bot_command_base = bot_command[0]
@@ -1808,6 +1778,7 @@ class TBot(AppThread, Closable):
         self.sns_fallback = sns_fallback
         self._shutdown = False
 
+    @staticmethod
     def build_device_message(timestamp, input_device: Device) -> BotMessage:
         device_label = input_device.device_label
         if device_label is None:
@@ -1816,9 +1787,7 @@ class TBot(AppThread, Closable):
         if input_device.event_detail:
             event_detail = f" {input_device.event_detail}"
         # include a timestamp in this SMS message
-        message = "{}{} ({}:{})".format(
-            device_label, event_detail, timestamp.hour, str(timestamp.minute).zfill(2)
-        )
+        message = f"{device_label}{event_detail} ({timestamp.hour}:{str(timestamp.minute).zfill(2)})"
         image_data = None
         if input_device.image:
             image_data = input_device.image
@@ -1833,13 +1802,13 @@ class TBot(AppThread, Closable):
             image_timestamp=image_timestamp,
         )
 
+    @staticmethod
     def include_image(message):
         if not app_config.getboolean("telegram", "image_send_only_with_people"):
             return True
-        if "person" in message:
-            return True
-        return False
+        return "person" in message
 
+    @staticmethod
     async def tbot_run(t_app: TelegramApp, zmq_socket, chat_id):
         poller = Poller()
         poller.register(zmq_socket, zmq.POLLIN)
@@ -1867,10 +1836,10 @@ class TBot(AppThread, Closable):
                     output_device: Device = None
                     message = None
                     try:
-                        if "active_input" in event.keys():
+                        if "active_input" in event:
                             input_device = Device(**event["active_input"])
                             log.debug(f"Input device for message: {input_device!s}")
-                        elif "output_triggered" in event.keys():
+                        elif "output_triggered" in event:
                             output_device = Device(**event["output_triggered"])
                             log.debug(f"Output device for message: {output_device!s}")
                         else:
@@ -1902,20 +1871,20 @@ class TBot(AppThread, Closable):
                         queued = deque()
                         pending_by_label[message.device_label] = queued
                     log.info(
-                        f"Queueing message about {message.device_label} ({message.timestamp}) ({len(queued)} devices queued)..."
+                        f"Queueing message about {message.device_label} ({message.timestamp}) ({len(queued)} devices queued)..."  # noqa: E501
                     )
                     queued.append(message)
                 # rate-limit the send
                 # https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this
                 if now < call_again_timestamp:
                     log.warning(
-                        f"Enforced rate limiting message queue (of {len(pending_by_label)} devices). Telegram asked for {call_again_timestamp - now}s backoff."
+                        f"Enforced rate limiting message queue (of {len(pending_by_label)} devices). Telegram asked for {call_again_timestamp - now}s backoff."  # noqa: E501
                     )
                     continue
                 time_since_sent = now - last_sent
                 if time_since_sent < min_send_interval:
                     log.warning(
-                        f"Elective rate limiting message queue (of {len(pending_by_label)} devices). Time since last send is {time_since_sent}s, min interval is {min_send_interval}s."
+                        f"Elective rate limiting message queue (of {len(pending_by_label)} devices). Time since last send is {time_since_sent}s, min interval is {min_send_interval}s."  # noqa: E501
                     )
                     continue
                 # dequeue the message
@@ -1938,7 +1907,7 @@ class TBot(AppThread, Closable):
                 # other messages to dedupe
                 while True:
                     log.info(
-                        f"Now processing message about {message.device_label} ({message.timestamp}) ({len(pending)} queued)..."
+                        f"Now processing message about {message.device_label} ({message.timestamp}) ({len(pending)} queued)..."  # noqa: E501
                     )
                     # keep all image data as configured
                     if message.image:
@@ -1955,7 +1924,7 @@ class TBot(AppThread, Closable):
                                         )
                                     ]
                                 log.info(
-                                    f'Batching image about {device_label} (t={message.timestamp}/it={message.image_timestamp}) for {chat_id!s} with caption "{message!s}". Batch size is {len(image_batch)}.'
+                                    f'Batching image about {device_label} (t={message.timestamp}/it={message.image_timestamp}) for {chat_id!s} with caption "{message!s}". Batch size is {len(image_batch)}.'  # noqa: E501
                                 )
                                 image_batch.append(
                                     InputMediaPhoto(
@@ -1967,13 +1936,13 @@ class TBot(AppThread, Closable):
                             else:
                                 # enough is enough, re-enqueue the remainder
                                 log.info(
-                                    f"Re-enqueing {len(pending)} remaining events for {device_label} because image batch to send is now {len(image_batch)} items."
+                                    f"Re-enqueing {len(pending)} remaining events for {device_label} because image batch to send is now {len(image_batch)} items."  # noqa: E501
                                 )
                                 pending_by_label[device_label] = pending
                                 break
                         else:
                             log.info(
-                                f"Filtering out image message about {message.device_label} ({message.timestamp}) ({len(pending)} queued)."
+                                f"Filtering out image message about {message.device_label} ({message.timestamp}) ({len(pending)} queued)."  # noqa: E501
                             )
                     try:
                         # attempt to fetch a newer image
@@ -2000,7 +1969,7 @@ class TBot(AppThread, Closable):
                         )
                     if not message.image:
                         log.info(
-                            f'Sending non-image message about {device_label} ({message.timestamp}) to {chat_id!s} with caption "{message!s}"'
+                            f'Sending non-image message about {device_label} ({message.timestamp}) to {chat_id!s} with caption "{message!s}"'  # noqa: E501
                         )
                         await t_app.bot.send_message(
                             chat_id=chat_id, text=str(message), parse_mode="Markdown"
@@ -2008,7 +1977,7 @@ class TBot(AppThread, Closable):
                 except RetryAfter as e:
                     call_again_timestamp = now + e.retry_after
                     log.warning(
-                        f"Telegram asks to call again in {e.retry_after}s. Deferring calls until {call_again_timestamp}."
+                        f"Telegram asks to call again in {e.retry_after}s. Deferring calls until {call_again_timestamp}."  # noqa: E501
                     )
                     continue
                 except (TimedOut, ConnectError) as e:
@@ -2092,9 +2061,10 @@ class AutoScheduler(AppThread):
                 )
         return config_autoscheduler_enabled
 
+    @staticmethod
     def update_device(device_key, device_label, device_state):
         log.info(
-            "Scheduler triggered. {} to enabled={}".format(device_label, device_state)
+            f"Scheduler triggered. {device_label} to enabled={device_state}"
         )
         with exception_handler(
             connect_url=URL_WORKER_APP,
@@ -2157,7 +2127,7 @@ class AutoScheduler(AppThread):
                     schedule.clear(device_key)
                     if auto_schedule:
                         log.info(
-                            f"Resetting auto-schedule for {device_label} to disable at {auto_schedule_disable} and enable at {auto_schedule_enable}."
+                            f"Resetting auto-schedule for {device_label} to disable at {auto_schedule_disable} and enable at {auto_schedule_enable}."  # noqa: E501
                         )
                         try:
                             # install a new scedule
@@ -2184,7 +2154,7 @@ class AutoScheduler(AppThread):
 
 class ApiServer(Thread):
     def __init__(self):
-        super(ApiServer, self).__init__(name=self.__class__.__name__)
+        super().__init__(name=self.__class__.__name__)
         self.server = None
 
         config = uvicorn.Config(
@@ -2212,8 +2182,13 @@ class ApiServer(Thread):
 
 
 async def main():
+    global creds
+    global sentry_dsn
     # sentry instrumentation
     log.info("Loading Sentry.io instrumentation...")
+    sentry_dsn = creds.get_creds(
+        app_config.get("creds", "sentry_dsn").replace("__APP_NAME__", APP_NAME)
+    )
     sentry_sdk.init(
         dsn=sentry_dsn,
         integrations=[
@@ -2288,4 +2263,10 @@ async def main():
 
 
 if __name__ == "__main__":
+    creds = Creds()
+    creds.validate_creds()
+    flask_app.secret_key = creds.get_creds("Frontend/Flask/secret_key")
+    permit = Permit(
+        pdp=creds.get_creds("Permit/hostname"), token=creds.get_creds("Permit/credential")
+    )
     asyncio.run(main())

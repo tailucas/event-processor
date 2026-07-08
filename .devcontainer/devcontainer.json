@@ -20,13 +20,12 @@
         "ghcr.io/devcontainers/features/python:1": {}
     },
     "remoteEnv": {
-        "OP_CONNECT_HOST": "${localEnv:OP_CONNECT_HOST}",
+        "OP_CONNECT_HOST": "${localEnv:OP_CONNECT_HOST_DOCKER}",
         "OP_SERVICE_ACCOUNT_TOKEN": "${localEnv:OP_SERVICE_ACCOUNT_TOKEN}",
         "OP_CONNECT_TOKEN": "${localEnv:OP_CONNECT_TOKEN}",
         "OP_VAULT": "${localEnv:OP_VAULT}",
         "UV_LINK_MODE": "copy"
     },
     "workspaceFolder": "${localWorkspaceFolder}",
-    "workspaceMount": "source=${localWorkspaceFolder},target=${localWorkspaceFolder},type=bind",
-    "runArgs": ["--network=host"]
+    "workspaceMount": "source=${localWorkspaceFolder},target=${localWorkspaceFolder},type=bind"
 }

@@ -26,7 +26,7 @@ dependencies = [
     "schedule>=1.2.2",
     "sentry-sdk[flask]>=2.37.0",
     "sqlalchemy[asyncio]>=2.0.43",
-    "tailucas-pylib>=0.5.2",
+    "tailucas-pylib[aws,creds,dto,monitoring,mq]>=0.7.1",
     "uvicorn[standard]>=0.35.0",
 ]
 
@@ -40,7 +40,9 @@ module-root = ""
 
 [dependency-groups]
 dev = [
+    "mypy>=2.2.0",
     "pytest>=8.4.2",
+    "ruff>=0.15.20",
 ]
 
 [project.scripts]
@@ -48,3 +50,72 @@ aws_configure = "tailucas_pylib.tools.aws_configure:main"
 config_interpol = "tailucas_pylib.tools.config_interpol:main"
 cred_tool = "tailucas_pylib.tools.cred_tool:main"
 yaml_interpol = "tailucas_pylib.tools.yaml_interpol:main"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    ".mypy_cache",
+    ".ruff_cache",
+    "*.pyc",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "N",      # pep8-naming
+    "B",      # flake8-bugbear
+    "SIM",    # flake8-simplify
+    "UP",     # pyupgrade
+    "RUF",    # ruff-specific rules
+]
+ignore = [
+    "N818",   # Exception class names should end with "Error" (but Exception is acceptable)
+    "B008",   # Do not perform function calls in argument defaults
+    "B904",   # raise from within except
+    "RUF012", # Mutable class attributes
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "tailucas_pylib"]
+force-sort-within-sections = true
+
+[tool.ruff.lint.pycodestyle]
+max-doc-length = 120
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+[tool.mypy]
+python_version = "3.12"
+strict = false
+ignore_missing_imports = true
+exclude = [
+    ".venv",
+    "__pycache__",
+    ".mypy_cache",
+    "tests/",
+]
+check_untyped_defs = true
+warn_return_any = true
+warn_unused_ignores = true
+show_error_codes = true
+disable_error_code = [
+    "attr-defined",
+    "misc",
+    "valid-type",
+    "var-annotated",
+    "union-attr",
+    "arg-type",
+    "operator",
+    "no-redef",
+    "call-overload",
+]
