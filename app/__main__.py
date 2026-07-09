@@ -62,7 +62,7 @@ import zmq.asyncio
 from zmq.asyncio import Poller
 from zmq.error import ZMQError
 
-from tailucas_pylib import APP_NAME, DEVICE_NAME, app_config, log, log_handler, threads
+from tailucas_pylib import APP_NAME, DEVICE_NAME, app_config, log, threads
 from tailucas_pylib.app import AppThread
 from tailucas_pylib.creds import Creds
 from tailucas_pylib.datetime import (
@@ -108,8 +108,6 @@ flask_app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_tablespace}"
 flask_app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app=flask_app, model_class=Base)
 # set up flask application
-flask_app.logger.removeHandler(default_handler)
-flask_app.logger.addHandler(log_handler)
 flask_app.jinja_env.add_extension("jinja2.ext.loopcontrols")
 
 
