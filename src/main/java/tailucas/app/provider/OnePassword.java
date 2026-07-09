@@ -54,21 +54,24 @@ public class OnePassword {
 
     private static String readSecretOrEnv(String envVar) {
         final String value = System.getenv(envVar);
-        if (value == null) {
-            return null;
+        if (value != null) {
+            log.info("Using env var {} directly.", envVar);
+            return value;
         }
-        final Path path = Paths.get(value);
+        final String secretPath = "/run/secrets/" + envVar.toLowerCase();
+        final Path path = Paths.get(secretPath);
         if (Files.isRegularFile(path) && Files.isReadable(path)) {
             try {
                 final String secret = Files.readString(path).trim();
-                log.info("Read {} from secret file {}.", envVar, value);
+                log.info("Read {} from secret file {}.", envVar, secretPath);
                 return secret;
             } catch (IOException e) {
-                log.warn("Failed to read secret file {} for env var {}: {}", value, envVar, e.getMessage());
-                return value;
+                log.warn("Failed to read secret file {} for env var {}: {}", secretPath, envVar, e.getMessage());
+                return null;
             }
         }
-        return value;
+        log.info("No secret found for {} at {}.", envVar, secretPath);
+        return null;
     }
 
     public String getVaultId() {
