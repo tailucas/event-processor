@@ -35,10 +35,7 @@
     <slf4j-api.version>2.0.17</slf4j-api.version>
     <slf4j-simple.version>2.0.17</slf4j-simple.version>
     <opconnect-java.version>0.6.2</opconnect-java.version>
-    <prometheus-metrics-core.version>1.8.0</prometheus-metrics-core.version>
-    <prometheus-metrics-model.version>1.8.0</prometheus-metrics-model.version>
-    <prometheus-metrics-exporter-httpserver.version>1.8.0</prometheus-metrics-exporter-httpserver.version>
-    <prometheus-metrics-instrumentation-jvm.version>1.8.0</prometheus-metrics-instrumentation-jvm.version>
+    <prometheus.version>1.8.0</prometheus.version>
 
     <!-- test dependencies -->
     <junit-jupiter.version>6.0.1</junit-jupiter.version>
@@ -95,25 +92,31 @@
     <dependency>
       <groupId>io.prometheus</groupId>
       <artifactId>prometheus-metrics-core</artifactId>
-      <version>${prometheus-metrics-core.version}</version>
+      <version>${prometheus.version}</version>
     </dependency>
 
     <dependency>
       <groupId>io.prometheus</groupId>
       <artifactId>prometheus-metrics-model</artifactId>
-      <version>${prometheus-metrics-model.version}</version>
+      <version>${prometheus.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>io.prometheus</groupId>
+      <artifactId>prometheus-metrics-config</artifactId>
+      <version>${prometheus.version}</version>
     </dependency>
 
     <dependency>
         <groupId>io.prometheus</groupId>
         <artifactId>prometheus-metrics-instrumentation-jvm</artifactId>
-        <version>${prometheus-metrics-instrumentation-jvm.version}</version>
+        <version>${prometheus.version}</version>
     </dependency>
 
     <dependency>
         <groupId>io.prometheus</groupId>
         <artifactId>prometheus-metrics-exporter-httpserver</artifactId>
-        <version>${prometheus-metrics-exporter-httpserver.version}</version>
+        <version>${prometheus.version}</version>
     </dependency>
 
     <dependency>
@@ -225,6 +228,42 @@
           <groupId>com.fasterxml.jackson.core</groupId>
           <artifactId>jackson-annotations</artifactId>
           <version>${jackson-annotations.version}</version>
+      </dependency>
+      <!-- Force all transitive io.prometheus dependencies to 1.8.0 -->
+      <dependency>
+        <groupId>io.prometheus</groupId>
+        <artifactId>prometheus-metrics-tracer-initializer</artifactId>
+        <version>${prometheus.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.prometheus</groupId>
+        <artifactId>prometheus-metrics-tracer-common</artifactId>
+        <version>${prometheus.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.prometheus</groupId>
+        <artifactId>prometheus-metrics-tracer-otel</artifactId>
+        <version>${prometheus.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.prometheus</groupId>
+        <artifactId>prometheus-metrics-tracer-otel-agent</artifactId>
+        <version>${prometheus.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.prometheus</groupId>
+        <artifactId>prometheus-metrics-exporter-common</artifactId>
+        <version>${prometheus.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.prometheus</groupId>
+        <artifactId>prometheus-metrics-exposition-textformats</artifactId>
+        <version>${prometheus.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.prometheus</groupId>
+        <artifactId>prometheus-metrics-exposition-formats</artifactId>
+        <version>${prometheus.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>
