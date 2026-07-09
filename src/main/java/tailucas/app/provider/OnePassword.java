@@ -4,6 +4,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,17 +39,36 @@ public class OnePassword {
         }
         final String opServerAddr = System.getenv("OP_CONNECT_HOST");
         log.info("Attempting to connect to 1Password at {}...", opServerAddr);
-        final String opToken = System.getenv("OP_CONNECT_TOKEN");
+        final String opToken = readSecretOrEnv("OP_CONNECT_TOKEN");
         client = OPConnectClientBuilder.builder()
             .withEndpoint(opServerAddr)
             .withAccessToken(opToken)
             .build();
-        this.vaultId = System.getenv("OP_VAULT");
+        this.vaultId = readSecretOrEnv("OP_VAULT");
         this.itemNameIdMap = new HashMap<>(100);
     }
 
     public void close() {
         client.close();
+    }
+
+    private static String readSecretOrEnv(String envVar) {
+        final String value = System.getenv(envVar);
+        if (value == null) {
+            return null;
+        }
+        final Path path = Paths.get(value);
+        if (Files.isRegularFile(path) && Files.isReadable(path)) {
+            try {
+                final String secret = Files.readString(path).trim();
+                log.info("Read {} from secret file {}.", envVar, value);
+                return secret;
+            } catch (IOException e) {
+                log.warn("Failed to read secret file {} for env var {}: {}", value, envVar, e.getMessage());
+                return value;
+            }
+        }
+        return value;
     }
 
     public String getVaultId() {
