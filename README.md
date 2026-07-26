@@ -154,7 +154,7 @@ Optional services:
 
 Install these tools and ensure they're on your environment `$PATH`:
 
-* **`task`**: Build orchestration - https://taskfile.dev/installation/#install-script
+* **`make`**: Build orchestration (GNU Make) - https://www.gnu.org/software/make/
 * **`docker`** and **`docker-compose`**: Container runtime and composition - https://docs.docker.com/engine/install/
 * **`mvn`** (Maven 3.9+): Java build tool - https://maven.apache.org/download.cgi
 * **`uv`**: Python package manager - https://docs.astral.sh/uv/getting-started/installation/
@@ -227,7 +227,7 @@ For local development (optional):
 2. **Create Docker User and Set Directory Permissions**
 
    ```bash
-   task datadir
+   make datadir
    ```
 
    Ensure you've reviewed [Makefile](Makefile) assumptions about user IDs for Docker (UID/GID 999).
@@ -235,7 +235,7 @@ For local development (optional):
 3. **Configure Runtime Environment**
 
    ```bash
-   task configure
+   make configure
    ```
 
    This generates `docker-compose.yml` and `.env` from your 1Password secrets and `base.env` template.
@@ -243,7 +243,7 @@ For local development (optional):
 4. **Build the Docker Image**
 
    ```bash
-   task build
+   make build
    ```
 
    Multi-stage Docker build:
@@ -262,12 +262,12 @@ For local development (optional):
 
    **Foreground (interactive, logs to console)**:
    ```bash
-   task run
+   make run
    ```
 
    **Background (detached mode, logs to syslog)**:
    ```bash
-   task rund
+   make rund
    ```
 
    The application will:
@@ -285,7 +285,7 @@ For local development (optional):
 
 ## Application Startup Sequence
 
-When `task run` or `task rund` is executed, the application initializes in this order:
+When `make run` or `make rund` is executed, the application initializes in this order:
 
 1. **Configuration Loading**: Reads from 1Password Secrets Automation and `config/app.conf`
 2. **Database Initialization**: Creates/upgrades SQLite schema at `config/db_schema.sql`
@@ -315,18 +315,19 @@ The Flask web application (`localhost:8080`) provides:
 
 ## Build System
 
-### Task CLI (Taskfile.yml)
+### Make CLI (Makefile)
 
-Primary build and deployment orchestration:
+Primary build and deployment orchestration (run `make help` for all targets):
 
-- `task build` - Build Docker image with Java compilation, Python dependencies, and asset bundling
-- `task run` - Run container in foreground with full log output
-- `task rund` - Run container detached (persists after terminal close)
-- `task configure` - Generate .env and docker-compose.yml from 1Password secrets
-- `task datadir` - Create data directory with proper permissions
-- `task java` - Compile Java artifacts with Maven (standalone Java build)
-- `task python` - Setup Python virtual environment with uv
-- `task push` - Push built image to Docker Hub/registry
+- `make build` - Build Docker image with Java compilation, Python dependencies, and asset bundling
+- `make run` - Run container in foreground with full log output
+- `make rund` - Run container detached (persists after terminal close)
+- `make configure` - Generate .env and docker-compose.yml from 1Password secrets
+- `make datadir` - Create data directory with proper permissions
+- `make java` - Compile Java artifacts with Maven (standalone Java build)
+- `make python` - Setup Python virtual environment with uv
+- `make push` - Push built image to Docker Hub/registry
+- `make dev` - Build and enter the development container (host only)
 
 ### Dockerfile
 

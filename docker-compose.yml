@@ -11,7 +11,6 @@ services:
     restart: unless-stopped
     stop_grace_period: 45s
     build:
-      network: host
       context: .
       args:
         LANG: "${LANG:-en_ZA.UTF-8}"
