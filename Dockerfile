@@ -7,6 +7,8 @@ RUN "${APP_DIR}/java_setup.sh"
 ###############################################################################
 
 FROM tailucas/base-app:latest
+# production image: uv installs main dependencies only (ignore default dependency groups)
+ENV UV_NO_DEFAULT_GROUPS=1
 # for system/site packages
 USER root
 ARG DEBIAN_FRONTEND=noninteractive
