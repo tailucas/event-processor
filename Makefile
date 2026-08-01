@@ -12,7 +12,7 @@ CHECK_USER := vscode
 JAVA_JAR := target/app-0.1.0.jar
 JAVA_SOURCES := $(shell find src -type f -name '*.java' 2>/dev/null)
 
-.PHONY: help check dev dev-build dev-up datadir python java spotbugs configure build push run rund
+.PHONY: help check dev dev-build dev-up datadir python java integration spotbugs configure build push run rund
 
 # ---------- Dev container (host only) ----------
 
@@ -61,6 +61,9 @@ $(JAVA_JAR): pom.xml $(JAVA_SOURCES)
 	mvn dependency:tree
 
 java: $(JAVA_JAR) ## Build Java artifacts in preparation for container build
+
+integration: ## Run the Spring Boot integration test (full context, mocked external services)
+	mvn clean test -Dtest=EventProcessorIntegrationTest
 
 spotbugs: ## Run SpotBugs static analysis (fails on any finding; also runs during mvn package)
 	mvn compile spotbugs:check

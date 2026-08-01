@@ -106,6 +106,16 @@ public final class TestStatics {
         }
     }
 
+    public static void setStaticField(Class<?> clazz, String fieldName, Object value) {
+        try {
+            final Field field = findField(clazz, fieldName);
+            field.setAccessible(true);
+            field.set(null, value);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     private static Field findField(Class<?> clazz, String fieldName) throws NoSuchFieldException {
         Class<?> current = clazz;
         while (current != null) {

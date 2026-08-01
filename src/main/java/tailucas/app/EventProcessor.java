@@ -175,7 +175,7 @@ public class EventProcessor
         if (getExitCode() != 0) {
             severity = Severity.WARNING;
         }
-        if (isFeatureEnabled(FEATURE_FLAG_PAGER_DUTY_TICKETS)) {
+        if (pagerDuty != null && isFeatureEnabled(FEATURE_FLAG_PAGER_DUTY_TICKETS)) {
             final Payload payload = Payload.Builder.newBuilder()
                 .setSummary(String.format("%s shutdown", appName))
                 .setSource(deviceName)
@@ -203,6 +203,10 @@ public class EventProcessor
     }
 
     public static boolean isFeatureEnabled(String featureName) {
+        if (creds == null) {
+            log.debug("No credential provider available; feature flag '{}' evaluates to disabled.", featureName);
+            return false;
+        }
         return featureFlagCache.computeIfAbsent(featureName, key -> Boolean.valueOf(creds.getField("flags", "value", featureName)));
     }
 
