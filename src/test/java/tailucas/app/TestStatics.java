@@ -67,7 +67,7 @@ public final class TestStatics {
      *  instantiate the non-static inner HADevice class, so reflection is used). */
     public static HAConfig haConfig(String deviceName, List<String> deviceIds) {
         final HAConfig haConfig = new HAConfig();
-        final var haDevice = haConfig.new HADevice();
+        final var haDevice = new HAConfig.HADevice();
         setField(haDevice, "ids", deviceIds);
         setField(haDevice, "name", deviceName);
         setField(haDevice, "mf", "Ring");

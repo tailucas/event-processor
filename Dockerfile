@@ -1,7 +1,7 @@
 FROM tailucas/base-app:latest AS builder
 # prepare source
 COPY src ./src/
-COPY java_setup.sh pom.xml rules.xml ./
+COPY java_setup.sh pom.xml rules.xml spotbugs-exclude.xml ./
 RUN "${APP_DIR}/java_setup.sh"
 
 ###############################################################################

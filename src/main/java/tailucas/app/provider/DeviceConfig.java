@@ -41,6 +41,8 @@ public class DeviceConfig {
 
     private static final Logger log = LoggerFactory.getLogger(DeviceConfig.class);
 
+    private static final class StringMapTypeRef extends TypeReference<Map<String,String>> { }
+
     private HttpClient httpClient = null;
     private ObjectMapper mapper = null;
     private Map<ConfigType, CollectionType> collectionTypes = null;
@@ -225,7 +227,7 @@ public class DeviceConfig {
         if (responseCode / 100 != 2) {
             String responseDetail = null;
             try {
-                Map<String, String> jsonResponse = mapper.readValue(responseBody, new TypeReference<Map<String,String>>() {});
+                Map<String, String> jsonResponse = mapper.readValue(responseBody, new StringMapTypeRef());
                 responseDetail = jsonResponse.get("detail");
             } catch (JsonProcessingException e) {
                 responseDetail = responseBody;

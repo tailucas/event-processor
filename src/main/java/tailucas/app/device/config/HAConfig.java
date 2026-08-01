@@ -52,7 +52,7 @@ public class HAConfig extends Config {
     private HADevice device;
     @JsonIgnore
     private String mqttTopic;
-    public class HADevice {
+    public static class HADevice {
         @JsonProperty
         private List<String> ids;
         @JsonProperty

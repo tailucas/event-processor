@@ -36,6 +36,9 @@ public class Mqtt implements MqttCallback {
 
     private static final Logger log = LoggerFactory.getLogger(Mqtt.class);
 
+    private static final class HATypeRef extends TypeReference<HAConfig> { }
+    private static final class RingTypeRef extends TypeReference<Ring> { }
+
     private final Metrics metrics;
 
     private final ApplicationContext springApp;
@@ -69,7 +72,7 @@ public class Mqtt implements MqttCallback {
             } else if (topic.startsWith("homeassistant/")) {
                 if (payload[0] == '{') {
                     try {
-                        HAConfig haConfig = mapper.readerFor(new TypeReference<HAConfig>() { }).readValue(payload);
+                        HAConfig haConfig = mapper.readerFor(new HATypeRef()).readValue(payload);
                         log.debug("HA config is: {}", haConfig);
                         DeviceConfig.getInstance().putHaConfig(haConfig);
                     } catch (Throwable e) {
@@ -83,7 +86,7 @@ public class Mqtt implements MqttCallback {
                 log.debug("{}: {}", topic, new String(payload));
                 if (payload[0] == '{') {
                     try {
-                        ringDevice = mapper.readerFor(new TypeReference<Ring>() { }).readValue(payload);
+                        ringDevice = mapper.readerFor(new RingTypeRef()).readValue(payload);
                         ringDevice.setMqttTopic(topic);
                     } catch (Throwable e) {
                         log.warn("{} JSON issue with {} ({})", topic, new String(payload), e.getMessage());

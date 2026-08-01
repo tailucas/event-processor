@@ -25,6 +25,8 @@ public class RabbitMq implements DeliverCallback {
 
     private static final Logger log = LoggerFactory.getLogger(RabbitMq.class);
 
+    private static final class StateTypeRef extends TypeReference<State> { }
+
     private final Metrics metrics;
     private final ExecutorService srv;
     private final Connection connection;
@@ -44,7 +46,7 @@ public class RabbitMq implements DeliverCallback {
         final String source = message.getEnvelope().getRoutingKey();
         final byte[] msgBody = message.getBody();
         try {
-            final State deviceUpdate = mapper.readerFor(new TypeReference<State>() { }).readValue(msgBody);
+            final State deviceUpdate = mapper.readerFor(new StateTypeRef()).readValue(msgBody);
             log.debug("{}: RabbitMQ device state update: {}", source, deviceUpdate);
             final List<Device> inputs = deviceUpdate.getInputs();
             if (inputs == null) {
