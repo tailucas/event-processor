@@ -1,8 +1,8 @@
 package tailucas.app.device;
 
+import java.util.Locale;
+
 import org.apache.commons.lang3.text.WordUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -11,22 +11,12 @@ import tailucas.app.device.config.InputConfig;
 
 public class Sensor extends Device {
 
-    @JsonIgnore
-    protected static Logger log = null;
-
     @JsonProperty("normal_value")
     protected Integer normalValue;
-    @JsonProperty("sample_value")
-    protected Double sampleValue;
     @JsonProperty
     protected Boolean active;
     @JsonProperty("input_label")
     protected String inputLabel;
-    public Sensor() {
-        if (log == null) {
-            log = LoggerFactory.getLogger(Sensor.class);
-        }
-    }
     @JsonIgnore
     public boolean isActive() {
         if (active == null) {
@@ -48,7 +38,7 @@ public class Sensor extends Device {
     }
     @Override
     public String getDeviceType() {
-        return Type.SENSOR.name().toLowerCase();
+        return Type.SENSOR.name().toLowerCase(Locale.ROOT);
     }
     @Override
     public boolean wouldTriggerOutput(InputConfig deviceConfig) {

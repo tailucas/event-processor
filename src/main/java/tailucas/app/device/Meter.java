@@ -1,6 +1,7 @@
 package tailucas.app.device;
 
 import java.io.IOException;
+import java.util.Locale;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -21,15 +22,19 @@ public class Meter extends Device {
     protected Integer registerReading;
     @Override
     public String getDeviceType() {
-        return Type.METER.name().toLowerCase();
+        return Type.METER.name().toLowerCase(Locale.ROOT);
     }
     @Override
     public boolean wouldTriggerOutput(InputConfig deviceConfig) {
         MeterConfig meterConfig = null;
         try {
             meterConfig = DeviceConfig.getInstance().fetchMeterConfig(deviceKey);
-        } catch (IOException | InterruptedException e) {
-            log.error("{} cannot fetch meter configuration.", e);
+        } catch (IOException e) {
+            log.error("{} cannot fetch meter configuration: {}", deviceKey, e.getMessage());
+            return false;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("{} interrupted while fetching meter configuration.", deviceKey);
             return false;
         }
         log.debug("Evaluating meter configuration {}", meterConfig);

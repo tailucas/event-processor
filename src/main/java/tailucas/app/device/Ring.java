@@ -3,6 +3,7 @@ package tailucas.app.device;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import org.apache.commons.lang3.text.WordUtils;
@@ -12,7 +13,6 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-import tailucas.app.device.config.Config;
 import tailucas.app.device.config.HAConfig;
 import tailucas.app.device.config.InputConfig;
 import tailucas.app.provider.DeviceConfig;
@@ -30,12 +30,12 @@ public class Ring implements Generic {
 
     @JsonIgnore
     protected static final Map<String, TriggerSubjects> triggers = Map.of(
-        TriggerSubjects.ALARM.name().toLowerCase(), TriggerSubjects.ALARM,
-        TriggerSubjects.CONTACT.name().toLowerCase(), TriggerSubjects.CONTACT,
-        TriggerSubjects.MOTION.name().toLowerCase(), TriggerSubjects.MOTION,
-        TriggerSubjects.FIRE.name().toLowerCase(), TriggerSubjects.FIRE,
-        TriggerSubjects.POLICE.name().toLowerCase(), TriggerSubjects.POLICE,
-        TriggerSubjects.SIREN.name().toLowerCase(), TriggerSubjects.SIREN);
+        TriggerSubjects.ALARM.name().toLowerCase(Locale.ROOT), TriggerSubjects.ALARM,
+        TriggerSubjects.CONTACT.name().toLowerCase(Locale.ROOT), TriggerSubjects.CONTACT,
+        TriggerSubjects.MOTION.name().toLowerCase(Locale.ROOT), TriggerSubjects.MOTION,
+        TriggerSubjects.FIRE.name().toLowerCase(Locale.ROOT), TriggerSubjects.FIRE,
+        TriggerSubjects.POLICE.name().toLowerCase(Locale.ROOT), TriggerSubjects.POLICE,
+        TriggerSubjects.SIREN.name().toLowerCase(Locale.ROOT), TriggerSubjects.SIREN);
 
     public enum InactiveStates {
         OFF,
@@ -56,7 +56,7 @@ public class Ring implements Generic {
         InactiveStates.PENDING.name(), InactiveStates.PENDING);
 
     @JsonIgnore
-    private static Logger log = null;
+    private static final Logger log = LoggerFactory.getLogger(Ring.class);
 
     // inconsistent casing
     @JsonProperty("ArmedBy")
@@ -113,12 +113,6 @@ public class Ring implements Generic {
     @JsonIgnore
     private String triggerStateDescription;
 
-    public Ring() {
-        if (log == null) {
-            log = LoggerFactory.getLogger(Ring.class);
-        }
-    }
-
     @JsonIgnore
     public String getMqttTopic() {
         return mqttTopic;
@@ -173,7 +167,7 @@ public class Ring implements Generic {
     }
     @JsonIgnore
     public String getDeviceDescription() {
-        final var ringConfig = (HAConfig) getConfig();
+        final var ringConfig = getConfig();
         if (ringConfig == null) {
             return null;
         }
@@ -186,7 +180,7 @@ public class Ring implements Generic {
     }
     @Override
     public String getDeviceLabel() {
-        HAConfig config = (HAConfig) getConfig();
+        HAConfig config = getConfig();
         if (config == null) {
             return null;
         }
@@ -210,7 +204,7 @@ public class Ring implements Generic {
     }
     @JsonIgnore
     @Override
-    public Config getConfig() {
+    public HAConfig getConfig() {
         final String description = getTopicDescription();
         if (haConfig == null) {
             haConfig = DeviceConfig.getInstance().getHaConfig(this);
@@ -263,6 +257,9 @@ public class Ring implements Generic {
                 log.info("{} status is {}.", updateSubjectDescription, state);
                 break;
             case "state":
+                if (updateSubject == null) {
+                    break;
+                }
                 switch (updateSubject) {
                     case "info":
                         statusUpdate = true;
@@ -306,12 +303,19 @@ public class Ring implements Generic {
             case "status":
                 break;
             case "state":
+                if (updateSubject == null) {
+                    break;
+                }
                 switch (updateSubject) {
                     case "info":
                         break;
                     default:
+                        if (state == null) {
+                            log.warn("{} has no state information.", updateSubjectDescription);
+                            break;
+                        }
                         if (triggers.containsKey(updateSubject)) {
-                            if (!nonTriggerStates.containsKey(state.toUpperCase())) {
+                            if (!nonTriggerStates.containsKey(state.toUpperCase(Locale.ROOT))) {
                                 log.info("{} is in a trigger state {}.", updateSubjectDescription, state);
                                 triggerOutput = true;
                                 triggerStateDescription = String.format("%s is %s", updateSubjectDescription, state);

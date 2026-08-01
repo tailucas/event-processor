@@ -2,6 +2,7 @@ package tailucas.app.device;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 
 import org.apache.commons.lang3.text.WordUtils;
 import org.slf4j.Logger;
@@ -16,7 +17,7 @@ import tailucas.app.device.config.InputConfig;
 public class Device implements Generic {
 
     @JsonIgnore
-    protected static Logger log = null;
+    protected static final Logger log = LoggerFactory.getLogger(Device.class);
 
     public enum Type {
         BASE,
@@ -66,11 +67,7 @@ public class Device implements Generic {
     protected Config config;
     @JsonIgnore
     protected String triggerStateDescription;
-    public Device() {
-        if (log == null) {
-            log = LoggerFactory.getLogger(Device.class);
-        }
-    }
+    public Device() { }
     protected void setFieldsFrom(Device device) {
         this.deviceId = device.deviceId;
         this.deviceKey = device.deviceKey;
@@ -130,7 +127,7 @@ public class Device implements Generic {
         if (deviceType == null) {
             final String legacyType = getType().name();
             log.warn("{} using legacy device type {}", this.toString(), legacyType);
-            return legacyType.toLowerCase();
+            return legacyType.toLowerCase(Locale.ROOT);
         }
         return deviceType;
     }
@@ -155,6 +152,9 @@ public class Device implements Generic {
     }
     @JsonIgnore
     public long getUptimeSeconds() {
+        if (timestamp == null || uptime == null) {
+            return 0;
+        }
         return Double.valueOf(timestamp - uptime).longValue();
     }
     @Override
@@ -187,7 +187,7 @@ public class Device implements Generic {
         }
         Type deviceType = null;
         try {
-            String uType = type.toUpperCase();
+            String uType = type.toUpperCase(Locale.ROOT);
             if (uType.endsWith("DETECTOR")) {
                 deviceType = Type.DETECTOR;
             } else {
@@ -217,9 +217,6 @@ public class Device implements Generic {
     public Boolean isOutput() {
         return Boolean.FALSE;
     }
-    public static Logger getLog() {
-        return log;
-    }
     public String getDeviceId() {
         return deviceId;
     }
@@ -227,7 +224,7 @@ public class Device implements Generic {
         return eventDetail;
     }
     public byte[] getImage() {
-        return image;
+        return image == null ? null : image.clone();
     }
     public String getImageTimestamp() {
         return imageTimestamp;

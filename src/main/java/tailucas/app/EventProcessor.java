@@ -10,14 +10,15 @@ import java.net.http.HttpResponse.BodyHandlers;
 import java.time.OffsetDateTime;
 import java.time.Duration;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -74,7 +75,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 public class EventProcessor
 {
     public static final String ZMQ_MQTT_URL = "inproc://mqtt-send";
-    public static int exitCode = 1;
+    private static final AtomicInteger exitCode = new AtomicInteger(1);
 
     public static final int EXIT_CODE_MQTT = 2;
     public static final int EXIT_CODE_RABBITMQ = 4;
@@ -84,9 +85,9 @@ public class EventProcessor
     public static final String FEATURE_FLAG_HA_DISCOVERY = "send-home-assistant-discovery";
     public static final String FEATURE_FLAG_PAGER_DUTY_TICKETS = "pager-duty-tickets";
 
-    private static Map<String, Boolean> featureFlagCache = null;
+    private static final Map<String, Boolean> featureFlagCache = new ConcurrentHashMap<>();
 
-    private static Logger log = LoggerFactory.getLogger(EventProcessor.class);
+    private static final Logger log = LoggerFactory.getLogger(EventProcessor.class);
     private static ExecutorService srv = null;
     private static IMqttClient mqttClient = null;
     private static Channel rabbitMqChannel = null;
@@ -112,7 +113,15 @@ public class EventProcessor
 
     @Bean
     public ExitCodeGenerator exitCodeGenerator() {
-        return () -> exitCode;
+        return () -> getExitCode();
+    }
+
+    public static int getExitCode() {
+        return exitCode.get();
+    }
+
+    public static void addExitCode(int code) {
+        exitCode.accumulateAndGet(code, (current, update) -> current | update);
     }
 
     @PreDestroy
@@ -163,7 +172,7 @@ public class EventProcessor
             metricsServer.close();
         }
         Severity severity = Severity.INFO;
-        if (exitCode != 0) {
+        if (getExitCode() != 0) {
             severity = Severity.WARNING;
         }
         if (isFeatureEnabled(FEATURE_FLAG_PAGER_DUTY_TICKETS)) {
@@ -190,7 +199,7 @@ public class EventProcessor
         if (creds != null) {
             creds.close();
         }
-        log.info("Full shutdown complete with exit code {}", exitCode);
+        log.info("Full shutdown complete with exit code {}", getExitCode());
     }
 
     public static boolean isFeatureEnabled(String featureName) {
@@ -215,12 +224,11 @@ public class EventProcessor
 
     public static void main( String[] args ) {
         Thread.currentThread().setName("main");
-        featureFlagCache = new HashMap<>();
         creds = OnePassword.getInstance();
         try {
             var vaults = creds.listVaults();
             if (vaults == null || vaults.size() == 0) {
-                throw new RuntimeException("No credential vaults are available.");
+                throw new IllegalStateException("No credential vaults are available.");
             }
             vaults.forEach(vault -> {
                 log.info("Credential vault {}: is {} ({}).", vault.getId(), vault.getName(), vault.getDescription());
@@ -228,8 +236,8 @@ public class EventProcessor
             log.info("Using credential vault {}.", creds.getVaultId());
         } catch (Exception e) {
             log.error("Problem with credential client", e);
-            exitCode |= EXIT_CODE_CREDENTIALS;
-            System.exit(exitCode);
+            addExitCode(EXIT_CODE_CREDENTIALS);
+            System.exit(getExitCode());
         }
         final Map<String, String> envVars = System.getenv();
         appName = envVars.get("APP_NAME");
@@ -241,16 +249,16 @@ public class EventProcessor
             });
         } catch (AssertionError e) {
                 log.error("Problem with credential item", e);
-                exitCode |= EXIT_CODE_CREDENTIALS;
-                System.exit(exitCode);
+                addExitCode(EXIT_CODE_CREDENTIALS);
+                System.exit(getExitCode());
         } catch (CompletionException e) {
             log.error("Problem with credential item", e.getCause());
-            exitCode |= EXIT_CODE_CREDENTIALS;
-            System.exit(exitCode);
+            addExitCode(EXIT_CODE_CREDENTIALS);
+            System.exit(getExitCode());
         } catch (IllegalArgumentException e) {
             log.error("Problem with Sentry client", e);
-            exitCode |= EXIT_CODE_SENTRY;
-            System.exit(exitCode);
+            addExitCode(EXIT_CODE_SENTRY);
+            System.exit(getExitCode());
         }
         log.info("Sentry enabled: {}, healthy: {}.", Sentry.isEnabled(), Sentry.isHealthy());
         pagerDuty = PagerDutyEventsClient.create();
@@ -282,7 +290,7 @@ public class EventProcessor
                 final int responseCode = response.statusCode();
                 final String responseBody = response.body();
                 log.info("Startup: configuration source is ready ({}).", responseBody);
-                if (responseCode % 200 == 0) {
+                if (responseCode / 100 == 2) {
                     ready = Boolean.valueOf(responseBody).booleanValue();
                 }
             } catch (Exception e) {
@@ -328,8 +336,8 @@ public class EventProcessor
             public void handleUnexpectedConnectionDriverException(Connection conn, Throwable exception) {
                 log.warn("Handling RabbitMQ connection exception.", exception);
                 super.handleUnexpectedConnectionDriverException(conn, exception);
-                exitCode |= EXIT_CODE_RABBITMQ;
-                log.warn("Triggering shutdown with exit code {}.", exitCode);
+                addExitCode(EXIT_CODE_RABBITMQ);
+                log.warn("Triggering shutdown with exit code {}.", getExitCode());
                 System.exit(SpringApplication.exit(springApp));
             }
         });
@@ -338,24 +346,22 @@ public class EventProcessor
         } catch (Exception e) {
             log.error("Problem with RabbitMQ client", e);
             Sentry.captureException(e);
-            exitCode |= EXIT_CODE_RABBITMQ;
+            addExitCode(EXIT_CODE_RABBITMQ);
             System.exit(SpringApplication.exit(springApp));
         }
 
         // init statics
         final String controlExchangeName = springEnv.getProperty("app.message-control-exchange-name");
         if (controlExchangeName == null || controlExchangeName.length() == 0) {
-            throw new RuntimeException("Empty control exchange name during RabbitMQ client setup.");
+            throw new IllegalStateException("Empty control exchange name during RabbitMQ client setup.");
         }
-        Event.exchangeName = controlExchangeName;
-        Event.expiration = springEnv.getProperty("app.message-control-expiry-ms");
-        Event.init();
+        Event.configure(controlExchangeName, springEnv.getProperty("app.message-control-expiry-ms"));
 
         Thread rabbitMqThread = appThreadFactory.newThread(() -> {
             try {
                 final String exchangeName = springEnv.getProperty("app.message-event-exchange-name");
                 if (exchangeName == null || exchangeName.length() == 0) {
-                    throw new RuntimeException("Empty exchange name during RabbitMQ client setup.");
+                    throw new IllegalStateException("Empty exchange name during RabbitMQ client setup.");
                 }
                 rabbitMqChannel = rabbitMqConnection.createChannel();
                 rabbitMqChannel.exchangeDeclare(exchangeName, BuiltinExchangeType.TOPIC);
@@ -365,7 +371,7 @@ public class EventProcessor
             } catch (Exception e) {
                 log.error("Problem with RabbitMQ client", e);
                 Sentry.captureException(e);
-                exitCode |= EXIT_CODE_RABBITMQ;
+                addExitCode(EXIT_CODE_RABBITMQ);
                 System.exit(SpringApplication.exit(springApp));
             }
         });
@@ -396,7 +402,7 @@ public class EventProcessor
                     } catch (MqttException e) {
                         log.error("Problem sending MQTT discovery message to topic {}", mqttDiscoveryTopic, e);
                         Sentry.captureException(e);
-                        exitCode |= EXIT_CODE_MQTT;
+                        addExitCode(EXIT_CODE_MQTT);
                         System.exit(SpringApplication.exit(springApp));
                     };
                 } else {
@@ -418,7 +424,7 @@ public class EventProcessor
             } catch (Exception e) {
                 log.error("Problem with MQTT client", e);
                 Sentry.captureException(e);
-                exitCode |= EXIT_CODE_MQTT;
+                addExitCode(EXIT_CODE_MQTT);
                 System.exit(SpringApplication.exit(springApp));
             } finally {
                 if (socket != null) {
@@ -447,9 +453,9 @@ public class EventProcessor
 
         JvmMetrics.builder().register();
         Metrics.getInstance().postMetric("startup");
-        final Integer metricsServerPort = Integer.valueOf(springEnv.getProperty("metrics.port"));
+        final int metricsServerPort = springEnv.getProperty("metrics.port", Integer.class, 9400);
         try {
-            metricsServer = HTTPServer.builder().port(metricsServerPort.intValue()).buildAndStart();
+            metricsServer = HTTPServer.builder().port(metricsServerPort).buildAndStart();
         } catch (IOException e) {
             log.error("Cannot start metrics server.", e);
             Sentry.captureException(e);
@@ -457,6 +463,6 @@ public class EventProcessor
 
         log.info("Metrics server started on port {}.", metricsServerPort);
         log.info("{} startup complete.", applicationName);
-        exitCode = 0;
+        exitCode.set(0);
     }
 }

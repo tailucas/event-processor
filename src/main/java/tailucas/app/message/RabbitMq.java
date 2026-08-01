@@ -23,18 +23,15 @@ import tailucas.app.provider.Metrics;
 
 public class RabbitMq implements DeliverCallback {
 
-    private static Logger log = null;
+    private static final Logger log = LoggerFactory.getLogger(RabbitMq.class);
 
-    private Metrics metrics = null;
-    private ExecutorService srv = null;
-    private Connection connection = null;
+    private final Metrics metrics;
+    private final ExecutorService srv;
+    private final Connection connection;
 
-    private ObjectMapper mapper = null;
+    private final ObjectMapper mapper;
 
     public RabbitMq(ExecutorService srv, Connection connection) {
-        if (log == null) {
-            log = LoggerFactory.getLogger(RabbitMq.class);
-        }
         this.srv = srv;
         this.connection = connection;
         this.mapper = new MessagePackMapper();
@@ -55,7 +52,7 @@ public class RabbitMq implements DeliverCallback {
                 return;
             }
             inputs.forEach(device -> {
-                srv.submit(new Event(connection, source, device));
+                srv.execute(new Event(connection, source, device));
             });
         } catch (Exception e) {
             metrics.postMetric("error", Map.of(

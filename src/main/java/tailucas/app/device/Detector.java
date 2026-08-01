@@ -1,6 +1,7 @@
 package tailucas.app.device;
 
 
+import java.util.Locale;
 import java.util.Set;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -21,11 +22,11 @@ public class Detector extends Device {
     }
     @Override
     public String getDeviceType() {
-        return Type.DETECTOR.name().toLowerCase();
+        return Type.DETECTOR.name().toLowerCase(Locale.ROOT);
     }
     @Override
     public boolean wouldTriggerOutput(InputConfig deviceConfig) {
-        if (state != null && activeStates.contains(state.toLowerCase())) {
+        if (state != null && activeStates.contains(state.toLowerCase(Locale.ROOT))) {
             triggerStateDescription = String.format("%s is in an active state %s", getDeviceLabel(), state);
             return true;
         }

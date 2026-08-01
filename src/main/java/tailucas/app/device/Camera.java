@@ -1,5 +1,7 @@
 package tailucas.app.device;
 
+import java.util.Locale;
+
 import tailucas.app.device.config.InputConfig;
 
 public class Camera extends Device {
@@ -9,7 +11,7 @@ public class Camera extends Device {
     }
     @Override
     public String getDeviceType() {
-        return Type.CAMERA.name().toLowerCase();
+        return Type.CAMERA.name().toLowerCase(Locale.ROOT);
     }
     @Override
     public boolean wouldTriggerOutput(InputConfig deviceConfig) {

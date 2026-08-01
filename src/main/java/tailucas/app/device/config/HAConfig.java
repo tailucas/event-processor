@@ -66,7 +66,7 @@ public class HAConfig extends Config {
             return "HADevice [ids=" + ids + ", name=" + name + ", mf=" + mf + ", mdl=" + mdl + "]";
         }
         public List<String> getIds() {
-            return ids;
+            return ids == null ? null : List.copyOf(ids);
         }
         public String getName() {
             return name;
@@ -105,7 +105,7 @@ public class HAConfig extends Config {
         return jsonAttributesTopic;
     }
     public List<String> getOptions() {
-        return options;
+        return options == null ? null : List.copyOf(options);
     }
     public String getMin() {
         return min;
@@ -132,7 +132,7 @@ public class HAConfig extends Config {
         return stateClass;
     }
     public List<String> getSupportedFeatures() {
-        return supportedFeatures;
+        return supportedFeatures == null ? null : List.copyOf(supportedFeatures);
     }
     public String getUnitOfMeasurement() {
         return unitOfMeasurement;

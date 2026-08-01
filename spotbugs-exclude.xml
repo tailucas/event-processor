@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+  <!-- Deliberate fail-fast on messaging failure: the container runtime restarts the app -->
+  <Match>
+    <Bug pattern="DM_EXIT"/>
+  </Match>
+  <!-- Intentional catch-all guards at thread and per-message boundaries -->
+  <Match>
+    <Bug pattern="REC_CATCH_EXCEPTION"/>
+  </Match>
+  <!-- Singleton accessors return the shared instance by design -->
+  <Match>
+    <Bug pattern="MS_EXPOSE_REP"/>
+  </Match>
+  <!-- Messaging/callback objects intentionally retain shared infrastructure references -->
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+    <Or>
+      <Class name="tailucas.app.device.Event"/>
+      <Class name="tailucas.app.message.Mqtt"/>
+      <Class name="tailucas.app.message.RabbitMq"/>
+    </Or>
+  </Match>
+  <!-- Ring deliberately caches and shares its Home Assistant discovery config -->
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP"/>
+    <Class name="tailucas.app.device.Ring"/>
+  </Match>
+</FindBugsFilter>

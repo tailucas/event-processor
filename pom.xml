@@ -323,6 +323,21 @@
         <groupId>com.github.spotbugs</groupId>
         <artifactId>spotbugs-maven-plugin</artifactId>
         <version>${spotbugs-maven-plugin.version}</version>
+        <configuration>
+          <excludeFilterFile>spotbugs-exclude.xml</excludeFilterFile>
+          <effort>Max</effort>
+          <threshold>Low</threshold>
+        </configuration>
+        <executions>
+          <execution>
+            <id>spotbugs-check</id>
+            <!-- bound to compile (not the default verify) so that mvn package is also checked -->
+            <phase>compile</phase>
+            <goals>
+              <goal>check</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
       <!-- https://maven.apache.org/enforcer/enforcer-rules/requireMavenVersion.html -->
       <plugin>

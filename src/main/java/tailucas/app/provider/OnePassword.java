@@ -3,6 +3,7 @@ package tailucas.app.provider;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -20,23 +21,21 @@ import com.sanctionco.opconnect.model.Vault;
 
 public class OnePassword {
 
-    private static Logger log = null;
-    private static OnePassword singleton = null;
+    private static final Logger log = LoggerFactory.getLogger(OnePassword.class);
+
     private OPConnectClient client = null;
     private String vaultId = null;
     private Map<String, String> itemNameIdMap = null;
 
-    public static synchronized OnePassword getInstance() {
-        if (singleton == null) {
-            singleton = new OnePassword();
-        }
-        return singleton;
+    private static final class InstanceHolder {
+        private static final OnePassword INSTANCE = new OnePassword();
+    }
+
+    public static OnePassword getInstance() {
+        return InstanceHolder.INSTANCE;
     }
 
     private OnePassword() {
-        if (log == null) {
-            log = LoggerFactory.getLogger(OnePassword.class);
-        }
         final String opServerAddr = System.getenv("OP_CONNECT_HOST");
         log.info("Attempting to connect to 1Password at {}...", opServerAddr);
         final String opToken = readSecretOrEnv("OP_CONNECT_TOKEN");
@@ -58,7 +57,7 @@ public class OnePassword {
             log.info("Using env var {} directly.", envVar);
             return value;
         }
-        final String secretPath = "/run/secrets/" + envVar.toLowerCase();
+        final String secretPath = "/run/secrets/" + envVar.toLowerCase(Locale.ROOT);
         final Path path = Paths.get(secretPath);
         if (Files.isRegularFile(path) && Files.isReadable(path)) {
             try {
@@ -119,7 +118,7 @@ public class OnePassword {
             if (fieldsForSection.size() > 0) {
                 throw new AssertionError(String.format("Credential field %s/%s is ambiguous across sections: %s", itemTitle, fieldName, fieldsForSection.keySet()));
             } else {
-                throw new AssertionError(String.format("Credential field %s/%s is ambiguous across {} fields.", itemTitle, fieldName, matchedFields.size()));
+                throw new AssertionError(String.format("Credential field %s/%s is ambiguous across %s fields.", itemTitle, fieldName, matchedFields.size()));
             }
         } else if (matchedFields.isEmpty()) {
             throw new AssertionError(String.format("Credential field %s/%s not found.", itemTitle, fieldName));

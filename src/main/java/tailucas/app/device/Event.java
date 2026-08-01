@@ -5,6 +5,7 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
@@ -41,18 +42,18 @@ import tailucas.app.provider.DeviceConfig;
 import tailucas.app.provider.Metrics;
 
 public class Event implements Runnable {
-    public static String exchangeName;
-    public static String expiration;
 
-    private static Logger log = null;
-    protected static Pattern namePattern;
-    protected static BasicProperties rabbitMqProperties;
-    protected static MessagePackMapper mapper;
-    protected static TriggerHistory triggerLatchHistory;
-    protected static TriggerHistory triggerMultiHistory;
-    protected static TriggerHistory triggerOutputHistory;
-    protected static Metrics metrics;
-    protected static Map<String, String> recentEscalations;
+    private static volatile String exchangeName;
+    private static volatile String expiration;
+
+    private static final Logger log = LoggerFactory.getLogger(Event.class);
+    private static final Pattern namePattern = Pattern.compile("\\W");
+    private static final MessagePackMapper mapper = new MessagePackMapper();
+    private static final TriggerHistory triggerLatchHistory = new TriggerHistory();
+    private static final TriggerHistory triggerMultiHistory = new TriggerHistory();
+    private static final TriggerHistory triggerOutputHistory = new TriggerHistory();
+    private static final Metrics metrics = Metrics.getInstance();
+    private static final Map<String, String> recentEscalations = new ConcurrentHashMap<>();
 
     protected Connection connection;
     protected String source;
@@ -60,24 +61,12 @@ public class Event implements Runnable {
     protected String deviceUpdateString;
     protected long initTime;
 
-    public static void init() {
-        if (log == null) {
-            log = LoggerFactory.getLogger(Event.class);
-            mapper = new MessagePackMapper();
-            namePattern = Pattern.compile("\\W");
-            rabbitMqProperties = new AMQP.BasicProperties.Builder()
-                .expiration(expiration)
-                .build();
-            triggerLatchHistory = new TriggerHistory();
-            triggerMultiHistory = new TriggerHistory();
-            triggerOutputHistory = new TriggerHistory();
-            metrics = Metrics.getInstance();
-            recentEscalations = new ConcurrentHashMap<>();
-        }
+    public static void configure(String exchangeName, String expiration) {
+        Event.exchangeName = exchangeName;
+        Event.expiration = expiration;
     }
 
     public Event(Connection connection, String source, Generic device, String deviceUpdateString) {
-        init();
         this.initTime = System.currentTimeMillis();
         this.connection = connection;
         this.source = source;
@@ -115,11 +104,11 @@ public class Event implements Runnable {
                 return;
             }
             final String deviceLabel = device.getDeviceLabel();
-            if (deviceLabel == null && deviceKey != null) {
+            if (deviceLabel == null) {
                 log.warn("No device label for {}.", deviceKey);
             }
             final String deviceType = device.getDeviceType();
-            if (deviceType == null && deviceKey != null) {
+            if (deviceType == null) {
                 log.warn("No device type for set for {}", deviceKey);
             }
             log.debug("{} {} ({})", deviceType, deviceKey, deviceLabel);
@@ -133,9 +122,7 @@ public class Event implements Runnable {
             if (deviceType != null) {
                 metricTags.put("input_type", deviceType);
             }
-            if (deviceDescription != null) {
-                metricTags.put("input_label", deviceDescription);
-            }
+            metricTags.put("input_label", deviceDescription);
             metrics.postMetric("event", metricTags);
             if (device.isHeartbeat() || source.contains(".heartbeat.")) {
                 log.debug("{}: Heartbeat for {}.", source, deviceDescription);
@@ -231,6 +218,9 @@ public class Event implements Runnable {
             log.info("{} is linked to {} outputs: {}.", deviceDescription, linkedOutputs.size(), outputNames);
             final Channel rabbitMqChannel = connection.createChannel();
             rabbitMqChannel.exchangeDeclare(exchangeName, BuiltinExchangeType.DIRECT);
+            final BasicProperties rabbitMqProperties = new AMQP.BasicProperties.Builder()
+                .expiration(expiration)
+                .build();
             final ITransaction sentry = Sentry.startTransaction("event", "device event");
             try {
                 linkedOutputs.forEach(Failable.asConsumer(outputConfig -> {
@@ -260,7 +250,7 @@ public class Event implements Runnable {
                         root.putPOJO("active_input", device);
                         root.putPOJO("output_triggered", outputConfig);
                         final byte[] wireCommand = mapper.writeValueAsBytes(root);
-                        final Matcher nameMatcher = namePattern.matcher(outputDeviceType.toLowerCase());
+                        final Matcher nameMatcher = namePattern.matcher(outputDeviceType.toLowerCase(Locale.ROOT));
                         String deviceDetail = "";
                         if (!outputDeviceType.equals(outputDeviceLabel)) {
                             deviceDetail = String.format(" (%s)", outputDeviceType);
@@ -269,7 +259,7 @@ public class Event implements Runnable {
                         if (responseTopic == null) {
                             final String responseTopicSuffix = nameMatcher.replaceAll("_");
                             if (responseTopicSuffix.length() == 0) {
-                                throw new RuntimeException(String.format(
+                                throw new IllegalStateException(String.format(
                                     "%s maps to invalid command topic suffix %s.",
                                     device.getDeviceLabel(),
                                     outputDeviceType));
@@ -277,7 +267,7 @@ public class Event implements Runnable {
                             responseTopic = String.format("event.trigger.%s", responseTopicSuffix);
                             log.warn("{} has no configured message topic. Using {}", deviceDescription, responseTopic);
                         }
-                        responseTopic = responseTopic.toLowerCase();
+                        responseTopic = responseTopic.toLowerCase(Locale.ROOT);
                         log.info("{} ({}) triggers {}{} on exchange {} with routing {} ({} bytes on the wire).", deviceDescription, source, outputDeviceLabel, deviceDetail, exchangeName, responseTopic, wireCommand.length);
                         rabbitMqChannel.basicPublish(exchangeName, responseTopic, rabbitMqProperties, wireCommand);
                         // record the trigger event

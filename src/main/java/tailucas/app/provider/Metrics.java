@@ -14,8 +14,7 @@ import io.sentry.Sentry;
 
 public class Metrics {
 
-    private static Logger log = null;
-    private static Metrics singleton = null;
+    private static final Logger log = LoggerFactory.getLogger(Metrics.class);
 
     private String appName = null;
     private String deviceName = null;
@@ -24,7 +23,6 @@ public class Metrics {
     private Map<String, Gauge> gauges = null;
 
     private Metrics() {
-        log = LoggerFactory.getLogger(Metrics.class);
         final var env = System.getenv();
         appName = env.get("APP_NAME");
         deviceName = env.get("DEVICE_NAME");
@@ -32,11 +30,12 @@ public class Metrics {
         gauges = new ConcurrentHashMap<>();
     }
 
-    public static synchronized Metrics getInstance() {
-        if (singleton == null) {
-            singleton = new Metrics();
-        }
-        return singleton;
+    private static final class InstanceHolder {
+        private static final Metrics INSTANCE = new Metrics();
+    }
+
+    public static Metrics getInstance() {
+        return InstanceHolder.INSTANCE;
     }
 
     public Map<String, String> getNormalizedMetricTags(Map<String, String> tags) {

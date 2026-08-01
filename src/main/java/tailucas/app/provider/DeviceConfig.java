@@ -10,8 +10,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -39,8 +39,7 @@ import tailucas.app.device.config.Config.ConfigType;
 
 public class DeviceConfig {
 
-    private static Logger log = null;
-    private static DeviceConfig singleton = null;
+    private static final Logger log = LoggerFactory.getLogger(DeviceConfig.class);
 
     private HttpClient httpClient = null;
     private ObjectMapper mapper = null;
@@ -51,7 +50,6 @@ public class DeviceConfig {
     private String configHostPort = null;
 
     private DeviceConfig() {
-        log = LoggerFactory.getLogger(DeviceConfig.class);
         httpClient = HttpClient.newBuilder()
             .version(HttpClient.Version.HTTP_1_1)
             .build();
@@ -60,16 +58,17 @@ public class DeviceConfig {
         mapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
         collectionTypes = new ConcurrentHashMap<>(4);
         configCache = new ConcurrentHashMap<>(100);
-        haConfigCache = new HashMap<>(100);
+        haConfigCache = new ConcurrentHashMap<>(100);
         configHost = System.getenv().get("CONFIG_HOST");
         configHostPort = System.getenv().get("CONFIG_HOST_PORT");
     }
 
-    public static synchronized DeviceConfig getInstance() {
-        if (singleton == null) {
-            singleton = new DeviceConfig();
-        }
-        return singleton;
+    private static final class InstanceHolder {
+        private static final DeviceConfig INSTANCE = new DeviceConfig();
+    }
+
+    public static DeviceConfig getInstance() {
+        return InstanceHolder.INSTANCE;
     }
 
     public void close() {
@@ -92,12 +91,12 @@ public class DeviceConfig {
             return null;
         }
         if (deviceConfig.size() != 1) {
-            throw new RuntimeException(String.format("Expected exactly 1 configuration item for {}", deviceKey));
+            throw new IllegalStateException(String.format("Expected exactly 1 configuration item for %s", deviceKey));
         }
         final InputConfig inputConfig = (InputConfig) deviceConfig.getFirst();
         final String configDeviceKey = inputConfig.getDeviceKey();
         if (!configDeviceKey.equals(deviceKey)) {
-            throw new RuntimeException(String.format("Device key mismatch between device (%s) and config (%s).", deviceKey, configDeviceKey));
+            throw new IllegalStateException(String.format("Device key mismatch between device (%s) and config (%s).", deviceKey, configDeviceKey));
         }
         return inputConfig;
     }
@@ -108,12 +107,12 @@ public class DeviceConfig {
             return null;
         }
         if (deviceConfig.size() != 1) {
-            throw new RuntimeException(String.format("Expected exactly 1 configuration item for {}", deviceKey));
+            throw new IllegalStateException(String.format("Expected exactly 1 configuration item for %s", deviceKey));
         }
         final OutputConfig outputConfig = (OutputConfig) deviceConfig.getFirst();
         final String configDeviceKey = outputConfig.getDeviceKey();
         if (!configDeviceKey.equals(deviceKey)) {
-            throw new RuntimeException(String.format("Device key mismatch between device (%s) and config (%s).", deviceKey, configDeviceKey));
+            throw new IllegalStateException(String.format("Device key mismatch between device (%s) and config (%s).", deviceKey, configDeviceKey));
         }
         return outputConfig;
     }
@@ -124,7 +123,7 @@ public class DeviceConfig {
             return null;
         }
         if (deviceConfig.size() != 1) {
-            throw new RuntimeException(String.format("Expected exactly 1 configuration item for {}", deviceKey));
+            throw new IllegalStateException(String.format("Expected exactly 1 configuration item for %s", deviceKey));
         }
         return (MeterConfig) deviceConfig.getFirst();
     }
@@ -177,7 +176,7 @@ public class DeviceConfig {
     }
 
     protected List<Config> fetchDeviceConfiguration(ConfigType api, String deviceKey) throws IOException, InterruptedException {
-        final String apiName = api.toString().toLowerCase();
+        final String apiName = api.toString().toLowerCase(Locale.ROOT);
         final Instant now = Instant.now();
         final String cacheKey = deviceKey + "/" + apiName;
         final var cached = configCache.get(cacheKey);
@@ -217,7 +216,7 @@ public class DeviceConfig {
         final String responseBody = response.body();
         log.debug("HTTP {} response for {} is: {}", responseCode, deviceKey, responseBody);
         List<Config> configs = null;
-        if (responseCode % 200 != 0) {
+        if (responseCode / 100 != 2) {
             String responseDetail = null;
             try {
                 Map<String, String> jsonResponse = mapper.readValue(responseBody, new TypeReference<Map<String,String>>() {});
@@ -225,7 +224,7 @@ public class DeviceConfig {
             } catch (JsonProcessingException e) {
                 responseDetail = responseBody;
             }
-            log.debug("HTTP {} from {} for {}.", responseCode, apiName, deviceKey, responseDetail);
+            log.debug("HTTP {} from {} for {}: {}", responseCode, apiName, deviceKey, responseDetail);
         } else {
             configs = mapper.readValue(responseBody, getCollectionType(api));
         }
@@ -259,7 +258,7 @@ public class DeviceConfig {
         HttpResponse<String> response = httpClient.send(request, BodyHandlers.ofString());
         final int responseCode = response.statusCode();
         final String responseBody = response.body();
-        if (responseCode % 200 != 0) {
+        if (responseCode / 100 != 2) {
             log.warn("{} device update response code {}: {} for request payload {}", deviceKey, responseCode, responseBody, deviceJson);
         }
     }

@@ -1,5 +1,6 @@
 package tailucas.app.message;
 
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 
@@ -33,19 +34,16 @@ import tailucas.app.device.Sensor;
 
 public class Mqtt implements MqttCallback {
 
-    private static Logger log = null;
+    private static final Logger log = LoggerFactory.getLogger(Mqtt.class);
 
-    private Metrics metrics = null;
+    private final Metrics metrics;
 
-    private ApplicationContext springApp = null;
-    private ExecutorService srv = null;
-    private Connection rabbitMqConnection = null;
-    private ObjectMapper mapper = null;
+    private final ApplicationContext springApp;
+    private final ExecutorService srv;
+    private final Connection rabbitMqConnection;
+    private final ObjectMapper mapper;
 
     public Mqtt(ApplicationContext springApp, ExecutorService srv, Connection rabbitMqConnection) {
-        if (log == null) {
-            log = LoggerFactory.getLogger(Mqtt.class);
-        }
         this.springApp = springApp;
         this.srv = srv;
         this.rabbitMqConnection = rabbitMqConnection;
@@ -63,7 +61,7 @@ public class Mqtt implements MqttCallback {
                 return;
             } else if (payload.length == 2 && new String(payload).equals("OK")) {
                 // catch heartbeat messages for topic matching
-                srv.submit(new Event(rabbitMqConnection, topic, new String(payload)));
+                srv.execute(new Event(rabbitMqConnection, topic, new String(payload)));
             } else if (topic.startsWith("inverter/")) {
                 log.debug("{} not yet supported.", topic);
             } else if (topic.equals("homeassistant/status")) {
@@ -96,7 +94,7 @@ public class Mqtt implements MqttCallback {
                 }
                 if (ringDevice != null) {
                     log.debug("Ring state is: {}", ringDevice);
-                    srv.submit(new Event(rabbitMqConnection, topic, ringDevice));
+                    srv.execute(new Event(rabbitMqConnection, topic, ringDevice));
                 }
             } else if (topic.startsWith("meter/") || topic.startsWith("sensor/")) {
                 // attempt a JSON introspection
@@ -109,7 +107,7 @@ public class Mqtt implements MqttCallback {
                 final String deviceTypeString = StringUtils.capitalize(topicParts[0]);
                 Type deviceType = null;
                 try {
-                    deviceType = Type.valueOf(deviceTypeString.toUpperCase());
+                    deviceType = Type.valueOf(deviceTypeString.toUpperCase(Locale.ROOT));
                 } catch (IllegalArgumentException e) {
                     log.warn("{} unknown device type.", topic);
                     return;
@@ -127,7 +125,7 @@ public class Mqtt implements MqttCallback {
                                     final Sensor sensor = mapper.treeToValue(node, Sensor.class);
                                     sensor.updateFrom(common);
                                     log.debug("Sensor state is: {}", sensor);
-                                    srv.submit(new Event(rabbitMqConnection, topic, sensor));
+                                    srv.execute(new Event(rabbitMqConnection, topic, sensor));
                                 } catch (JsonProcessingException e) {
                                     log.error("{} deserialization failure of field {} ({})", topic, fieldName, e.getMessage());
                                     return;
@@ -138,7 +136,7 @@ public class Mqtt implements MqttCallback {
                         final Meter meter = mapper.treeToValue(root, Meter.class);
                         meter.setLocation(location);
                         log.debug("Meter state is: {}", meter);
-                        srv.submit(new Event(rabbitMqConnection, topic, meter));
+                        srv.execute(new Event(rabbitMqConnection, topic, meter));
                     } else {
                         log.warn("{} unknown inferred device type.", topic);
                         return;
@@ -162,7 +160,7 @@ public class Mqtt implements MqttCallback {
     @Override
     public void connectionLost(Throwable cause) {
         log.error("MQTT error", cause);
-        EventProcessor.exitCode |= EventProcessor.EXIT_CODE_MQTT;
+        EventProcessor.addExitCode(EventProcessor.EXIT_CODE_MQTT);
         System.exit(SpringApplication.exit(springApp));
     }
 

@@ -11,16 +11,13 @@ import org.slf4j.LoggerFactory;
 
 public class TriggerHistory {
 
-    private static Logger log = null;
+    private static final Logger log = LoggerFactory.getLogger(TriggerHistory.class);
 
     private Map<String, Instant> triggeredSince;
     private Map<String, Stack<Instant>> triggerHistory;
     private static final int maxTriggerHistory = 120;
 
     public TriggerHistory() {
-        if (log == null) {
-            log = LoggerFactory.getLogger(TriggerHistory.class);
-        }
         triggeredSince = new ConcurrentHashMap<>(100);
         triggerHistory = new ConcurrentHashMap<>(100);
     }
@@ -83,7 +80,7 @@ public class TriggerHistory {
 
     public boolean isMultiTriggered(String deviceKey, int times, int seconds) {
         if (times <= 0 || seconds <= 0 || times > maxTriggerHistory) {
-            throw new RuntimeException(String.format("Invalid inputs for times %s and seconds %s."));
+            throw new IllegalArgumentException(String.format("Invalid inputs for times %s and seconds %s.", times, seconds));
         }
         if (!triggerHistory.containsKey(deviceKey)) {
             log.debug("{} has no trigger history.", deviceKey);
