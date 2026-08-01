@@ -14,12 +14,10 @@ from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.wsgi import WSGIMiddleware
 from fastapi.responses import RedirectResponse
 from flask import Flask, flash, redirect, render_template, request, url_for
-from flask.logging import default_handler
 from flask_compress import Compress
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
 from flask_sqlalchemy import SQLAlchemy
 from httpx import ConnectError
-from permit.sync import Permit
 from pydantic import BaseModel, ConfigDict
 from pylru import lrucache
 from pytz import timezone
@@ -99,7 +97,6 @@ async def get_db():
 
 
 creds = None
-permit = None
 sentry_dsn = None
 
 user_tz = timezone(app_config.get("app", "user_tz"))
@@ -570,7 +567,8 @@ def authz_required(action, resource):
             if current_user.is_authenticated:
                 user_details = f"User {current_user.name} ({current_user.key})"
                 log.debug(f"{user_details} is authenticated.")
-                permitted = permit.check(current_user.key, action, resource)
+                # FIXME: use permit.io or other AuthN/Z here
+                permitted = True
                 permission_details = f"{action} {resource}"
                 if permitted:
                     log.debug(f"{user_details} is authorized to {permission_details}.")
@@ -2057,5 +2055,4 @@ if __name__ == "__main__":
     creds = Creds()
     creds.validate_creds()
     flask_app.secret_key = creds.get_creds("Frontend/Flask/secret_key")
-    permit = Permit(pdp=creds.get_creds("Permit/hostname"), token=creds.get_creds("Permit/credential"))
     asyncio.run(main())
