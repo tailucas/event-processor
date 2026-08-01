@@ -47,7 +47,6 @@ RUN chown app:app uv.lock
 COPY --from=builder "${APP_DIR}/target/app-0.1.0.jar" ./app.jar
 # switch to run user now because uv does not use the environment to infer
 USER app
-RUN "${APP_DIR}/rust_setup.sh"
 RUN "${APP_DIR}/python_setup.sh"
 # example HTTP backend
 # EXPOSE 8080
