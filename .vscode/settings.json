@@ -4,5 +4,6 @@
         
     ],
     "java.configuration.updateBuildConfiguration": "automatic",
-    "java.compile.nullAnalysis.mode": "automatic"
+    "java.compile.nullAnalysis.mode": "automatic",
+    "python.defaultInterpreterPath": "/home/tai/dev/event-processor/.venv/bin/python"
 }
