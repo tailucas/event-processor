@@ -30,12 +30,24 @@ public class Metrics {
         gauges = new ConcurrentHashMap<>();
     }
 
+    Metrics(String appName, String deviceName) {
+        this.appName = appName;
+        this.deviceName = deviceName;
+        counters = new ConcurrentHashMap<>();
+        gauges = new ConcurrentHashMap<>();
+    }
+
     private static final class InstanceHolder {
         private static final Metrics INSTANCE = new Metrics();
     }
 
     public static Metrics getInstance() {
         return InstanceHolder.INSTANCE;
+    }
+
+    void setApplicationNames(String appName, String deviceName) {
+        this.appName = appName;
+        this.deviceName = deviceName;
     }
 
     public Map<String, String> getNormalizedMetricTags(Map<String, String> tags) {

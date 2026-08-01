@@ -50,17 +50,23 @@ public class DeviceConfig {
     private String configHostPort = null;
 
     private DeviceConfig() {
-        httpClient = HttpClient.newBuilder()
+        this(HttpClient.newBuilder()
             .version(HttpClient.Version.HTTP_1_1)
-            .build();
-        mapper = new ObjectMapper();
-        mapper.enable(DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT);
-        mapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
-        collectionTypes = new ConcurrentHashMap<>(4);
-        configCache = new ConcurrentHashMap<>(100);
-        haConfigCache = new ConcurrentHashMap<>(100);
-        configHost = System.getenv().get("CONFIG_HOST");
-        configHostPort = System.getenv().get("CONFIG_HOST_PORT");
+            .build(),
+            System.getenv().get("CONFIG_HOST"),
+            System.getenv().get("CONFIG_HOST_PORT"));
+    }
+
+    DeviceConfig(HttpClient httpClient, String configHost, String configHostPort) {
+        this.httpClient = httpClient;
+        this.mapper = new ObjectMapper();
+        this.mapper.enable(DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT);
+        this.mapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
+        this.collectionTypes = new ConcurrentHashMap<>(4);
+        this.configCache = new ConcurrentHashMap<>(100);
+        this.haConfigCache = new ConcurrentHashMap<>(100);
+        this.configHost = configHost;
+        this.configHostPort = configHostPort;
     }
 
     private static final class InstanceHolder {

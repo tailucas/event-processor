@@ -47,6 +47,12 @@ public class OnePassword {
         this.itemNameIdMap = new HashMap<>(100);
     }
 
+    OnePassword(OPConnectClient client, String vaultId) {
+        this.client = client;
+        this.vaultId = vaultId;
+        this.itemNameIdMap = new HashMap<>(100);
+    }
+
     public void close() {
         client.close();
     }

@@ -207,13 +207,13 @@ public class Ring implements Generic {
     public HAConfig getConfig() {
         final String description = getTopicDescription();
         if (haConfig == null) {
-            haConfig = DeviceConfig.getInstance().getHaConfig(this);
-            if (haConfig == null) {
+            final HAConfig discovered = DeviceConfig.getInstance().getHaConfig(this);
+            if (discovered == null) {
                 log.warn(String.format("%s has no discovery information.", description));
                 return null;
             }
             var matchedIds = new ArrayList<>();
-            haConfig.getDevice().getIds().forEach(id -> {
+            discovered.getDevice().getIds().forEach(id -> {
                 if (id.equals(deviceId)) {
                     matchedIds.add(id);
                 }
@@ -222,6 +222,8 @@ public class Ring implements Generic {
                 log.warn(String.format("%s has no matched discovery information.", description));
                 return null;
             }
+            // only cache discovery information once it has been matched to this device
+            haConfig = discovered;
         }
         return haConfig;
     }
