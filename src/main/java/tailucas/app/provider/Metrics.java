@@ -97,7 +97,11 @@ public class Metrics {
                 gauge.labelValues(metricTagValues).set(value);
             }
         } catch (RuntimeException e) {
-            log.error("Cannot create metric object for metric {}: {}", metricName, e.getMessage(), e);
+            log.atError().setMessage("Cannot create metric object")
+                .addKeyValue("metric_name", metricName)
+                .addKeyValue("error", e.getMessage())
+                .setCause(e)
+                .log();
             Sentry.captureException(e);
         }
         return metricTags;

@@ -209,7 +209,7 @@ public class Ring implements Generic {
         if (haConfig == null) {
             final HAConfig discovered = DeviceConfig.getInstance().getHaConfig(this);
             if (discovered == null) {
-                log.warn(String.format("%s has no discovery information.", description));
+                log.atWarn().setMessage("No discovery information").addKeyValue("description", description).log();
                 return null;
             }
             var matchedIds = new ArrayList<>();
@@ -219,7 +219,7 @@ public class Ring implements Generic {
                 }
             });
             if (matchedIds.isEmpty()) {
-                log.warn(String.format("%s has no matched discovery information.", description));
+                log.atWarn().setMessage("No matched discovery information").addKeyValue("description", description).log();
                 return null;
             }
             // only cache discovery information once it has been matched to this device
@@ -256,7 +256,10 @@ public class Ring implements Generic {
                 break;
             case "status":
                 statusUpdate = true;
-                log.info("{} status is {}.", updateSubjectDescription, state);
+                log.atInfo().setMessage("Status update")
+                    .addKeyValue("subject", updateSubjectDescription)
+                    .addKeyValue("state", state)
+                    .log();
                 break;
             case "state":
                 if (updateSubject == null) {
@@ -276,7 +279,10 @@ public class Ring implements Generic {
                             sb.append(String.format(" Tamper status is %s.", getTamperStatus()));
                         }
                         if (sb.length() > 0) {
-                            log.info("{} health:{}", updateSubjectDescription, sb.toString());
+                            log.atInfo().setMessage("Health update")
+                                .addKeyValue("subject", updateSubjectDescription)
+                                .addKeyValue("health", sb.toString())
+                                .log();
                         }
                         break;
                     default:
@@ -284,7 +290,10 @@ public class Ring implements Generic {
                 }
                 break;
             default:
-                log.warn("Unmapped update type {} for {}.", updateType, toString());
+                log.atWarn().setMessage("Unmapped update type")
+                    .addKeyValue("update_type", updateType)
+                    .addKeyValue("device", toString())
+                    .log();
                 break;
         }
         return statusUpdate;
@@ -313,25 +322,37 @@ public class Ring implements Generic {
                         break;
                     default:
                         if (state == null) {
-                            log.warn("{} has no state information.", updateSubjectDescription);
+                            log.atWarn().setMessage("No state information").addKeyValue("subject", updateSubjectDescription).log();
                             break;
                         }
                         if (triggers.containsKey(updateSubject)) {
                             if (!nonTriggerStates.containsKey(state.toUpperCase(Locale.ROOT))) {
-                                log.info("{} is in a trigger state {}.", updateSubjectDescription, state);
+                                log.atInfo().setMessage("Subject is in a trigger state")
+                                    .addKeyValue("subject", updateSubjectDescription)
+                                    .addKeyValue("state", state)
+                                    .log();
                                 triggerOutput = true;
                                 triggerStateDescription = String.format("%s is %s", updateSubjectDescription, state);
                             } else {
-                                log.warn("{} is not in a trigger state {}.", updateSubjectDescription, state);
+                                log.atWarn().setMessage("Subject is not in a trigger state")
+                                    .addKeyValue("subject", updateSubjectDescription)
+                                    .addKeyValue("state", state)
+                                    .log();
                             }
                         } else {
-                            log.warn("{} is not a trigger (state is {}).", updateSubjectDescription, state);
+                            log.atWarn().setMessage("Subject is not a trigger")
+                                .addKeyValue("subject", updateSubjectDescription)
+                                .addKeyValue("state", state)
+                                .log();
                         }
                         break;
                 }
                 break;
             default:
-                log.warn("Unmapped update type {} for {}.", updateType, toString());
+                log.atWarn().setMessage("Unmapped update type")
+                    .addKeyValue("update_type", updateType)
+                    .addKeyValue("device", toString())
+                    .log();
                 break;
         }
         return triggerOutput;

@@ -51,7 +51,7 @@ public class State {
             try {
                 createdTime = Instant.from(DATE_TIME_FORMATTER.parse(timestamp));
             } catch (DateTimeParseException e) {
-                log.warn("Cannot parse timestamp {}, using now.", timestamp);
+                log.atWarn().setMessage("Cannot parse timestamp, using now").addKeyValue("timestamp", timestamp).log();
             }
         }
         return createdTime;

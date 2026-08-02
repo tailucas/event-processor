@@ -18,7 +18,7 @@ public class DeviceConfigUpdate {
     @PostMapping("/invalidate_config")
     @ResponseBody
 	public String invalidateConfig(@RequestParam("device_key") String deviceKey) {
-        log.debug("Invalidating cached configuration for {}", deviceKey);
+        log.atDebug().setMessage("Invalidating cached configuration").addKeyValue("device_key", deviceKey).log();
         DeviceConfig.getInstance().invalidateConfiguration(deviceKey);
         return deviceKey;
 	}

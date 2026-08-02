@@ -134,21 +134,21 @@ public class EventProcessor
             try {
                 zmqContext.close();
             } catch (Exception e) {
-                log.warn("During shutdown of ZeroMQ context: {}", e.getMessage());
+                log.atWarn().setMessage("During shutdown of ZeroMQ context").addKeyValue("error", e.getMessage()).log();
             }
         }
         if (rabbitMqChannel != null) {
             try {
                 rabbitMqChannel.close();
             } catch (Exception e) {
-                log.warn("During shutdown of RabbitMQ channel: {}", e.getMessage());
+                log.atWarn().setMessage("During shutdown of RabbitMQ channel").addKeyValue("error", e.getMessage()).log();
             }
         }
         if (rabbitMqConnection != null) {
             try {
                 rabbitMqConnection.close();
             } catch (Exception e) {
-                log.warn("During shutdown of RabbitMQ connection: {}", e.getMessage());
+                log.atWarn().setMessage("During shutdown of RabbitMQ connection").addKeyValue("error", e.getMessage()).log();
             }
         }
         if (mqttClient != null) {
@@ -159,12 +159,12 @@ public class EventProcessor
                     mqttClient.disconnect(10);
                 }
             } catch (MqttException e) {
-                log.warn("During disconnect of MQTT client: {}", e.getMessage());
+                log.atWarn().setMessage("During disconnect of MQTT client").addKeyValue("error", e.getMessage()).log();
             } finally {
                 try {
                     mqttClient.close();
                 } catch (MqttException e) {
-                    log.warn("During closing of MQTT client: {}", e.getMessage());
+                    log.atWarn().setMessage("During closing of MQTT client").addKeyValue("error", e.getMessage()).log();
                 }
             }
         }
@@ -192,23 +192,31 @@ public class EventProcessor
                 .build();
             try {
                 final EventResult result = pagerDuty.trigger(incident);
-                log.info("Updated PagerDuty with result {}: {} ({})", result.getStatus(), result.getMessage(), result.getErrors());
+                log.atInfo().setMessage("Updated PagerDuty")
+                    .addKeyValue("pagerduty_status", result.getStatus())
+                    .addKeyValue("pagerduty_message", result.getMessage())
+                    .addKeyValue("pagerduty_errors", result.getErrors())
+                    .log();
             } catch (NotifyEventException e) {
-                log.warn("Cannot update PagerDuty.", e);
+                log.atWarn().setMessage("Cannot update PagerDuty").setCause(e).log();
                 Sentry.captureException(e);
             }
         } else {
-            log.warn("Not creating PagerDuty shutdown event due to disabled feature flag: {}", FEATURE_FLAG_PAGER_DUTY_TICKETS);
+            log.atWarn().setMessage("Not creating PagerDuty shutdown event, disabled with feature flag")
+                .addKeyValue("feature_flag", FEATURE_FLAG_PAGER_DUTY_TICKETS)
+                .log();
         }
         if (creds != null) {
             creds.close();
         }
-        log.info("Full shutdown complete with exit code {}", getExitCode());
+        log.atInfo().setMessage("Full shutdown complete").addKeyValue("exit_code", getExitCode()).log();
     }
 
     public static boolean isFeatureEnabled(String featureName) {
         if (creds == null) {
-            log.debug("No credential provider available; feature flag '{}' evaluates to disabled.", featureName);
+            log.atDebug().setMessage("No credential provider available; feature flag evaluates to disabled")
+                .addKeyValue("feature_flag", featureName)
+                .log();
             return false;
         }
         return featureFlagCache.computeIfAbsent(featureName, key -> Boolean.valueOf(creds.getField("flags", "value", featureName)));
@@ -239,11 +247,15 @@ public class EventProcessor
                 throw new IllegalStateException("No credential vaults are available.");
             }
             vaults.forEach(vault -> {
-                log.debug("Credential vault {}: is {} ({}).", vault.getId(), vault.getName(), vault.getDescription());
+                log.atDebug().setMessage("Credential vault")
+                    .addKeyValue("vault_id", vault.getId())
+                    .addKeyValue("vault_name", vault.getName())
+                    .addKeyValue("vault_description", vault.getDescription())
+                    .log();
             });
-            log.info("Using credential vault {}.", creds.getVaultId());
+            log.atInfo().setMessage("Using credential vault").addKeyValue("vault_id", creds.getVaultId()).log();
         } catch (Exception e) {
-            log.error("Problem with credential client", e);
+            log.atError().setMessage("Problem with credential client").setCause(e).log();
             addExitCode(EXIT_CODE_CREDENTIALS);
             System.exit(getExitCode());
         }
@@ -254,21 +266,25 @@ public class EventProcessor
             Sentry.init(options -> {
                 options.setDsn(sentryDsn);
                 options.setTracesSampleRate(1.0);
+                options.getLogs().setEnabled(true);
             });
         } catch (AssertionError e) {
-                log.error("Problem with credential item", e);
+                log.atError().setMessage("Problem with credential item").setCause(e).log();
                 addExitCode(EXIT_CODE_CREDENTIALS);
                 System.exit(getExitCode());
         } catch (CompletionException e) {
-            log.error("Problem with credential item", e.getCause());
+            log.atError().setMessage("Problem with credential item").setCause(e.getCause()).log();
             addExitCode(EXIT_CODE_CREDENTIALS);
             System.exit(getExitCode());
         } catch (IllegalArgumentException e) {
-            log.error("Problem with Sentry client", e);
+            log.atError().setMessage("Problem with Sentry client").setCause(e).log();
             addExitCode(EXIT_CODE_SENTRY);
             System.exit(getExitCode());
         }
-        log.debug("Sentry enabled: {}, healthy: {}.", Sentry.isEnabled(), Sentry.isHealthy());
+        log.atDebug().setMessage("Sentry status")
+            .addKeyValue("sentry_enabled", Sentry.isEnabled())
+            .addKeyValue("sentry_healthy", Sentry.isHealthy())
+            .log();
         pagerDuty = PagerDutyEventsClient.create();
         pagerDutyRoutingKey = creds.getField("PagerDuty", "routing_key", appName);
         deviceName = envVars.get("DEVICE_NAME");
@@ -293,16 +309,16 @@ public class EventProcessor
         boolean ready = false;
         while (!ready) {
             try {
-                log.debug("Startup: test {} for readiness...", startupUri);
+                log.atDebug().setMessage("Startup: testing readiness").addKeyValue("startup_uri", String.valueOf(startupUri)).log();
                 HttpResponse<String> response = httpClient.send(request, BodyHandlers.ofString());
                 final int responseCode = response.statusCode();
                 final String responseBody = response.body();
-                log.info("Startup: configuration source is ready ({}).", responseBody);
+                log.atInfo().setMessage("Startup: configuration source is ready").addKeyValue("response_body", responseBody).log();
                 if (responseCode / 100 == 2) {
                     ready = Boolean.valueOf(responseBody).booleanValue();
                 }
             } catch (Exception e) {
-                log.warn("Startup: not ready: {}.", e.getMessage());
+                log.atWarn().setMessage("Startup: not ready").addKeyValue("error", e.getMessage()).log();
             } finally {
                 if (!ready) {
                     try {
@@ -318,19 +334,20 @@ public class EventProcessor
         final Environment springEnv = springApp.getEnvironment();
         final String applicationName = springEnv.getProperty("app.project-name");
         final Locale locale = Locale.getDefault();
-        log.debug("{} starting {} in working directory {}, locale language {}, country {} and environment {}",
-            applicationName,
-            Runtime.version().toString(),
-            System.getProperty("user.dir"),
-            locale.getLanguage(),
-            locale.getCountry(),
-            envVars.keySet());
+        log.atDebug().setMessage("Runtime environment")
+            .addKeyValue("app_name", applicationName)
+            .addKeyValue("java_version", Runtime.version().toString())
+            .addKeyValue("working_directory", System.getProperty("user.dir"))
+            .addKeyValue("locale_language", locale.getLanguage())
+            .addKeyValue("locale_country", locale.getCountry())
+            .addKeyValue("environment", envVars.keySet())
+            .log();
         // read application settings
         try {
             Ini appConfig = new Ini(new File("./app.conf"));
-            log.debug("App Device Name: " + appConfig.get("app", "device_name"));
+            log.atDebug().setMessage("App device name").addKeyValue("device_name", appConfig.get("app", "device_name")).log();
         } catch (IOException e) {
-            log.error(e.getMessage());
+            log.atError().setMessage("Cannot read app configuration").setCause(e).log();
             Sentry.captureException(e);
         }
 
@@ -342,17 +359,17 @@ public class EventProcessor
         rabbitMqConnectionFactory.setExceptionHandler(new StrictExceptionHandler() {
             @Override
             public void handleUnexpectedConnectionDriverException(Connection conn, Throwable exception) {
-                log.warn("Handling RabbitMQ connection exception.", exception);
+                log.atWarn().setMessage("Handling RabbitMQ connection exception").setCause(exception).log();
                 super.handleUnexpectedConnectionDriverException(conn, exception);
                 addExitCode(EXIT_CODE_RABBITMQ);
-                log.warn("Triggering shutdown with exit code {}.", getExitCode());
+                log.atWarn().setMessage("Triggering shutdown").addKeyValue("exit_code", getExitCode()).log();
                 System.exit(SpringApplication.exit(springApp));
             }
         });
         try {
             rabbitMqConnection = rabbitMqConnectionFactory.newConnection(srv);
         } catch (Exception e) {
-            log.error("Problem with RabbitMQ client", e);
+            log.atError().setMessage("Problem with RabbitMQ client").setCause(e).log();
             Sentry.captureException(e);
             addExitCode(EXIT_CODE_RABBITMQ);
             System.exit(SpringApplication.exit(springApp));
@@ -377,7 +394,7 @@ public class EventProcessor
                 rabbitMqChannel.queueBind(queueName, exchangeName, "#");
                 rabbitMqChannel.basicConsume(queueName, true, new RabbitMq(srv, rabbitMqConnection), consumerTag -> { });
             } catch (Exception e) {
-                log.error("Problem with RabbitMQ client", e);
+                log.atError().setMessage("Problem with RabbitMQ client").setCause(e).log();
                 Sentry.captureException(e);
                 addExitCode(EXIT_CODE_RABBITMQ);
                 System.exit(SpringApplication.exit(springApp));
@@ -405,16 +422,24 @@ public class EventProcessor
                     final String mqttDiscoveryTopic = "homeassistant/status";
                     final String mqttDiscoveryPayload = "online";
                     try {
-                        log.info("Sending Home Assistant discovery message ({}) to topic: {}", mqttDiscoveryPayload, mqttDiscoveryTopic);
+                        log.atInfo().setMessage("Sending Home Assistant discovery message")
+                            .addKeyValue("payload", mqttDiscoveryPayload)
+                            .addKeyValue("topic", mqttDiscoveryTopic)
+                            .log();
                         mqttClient.publish(mqttDiscoveryTopic, new MqttMessage(mqttDiscoveryPayload.getBytes()));
                     } catch (MqttException e) {
-                        log.error("Problem sending MQTT discovery message to topic {}", mqttDiscoveryTopic, e);
+                        log.atError().setMessage("Problem sending MQTT discovery message")
+                            .addKeyValue("topic", mqttDiscoveryTopic)
+                            .setCause(e)
+                            .log();
                         Sentry.captureException(e);
                         addExitCode(EXIT_CODE_MQTT);
                         System.exit(SpringApplication.exit(springApp));
                     };
                 } else {
-                    log.warn("Not sending Home Assistant discovery message, disabled with feature flag {}", FEATURE_FLAG_HA_DISCOVERY);
+                    log.atWarn().setMessage("Not sending Home Assistant discovery message, disabled with feature flag")
+                        .addKeyValue("feature_flag", FEATURE_FLAG_HA_DISCOVERY)
+                        .log();
                 }
                 // use inproc socket in ZMQ to serialize outbound messages for thread safety
                 socket = zmqContext.createSocket(SocketType.PULL);
@@ -422,7 +447,7 @@ public class EventProcessor
                 while (!zmqContext.isClosed()) {
                     try {
                         final byte[] zmqData = socket.recv();
-                        log.debug("ZMQ data received {}", new String(zmqData));
+                        log.atDebug().setMessage("ZMQ data received").addKeyValue("zmq_data", new String(zmqData)).log();
                     } catch (Exception e) {
                         if (!zmqContext.isClosed()) {
                             throw e;
@@ -430,7 +455,7 @@ public class EventProcessor
                     }
                 }
             } catch (Exception e) {
-                log.error("Problem with MQTT client", e);
+                log.atError().setMessage("Problem with MQTT client").setCause(e).log();
                 Sentry.captureException(e);
                 addExitCode(EXIT_CODE_MQTT);
                 System.exit(SpringApplication.exit(springApp));
@@ -450,13 +475,19 @@ public class EventProcessor
                 .build();
             try {
                 final EventResult result = pagerDuty.resolve(resolve);
-                log.info("Updated PagerDuty with result {}: {} ({})", result.getStatus(), result.getMessage(), result.getErrors());
+                log.atInfo().setMessage("Updated PagerDuty")
+                    .addKeyValue("pagerduty_status", result.getStatus())
+                    .addKeyValue("pagerduty_message", result.getMessage())
+                    .addKeyValue("pagerduty_errors", result.getErrors())
+                    .log();
             } catch (NotifyEventException e) {
-                log.error("Cannot update PagerDuty.", e);
+                log.atError().setMessage("Cannot update PagerDuty").setCause(e).log();
                 Sentry.captureException(e);
             }
         } else {
-            log.warn("Not updating PagerDuty status due to disabled feature flag: {}", FEATURE_FLAG_PAGER_DUTY_TICKETS);
+            log.atWarn().setMessage("Not updating PagerDuty status, disabled with feature flag")
+                .addKeyValue("feature_flag", FEATURE_FLAG_PAGER_DUTY_TICKETS)
+                .log();
         }
 
         JvmMetrics.builder().register();
@@ -465,12 +496,12 @@ public class EventProcessor
         try {
             metricsServer = HTTPServer.builder().port(metricsServerPort).buildAndStart();
         } catch (IOException e) {
-            log.error("Cannot start metrics server.", e);
+            log.atError().setMessage("Cannot start metrics server").setCause(e).log();
             Sentry.captureException(e);
         }
 
-        log.debug("Metrics server started on port {}.", metricsServerPort);
-        log.info("{} startup complete.", applicationName);
+        log.atDebug().setMessage("Metrics server started").addKeyValue("metrics_port", metricsServerPort).log();
+        log.atInfo().setMessage("Startup complete").addKeyValue("app_name", applicationName).log();
         Sentry.logger().log(
             SentryLogLevel.INFO,
             SentryLogParameters.create(

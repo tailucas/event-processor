@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.Answers;
 import org.mockito.MockedStatic;
 import org.slf4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,7 +24,8 @@ class DeviceConfigUpdateTest {
     @Autowired
     private MockMvc mvc;
 
-    @MockitoBean
+    // deep stubs allow the SLF4J fluent API chain (atDebug().setMessage()...) on the mock
+    @MockitoBean(answers = Answers.RETURNS_DEEP_STUBS)
     private Logger log;
 
     @Test

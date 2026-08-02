@@ -30,14 +30,21 @@ public class Meter extends Device {
         try {
             meterConfig = DeviceConfig.getInstance().fetchMeterConfig(deviceKey);
         } catch (IOException e) {
-            log.error("{} cannot fetch meter configuration: {}", deviceKey, e.getMessage());
+            log.atError().setMessage("Cannot fetch meter configuration")
+                .addKeyValue("device_key", deviceKey)
+                .addKeyValue("error", e.getMessage())
+                .log();
             return false;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            log.warn("{} interrupted while fetching meter configuration.", deviceKey);
+            log.atWarn().setMessage("Interrupted while fetching meter configuration")
+                .addKeyValue("device_key", deviceKey)
+                .log();
             return false;
         }
-        log.debug("Evaluating meter configuration {}", meterConfig);
+        log.atDebug().setMessage("Evaluating meter configuration")
+            .addKeyValue("meter_config", String.valueOf(meterConfig))
+            .log();
         final Integer meterLowLimit = meterConfig.getMeterLowLimit();
         if (meterLowLimit != null && registerReading < meterLowLimit) {
             triggerStateDescription = String.format("register value %s is below the configured limit of %s", registerReading, meterLowLimit);

@@ -17,7 +17,7 @@ public class Camera extends Device {
     public boolean wouldTriggerOutput(InputConfig deviceConfig) {
         // any image data is relevant
         if (image == null) {
-            log.warn("{} has no image data.", getDeviceLabel());
+            log.atWarn().setMessage("No image data").addKeyValue("device_label", getDeviceLabel()).log();
             return false;
         }
         triggerStateDescription = String.format("%s bytes of image data present", image.length);

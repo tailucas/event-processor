@@ -109,7 +109,7 @@ public class Device implements Generic {
             } else if (devType != null) {
                 deviceKey = WordUtils.capitalizeFully(String.format("%s %s", location, devType));
             } else {
-                log.warn("No identifying information for: {}", this.toString());
+                log.atWarn().setMessage("No identifying information").addKeyValue("device", this.toString()).log();
             }
         }
         return deviceKey;
@@ -126,7 +126,10 @@ public class Device implements Generic {
     public String getDeviceType() {
         if (deviceType == null) {
             final String legacyType = getType().name();
-            log.warn("{} using legacy device type {}", this.toString(), legacyType);
+            log.atWarn().setMessage("Using legacy device type")
+                .addKeyValue("device", this.toString())
+                .addKeyValue("legacy_type", legacyType)
+                .log();
             return legacyType.toLowerCase(Locale.ROOT);
         }
         return deviceType;

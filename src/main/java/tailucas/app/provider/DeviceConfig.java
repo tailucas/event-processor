@@ -156,7 +156,7 @@ public class DeviceConfig {
         configCache.forEach((k, v) -> {
             // collect top-level cache keys
             if (k.startsWith(deviceKey)) {
-                log.debug("Adding {} to keys to remove from config cache.", k);
+                log.atDebug().setMessage("Adding key to remove from config cache").addKeyValue("cache_key", k).log();
                 keysToRemove.add(k);
             }
             // ALSO collect nested cache keys
@@ -165,13 +165,19 @@ public class DeviceConfig {
                     if (c instanceof OutputConfig) {
                         OutputConfig outputConfig = (OutputConfig) c;
                         if (outputConfig.getDeviceKey().equals(deviceKey)) {
-                            log.debug("Adding {} to keys to remove from config cache (included by {}).", k, deviceKey);
+                            log.atDebug().setMessage("Adding key to remove from config cache (included by device)")
+                                .addKeyValue("cache_key", k)
+                                .addKeyValue("device_key", deviceKey)
+                                .log();
                             keysToRemove.add(k);
                         }
                     } else if (c instanceof InputConfig) {
                         InputConfig inputConfig = (InputConfig) c;
                         if (inputConfig.getDeviceKey().equals(deviceKey)) {
-                            log.debug("Adding {} to keys to remove from config cache (included by {}).", k, deviceKey);
+                            log.atDebug().setMessage("Adding key to remove from config cache (included by device)")
+                                .addKeyValue("cache_key", k)
+                                .addKeyValue("device_key", deviceKey)
+                                .log();
                             keysToRemove.add(k);
                         }
                     }
@@ -180,7 +186,7 @@ public class DeviceConfig {
         });
         // now remove all implied keys
         keysToRemove.forEach(k -> configCache.remove(k));
-        log.debug("Removed keys from config cache: {}", keysToRemove);
+        log.atDebug().setMessage("Removed keys from config cache").addKeyValue("removed_keys", keysToRemove).log();
     }
 
     protected List<Config> fetchDeviceConfiguration(ConfigType api, String deviceKey) throws IOException, InterruptedException {
@@ -195,15 +201,26 @@ public class DeviceConfig {
             if (cacheAge <= 3600) {
                 List<Config> cachedConfig = cached.getRight();
                 if (cachedConfig != null) {
-                    log.debug("Returning config ({} items) from config cache for {} (age {}s).", cachedConfig.size(), cacheKey, cacheAge);
+                    log.atDebug().setMessage("Returning config from config cache")
+                        .addKeyValue("config_items", cachedConfig.size())
+                        .addKeyValue("cache_key", cacheKey)
+                        .addKeyValue("cache_age_seconds", cacheAge)
+                        .log();
                 }
                 return cachedConfig;
             } else {
-                log.debug("Invalidating config cache for {} (age {}s).", cacheKey, cacheAge);
+                log.atDebug().setMessage("Invalidating config cache")
+                    .addKeyValue("cache_key", cacheKey)
+                    .addKeyValue("cache_age_seconds", cacheAge)
+                    .log();
                 configCache.remove(cacheKey);
             }
         }
-        log.debug("{} needs {} from {}...", deviceKey, apiName, configHost);
+        log.atDebug().setMessage("Fetching configuration")
+            .addKeyValue("device_key", deviceKey)
+            .addKeyValue("api_name", apiName)
+            .addKeyValue("config_host", configHost)
+            .log();
         UriComponents uriComponents = UriComponentsBuilder.newInstance()
             .scheme("http")
             .host(configHost)
@@ -213,7 +230,11 @@ public class DeviceConfig {
             .build()
             .expand("api", apiName)
             .encode();
-        log.debug("HTTP request {} for {} is: {}", apiName, deviceKey, uriComponents.toUriString());
+        log.atDebug().setMessage("HTTP request")
+            .addKeyValue("api_name", apiName)
+            .addKeyValue("device_key", deviceKey)
+            .addKeyValue("uri", uriComponents.toUriString())
+            .log();
         final HttpRequest request = HttpRequest.newBuilder()
             .GET()
             .uri(uriComponents.toUri())
@@ -222,7 +243,11 @@ public class DeviceConfig {
         HttpResponse<String> response = httpClient.send(request, BodyHandlers.ofString());
         final int responseCode = response.statusCode();
         final String responseBody = response.body();
-        log.debug("HTTP {} response for {} is: {}", responseCode, deviceKey, responseBody);
+        log.atDebug().setMessage("HTTP response")
+            .addKeyValue("response_code", responseCode)
+            .addKeyValue("device_key", deviceKey)
+            .addKeyValue("response_body", responseBody)
+            .log();
         List<Config> configs = null;
         if (responseCode / 100 != 2) {
             String responseDetail = null;
@@ -232,19 +257,28 @@ public class DeviceConfig {
             } catch (JsonProcessingException e) {
                 responseDetail = responseBody;
             }
-            log.debug("HTTP {} from {} for {}: {}", responseCode, apiName, deviceKey, responseDetail);
+            log.atDebug().setMessage("HTTP error response")
+                .addKeyValue("response_code", responseCode)
+                .addKeyValue("api_name", apiName)
+                .addKeyValue("device_key", deviceKey)
+                .addKeyValue("response_detail", responseDetail)
+                .log();
         } else {
             configs = mapper.readValue(responseBody, getCollectionType(api));
         }
-        log.debug("Updating configuration config cache for {}.", cacheKey);
+        log.atDebug().setMessage("Updating configuration config cache").addKeyValue("cache_key", cacheKey).log();
         configCache.put(cacheKey, Pair.of(now, configs));
-        log.debug("Received {} configuration items for {} (cached as {}).", (configs != null) ? configs.size() : 0, deviceKey, cacheKey);
+        log.atDebug().setMessage("Received configuration items")
+            .addKeyValue("config_items", (configs != null) ? configs.size() : 0)
+            .addKeyValue("device_key", deviceKey)
+            .addKeyValue("cache_key", cacheKey)
+            .log();
         return configs;
     }
 
     public void postDeviceInfo(Generic device) throws IOException, InterruptedException {
         final String deviceKey = device.getDeviceKey();
-        log.debug("Posting update on {}.", deviceKey);
+        log.atDebug().setMessage("Posting device update").addKeyValue("device_key", deviceKey).log();
         UriComponents uriComponents = UriComponentsBuilder.newInstance()
             .scheme("http")
             .host(configHost)
@@ -260,14 +294,23 @@ public class DeviceConfig {
             .POST(HttpRequest.BodyPublishers.ofString(deviceJson, StandardCharsets.UTF_8))
             .timeout(Duration.ofSeconds(5))
             .build();
-        log.debug("HTTP {} POST for {} is: {}", httpClient.version(), deviceKey, uriComponents.toUriString());
-        log.debug("Request headers: {}", request.headers().map());
-        log.debug("Request body: {}", deviceJson);
+        log.atDebug().setMessage("HTTP POST")
+            .addKeyValue("http_version", httpClient.version())
+            .addKeyValue("device_key", deviceKey)
+            .addKeyValue("uri", uriComponents.toUriString())
+            .log();
+        log.atDebug().setMessage("Request headers").addKeyValue("headers", request.headers().map()).log();
+        log.atDebug().setMessage("Request body").addKeyValue("body", deviceJson).log();
         HttpResponse<String> response = httpClient.send(request, BodyHandlers.ofString());
         final int responseCode = response.statusCode();
         final String responseBody = response.body();
         if (responseCode / 100 != 2) {
-            log.warn("{} device update response code {}: {} for request payload {}", deviceKey, responseCode, responseBody, deviceJson);
+            log.atWarn().setMessage("Device update failed")
+                .addKeyValue("device_key", deviceKey)
+                .addKeyValue("response_code", responseCode)
+                .addKeyValue("response_body", responseBody)
+                .addKeyValue("request_payload", deviceJson)
+                .log();
         }
     }
 

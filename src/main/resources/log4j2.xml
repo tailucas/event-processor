@@ -2,14 +2,14 @@
 <Configuration>
     <Appenders>
         <Console name="Console" target="SYSTEM_OUT">
-            <PatternLayout pattern="%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n"/>
+            <JsonTemplateLayout eventTemplateUri="classpath:LogstashJsonEventLayoutV1.json"/>
         </Console>
         <Syslog name="Syslog" format="RFC5424" host="${env:SYSLOG_HOST}" port="514" protocol="UDP" appName="event-processor" facility="LOCAL0" />
     </Appenders>
     <Loggers>
         <Root level="${env:LOG_LEVEL}">
             <AppenderRef ref="Console"/>
-            <AppenderRef ref="Syslog"/>
+            <AppenderRef ref="Syslog" level="INFO"/>
         </Root>
     </Loggers>
 </Configuration>

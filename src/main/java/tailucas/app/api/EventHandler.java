@@ -23,7 +23,12 @@ public class EventHandler {
 	@GetMapping("/")
 	public String index() {
 		final String message = Thread.currentThread() + " spring.threads.virtual.enabled " + env.getProperty("spring.threads.virtual.enabled") + " " + props.getProjectName() + " " + props.getMessageControlExchangeName();
-		log.debug(message);
+		log.atDebug().setMessage("Index")
+			.addKeyValue("thread", Thread.currentThread().toString())
+			.addKeyValue("virtual_threads_enabled", env.getProperty("spring.threads.virtual.enabled"))
+			.addKeyValue("project_name", props.getProjectName())
+			.addKeyValue("control_exchange_name", props.getMessageControlExchangeName())
+			.log();
 		return message;
 	}
 }

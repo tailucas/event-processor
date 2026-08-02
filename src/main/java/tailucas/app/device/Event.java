@@ -15,6 +15,7 @@ import org.apache.commons.lang3.function.Failable;
 import org.msgpack.jackson.dataformat.MessagePackMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.spi.LoggingEventBuilder;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.dikhan.pagerduty.client.events.domain.EventResult;
@@ -92,26 +93,36 @@ public class Event implements Runnable {
         metrics.postMetric("event_queue_time", now - initTime);
         final long unixTime = now / 1000L;
         if (device == null) {
-            log.debug("{} posts no device details for {}", source, deviceUpdateString);
+            log.atDebug().setMessage("Source posts no device details")
+                .addKeyValue("source", source)
+                .addKeyValue("device_update", deviceUpdateString)
+                .log();
             return;
         }
         try {
             final DeviceConfig configProvider = DeviceConfig.getInstance();
-            log.debug("{} device: {}", source, device);
+            log.atDebug().setMessage("Device")
+                .addKeyValue("source", source)
+                .addKeyValue("device", String.valueOf(device))
+                .log();
             final String deviceKey = device.getDeviceKey();
             if (deviceKey == null) {
-                log.error("No identifier for device {}", device);
+                log.atError().setMessage("No identifier for device").addKeyValue("device", String.valueOf(device)).log();
                 return;
             }
             final String deviceLabel = device.getDeviceLabel();
             if (deviceLabel == null) {
-                log.warn("No device label for {}.", deviceKey);
+                log.atWarn().setMessage("No device label").addKeyValue("device_key", deviceKey).log();
             }
             final String deviceType = device.getDeviceType();
             if (deviceType == null) {
-                log.warn("No device type for set for {}", deviceKey);
+                log.atWarn().setMessage("No device type set").addKeyValue("device_key", deviceKey).log();
             }
-            log.debug("{} {} ({})", deviceType, deviceKey, deviceLabel);
+            log.atDebug().setMessage("Device identity")
+                .addKeyValue("device_type", deviceType)
+                .addKeyValue("device_key", deviceKey)
+                .addKeyValue("device_label", deviceLabel)
+                .log();
             String deviceDescription;
             if (deviceLabel != null) {
                 deviceDescription = deviceLabel;
@@ -125,35 +136,53 @@ public class Event implements Runnable {
             metricTags.put("input_label", deviceDescription);
             metrics.postMetric("event", metricTags);
             if (device.isHeartbeat() || source.contains(".heartbeat.")) {
-                log.debug("{}: Heartbeat for {}.", source, deviceDescription);
+                log.atDebug().setMessage("Heartbeat")
+                    .addKeyValue("source", source)
+                    .addKeyValue("device_description", deviceDescription)
+                    .log();
                 // post device info for side-car only upon heartbeats
                 configProvider.postDeviceInfo(device);
                 return;
             }
-            log.debug("{} fetch configuration with key {}, description: {}", source, deviceKey, deviceDescription);
+            log.atDebug().setMessage("Fetch configuration")
+                .addKeyValue("source", source)
+                .addKeyValue("device_key", deviceKey)
+                .addKeyValue("device_description", deviceDescription)
+                .log();
             InputConfig deviceConfig = configProvider.fetchInputDeviceConfig(deviceKey);
-            log.debug("{} configuration: {}", deviceDescription, deviceConfig);
+            log.atDebug().setMessage("Configuration")
+                .addKeyValue("device_description", deviceDescription)
+                .addKeyValue("config", String.valueOf(deviceConfig))
+                .log();
             if (!device.wouldTriggerOutput(deviceConfig)) {
                 // reset any trigger history
                 triggerLatchHistory.unTriggered(deviceKey);
                 // resolve any active escalations
                 final String escalationKey = recentEscalations.remove(deviceKey);
                 if (escalationKey != null) {
-                    log.info("{} no longer requires escalation.", deviceDescription);
+                    log.atInfo().setMessage("Device no longer requires escalation")
+                        .addKeyValue("device_description", deviceDescription)
+                        .log();
                     if (EventProcessor.isFeatureEnabled(EventProcessor.FEATURE_FLAG_PAGER_DUTY_TICKETS)) {
                         final ResolveIncident resolve = ResolveIncident.ResolveIncidentBuilder
                             .newBuilder(EventProcessor.getPagerDutyRoutingKey(), escalationKey)
                             .build();
                         try {
                             final EventResult result = EventProcessor.getPagerDuty().resolve(resolve);
-                            log.info("Updated PagerDuty with result {}: {} ({})", result.getStatus(), result.getMessage(), result.getErrors());
+                            log.atInfo().setMessage("Updated PagerDuty")
+                                .addKeyValue("pagerduty_status", result.getStatus())
+                                .addKeyValue("pagerduty_message", result.getMessage())
+                                .addKeyValue("pagerduty_errors", result.getErrors())
+                                .log();
                         } catch (NotifyEventException e) {
-                            log.error("Cannot update PagerDuty.", e);
+                            log.atError().setMessage("Cannot update PagerDuty").setCause(e).log();
                             Sentry.captureException(e);
                         }
                     }
                 }
-                log.debug("{} does not trigger any outputs based on current configuration or state.", deviceDescription);
+                log.atDebug().setMessage("Device does not trigger any outputs based on current configuration or state")
+                    .addKeyValue("device_description", deviceDescription)
+                    .log();
                 return;
             }
             // record the trigger attempt
@@ -161,16 +190,18 @@ public class Event implements Runnable {
             // rate limit 1 - trigger rate latch
             final Long secondsSinceLastTrigger = triggerLatchHistory.secondsSinceLastTriggered(deviceKey);
             if (secondsSinceLastTrigger != null) {
-                log.debug("{} was last triggered {}s ago.", deviceDescription, secondsSinceLastTrigger.toString());
+                log.atDebug().setMessage("Device was last triggered recently")
+                    .addKeyValue("device_description", deviceDescription)
+                    .addKeyValue("seconds_since_last_trigger", secondsSinceLastTrigger)
+                    .log();
                 final Integer triggerLatchDuration = deviceConfig.getTriggerLatchDuration();
                 if (triggerLatchDuration != null) {
                     if (triggerLatchHistory.triggeredWithin(deviceKey, triggerLatchDuration.intValue())) {
-                        final String logMessage = String.format("%s has been triggered already in the last %ss.", deviceDescription, triggerLatchDuration);
-                        if (deviceConfig.isDeviceEnabled()) {
-                            log.info(logMessage);
-                        } else {
-                            log.debug(logMessage);
-                        }
+                        final LoggingEventBuilder latchLog = deviceConfig.isDeviceEnabled() ? log.atInfo() : log.atDebug();
+                        latchLog.setMessage("Device has been triggered already within the latch duration")
+                            .addKeyValue("device_description", deviceDescription)
+                            .addKeyValue("trigger_latch_duration", triggerLatchDuration)
+                            .log();
                         return;
                     }
                 }
@@ -180,19 +211,22 @@ public class Event implements Runnable {
             final Integer multiTriggerInterval = deviceConfig.getMultiTriggerInterval();
             if (multiTriggerRate != null && multiTriggerInterval != null) {
                 if (!triggerMultiHistory.isMultiTriggered(deviceKey, multiTriggerRate, multiTriggerInterval)) {
-                    final String logMessage = String.format("%s has not yet triggered %s times within %ss.", deviceDescription, multiTriggerRate, multiTriggerInterval);
-                    if (deviceConfig.isDeviceEnabled()) {
-                        log.info(logMessage);
-                    } else {
-                        log.debug(logMessage);
-                    }
+                    final LoggingEventBuilder multiLog = deviceConfig.isDeviceEnabled() ? log.atInfo() : log.atDebug();
+                    multiLog.setMessage("Device has not yet triggered the required times within the interval")
+                        .addKeyValue("device_description", deviceDescription)
+                        .addKeyValue("multi_trigger_rate", multiTriggerRate)
+                        .addKeyValue("multi_trigger_interval", multiTriggerInterval)
+                        .log();
                     return;
                 }
             }
             // record trigger event
             triggerLatchHistory.triggered(deviceKey);
             if (!deviceConfig.isDeviceEnabled()) {
-                log.warn("{} is disabled but would otherwise trigger outputs because {}.", deviceDescription, device.getTriggerStateDescription());
+                log.atWarn().setMessage("Device is disabled but would otherwise trigger outputs")
+                    .addKeyValue("device_description", deviceDescription)
+                    .addKeyValue("trigger_state", device.getTriggerStateDescription())
+                    .log();
                 return;
             }
             final Long triggeredDuration = triggerLatchHistory.getTriggeredDuration(deviceKey);
@@ -204,18 +238,31 @@ public class Event implements Runnable {
             } else {
                 escalationDetail = String.format(" (triggered for %ss)", triggeredDuration);
             }
-            log.debug("{} will trigger outputs because {}{}.", deviceDescription, device.getTriggerStateDescription(), escalationDetail);
+            log.atDebug().setMessage("Device will trigger outputs")
+                .addKeyValue("device_description", deviceDescription)
+                .addKeyValue("trigger_state", device.getTriggerStateDescription())
+                .addKeyValue("escalation_detail", escalationDetail)
+                .log();
             List<OutputConfig> linkedOutputs = configProvider.getLinkedOutputs(deviceConfig);
-            log.debug("{} outputs {}", deviceDescription, linkedOutputs);
+            log.atDebug().setMessage("Linked outputs")
+                .addKeyValue("device_description", deviceDescription)
+                .addKeyValue("outputs", String.valueOf(linkedOutputs))
+                .log();
             if (linkedOutputs == null) {
-                log.warn("No output links found for active {}.", deviceDescription);
+                log.atWarn().setMessage("No output links found for active device")
+                    .addKeyValue("device_description", deviceDescription)
+                    .log();
                 return;
             }
             final List<String> outputNames = new ArrayList<>();
             linkedOutputs.forEach(output -> {
                 outputNames.add(output.getDeviceLabel());
             });
-            log.info("{} is linked to {} outputs: {}.", deviceDescription, linkedOutputs.size(), outputNames);
+            log.atInfo().setMessage("Device is linked to outputs")
+                .addKeyValue("device_description", deviceDescription)
+                .addKeyValue("output_count", linkedOutputs.size())
+                .addKeyValue("output_names", outputNames)
+                .log();
             final Channel rabbitMqChannel = connection.createChannel();
             rabbitMqChannel.exchangeDeclare(exchangeName, BuiltinExchangeType.DIRECT);
             final BasicProperties rabbitMqProperties = new AMQP.BasicProperties.Builder()
@@ -233,13 +280,19 @@ public class Event implements Runnable {
                         outputDeviceDescription = outputDeviceKey;
                     }
                     if (!outputConfig.isDeviceEnabled()) {
-                        log.warn("{} does not trigger output {} because output is not enabled.", deviceDescription, outputDeviceDescription);
+                        log.atWarn().setMessage("Device does not trigger output because output is not enabled")
+                            .addKeyValue("device_description", deviceDescription)
+                            .addKeyValue("output_device", outputDeviceDescription)
+                            .log();
                         return;
                     }
                     final Integer outputDeviceTriggerInterval = outputConfig.getTriggerInterval();
                     // trigger not at the rate of incoming messages
                     if (outputDeviceTriggerInterval != null && triggerOutputHistory.triggeredWithin(outputDeviceKey, outputDeviceTriggerInterval)) {
-                        log.warn(String.format("Output device %s has been triggered already in the last %ss.", outputDeviceDescription, outputDeviceTriggerInterval));
+                        log.atWarn().setMessage("Output device has been triggered already within the trigger interval")
+                            .addKeyValue("output_device", outputDeviceDescription)
+                            .addKeyValue("trigger_interval", outputDeviceTriggerInterval)
+                            .log();
                         return;
                     }
                     final ISpan sentrySpan = sentry.startChild("trigger", "output");
@@ -251,10 +304,6 @@ public class Event implements Runnable {
                         root.putPOJO("output_triggered", outputConfig);
                         final byte[] wireCommand = mapper.writeValueAsBytes(root);
                         final Matcher nameMatcher = namePattern.matcher(outputDeviceType.toLowerCase(Locale.ROOT));
-                        String deviceDetail = "";
-                        if (!outputDeviceType.equals(outputDeviceLabel)) {
-                            deviceDetail = String.format(" (%s)", outputDeviceType);
-                        }
                         String responseTopic = outputConfig.getTriggerTopic();
                         if (responseTopic == null) {
                             final String responseTopicSuffix = nameMatcher.replaceAll("_");
@@ -265,10 +314,21 @@ public class Event implements Runnable {
                                     outputDeviceType));
                             }
                             responseTopic = String.format("event.trigger.%s", responseTopicSuffix);
-                            log.warn("{} has no configured message topic. Using {}", deviceDescription, responseTopic);
+                            log.atWarn().setMessage("Device has no configured message topic; using derived topic")
+                                .addKeyValue("device_description", deviceDescription)
+                                .addKeyValue("topic", responseTopic)
+                                .log();
                         }
                         responseTopic = responseTopic.toLowerCase(Locale.ROOT);
-                        log.info("{} ({}) triggers {}{} on exchange {} with routing {} ({} bytes on the wire).", deviceDescription, source, outputDeviceLabel, deviceDetail, exchangeName, responseTopic, wireCommand.length);
+                        log.atInfo().setMessage("Input triggers output")
+                            .addKeyValue("input_device", deviceDescription)
+                            .addKeyValue("source", source)
+                            .addKeyValue("output_device", outputDeviceLabel)
+                            .addKeyValue("output_type", outputDeviceType)
+                            .addKeyValue("exchange", exchangeName)
+                            .addKeyValue("routing_key", responseTopic)
+                            .addKeyValue("payload_bytes", wireCommand.length)
+                            .log();
                         rabbitMqChannel.basicPublish(exchangeName, responseTopic, rabbitMqProperties, wireCommand);
                         // record the trigger event
                         triggerOutputHistory.triggered(outputDeviceKey);
@@ -283,7 +343,10 @@ public class Event implements Runnable {
                         });
                         sentrySpan.setStatus(SpanStatus.OK);
                     } catch (Exception e) {
-                        log.warn("{}: {}", source, e.getMessage());
+                        log.atWarn().setMessage("Output trigger failure")
+                            .addKeyValue("source", source)
+                            .addKeyValue("error", e.getMessage())
+                            .log();
                         sentrySpan.setThrowable(e);
                         sentrySpan.setStatus(SpanStatus.INTERNAL_ERROR);
                     } finally {
@@ -298,7 +361,10 @@ public class Event implements Runnable {
             if (activationEscalation != null) {
                 if (triggerLatchHistory.isTriggeredFor(deviceKey, activationEscalation)) {
                     if (!recentEscalations.containsKey(deviceKey)) {
-                        log.warn("{} has been triggered for > {}s, requires escalation.", deviceDescription, activationEscalation);
+                        log.atWarn().setMessage("Device has been triggered beyond escalation threshold, requires escalation")
+                            .addKeyValue("device_description", deviceDescription)
+                            .addKeyValue("activation_escalation", activationEscalation)
+                            .log();
                         final String appName = EventProcessor.getAppName();
                         final String dupeKey = appName+"-"+deviceKey;
                         if (EventProcessor.isFeatureEnabled(EventProcessor.FEATURE_FLAG_PAGER_DUTY_TICKETS)) {
@@ -313,7 +379,12 @@ public class Event implements Runnable {
                                 .setDedupKey(dupeKey)
                                 .build();
                             final EventResult result = EventProcessor.getPagerDuty().trigger(incident);
-                            log.info("Updated PagerDuty with result {} - {}: {} ({})", result.getDedupKey(), result.getStatus(), result.getMessage(), result.getErrors());
+                            log.atInfo().setMessage("Updated PagerDuty")
+                                .addKeyValue("pagerduty_dedup_key", result.getDedupKey())
+                                .addKeyValue("pagerduty_status", result.getStatus())
+                                .addKeyValue("pagerduty_message", result.getMessage())
+                                .addKeyValue("pagerduty_errors", result.getErrors())
+                                .log();
                         }
                         recentEscalations.put(deviceKey, dupeKey);
                     }
@@ -321,12 +392,15 @@ public class Event implements Runnable {
             }
         } catch (IllegalStateException | UnsupportedOperationException | IOException e) {
             // logged only with message
-            log.warn("{}: {}", source, e.getMessage());
+            log.atWarn().setMessage("Event processing issue")
+                .addKeyValue("source", source)
+                .addKeyValue("error", e.getMessage())
+                .log();
             metrics.postMetric("error", Map.of(
                 "class", this.getClass().getSimpleName(),
                 "exception", e.getClass().getSimpleName()));
         } catch (Throwable e) {
-            log.error("{} event issue.", source, e);
+            log.atError().setMessage("Event issue").addKeyValue("source", source).setCause(e).log();
             metrics.postMetric("error", Map.of(
                 "class", this.getClass().getSimpleName(),
                 "exception", e.getClass().getSimpleName()));

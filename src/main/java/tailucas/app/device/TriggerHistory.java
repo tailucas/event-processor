@@ -43,7 +43,10 @@ public class TriggerHistory {
         if (history.size() >= maxTriggerHistory) {
             // remove from the head of the list
             final var oldest = history.removeFirst();
-            log.debug("{} oldest event trimmed: {}", deviceKey, oldest);
+            log.atDebug().setMessage("Oldest event trimmed")
+                .addKeyValue("device_key", deviceKey)
+                .addKeyValue("oldest", oldest)
+                .log();
         }
         history.push(Instant.now());
         triggeredSince.computeIfAbsent(deviceKey, s -> Instant.now());
@@ -67,7 +70,11 @@ public class TriggerHistory {
         if (interval == null) {
             return false;
         }
-        log.debug("{} has been triggered for {}s (comparing against {}s)", deviceKey, interval, seconds);
+        log.atDebug().setMessage("Device has been triggered for an interval")
+            .addKeyValue("device_key", deviceKey)
+            .addKeyValue("interval_seconds", interval)
+            .addKeyValue("compare_seconds", seconds)
+            .log();
         if (interval >= seconds) {
             return true;
         }
@@ -83,7 +90,7 @@ public class TriggerHistory {
             throw new IllegalArgumentException(String.format("Invalid inputs for times %s and seconds %s.", times, seconds));
         }
         if (!triggerHistory.containsKey(deviceKey)) {
-            log.debug("{} has no trigger history.", deviceKey);
+            log.atDebug().setMessage("Device has no trigger history").addKeyValue("device_key", deviceKey).log();
             return false;
         }
         var history = triggerHistory.get(deviceKey);
@@ -93,25 +100,53 @@ public class TriggerHistory {
         // selects the most recent event
         final int desiredIndex = (historyLenth-1)-(times-1);
         if (desiredIndex < 0) {
-            log.debug("{} has triggered {} times, fewer than {}.", deviceKey, historyLenth, times);
+            log.atDebug().setMessage("Device has triggered fewer times than required")
+                .addKeyValue("device_key", deviceKey)
+                .addKeyValue("history_length", historyLenth)
+                .addKeyValue("times", times)
+                .log();
             return false;
         }
-        log.debug("{} first event {}, last {}", deviceKey, history.firstElement(), history.lastElement());
+        log.atDebug().setMessage("Trigger history bounds")
+            .addKeyValue("device_key", deviceKey)
+            .addKeyValue("first_event", history.firstElement())
+            .addKeyValue("last_event", history.lastElement())
+            .log();
         Instant moment = null;
         try {
             moment = history.get(desiredIndex);
         } catch (ArrayIndexOutOfBoundsException e) {
-            log.debug("{} history index {} (times is {}) invalid relative to history length {}.", deviceKey, desiredIndex, times, historyLenth);
+            log.atDebug().setMessage("History index invalid relative to history length")
+                .addKeyValue("device_key", deviceKey)
+                .addKeyValue("history_index", desiredIndex)
+                .addKeyValue("times", times)
+                .addKeyValue("history_length", historyLenth)
+                .log();
             return false;
         }
         final Instant now = Instant.now();
         final long interval = Duration.between(moment, now).toSeconds();
-        log.debug("{} comparing moment {} with now {} against history ({} items)", deviceKey, moment, now, history.size());
+        log.atDebug().setMessage("Comparing trigger moment against history")
+            .addKeyValue("device_key", deviceKey)
+            .addKeyValue("moment", moment)
+            .addKeyValue("now", now)
+            .addKeyValue("history_items", history.size())
+            .log();
         if (interval >= seconds) {
-            log.debug("{} has triggered {} times over a {}s interval in at least {}s.", deviceKey, times, interval, seconds);
+            log.atDebug().setMessage("Device triggers fall outside the required interval")
+                .addKeyValue("device_key", deviceKey)
+                .addKeyValue("times", times)
+                .addKeyValue("interval_seconds", interval)
+                .addKeyValue("compare_seconds", seconds)
+                .log();
             return false;
         } else {
-            log.debug("{} has triggered {} times over a {}s interval in under {}s.", deviceKey, times, interval, seconds);
+            log.atDebug().setMessage("Device triggers fall within the required interval")
+                .addKeyValue("device_key", deviceKey)
+                .addKeyValue("times", times)
+                .addKeyValue("interval_seconds", interval)
+                .addKeyValue("compare_seconds", seconds)
+                .log();
         }
         return true;
     }

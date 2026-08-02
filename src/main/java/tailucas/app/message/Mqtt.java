@@ -60,43 +60,57 @@ public class Mqtt implements MqttCallback {
         final byte[] payload = message.getPayload();
         try {
             if (payload.length == 0) {
-                log.warn("{} ignored with no payload.", topic);
+                log.atWarn().setMessage("Message ignored, no payload").addKeyValue("topic", topic).log();
                 return;
             } else if (payload.length == 2 && new String(payload).equals("OK")) {
                 // catch heartbeat messages for topic matching
                 srv.execute(new Event(rabbitMqConnection, topic, new String(payload)));
             } else if (topic.startsWith("inverter/")) {
-                log.debug("{} not yet supported.", topic);
+                log.atDebug().setMessage("Topic not yet supported").addKeyValue("topic", topic).log();
             } else if (topic.equals("homeassistant/status")) {
-                log.debug("{} not supported.", topic);
+                log.atDebug().setMessage("Topic not supported").addKeyValue("topic", topic).log();
             } else if (topic.startsWith("homeassistant/")) {
                 if (payload[0] == '{') {
                     try {
                         HAConfig haConfig = mapper.readerFor(new HATypeRef()).readValue(payload);
-                        log.debug("HA config is: {}", haConfig);
+                        log.atDebug().setMessage("HA config").addKeyValue("ha_config", String.valueOf(haConfig)).log();
                         DeviceConfig.getInstance().putHaConfig(haConfig);
                     } catch (Throwable e) {
-                        log.warn("{} JSON issue with {} ({})", topic, new String(payload), e.getMessage());
+                        log.atWarn().setMessage("JSON issue")
+                            .addKeyValue("topic", topic)
+                            .addKeyValue("payload", new String(payload))
+                            .addKeyValue("error", e.getMessage())
+                            .log();
                     }
                 } else {
-                    log.warn("{} unassigned payload: {}", topic, new String(payload));
+                    log.atWarn().setMessage("Unassigned payload")
+                        .addKeyValue("topic", topic)
+                        .addKeyValue("payload", new String(payload))
+                        .log();
                 }
             } else if (topic.startsWith("ring/")) {
                 Ring ringDevice = null;
-                log.debug("{}: {}", topic, new String(payload));
+                log.atDebug().setMessage("Ring payload")
+                    .addKeyValue("topic", topic)
+                    .addKeyValue("payload", new String(payload))
+                    .log();
                 if (payload[0] == '{') {
                     try {
                         ringDevice = mapper.readerFor(new RingTypeRef()).readValue(payload);
                         ringDevice.setMqttTopic(topic);
                     } catch (Throwable e) {
-                        log.warn("{} JSON issue with {} ({})", topic, new String(payload), e.getMessage());
+                        log.atWarn().setMessage("JSON issue")
+                            .addKeyValue("topic", topic)
+                            .addKeyValue("payload", new String(payload))
+                            .addKeyValue("error", e.getMessage())
+                            .log();
                     }
                 } else {
                     ringDevice = new Ring();
                     ringDevice.setMqttTopic(topic, new String(payload));
                 }
                 if (ringDevice != null) {
-                    log.debug("Ring state is: {}", ringDevice);
+                    log.atDebug().setMessage("Ring state").addKeyValue("ring_state", String.valueOf(ringDevice)).log();
                     srv.execute(new Event(rabbitMqConnection, topic, ringDevice));
                 }
             } else if (topic.startsWith("meter/") || topic.startsWith("sensor/")) {
@@ -104,7 +118,7 @@ public class Mqtt implements MqttCallback {
                 JsonNode root = mapper.readTree(payload);
                 final String[] topicParts = topic.split("/", 3);
                 if (topicParts.length < 2) {
-                    log.error("{} not handled.", topic);
+                    log.atError().setMessage("Topic not handled").addKeyValue("topic", topic).log();
                     return;
                 }
                 final String deviceTypeString = StringUtils.capitalize(topicParts[0]);
@@ -112,7 +126,7 @@ public class Mqtt implements MqttCallback {
                 try {
                     deviceType = Type.valueOf(deviceTypeString.toUpperCase(Locale.ROOT));
                 } catch (IllegalArgumentException e) {
-                    log.warn("{} unknown device type.", topic);
+                    log.atWarn().setMessage("Unknown device type").addKeyValue("topic", topic).log();
                     return;
                 }
                 try {
@@ -127,10 +141,14 @@ public class Mqtt implements MqttCallback {
                                 try {
                                     final Sensor sensor = mapper.treeToValue(node, Sensor.class);
                                     sensor.updateFrom(common);
-                                    log.debug("Sensor state is: {}", sensor);
+                                    log.atDebug().setMessage("Sensor state").addKeyValue("sensor_state", String.valueOf(sensor)).log();
                                     srv.execute(new Event(rabbitMqConnection, topic, sensor));
                                 } catch (JsonProcessingException e) {
-                                    log.error("{} deserialization failure of field {} ({})", topic, fieldName, e.getMessage());
+                                    log.atError().setMessage("Deserialization failure")
+                                        .addKeyValue("topic", topic)
+                                        .addKeyValue("field_name", fieldName)
+                                        .addKeyValue("error", e.getMessage())
+                                        .log();
                                     return;
                                 }
                             }
@@ -138,31 +156,39 @@ public class Mqtt implements MqttCallback {
                     } else if (deviceType.equals(Type.METER)) {
                         final Meter meter = mapper.treeToValue(root, Meter.class);
                         meter.setLocation(location);
-                        log.debug("Meter state is: {}", meter);
+                        log.atDebug().setMessage("Meter state").addKeyValue("meter_state", String.valueOf(meter)).log();
                         srv.execute(new Event(rabbitMqConnection, topic, meter));
                     } else {
-                        log.warn("{} unknown inferred device type.", topic);
+                        log.atWarn().setMessage("Unknown inferred device type").addKeyValue("topic", topic).log();
                         return;
                     }
                 } catch (JsonParseException e) {
-                    log.warn("{} during processing of payload, unsupported JSON: {} ({})", topic, new String(payload), e.getMessage());
+                    log.atWarn().setMessage("Unsupported JSON during payload processing")
+                        .addKeyValue("topic", topic)
+                        .addKeyValue("payload", new String(payload))
+                        .addKeyValue("error", e.getMessage())
+                        .log();
                     return;
                 }
             } else {
-                log.warn("{} ignored.", topic);
+                log.atWarn().setMessage("Topic ignored").addKeyValue("topic", topic).log();
             }
         } catch (Exception e) {
             metrics.postMetric("error", Map.of(
                 "class", this.getClass().getSimpleName(),
                 "exception", e.getClass().getSimpleName()));
-            log.error("{} event issue ({} bytes) ({})", topic, payload.length, e.getMessage());
+            log.atError().setMessage("Event issue")
+                .addKeyValue("topic", topic)
+                .addKeyValue("payload_bytes", payload.length)
+                .setCause(e)
+                .log();
             Sentry.captureException(e);
         }
     }
 
     @Override
     public void connectionLost(Throwable cause) {
-        log.error("MQTT error", cause);
+        log.atError().setMessage("MQTT error").setCause(cause).log();
         EventProcessor.addExitCode(EventProcessor.EXIT_CODE_MQTT);
         System.exit(SpringApplication.exit(springApp));
     }

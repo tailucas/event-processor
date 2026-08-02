@@ -47,10 +47,13 @@ public class RabbitMq implements DeliverCallback {
         final byte[] msgBody = message.getBody();
         try {
             final State deviceUpdate = mapper.readerFor(new StateTypeRef()).readValue(msgBody);
-            log.debug("{}: RabbitMQ device state update: {}", source, deviceUpdate);
+            log.atDebug().setMessage("RabbitMQ device state update")
+                .addKeyValue("source", source)
+                .addKeyValue("device_update", String.valueOf(deviceUpdate))
+                .log();
             final List<Device> inputs = deviceUpdate.getInputs();
             if (inputs == null) {
-                log.warn("{}: no inputs provide in device update.", source);
+                log.atWarn().setMessage("No inputs provided in device update").addKeyValue("source", source).log();
                 return;
             }
             inputs.forEach(device -> {
@@ -60,7 +63,11 @@ public class RabbitMq implements DeliverCallback {
             metrics.postMetric("error", Map.of(
                 "class", this.getClass().getSimpleName(),
                 "exception", e.getClass().getSimpleName()));
-            log.error("{} event issue ({} bytes) ({})", source, msgBody.length, e.getMessage());
+            log.atError().setMessage("Event issue")
+                .addKeyValue("source", source)
+                .addKeyValue("payload_bytes", msgBody.length)
+                .setCause(e)
+                .log();
             Sentry.captureException(e);
         }
     }

@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.Answers;
 import org.slf4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -21,7 +22,8 @@ class EventHandlerTest {
     @Autowired
     private MockMvc mvc;
 
-    @MockitoBean
+    // deep stubs allow the SLF4J fluent API chain (atDebug().setMessage()...) on the mock
+    @MockitoBean(answers = Answers.RETURNS_DEEP_STUBS)
     private Logger log;
 
     @MockitoBean

@@ -141,9 +141,9 @@ from fastapi.responses import JSONResponse  # noqa: E402
 
 @api_app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    log.error(f"Validation error for {request.url}: {exc.errors()}")
-    log.error(f"Request headers: {request.headers!s}")
-    log.error(f"Request body: {await request.body()!r}")
+    log.error("Request validation failed", extra={"url": str(request.url), "errors": exc.errors()})
+    log.error("Request headers", extra={"headers": str(request.headers)})
+    log.error("Request body", extra={"body": repr(await request.body())})
     return JSONResponse(
         status_code=422,
         content={"detail": exc.errors()},
@@ -477,7 +477,10 @@ class InputConfigCollection:
 
 def update_meter_config(input_device_key, meter_config, register_value, meter_value=None):
     if register_value < 0:
-        log.debug(f"Resetting negative {input_device_key} meter register value {register_value} to 0.")
+        log.debug(
+            "Resetting negative meter register value to 0",
+            extra={"device_key": input_device_key, "register_value": register_value},
+        )
         register_value = 0
     meter_reading_unit = " " + meter_config.meter_reading_unit
     if meter_config.meter_reading_unit_factor is None:
@@ -564,20 +567,22 @@ def authz_required(action, resource):
                 log.warning("Login disabled. Skipping authorization check.")
                 return func(*args, **kwargs)
             user_details = "Unauthenticated user"
+            user_fields = {"user_name": None, "user_key": None}
             flash_alert = "danger"
+            permission_details = f"{action} {resource}"
             if current_user.is_authenticated:
                 user_details = f"User {current_user.name} ({current_user.key})"
-                log.debug(f"{user_details} is authenticated.")
+                user_fields = {"user_name": current_user.name, "user_key": current_user.key}
+                log.debug("User is authenticated", extra=user_fields)
                 # FIXME: use permit.io or other AuthN/Z here
                 permitted = True
-                permission_details = f"{action} {resource}"
                 if permitted:
-                    log.debug(f"{user_details} is authorized to {permission_details}.")
+                    log.debug("User is authorized", extra={**user_fields, "action": action, "resource": resource})
                     return func(*args, **kwargs)
                 else:
                     flash_alert = "warning"
             user_message = f"{user_details} is not authorized to {permission_details}."
-            log.debug(user_message)
+            log.debug("User is not authorized", extra={**user_fields, "action": action, "resource": resource})
             flash(message=user_message, category=flash_alert)
             return redirect(url_for("index"))
 
@@ -600,23 +605,24 @@ def logout():
 
 @flask_app.route("/login", methods=["POST"])
 def login_post():
+    email = None
     try:
         email = request.form["user_email"]
         password = request.form.get("user_password")
         remember = bool(request.form.get("remember_user"))
-        log.info(f"Login request for user {email}...")
+        log.info("Login request received", extra={"user_email": email})
         if email == creds.get_creds("Users/user/email") and password == creds.get_creds("Users/user/creds"):
             # FIXME: actually support multiple users
             u = SessionUser(id=email, key=creds.get_creds("Users/user/key"), name=email)
             active_users[u.id] = u
             login_user(user=u, remember=remember)
             log_message = f"Login successful for {email}."
-            log.info(log_message)
+            log.info("Login successful", extra={"user_email": email})
             flash(message=log_message, category="success")
             return redirect(url_for("index"))
     except Exception:
         log.exception("Login failure.")
-    log.info(f"Login failed for {email}.")
+    log.info("Login failed", extra={"user_email": email})
     flash(message="Access Denied.", category="danger")
     return redirect(url_for("login"))
 
@@ -625,9 +631,9 @@ def login_post():
 def load_user(user_id):
     if user_id in active_users:
         active_user: SessionUser = active_users[user_id]
-        log.info(f"User {active_user.name} is an active user.")
+        log.info("User is an active user", extra={"user_name": active_user.name, "user_id": user_id})
         return active_user
-    log.info(f"User {user_id} is not an active user.")
+    log.info("User is not an active user", extra={"user_id": user_id})
     return None
 
 
@@ -644,9 +650,9 @@ def debug():
 
 @flask_app.errorhandler(500)
 def internal_server_error(e):
-    log.error(f"{e!s}")
+    log.error("Internal server error", exc_info=e)
     last_event_id = capture_exception(error=e)
-    log.debug(f"Sentry captured event ID is {last_event_id}.")
+    log.debug("Sentry captured event", extra={"sentry_event_id": last_event_id})
     return render_template("error.html", sentry_event_id=last_event_id, sentry_dsn=sentry_dsn), 500
 
 
@@ -703,7 +709,7 @@ def index():
             )
             # send IoT message
             # FIXME
-            log.warning(f"No handler to send IOT message: {iot_message}")
+            log.warning("No handler to send IOT message", extra={"iot_message": iot_message})
         elif "device_key" in request.form:
             device_key = request.form["device_key"]
             input_cfg = inputs.input_config[device_key]
@@ -721,16 +727,20 @@ def index():
                 input_cfgs.extend(unwrapped_inputs)
             # toggle all real inputs
             for input_cfg in input_cfgs:
-                state = "enabled"
-                if not input_cfg.device_enabled:
-                    state = "disabled"
-                log.info(f"{input_cfg.device_key} (group {input_cfg.group_name}) is now {state}.")
+                log.info(
+                    "Input device state changed",
+                    extra={
+                        "device_key": input_cfg.device_key,
+                        "group_name": input_cfg.group_name,
+                        "enabled": input_cfg.device_enabled,
+                    },
+                )
                 db.session.add(input_cfg)
             db.session.commit()
             for input_cfg in input_cfgs:
                 invalidate_remote_config(device_key=input_cfg.device_key)
         else:
-            log.error(f"No action associated with this request: {request.form}")
+            log.error("No action associated with this request", extra={"form": dict(request.form)})
     meters = dict()
     meter_configs = MeterConfig.query.all()
     for meter_config in meter_configs:
@@ -781,7 +791,13 @@ def show_config():
             auto_schedule_enable = request.form["auto_schedule_enable"]
             auto_schedule_disable = request.form["auto_schedule_disable"]
             log.info(
-                f"Saving auto-schedule configuration for {saved_device_id} (enabled? {auto_schedule_enabled} enable at {auto_schedule_enable}, disable at {auto_schedule_disable})"  # noqa: E501
+                "Saving auto-schedule configuration",
+                extra={
+                    "device_key": saved_device_id,
+                    "auto_schedule": auto_schedule_enabled,
+                    "enable_at": auto_schedule_enable,
+                    "disable_at": auto_schedule_disable,
+                },
             )
             device_config.auto_schedule = auto_schedule_enabled
             device_config.auto_schedule_enable = auto_schedule_enable
@@ -829,7 +845,7 @@ def show_config():
 
 @api_app.get("/api/input_configs")
 async def api_input_configs(device_key: str, adb: AsyncSession = Depends(get_db)):
-    log.debug(f"Async get input config for {device_key}")
+    log.debug("Async get input config", extra={"device_key": device_key})
     result = await adb.execute(select(InputConfig).where(InputConfig.device_key == device_key))
     config = result.scalars().one_or_none()
     if config:
@@ -1165,11 +1181,16 @@ async def telegram_bot_echo(update: Update, context: TelegramContextTypes.DEFAUL
     try:
         authorized_users = app_config.get("telegram", "authorized_users").split(",")
         if str(update.effective_user.id) not in authorized_users:
-            log.warning(f"Unauthorized message {update!s}")
+            log.warning("Unauthorized message", extra={"update": str(update)})
             return
 
         log.info(
-            f"Telegram Bot {context.bot.username} got message {update.effective_message.text} (chat ID: {update.effective_message.chat_id})."  # noqa: E501
+            "Telegram bot message received",
+            extra={
+                "bot_username": context.bot.username,
+                "message_text": update.effective_message.text,
+                "chat_id": update.effective_message.chat_id,
+            },
         )
 
         group_info = await context.bot.get_chat(chat_id=app_config.getint("telegram", "chat_room_id"))
@@ -1186,11 +1207,17 @@ async def telegram_bot_cmd(update: Update, context: TelegramContextTypes.DEFAULT
     try:
         authorized_users = app_config.get("telegram", "authorized_users").split(",")
         if str(update.effective_user.id) not in authorized_users:
-            log.warning(f"Unauthorized message {update!s}")
+            log.warning("Unauthorized message", extra={"update": str(update)})
             return
 
         log.info(
-            f"Telegram Bot {context.bot.username} got command {update.effective_message.text} with args {context.args!s} (chat ID: {update.effective_message.chat_id})."  # noqa: E501
+            "Telegram bot command received",
+            extra={
+                "bot_username": context.bot.username,
+                "command_text": update.effective_message.text,
+                "command_args": context.args,
+                "chat_id": update.effective_message.chat_id,
+            },
         )
         # status update
         if update.effective_message.text.startswith("/"):
@@ -1214,11 +1241,20 @@ def invalidate_remote_config(device_key):
     try:
         response = requests.post(url=f"{api_server}/{api_method}", params={"device_key": device_key})
         log.debug(
-            f"{response.status_code} response from {api_method} API call to {api_server} to invalidate configuration for {device_key}: {response!s}"  # noqa: E501
+            "Remote config invalidation response",
+            extra={
+                "status_code": response.status_code,
+                "api_method": api_method,
+                "api_server": api_server,
+                "device_key": device_key,
+                "response": str(response),
+            },
         )
     except ConnectionError as e:
         log.warning(
-            f"Unable to call {api_method} API at {api_server} to invalidate configuration for {device_key}: {e!s}"
+            "Unable to invalidate remote configuration",
+            extra={"api_method": api_method, "api_server": api_server, "device_key": device_key},
+            exc_info=e,
         )
 
 
@@ -1278,7 +1314,14 @@ class EventProcessor(AppThread):
         if device_key not in device_origin:
             device_origin[device_key] = event_origin
         elif device_origin[device_key] != event_origin:
-            log.warning(f"{device_key} already known from {device_origin[device_key]} but also sent by {event_origin}.")
+            log.warning(
+                "Device already known from another origin",
+                extra={
+                    "device_key": device_key,
+                    "known_origin": device_origin[device_key],
+                    "event_origin": event_origin,
+                },
+            )
         if device_key not in input_outputs:
             input_outputs[device_key] = device
         return device_key
@@ -1367,34 +1410,41 @@ class EventProcessor(AppThread):
                 if "sms" in event:
                     sms_message = event["sms"]
                     if is_flag_enabled("telegram-bot"):
-                        log.debug(f"Sending payload to bot {event.keys()!s}...")
+                        log.debug("Sending payload to bot", extra={"event_keys": list(event.keys())})
                         self.bot.send_pyobj(sms_message)
                         log.debug("Sent payload to bot...")
                     else:
                         log.warning(
-                            f"Not sending message to Telegram bot disabled with feature flag: {len(sms_message)}."
+                            "Not sending message to Telegram bot, disabled with feature flag",
+                            extra={"sms_part_count": len(sms_message)},
                         )
                     continue
                 for event_origin, event_data in list(event.items()):
                     if not isinstance(event_data, dict):
                         log.warning(
-                            f"Ignoring non-dict event format from {event_origin}: {event_data.__class__} ({event_data})"
+                            "Ignoring non-dict event format",
+                            extra={
+                                "event_origin": event_origin,
+                                "event_class": str(event_data.__class__),
+                                "event_data": str(event_data),
+                            },
                         )
                         continue
                     if "timestamp" in event_data:
                         str_timestamp = event_data["timestamp"]
-                        log.debug(f"{event_origin} timestamp is {str_timestamp}")
+                        log.debug(
+                            "Event timestamp",
+                            extra={"event_origin": event_origin, "event_timestamp": str_timestamp},
+                        )
                         timestamp = make_timestamp(str_timestamp)
                     else:
                         timestamp = make_timestamp()
-                        log_msg = (
-                            f"Message from {event_origin} does not include a 'timestamp' so it can't be filtered if it "
-                            f"is stale. Using {make_iso_timestamp(timestamp)}."
-                        )
+                        log_msg = "Message has no 'timestamp' so it can't be filtered if stale; using current time"
+                        log_fields = {"event_origin": event_origin, "timestamp_used": make_iso_timestamp(timestamp)}
                         if "active_devices" in event_data or "outputs_triggered" in event_data:
-                            log.warning(log_msg)
+                            log.warning(log_msg, extra=log_fields)
                         else:
-                            log.debug(log_msg)
+                            log.debug(log_msg, extra=log_fields)
                     if event_origin == "device_info_input":
                         self._update_device(
                             input_outputs=self.inputs,
@@ -1406,7 +1456,10 @@ class EventProcessor(AppThread):
                         di: DeviceInfo = DeviceInfo.model_validate(event_data)
                         ic = InputConfig.query.filter_by(device_key=di.device_key).first()
                         if ic is None:
-                            log.info(f"Adding new input configuration for {di.device_key} ({di.device_label})")
+                            log.info(
+                                "Adding new input configuration",
+                                extra={"device_key": di.device_key, "device_label": di.device_label},
+                            )
                             db.session.add(
                                 InputConfig(
                                     device_key=di.device_key,
@@ -1437,7 +1490,10 @@ class EventProcessor(AppThread):
                         di: DeviceInfo = DeviceInfo.model_validate(event_data)
                         oc = OutputConfig.query.filter_by(device_key=di.device_key).first()
                         if oc is None:
-                            log.info(f"Adding new output configuration for {di.device_key} ({di.device_label})")
+                            log.info(
+                                "Adding new output configuration",
+                                extra={"device_key": di.device_key, "device_label": di.device_label},
+                            )
                             db.session.add(
                                 OutputConfig(
                                     device_key=di.device_key,
@@ -1457,7 +1513,10 @@ class EventProcessor(AppThread):
                         device_key = event_data["device_key"]
                         device_label = event_data["device_label"]
                         device_enable = event_data["device_state"]
-                        log.info(f"Auto-scheduler updating device {device_label}; enable: {device_enable}")
+                        log.info(
+                            "Auto-scheduler updating device",
+                            extra={"device_label": device_label, "enabled": device_enable},
+                        )
                         device_config = InputConfig.query.filter_by(device_key=device_key).first()
                         if device_config is None:
                             device_config = OutputConfig.query.filter_by(device_key=device_key).first()
@@ -1468,7 +1527,7 @@ class EventProcessor(AppThread):
                         # skip further processing because of enable/disable
                         continue
                     elif event_origin == "bot":
-                        log.debug(f"Got bot command: {event_data!s}")
+                        log.debug("Bot command received", extra={"event_data": str(event_data)})
                         bot_command = event_data["command"].split()
                         bot_command_base = bot_command[0]
                         bot_command_args = None
@@ -1518,7 +1577,14 @@ class EventProcessor(AppThread):
                                         .all()
                                     )
                                 # collect all configurations matched
-                                log.debug(f'{state.title()} {len(device_config)} devices matching "{bot_command_arg}".')
+                                log.debug(
+                                    "Devices matched",
+                                    extra={
+                                        "match_count": len(device_config),
+                                        "search_term": bot_command_arg,
+                                        "state": state,
+                                    },
+                                )
                                 if device_config:
                                     device_configs.extend(device_config)
                         else:
@@ -1530,11 +1596,17 @@ class EventProcessor(AppThread):
                                     .order_by(InputConfig.device_key)
                                     .all()
                                 )
-                                log.debug(f"{state.title()} {len(device_config)} devices with auto-schedule not null.")
+                                log.debug(
+                                    "Devices with auto-schedule not null",
+                                    extra={"device_count": len(device_config), "state": state},
+                                )
                             elif output_enable is not None:
                                 device_config = OutputConfig.query.order_by(OutputConfig.device_key).all()
                             if len(device_config) > 0:
-                                log.debug(f"{state.title()} {len(device_config)} devices...")
+                                log.debug(
+                                    "Devices selected",
+                                    extra={"device_count": len(device_config), "state": state},
+                                )
                                 device_configs.extend(device_config)
                         # process all collected inputs
                         devices_updated = []
@@ -1545,10 +1617,14 @@ class EventProcessor(AppThread):
                             for dc in device_configs:
                                 if dc.device_enabled != device_enable:
                                     devices_updated.append(dc.device_key)
-                                    if input_enable is not None:
-                                        log.debug(f"{state.title()} {dc.device_key} (group {dc.group_name})")
-                                    else:
-                                        log.debug(f"{state.title()} {dc.device_key}")
+                                    log.debug(
+                                        "Updating device state",
+                                        extra={
+                                            "device_key": dc.device_key,
+                                            "group_name": dc.group_name,
+                                            "state": state,
+                                        },
+                                    )
                                     dc.device_enabled = device_enable
                                     # update the database
                                     db.session.add(dc)
@@ -1587,13 +1663,17 @@ class EventProcessor(AppThread):
                                     invalidate_remote_config(device_key=device_key)
                             bot_reply = f"{len(devices_updated)} devices changed to {state}."
                         else:
-                            log.warning(f"No devices matched to {state}.")
-                        log.debug(bot_reply)
+                            log.warning("No devices matched", extra={"state": state})
+                        log.debug(
+                            "Bot command result",
+                            extra={"devices_updated": len(devices_updated), "state": state},
+                        )
                         if is_flag_enabled("telegram-bot"):
                             self.bot.send_pyobj(BotMessage(device_label="notification", message=bot_reply).model_dump())
                         else:
                             log.warning(
-                                f"Not sending message to Telegram bot disabled with feature flag: {len(bot_reply)}."
+                                "Not sending message to Telegram bot, disabled with feature flag",
+                                extra={"reply_length": len(bot_reply)},
                             )
                         # stop processing
                         if not bot_command_base.startswith("/report"):
@@ -1645,7 +1725,7 @@ class TBot(AppThread, Closable):
         poller = Poller()
         poller.register(zmq_socket, zmq.POLLIN)
         pending_by_label = OrderedDict()
-        log.debug(f"Waiting for events to forward to Telegram bot on chat ID {chat_id}...")
+        log.debug("Waiting for events to forward to Telegram bot", extra={"chat_id": chat_id})
         call_again_timestamp = 0
         min_send_interval = app_config.getint("telegram", "min_send_interval")
         last_sent = 0
@@ -1668,14 +1748,14 @@ class TBot(AppThread, Closable):
                     try:
                         if "active_input" in event:
                             input_device = Device(**event["active_input"])
-                            log.debug(f"Input device for message: {input_device!s}")
+                            log.debug("Input device for message", extra={"input_device": str(input_device)})
                         elif "output_triggered" in event:
                             output_device = Device(**event["output_triggered"])
-                            log.debug(f"Output device for message: {output_device!s}")
+                            log.debug("Output device for message", extra={"output_device": str(output_device)})
                         else:
                             message = BotMessage(**event)
                     except Exception:
-                        log.warning("Bot message unpack problem {e!s}", exc_info=True)
+                        log.warning("Bot message unpack problem", exc_info=True)
                         continue
                     timestamp = None
                     if "timestamp" in event:
@@ -1683,7 +1763,14 @@ class TBot(AppThread, Closable):
                     else:
                         log.warning('No timestamp included in event message; using "now"')
                         timestamp = make_timestamp(as_tz=user_tz)
-                    log.debug(f"{input_device!s};{output_device!s};{timestamp!s}")
+                    log.debug(
+                        "Message context",
+                        extra={
+                            "input_device": str(input_device),
+                            "output_device": str(output_device),
+                            "message_timestamp": str(timestamp),
+                        },
+                    )
                     # build the message
                     if message is None and input_device is not None:
                         message = TBot.build_device_message(timestamp=timestamp, input_device=input_device)
@@ -1695,20 +1782,34 @@ class TBot(AppThread, Closable):
                         queued = deque()
                         pending_by_label[message.device_label] = queued
                     log.debug(
-                        f"Queueing message about {message.device_label} ({message.timestamp}) ({len(queued)} devices queued)..."  # noqa: E501
+                        "Queueing message",
+                        extra={
+                            "device_label": message.device_label,
+                            "message_timestamp": message.timestamp,
+                            "queued_count": len(queued),
+                        },
                     )
                     queued.append(message)
                 # rate-limit the send
                 # https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this
                 if now < call_again_timestamp:
                     log.debug(
-                        f"Enforced rate limiting message queue (of {len(pending_by_label)} devices). Telegram asked for {call_again_timestamp - now}s backoff."  # noqa: E501
+                        "Enforced rate limiting of message queue",
+                        extra={
+                            "device_count": len(pending_by_label),
+                            "backoff_seconds": call_again_timestamp - now,
+                        },
                     )
                     continue
                 time_since_sent = now - last_sent
                 if time_since_sent < min_send_interval:
                     log.debug(
-                        f"Elective rate limiting message queue (of {len(pending_by_label)} devices). Time since last send is {time_since_sent}s, min interval is {min_send_interval}s."  # noqa: E501
+                        "Elective rate limiting of message queue",
+                        extra={
+                            "device_count": len(pending_by_label),
+                            "time_since_sent_seconds": time_since_sent,
+                            "min_send_interval_seconds": min_send_interval,
+                        },
                     )
                     continue
                 # dequeue the message
@@ -1731,7 +1832,12 @@ class TBot(AppThread, Closable):
                 # other messages to dedupe
                 while True:
                     log.debug(
-                        f"Now processing message about {message.device_label} ({message.timestamp}) ({len(pending)} queued)..."  # noqa: E501
+                        "Processing message",
+                        extra={
+                            "device_label": message.device_label,
+                            "message_timestamp": message.timestamp,
+                            "queued_count": len(pending),
+                        },
                     )
                     # keep all image data as configured
                     if message.image:
@@ -1748,7 +1854,15 @@ class TBot(AppThread, Closable):
                                         )
                                     ]
                                 log.debug(
-                                    f'Batching image about {device_label} (t={message.timestamp}/it={message.image_timestamp}) for {chat_id!s} with caption "{message!s}". Batch size is {len(image_batch)}.'  # noqa: E501
+                                    "Batching image",
+                                    extra={
+                                        "device_label": device_label,
+                                        "message_timestamp": message.timestamp,
+                                        "image_timestamp": message.image_timestamp,
+                                        "chat_id": chat_id,
+                                        "caption": str(message),
+                                        "batch_size": len(image_batch),
+                                    },
                                 )
                                 image_batch.append(
                                     InputMediaPhoto(
@@ -1760,19 +1874,30 @@ class TBot(AppThread, Closable):
                             else:
                                 # enough is enough, re-enqueue the remainder
                                 log.debug(
-                                    f"Re-enqueing {len(pending)} remaining events for {device_label} because image batch to send is now {len(image_batch)} items."  # noqa: E501
+                                    "Re-enqueueing events, image batch full",
+                                    extra={
+                                        "remaining_count": len(pending),
+                                        "device_label": device_label,
+                                        "batch_size": len(image_batch),
+                                    },
                                 )
                                 pending_by_label[device_label] = pending
                                 break
                         else:
                             log.debug(
-                                f"Filtering out image message about {message.device_label} ({message.timestamp}) ({len(pending)} queued)."  # noqa: E501
+                                "Filtering out image message",
+                                extra={
+                                    "device_label": message.device_label,
+                                    "message_timestamp": message.timestamp,
+                                    "queued_count": len(pending),
+                                },
                             )
                     try:
                         # attempt to fetch a newer image
                         message = pending.popleft()
                         log.debug(
-                            f"Fetched newer pending message about {message.device_label} ({message.timestamp})."
+                            "Fetched newer pending message",
+                            extra={"device_label": message.device_label, "message_timestamp": message.timestamp},
                         )
                     except IndexError:
                         # message remains set to the current
@@ -1780,7 +1905,7 @@ class TBot(AppThread, Closable):
                 # send the message
                 try:
                     if len(image_batch) > 0:
-                        log.info(f"Sending image group to {chat_id!s} containing {len(image_batch)} images.")
+                        log.info("Sending image group", extra={"chat_id": chat_id, "image_count": len(image_batch)})
                         await t_app.bot.send_media_group(
                             chat_id=chat_id,
                             media=image_batch,
@@ -1791,17 +1916,24 @@ class TBot(AppThread, Closable):
                         )
                     if not message.image:
                         log.info(
-                            f'Sending non-image message about {device_label} ({message.timestamp}) to {chat_id!s} with caption "{message!s}"'  # noqa: E501
+                            "Sending non-image message",
+                            extra={
+                                "device_label": device_label,
+                                "message_timestamp": message.timestamp,
+                                "chat_id": chat_id,
+                                "caption": str(message),
+                            },
                         )
                         await t_app.bot.send_message(chat_id=chat_id, text=str(message), parse_mode="Markdown")
                 except RetryAfter as e:
                     call_again_timestamp = now + e.retry_after
                     log.debug(
-                        f"Telegram asks to call again in {e.retry_after}s. Deferring calls until {call_again_timestamp}."  # noqa: E501
+                        "Telegram rate limit, deferring calls",
+                        extra={"retry_after_seconds": e.retry_after, "call_again_timestamp": call_again_timestamp},
                     )
                     continue
                 except (TimedOut, ConnectError) as e:
-                    log.warning(f"Telegram send problem: {e.message}.")
+                    log.warning("Telegram send problem", extra={"error": str(e)})
                     continue
                 # update send time
                 last_sent = now
@@ -1833,7 +1965,7 @@ class TBot(AppThread, Closable):
         log.debug("Waiting for coroutine exceptions...")
         exc = outcome.exception()
         if exc is not None:
-            log.warning("Completed with exception.", exc)
+            log.warning("Completed with exception.", exc_info=exc)
         log.debug("Closing event loop...")
         loop.close()
         self.shutdown()
@@ -1863,7 +1995,7 @@ class AutoScheduler(AppThread):
 
     @staticmethod
     def update_device(device_key, device_label, device_state):
-        log.info(f"Scheduler triggered. {device_label} to enabled={device_state}")
+        log.info("Scheduler triggered", extra={"device_label": device_label, "enabled": device_state})
         with exception_handler(
             connect_url=URL_WORKER_APP,
             socket_type=zmq.PUSH,
@@ -1881,7 +2013,15 @@ class AutoScheduler(AppThread):
             )
 
     def _schedule(self, device_key, device_label, schedule_time, device_state):
-        log.info(f"Setting auto-schedule for {device_label}: enable? {device_state} at {schedule_time} {user_tz!s}.")
+        log.info(
+            "Setting auto-schedule",
+            extra={
+                "device_label": device_label,
+                "enabled": device_state,
+                "schedule_time": schedule_time,
+                "tz": str(user_tz),
+            },
+        )
         schedule.every().day.at(schedule_time, user_tz).do(
             AutoScheduler.update_device, device_key, device_label, device_state
         ).tag(device_key)
@@ -1917,11 +2057,16 @@ class AutoScheduler(AppThread):
                     next_message = False
                 if device_key:
                     # clear any previous schedule
-                    log.info(f"Removing auto-schedule for {device_label}.")
+                    log.info("Removing auto-schedule", extra={"device_label": device_label})
                     schedule.clear(device_key)
                     if auto_schedule:
                         log.info(
-                            f"Resetting auto-schedule for {device_label} to disable at {auto_schedule_disable} and enable at {auto_schedule_enable}."  # noqa: E501
+                            "Resetting auto-schedule",
+                            extra={
+                                "device_label": device_label,
+                                "disable_at": auto_schedule_disable,
+                                "enable_at": auto_schedule_enable,
+                            },
                         )
                         try:
                             # install a new scedule
@@ -1940,7 +2085,7 @@ class AutoScheduler(AppThread):
                         except ScheduleValueError:
                             log.exception("Unable to schedule.")
                     else:
-                        log.warning(f"Disabled auto-schedule for {device_label}.")
+                        log.warning("Disabled auto-schedule", extra={"device_label": device_label})
                 # don't spin
                 if not next_message:
                     threads.interruptable_sleep.wait(10)
@@ -1969,7 +2114,7 @@ class ApiServer(Thread):
 
     def shutdown(self):
         if self.server:
-            log.debug(f"API server shutting down: {self.__class__.__name__}")
+            log.debug("API server shutting down", extra={"class_name": self.__class__.__name__})
             # emulate signal handler latch in server.handle_exit()
             self.server.should_exit = True
             self.server.force_exit = True
@@ -1983,7 +2128,7 @@ async def main():
     sentry_dsn = creds.get_creds(app_config.get("creds", "sentry_dsn").replace("__APP_NAME__", APP_NAME))
     sentry_sdk.init(
         dsn=sentry_dsn,
-        enable_logs=not log.isEnabledFor(logging.DEBUG),
+        enable_logs=True,
         integrations=[
             AsyncioIntegration(),
             FlaskIntegration(transaction_style="url"),
@@ -2023,7 +2168,7 @@ async def main():
         # not tracked by nanny because this is used for Flask bootstrap
         server = ApiServer()
         try:
-            log.debug(f"Starting {APP_NAME} threads...")
+            log.debug("Starting app threads", extra={"app_name": APP_NAME})
             # start the binders
             event_processor.start()
             if telegram_bot:
@@ -2041,13 +2186,12 @@ async def main():
             threads.interruptable_sleep.wait()
         finally:
             die()
-            message = "Shutting down {}..."
-            log.debug(message.format("API server"))
+            log.debug("Shutting down component", extra={"component": "API server"})
             server.shutdown()
             if telegram_bot:
-                log.debug(message.format("Telegram Bot"))
+                log.debug("Shutting down component", extra={"component": "Telegram Bot"})
                 telegram_bot.shutdown()
-            log.debug(message.format("Rabbit MQ listener bridge"))
+            log.debug("Shutting down component", extra={"component": "Rabbit MQ listener bridge"})
             mq_listener_sms.stop()
             zmq_term()
         bye()

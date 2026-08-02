@@ -37,7 +37,7 @@ public class OnePassword {
 
     private OnePassword() {
         final String opServerAddr = System.getenv("OP_CONNECT_HOST");
-        log.debug("Attempting to connect to 1Password at {}...", opServerAddr);
+        log.atDebug().setMessage("Attempting to connect to 1Password").addKeyValue("op_server_addr", opServerAddr).log();
         final String opToken = readSecretOrEnv("OP_CONNECT_TOKEN");
         client = OPConnectClientBuilder.builder()
             .withEndpoint(opServerAddr)
@@ -60,7 +60,7 @@ public class OnePassword {
     private static String readSecretOrEnv(String envVar) {
         final String value = System.getenv(envVar);
         if (value != null) {
-            log.debug("Using env var {} directly.", envVar);
+            log.atDebug().setMessage("Using env var directly").addKeyValue("env_var", envVar).log();
             return value;
         }
         final String secretPath = "/run/secrets/" + envVar.toLowerCase(Locale.ROOT);
@@ -68,14 +68,24 @@ public class OnePassword {
         if (Files.isRegularFile(path) && Files.isReadable(path)) {
             try {
                 final String secret = Files.readString(path).trim();
-                log.debug("Read {} from secret file {}.", envVar, secretPath);
+                log.atDebug().setMessage("Read secret from file")
+                    .addKeyValue("env_var", envVar)
+                    .addKeyValue("secret_path", secretPath)
+                    .log();
                 return secret;
             } catch (IOException e) {
-                log.warn("Failed to read secret file {} for env var {}: {}", secretPath, envVar, e.getMessage());
+                log.atWarn().setMessage("Failed to read secret file")
+                    .addKeyValue("secret_path", secretPath)
+                    .addKeyValue("env_var", envVar)
+                    .addKeyValue("error", e.getMessage())
+                    .log();
                 return null;
             }
         }
-        log.debug("No secret found for {} at {}.", envVar, secretPath);
+        log.atDebug().setMessage("No secret found")
+            .addKeyValue("env_var", envVar)
+            .addKeyValue("secret_path", secretPath)
+            .log();
         return null;
     }
 
@@ -86,7 +96,10 @@ public class OnePassword {
     private String getItemIdfromTitle(String itemTitle) {
         if (itemNameIdMap.isEmpty()) {
             var items = client.listItems(vaultId).join();
-            log.debug("Vault {} contains {} items.", vaultId, items.size());
+            log.atDebug().setMessage("Vault items")
+                .addKeyValue("vault_id", vaultId)
+                .addKeyValue("item_count", items.size())
+                .log();
             items.forEach(i -> {
                 itemNameIdMap.put(i.getTitle(), i.getId());
             });
