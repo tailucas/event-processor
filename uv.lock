@@ -97,7 +97,7 @@ requires-dist = [
     { name = "schedule", specifier = ">=1.2.2" },
     { name = "sentry-sdk", extras = ["flask"], specifier = ">=2.37.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.43" },
-    { name = "tailucas-pylib", extras = ["aws", "creds", "dto", "monitoring", "mq"], specifier = ">=0.7.1" },
+    { name = "tailucas-pylib", extras = ["aws", "creds", "dto", "monitoring", "mq"], specifier = ">=0.7.5" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.35.0" },
 ]
 
@@ -1434,16 +1434,16 @@ wheels = [
 
 [[package]]
 name = "tailucas-pylib"
-version = "0.7.2"
+version = "0.7.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "python-dateutil" },
     { name = "pytz" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/db/44/d2d256c92d05c2313501b48c2e5f772748bba634fac537239048ff40305a/tailucas_pylib-0.7.2.tar.gz", hash = "sha256:71b521a372faeebf03bf13b951ea039b776a19509b260d9536fda7d6b73c81c5", size = 20798, upload-time = "2026-07-04T20:45:46.147Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bc/70/87b4be2d62e1fc183f7b463925a420de0de782e12ffd67f7f6b0b18865c8/tailucas_pylib-0.7.5.tar.gz", hash = "sha256:e18e06768f9ed1eecf1a0efa1dc417712455ca36b9a9a8e1c9e0817dd877b38b", size = 21521, upload-time = "2026-08-02T07:19:11.889Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/00/e3/cf7047906dc7df7393225118ad75bf69000b9b29f85ce074a781560c1661/tailucas_pylib-0.7.2-py3-none-any.whl", hash = "sha256:81b74dc23923caae04e2acec29e859c416ef04c35601454f763db8f786c5bb90", size = 26838, upload-time = "2026-07-04T20:45:44.61Z" },
+    { url = "https://files.pythonhosted.org/packages/7f/2c/0c0e0bab35ae9c63ea3b92331f05295372bc7017a9762441298fdc9384e4/tailucas_pylib-0.7.5-py3-none-any.whl", hash = "sha256:a6e66c2db865dbdf716154eaf4b5dbfc23273312a270b48a5e2205c8f554cef9", size = 27415, upload-time = "2026-08-02T07:19:10.429Z" },
 ]
 
 [package.optional-dependencies]

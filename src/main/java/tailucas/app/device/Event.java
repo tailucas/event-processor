@@ -204,7 +204,7 @@ public class Event implements Runnable {
             } else {
                 escalationDetail = String.format(" (triggered for %ss)", triggeredDuration);
             }
-            log.info("{} will trigger outputs because {}{}.", deviceDescription, device.getTriggerStateDescription(), escalationDetail);
+            log.debug("{} will trigger outputs because {}{}.", deviceDescription, device.getTriggerStateDescription(), escalationDetail);
             List<OutputConfig> linkedOutputs = configProvider.getLinkedOutputs(deviceConfig);
             log.debug("{} outputs {}", deviceDescription, linkedOutputs);
             if (linkedOutputs == null) {

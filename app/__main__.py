@@ -18,6 +18,7 @@ from flask_compress import Compress
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
 from flask_sqlalchemy import SQLAlchemy
 from httpx import ConnectError
+import logging
 from pydantic import BaseModel, ConfigDict
 from pylru import lrucache
 from pytz import timezone
@@ -645,7 +646,7 @@ def debug():
 def internal_server_error(e):
     log.error(f"{e!s}")
     last_event_id = capture_exception(error=e)
-    log.info(f"Sentry captured event ID is {last_event_id}.")
+    log.debug(f"Sentry captured event ID is {last_event_id}.")
     return render_template("error.html", sentry_event_id=last_event_id, sentry_dsn=sentry_dsn), 500
 
 
@@ -828,7 +829,7 @@ def show_config():
 
 @api_app.get("/api/input_configs")
 async def api_input_configs(device_key: str, adb: AsyncSession = Depends(get_db)):
-    log.info(f"Async get input config for {device_key}")
+    log.debug(f"Async get input config for {device_key}")
     result = await adb.execute(select(InputConfig).where(InputConfig.device_key == device_key))
     config = result.scalars().one_or_none()
     if config:
@@ -1212,7 +1213,7 @@ def invalidate_remote_config(device_key):
     api_method = "invalidate_config"
     try:
         response = requests.post(url=f"{api_server}/{api_method}", params={"device_key": device_key})
-        log.info(
+        log.debug(
             f"{response.status_code} response from {api_method} API call to {api_server} to invalidate configuration for {device_key}: {response!s}"  # noqa: E501
         )
     except ConnectionError as e:
@@ -1361,7 +1362,7 @@ class EventProcessor(AppThread):
                 # process the next event
                 event = app_socket.recv_pyobj()
                 if not isinstance(event, dict):
-                    log.info("Malformed event; expecting dictionary.")
+                    log.debug("Malformed event; expecting dictionary.")
                     continue
                 if "sms" in event:
                     sms_message = event["sms"]
@@ -1517,7 +1518,7 @@ class EventProcessor(AppThread):
                                         .all()
                                     )
                                 # collect all configurations matched
-                                log.info(f'{state.title()} {len(device_config)} devices matching "{bot_command_arg}".')
+                                log.debug(f'{state.title()} {len(device_config)} devices matching "{bot_command_arg}".')
                                 if device_config:
                                     device_configs.extend(device_config)
                         else:
@@ -1529,11 +1530,11 @@ class EventProcessor(AppThread):
                                     .order_by(InputConfig.device_key)
                                     .all()
                                 )
-                                log.info(f"{state.title()} {len(device_config)} devices with auto-schedule not null.")
+                                log.debug(f"{state.title()} {len(device_config)} devices with auto-schedule not null.")
                             elif output_enable is not None:
                                 device_config = OutputConfig.query.order_by(OutputConfig.device_key).all()
                             if len(device_config) > 0:
-                                log.info(f"{state.title()} {len(device_config)} devices...")
+                                log.debug(f"{state.title()} {len(device_config)} devices...")
                                 device_configs.extend(device_config)
                         # process all collected inputs
                         devices_updated = []
@@ -1545,9 +1546,9 @@ class EventProcessor(AppThread):
                                 if dc.device_enabled != device_enable:
                                     devices_updated.append(dc.device_key)
                                     if input_enable is not None:
-                                        log.info(f"{state.title()} {dc.device_key} (group {dc.group_name})")
+                                        log.debug(f"{state.title()} {dc.device_key} (group {dc.group_name})")
                                     else:
-                                        log.info(f"{state.title()} {dc.device_key}")
+                                        log.debug(f"{state.title()} {dc.device_key}")
                                     dc.device_enabled = device_enable
                                     # update the database
                                     db.session.add(dc)
@@ -1587,7 +1588,7 @@ class EventProcessor(AppThread):
                             bot_reply = f"{len(devices_updated)} devices changed to {state}."
                         else:
                             log.warning(f"No devices matched to {state}.")
-                        log.info(bot_reply)
+                        log.debug(bot_reply)
                         if is_flag_enabled("telegram-bot"):
                             self.bot.send_pyobj(BotMessage(device_label="notification", message=bot_reply).model_dump())
                         else:
@@ -1644,7 +1645,7 @@ class TBot(AppThread, Closable):
         poller = Poller()
         poller.register(zmq_socket, zmq.POLLIN)
         pending_by_label = OrderedDict()
-        log.info(f"Waiting for events to forward to Telegram bot on chat ID {chat_id}...")
+        log.debug(f"Waiting for events to forward to Telegram bot on chat ID {chat_id}...")
         call_again_timestamp = 0
         min_send_interval = app_config.getint("telegram", "min_send_interval")
         last_sent = 0
@@ -1693,20 +1694,20 @@ class TBot(AppThread, Closable):
                     except KeyError:
                         queued = deque()
                         pending_by_label[message.device_label] = queued
-                    log.info(
+                    log.debug(
                         f"Queueing message about {message.device_label} ({message.timestamp}) ({len(queued)} devices queued)..."  # noqa: E501
                     )
                     queued.append(message)
                 # rate-limit the send
                 # https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this
                 if now < call_again_timestamp:
-                    log.warning(
+                    log.debug(
                         f"Enforced rate limiting message queue (of {len(pending_by_label)} devices). Telegram asked for {call_again_timestamp - now}s backoff."  # noqa: E501
                     )
                     continue
                 time_since_sent = now - last_sent
                 if time_since_sent < min_send_interval:
-                    log.warning(
+                    log.debug(
                         f"Elective rate limiting message queue (of {len(pending_by_label)} devices). Time since last send is {time_since_sent}s, min interval is {min_send_interval}s."  # noqa: E501
                     )
                     continue
@@ -1729,7 +1730,7 @@ class TBot(AppThread, Closable):
                 image_batch = []
                 # other messages to dedupe
                 while True:
-                    log.info(
+                    log.debug(
                         f"Now processing message about {message.device_label} ({message.timestamp}) ({len(pending)} queued)..."  # noqa: E501
                     )
                     # keep all image data as configured
@@ -1746,7 +1747,7 @@ class TBot(AppThread, Closable):
                                             url=message.url,
                                         )
                                     ]
-                                log.info(
+                                log.debug(
                                     f'Batching image about {device_label} (t={message.timestamp}/it={message.image_timestamp}) for {chat_id!s} with caption "{message!s}". Batch size is {len(image_batch)}.'  # noqa: E501
                                 )
                                 image_batch.append(
@@ -1758,19 +1759,19 @@ class TBot(AppThread, Closable):
                                 )
                             else:
                                 # enough is enough, re-enqueue the remainder
-                                log.info(
+                                log.debug(
                                     f"Re-enqueing {len(pending)} remaining events for {device_label} because image batch to send is now {len(image_batch)} items."  # noqa: E501
                                 )
                                 pending_by_label[device_label] = pending
                                 break
                         else:
-                            log.info(
+                            log.debug(
                                 f"Filtering out image message about {message.device_label} ({message.timestamp}) ({len(pending)} queued)."  # noqa: E501
                             )
                     try:
                         # attempt to fetch a newer image
                         message = pending.popleft()
-                        log.warning(
+                        log.debug(
                             f"Fetched newer pending message about {message.device_label} ({message.timestamp})."
                         )
                     except IndexError:
@@ -1795,7 +1796,7 @@ class TBot(AppThread, Closable):
                         await t_app.bot.send_message(chat_id=chat_id, text=str(message), parse_mode="Markdown")
                 except RetryAfter as e:
                     call_again_timestamp = now + e.retry_after
-                    log.warning(
+                    log.debug(
                         f"Telegram asks to call again in {e.retry_after}s. Deferring calls until {call_again_timestamp}."  # noqa: E501
                     )
                     continue
@@ -1809,10 +1810,10 @@ class TBot(AppThread, Closable):
                 log.exception("General issue with bot message processing.")
 
     def run(self):
-        log.info("Creating asyncio event loop...")
+        log.debug("Creating asyncio event loop...")
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        log.info("Creating Telegram application...")
+        log.debug("Creating Telegram application...")
         telegram_application = TelegramApp.builder().token(creds.get_creds(f"Telegram/{APP_NAME}/token")).build()
         telegram_application.add_handler(TelegramCommandHandler(command="inputon", callback=telegram_bot_cmd))
         telegram_application.add_handler(TelegramCommandHandler(command="inputoff", callback=telegram_bot_cmd))
@@ -1821,19 +1822,19 @@ class TBot(AppThread, Closable):
         telegram_application.add_handler(TelegramMessageHandler(filters.TEXT & ~filters.COMMAND, telegram_bot_echo))
         telegram_application.add_error_handler(callback=telegram_error_handler)
         self.t_app = telegram_application
-        log.info("Registering coroutine for ZMQ-Telegram messages...")
+        log.debug("Registering coroutine for ZMQ-Telegram messages...")
         self.get_socket()
         outcome = asyncio.run_coroutine_threadsafe(
             TBot.tbot_run(t_app=self.t_app, zmq_socket=self.socket, chat_id=self.chat_id),
             loop,
         )
-        log.info("Starting Telegram application...")
+        log.debug("Starting Telegram application...")
         self.t_app.run_polling(stop_signals=None)
-        log.info("Waiting for coroutine exceptions...")
+        log.debug("Waiting for coroutine exceptions...")
         exc = outcome.exception()
         if exc is not None:
             log.warning("Completed with exception.", exc)
-        log.info("Closing event loop...")
+        log.debug("Closing event loop...")
         loop.close()
         self.shutdown()
         log.info("Shutdown complete.")
@@ -1842,7 +1843,7 @@ class TBot(AppThread, Closable):
         # TODO: shut down Telegram bot from external
         # event loop if stop_signals=None
         if not self._shutdown:
-            log.info("Closing ZMQ socket...")
+            log.debug("Closing ZMQ socket...")
             self.close()
             self._shutdown = True
 
@@ -1962,13 +1963,13 @@ class ApiServer(Thread):
         self.server = uvicorn.Server(config)
 
     def run(self):
-        log.info("Starting API server...")
+        log.debug("Starting API server...")
         self.server.run()
         log.info("API server is finished.")
 
     def shutdown(self):
         if self.server:
-            log.info(f"API server shutting down: {self.__class__.__name__}")
+            log.debug(f"API server shutting down: {self.__class__.__name__}")
             # emulate signal handler latch in server.handle_exit()
             self.server.should_exit = True
             self.server.force_exit = True
@@ -1978,10 +1979,11 @@ async def main():
     global creds
     global sentry_dsn
     # sentry instrumentation
-    log.info("Loading Sentry.io instrumentation...")
+    log.debug("Loading Sentry.io instrumentation...")
     sentry_dsn = creds.get_creds(app_config.get("creds", "sentry_dsn").replace("__APP_NAME__", APP_NAME))
     sentry_sdk.init(
         dsn=sentry_dsn,
+        enable_logs=not log.isEnabledFor(logging.DEBUG),
         integrations=[
             AsyncioIntegration(),
             FlaskIntegration(transaction_style="url"),
@@ -1991,10 +1993,10 @@ async def main():
         send_default_pii=True,
     )
     # ensure proper signal handling; must be main thread
-    log.info("Installing signal handlers...")
+    log.debug("Installing signal handlers...")
     signal_handler = SignalHandler()
     if not threads.shutting_down:
-        log.info("Creating application threads...")
+        log.debug("Creating application threads...")
         # bind listeners first
         mq_server_address = app_config.get("rabbitmq", "server_address").split(",")
         mq_exchange_name = app_config.get("rabbitmq", "mq_exchange")
@@ -2021,7 +2023,7 @@ async def main():
         # not tracked by nanny because this is used for Flask bootstrap
         server = ApiServer()
         try:
-            log.info(f"Starting {APP_NAME} threads...")
+            log.debug(f"Starting {APP_NAME} threads...")
             # start the binders
             event_processor.start()
             if telegram_bot:
@@ -2040,12 +2042,12 @@ async def main():
         finally:
             die()
             message = "Shutting down {}..."
-            log.info(message.format("API server"))
+            log.debug(message.format("API server"))
             server.shutdown()
             if telegram_bot:
-                log.info(message.format("Telegram Bot"))
+                log.debug(message.format("Telegram Bot"))
                 telegram_bot.shutdown()
-            log.info(message.format("Rabbit MQ listener bridge"))
+            log.debug(message.format("Rabbit MQ listener bridge"))
             mq_listener_sms.stop()
             zmq_term()
         bye()

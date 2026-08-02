@@ -25,7 +25,7 @@ dependencies = [
     "schedule>=1.2.2",
     "sentry-sdk[flask]>=2.37.0",
     "sqlalchemy[asyncio]>=2.0.43",
-    "tailucas-pylib[aws,creds,dto,monitoring,mq]>=0.7.1",
+    "tailucas-pylib[aws,creds,dto,monitoring,mq]>=0.7.5",
     "uvicorn[standard]>=0.35.0",
 ]
 

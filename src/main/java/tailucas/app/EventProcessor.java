@@ -235,7 +235,7 @@ public class EventProcessor
                 throw new IllegalStateException("No credential vaults are available.");
             }
             vaults.forEach(vault -> {
-                log.info("Credential vault {}: is {} ({}).", vault.getId(), vault.getName(), vault.getDescription());
+                log.debug("Credential vault {}: is {} ({}).", vault.getId(), vault.getName(), vault.getDescription());
             });
             log.info("Using credential vault {}.", creds.getVaultId());
         } catch (Exception e) {
@@ -264,7 +264,7 @@ public class EventProcessor
             addExitCode(EXIT_CODE_SENTRY);
             System.exit(getExitCode());
         }
-        log.info("Sentry enabled: {}, healthy: {}.", Sentry.isEnabled(), Sentry.isHealthy());
+        log.debug("Sentry enabled: {}, healthy: {}.", Sentry.isEnabled(), Sentry.isHealthy());
         pagerDuty = PagerDutyEventsClient.create();
         pagerDutyRoutingKey = creds.getField("PagerDuty", "routing_key", appName);
         deviceName = envVars.get("DEVICE_NAME");
@@ -289,7 +289,7 @@ public class EventProcessor
         boolean ready = false;
         while (!ready) {
             try {
-                log.info("Startup: test {} for readiness...", startupUri);
+                log.debug("Startup: test {} for readiness...", startupUri);
                 HttpResponse<String> response = httpClient.send(request, BodyHandlers.ofString());
                 final int responseCode = response.statusCode();
                 final String responseBody = response.body();
@@ -314,7 +314,7 @@ public class EventProcessor
         final Environment springEnv = springApp.getEnvironment();
         final String applicationName = springEnv.getProperty("app.project-name");
         final Locale locale = Locale.getDefault();
-        log.info("{} starting {} in working directory {}, locale language {}, country {} and environment {}",
+        log.debug("{} starting {} in working directory {}, locale language {}, country {} and environment {}",
             applicationName,
             Runtime.version().toString(),
             System.getProperty("user.dir"),
@@ -324,7 +324,7 @@ public class EventProcessor
         // read application settings
         try {
             Ini appConfig = new Ini(new File("./app.conf"));
-            log.info("App Device Name: " + appConfig.get("app", "device_name"));
+            log.debug("App Device Name: " + appConfig.get("app", "device_name"));
         } catch (IOException e) {
             log.error(e.getMessage());
             Sentry.captureException(e);
@@ -418,7 +418,7 @@ public class EventProcessor
                 while (!zmqContext.isClosed()) {
                     try {
                         final byte[] zmqData = socket.recv();
-                        log.info("ZMQ data received {}", new String(zmqData));
+                        log.debug("ZMQ data received {}", new String(zmqData));
                     } catch (Exception e) {
                         if (!zmqContext.isClosed()) {
                             throw e;
@@ -465,7 +465,7 @@ public class EventProcessor
             Sentry.captureException(e);
         }
 
-        log.info("Metrics server started on port {}.", metricsServerPort);
+        log.debug("Metrics server started on port {}.", metricsServerPort);
         log.info("{} startup complete.", applicationName);
         exitCode.set(0);
     }

@@ -203,7 +203,7 @@ public class DeviceConfig {
                 configCache.remove(cacheKey);
             }
         }
-        log.info("{} needs {} from {}...", deviceKey, apiName, configHost);
+        log.debug("{} needs {} from {}...", deviceKey, apiName, configHost);
         UriComponents uriComponents = UriComponentsBuilder.newInstance()
             .scheme("http")
             .host(configHost)
@@ -238,7 +238,7 @@ public class DeviceConfig {
         }
         log.debug("Updating configuration config cache for {}.", cacheKey);
         configCache.put(cacheKey, Pair.of(now, configs));
-        log.info("Received {} configuration items for {} (cached as {}).", (configs != null) ? configs.size() : 0, deviceKey, cacheKey);
+        log.debug("Received {} configuration items for {} (cached as {}).", (configs != null) ? configs.size() : 0, deviceKey, cacheKey);
         return configs;
     }
 
