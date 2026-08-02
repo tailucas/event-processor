@@ -41,6 +41,10 @@ import com.rabbitmq.client.impl.StrictExceptionHandler;
 import io.prometheus.metrics.exporter.httpserver.HTTPServer;
 import io.prometheus.metrics.instrumentation.jvm.JvmMetrics;
 import io.sentry.Sentry;
+import io.sentry.SentryAttribute;
+import io.sentry.SentryAttributes;
+import io.sentry.SentryLogLevel;
+import io.sentry.logger.SentryLogParameters;
 import jakarta.annotation.PreDestroy;
 import tailucas.app.device.Event;
 import tailucas.app.message.Mqtt;
@@ -467,6 +471,37 @@ public class EventProcessor
 
         log.debug("Metrics server started on port {}.", metricsServerPort);
         log.info("{} startup complete.", applicationName);
+        Sentry.logger().log(
+            SentryLogLevel.INFO,
+            SentryLogParameters.create(
+                SentryAttributes.of(
+                    SentryAttribute.stringAttribute("application_name", applicationName),
+                    SentryAttribute.stringAttribute("device_name", deviceName),
+                    SentryAttribute.stringAttribute("java_version", Runtime.version().toString()),
+                    SentryAttribute.stringAttribute("working_directory", System.getProperty("user.dir")),
+                    SentryAttribute.stringAttribute("locale_language", locale.getLanguage()),
+                    SentryAttribute.stringAttribute("locale_country", locale.getCountry()),
+                    SentryAttribute.stringAttribute("config_host", hostName),
+                    SentryAttribute.stringAttribute("config_host_port", hostNamePort),
+                    SentryAttribute.stringAttribute("startup_uri", startupUri.toString()),
+                    SentryAttribute.stringAttribute("control_exchange_name", controlExchangeName),
+                    SentryAttribute.booleanAttribute("ha_discovery_enabled", isFeatureEnabled(FEATURE_FLAG_HA_DISCOVERY)),
+                    SentryAttribute.booleanAttribute("pagerduty_enabled", isFeatureEnabled(FEATURE_FLAG_PAGER_DUTY_TICKETS)),
+                    SentryAttribute.stringAttribute("credential_vault_id", creds.getVaultId()),
+                    SentryAttribute.integerAttribute("env_var_count", envVars.size()),
+                    SentryAttribute.integerAttribute("args_count", args.length),
+                    SentryAttribute.booleanAttribute("rabbitmq_connected", rabbitMqConnection != null && rabbitMqConnection.isOpen()),
+                    SentryAttribute.booleanAttribute("mqtt_connected", mqttClient != null && mqttClient.isConnected()),
+                    SentryAttribute.booleanAttribute("zmq_context_closed", zmqContext != null && zmqContext.isClosed()),
+                    SentryAttribute.stringAttribute("thread_rabbitmq_name", rabbitMqThread.getName()),
+                    SentryAttribute.stringAttribute("thread_rabbitmq_state", rabbitMqThread.getState().toString()),
+                    SentryAttribute.stringAttribute("thread_mqtt_name", mqttThread.getName()),
+                    SentryAttribute.stringAttribute("thread_mqtt_state", mqttThread.getState().toString()),
+                    SentryAttribute.booleanAttribute("executor_shutdown", srv.isShutdown()),
+                    SentryAttribute.booleanAttribute("executor_terminated", srv.isTerminated())
+                )
+            ),
+            "startup complete");
         exitCode.set(0);
     }
 }
