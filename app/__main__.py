@@ -18,7 +18,6 @@ from flask_compress import Compress
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
 from flask_sqlalchemy import SQLAlchemy
 from httpx import ConnectError
-import logging
 from pydantic import BaseModel, ConfigDict
 from pylru import lrucache
 from pytz import timezone

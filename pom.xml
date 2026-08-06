@@ -24,7 +24,7 @@
     <!-- runtime dependencies -->
     <ini4j.version>0.5.4</ini4j.version>
     <pagerduty.version>3.1.2</pagerduty.version>
-    <sentry-spring-boot-4.version>8.51.0</sentry-spring-boot-4.version>
+    <sentry-spring-boot-4.version>8.52.0</sentry-spring-boot-4.version>
     <amqp-client.version>5.34.0</amqp-client.version>
     <paho.version>1.2.5</paho.version>
     <!-- overrides Spring Boot's managed Jackson 3 BOM (3.1.4) -->

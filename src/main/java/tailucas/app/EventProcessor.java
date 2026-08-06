@@ -110,7 +110,7 @@ public class EventProcessor
 			String[] beanNames = ctx.getBeanDefinitionNames();
 			Arrays.sort(beanNames);
 			for (String beanName : beanNames) {
-				log.debug(beanName);
+				log.atDebug().setMessage("Spring bean").addKeyValue("bean_name", beanName).log();
 			}
 		};
 	}
