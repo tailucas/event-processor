@@ -77,7 +77,7 @@ public class OnePassword {
                 log.atWarn().setMessage("Failed to read secret file")
                     .addKeyValue("secret_path", secretPath)
                     .addKeyValue("env_var", envVar)
-                    .addKeyValue("error", e.getMessage())
+                    .setCause(e)
                     .log();
                 return null;
             }

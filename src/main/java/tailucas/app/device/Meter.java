@@ -32,7 +32,7 @@ public class Meter extends Device {
         } catch (IOException e) {
             log.atError().setMessage("Cannot fetch meter configuration")
                 .addKeyValue("device_key", deviceKey)
-                .addKeyValue("error", e.getMessage())
+                .setCause(e)
                 .log();
             return false;
         } catch (InterruptedException e) {

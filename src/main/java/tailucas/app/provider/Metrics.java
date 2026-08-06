@@ -99,7 +99,6 @@ public class Metrics {
         } catch (RuntimeException e) {
             log.atError().setMessage("Cannot create metric object")
                 .addKeyValue("metric_name", metricName)
-                .addKeyValue("error", e.getMessage())
                 .setCause(e)
                 .log();
             Sentry.captureException(e);

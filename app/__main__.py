@@ -1932,7 +1932,7 @@ class TBot(AppThread, Closable):
                     )
                     continue
                 except (TimedOut, ConnectError) as e:
-                    log.warning("Telegram send problem", extra={"error": str(e)})
+                    log.warning("Telegram send problem", exc_info=e)
                     continue
                 # update send time
                 last_sent = now

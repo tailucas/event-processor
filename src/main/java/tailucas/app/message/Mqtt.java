@@ -79,7 +79,7 @@ public class Mqtt implements MqttCallback {
                         log.atWarn().setMessage("JSON issue")
                             .addKeyValue("topic", topic)
                             .addKeyValue("payload", new String(payload))
-                            .addKeyValue("error", e.getMessage())
+                            .setCause(e)
                             .log();
                     }
                 } else {
@@ -102,7 +102,7 @@ public class Mqtt implements MqttCallback {
                         log.atWarn().setMessage("JSON issue")
                             .addKeyValue("topic", topic)
                             .addKeyValue("payload", new String(payload))
-                            .addKeyValue("error", e.getMessage())
+                            .setCause(e)
                             .log();
                     }
                 } else {
@@ -147,7 +147,7 @@ public class Mqtt implements MqttCallback {
                                     log.atError().setMessage("Deserialization failure")
                                         .addKeyValue("topic", topic)
                                         .addKeyValue("field_name", fieldName)
-                                        .addKeyValue("error", e.getMessage())
+                                        .setCause(e)
                                         .log();
                                     return;
                                 }
@@ -166,7 +166,7 @@ public class Mqtt implements MqttCallback {
                     log.atWarn().setMessage("Unsupported JSON during payload processing")
                         .addKeyValue("topic", topic)
                         .addKeyValue("payload", new String(payload))
-                        .addKeyValue("error", e.getMessage())
+                        .setCause(e)
                         .log();
                     return;
                 }

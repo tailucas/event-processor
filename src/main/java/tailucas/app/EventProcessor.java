@@ -134,21 +134,21 @@ public class EventProcessor
             try {
                 zmqContext.close();
             } catch (Exception e) {
-                log.atWarn().setMessage("During shutdown of ZeroMQ context").addKeyValue("error", e.getMessage()).log();
+                log.atWarn().setMessage("During shutdown of ZeroMQ context").setCause(e).log();
             }
         }
         if (rabbitMqChannel != null) {
             try {
                 rabbitMqChannel.close();
             } catch (Exception e) {
-                log.atWarn().setMessage("During shutdown of RabbitMQ channel").addKeyValue("error", e.getMessage()).log();
+                log.atWarn().setMessage("During shutdown of RabbitMQ channel").setCause(e).log();
             }
         }
         if (rabbitMqConnection != null) {
             try {
                 rabbitMqConnection.close();
             } catch (Exception e) {
-                log.atWarn().setMessage("During shutdown of RabbitMQ connection").addKeyValue("error", e.getMessage()).log();
+                log.atWarn().setMessage("During shutdown of RabbitMQ connection").setCause(e).log();
             }
         }
         if (mqttClient != null) {
@@ -159,12 +159,12 @@ public class EventProcessor
                     mqttClient.disconnect(10);
                 }
             } catch (MqttException e) {
-                log.atWarn().setMessage("During disconnect of MQTT client").addKeyValue("error", e.getMessage()).log();
+                log.atWarn().setMessage("During disconnect of MQTT client").setCause(e).log();
             } finally {
                 try {
                     mqttClient.close();
                 } catch (MqttException e) {
-                    log.atWarn().setMessage("During closing of MQTT client").addKeyValue("error", e.getMessage()).log();
+                    log.atWarn().setMessage("During closing of MQTT client").setCause(e).log();
                 }
             }
         }
@@ -318,7 +318,7 @@ public class EventProcessor
                     ready = Boolean.valueOf(responseBody).booleanValue();
                 }
             } catch (Exception e) {
-                log.atWarn().setMessage("Startup: not ready").addKeyValue("error", e.getMessage()).log();
+                log.atWarn().setMessage("Startup: not ready").setCause(e).log();
             } finally {
                 if (!ready) {
                     try {
