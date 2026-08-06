@@ -4,10 +4,12 @@
         <Console name="Console" target="SYSTEM_OUT">
             <JsonTemplateLayout eventTemplateUri="classpath:LogstashJsonEventLayoutV1.json"/>
         </Console>
-        <Syslog name="Syslog" format="RFC5424" host="${env:SYSLOG_HOST}" port="514" protocol="UDP" appName="event-processor" facility="LOCAL0" />
+        <Syslog name="Syslog" format="RFC5424" host="${env:SYSLOG_HOST:-localhost}" port="514" protocol="UDP" appName="event-processor" facility="LOCAL0">
+            <JsonTemplateLayout eventTemplateUri="classpath:LogstashJsonEventLayoutV1.json"/>
+        </Syslog>
     </Appenders>
     <Loggers>
-        <Root level="${env:LOG_LEVEL}">
+        <Root level="${env:LOG_LEVEL:-INFO}">
             <AppenderRef ref="Console"/>
             <AppenderRef ref="Syslog" level="INFO"/>
         </Root>

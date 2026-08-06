@@ -50,10 +50,21 @@ Rules:
 
 Backend (`src/main/resources/log4j2.xml`):
 
-- Console appender uses `JsonTemplateLayout` with
-  `eventTemplateUri="classpath:LogstashJsonEventLayoutV1.json"` (Logstash JSON).
-- Syslog appender (RFC5424/UDP) ships INFO+ when `SYSLOG_HOST` is defined.
-- Root level is `${env:LOG_LEVEL}`.
+- **Every** appender renders the same JSON document via `JsonTemplateLayout`
+  with `eventTemplateUri="classpath:LogstashJsonEventLayoutV1.json"` (Logstash
+  JSON). Never leave an appender without an explicit layout: Log4j2 falls back
+  to its defaults (for Syslog that is a plain RFC5424 message-only payload),
+  which silently breaks the JSON-everywhere contract.
+- Syslog appender (UDP) ships INFO+ JSON datagrams to
+  `${env:SYSLOG_HOST:-localhost}`; when `SYSLOG_HOST` is undefined the default
+  is a silent no-op (UDP to localhost), not a startup configuration error.
+  (`format="RFC5424"` is retained but inert: it only applies when no layout is
+  set.)
+- Root level is `${env:LOG_LEVEL:-INFO}`. All `${env:...}` lookups must carry
+  a `:-default`: an unset `SYSLOG_HOST`/`LOG_LEVEL` otherwise causes
+  `ConfigurationException` noise at startup or a silent fallback to ERROR.
+- Fluent `addKeyValue` fields render under the top-level `"mdc"` object in the
+  JSON output (e.g. `"mdc":{"app_name":"..."}`); query them as `mdc.<key>`.
 - Tests use `src/test/resources/log4j2-test.xml` (pattern layout + file).
 - Required deps (already in `pom.xml`): `spring-boot-starter-log4j2`,
   `log4j-layout-template-json`, `slf4j-api`.
