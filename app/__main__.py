@@ -1743,7 +1743,7 @@ class TBot(AppThread, Closable):
     def include_image(message):
         if not app_config.getboolean("telegram", "image_send_only_with_people"):
             return True
-        return "person" in message
+        return "person" in message or "face" in message
 
     @staticmethod
     async def tbot_run(t_app: TelegramApp, zmq_socket, chat_id):
