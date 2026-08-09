@@ -32,7 +32,7 @@ from sentry_sdk.integrations.flask import FlaskIntegration
 from sentry_sdk.integrations.logging import ignore_logger
 from sentry_sdk.integrations.sys_exit import SysExitIntegration
 from sentry_sdk.integrations.threading import ThreadingIntegration
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, or_
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, event, or_
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.future import select
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
@@ -91,6 +91,13 @@ async_session: AsyncSession = sessionmaker(engine, expire_on_commit=False, class
 Base = declarative_base()
 
 
+@event.listens_for(engine.sync_engine, "connect")
+def set_sqlite_pragma_async(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.close()
+
+
 async def get_db():
     async with async_session() as session:
         yield session
@@ -103,7 +110,17 @@ user_tz = timezone(app_config.get("app", "user_tz"))
 flask_app = Flask(APP_NAME)
 flask_app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_tablespace}"
 flask_app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+flask_app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    "connect_args": {"timeout": db_timeout}
+}
 db = SQLAlchemy(app=flask_app, model_class=Base)
+
+
+@event.listens_for(db.engine, "connect")
+def set_sqlite_pragma_sync(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.close()
 # set up flask application
 flask_app.jinja_env.add_extension("jinja2.ext.loopcontrols")
 
@@ -1985,14 +2002,21 @@ class TBot(AppThread, Closable):
 class AutoScheduler(AppThread):
     def __init__(self):
         AppThread.__init__(self, name=self.__class__.__name__)
+        self._is_enabled_cached = None
+        self._is_enabled_ttl = 0.0
 
     @property
     def is_enabled(self):
+        now = time.time()
+        if self._is_enabled_cached is not None and now < self._is_enabled_ttl:
+            return self._is_enabled_cached
         config_autoscheduler_enabled = False
         with flask_app.app_context():
             config_autoscheduler = GeneralConfig.query.filter_by(config_key=CONFIG_AUTO_SCHEDULER).first()
             if config_autoscheduler:
                 config_autoscheduler_enabled = bool(int(config_autoscheduler.config_value))
+        self._is_enabled_cached = config_autoscheduler_enabled
+        self._is_enabled_ttl = now + 30
         return config_autoscheduler_enabled
 
     @staticmethod
