@@ -545,6 +545,8 @@ class DeviceInfo(BaseModel):
 
 @api_app.post("/api/device_info")
 async def api_device_info(di: DeviceInfo):
+    log.info("Device info request received",
+        extra={"device_key": di.device_key, "is_input": di.is_input, "is_output": di.is_output})
     try:
         with exception_handler(connect_url=URL_WORKER_APP, and_raise=False, shutdown_on_error=False) as zmq_socket:
             di_model = di.model_dump()
@@ -2128,7 +2130,7 @@ class ApiServer(Thread):
             host="0.0.0.0",
             # host=app_config.get("api", "host"),
             port=int(app_config.get("flask", "http_port")),
-            log_level="warning",
+            log_level="info",
             timeout_graceful_shutdown=1,
         )
         self.server = uvicorn.Server(config)
