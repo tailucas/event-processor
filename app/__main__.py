@@ -528,12 +528,15 @@ class DeviceInfo(BaseModel):
 
 @api_app.post("/api/device_info")
 async def api_device_info(di: DeviceInfo):
-    with exception_handler(connect_url=URL_WORKER_APP, and_raise=False, shutdown_on_error=True) as zmq_socket:
-        di_model = di.model_dump()
-        if di.is_input:
-            zmq_socket.send_pyobj({"device_info_input": di_model})
-        if di.is_output:
-            zmq_socket.send_pyobj({"device_info_output": di_model})
+    try:
+        with exception_handler(connect_url=URL_WORKER_APP, and_raise=False, shutdown_on_error=False) as zmq_socket:
+            di_model = di.model_dump()
+            if di.is_input:
+                zmq_socket.send_pyobj({"device_info_input": di_model})
+            if di.is_output:
+                zmq_socket.send_pyobj({"device_info_output": di_model})
+    except ZMQError as e:
+        log.warning("Cannot forward device info to event processor", extra={"device_key": di.device_key}, exc_info=e)
     return "OK"
 
 

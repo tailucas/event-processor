@@ -276,7 +276,7 @@ public class DeviceConfig {
         return configs;
     }
 
-    public void postDeviceInfo(Generic device) throws IOException, InterruptedException {
+    public void postDeviceInfo(Generic device) {
         final String deviceKey = device.getDeviceKey();
         log.atDebug().setMessage("Posting device update").addKeyValue("device_key", deviceKey).log();
         UriComponents uriComponents = UriComponentsBuilder.newInstance()
@@ -287,7 +287,16 @@ public class DeviceConfig {
             .build()
             .expand("api", "device_info")
             .encode();
-        final String deviceJson = mapper.writeValueAsString(device);
+        final String deviceJson;
+        try {
+            deviceJson = mapper.writeValueAsString(device);
+        } catch (JsonProcessingException e) {
+            log.atError().setMessage("Cannot serialize device info for config server")
+                .addKeyValue("device_key", deviceKey)
+                .setCause(e)
+                .log();
+            return;
+        }
         final HttpRequest request = HttpRequest.newBuilder()
             .uri(uriComponents.toUri())
             .header("Content-Type", "application/json")
@@ -301,15 +310,28 @@ public class DeviceConfig {
             .log();
         log.atDebug().setMessage("Request headers").addKeyValue("headers", request.headers().map()).log();
         log.atDebug().setMessage("Request body").addKeyValue("body", deviceJson).log();
-        HttpResponse<String> response = httpClient.send(request, BodyHandlers.ofString());
-        final int responseCode = response.statusCode();
-        final String responseBody = response.body();
-        if (responseCode / 100 != 2) {
-            log.atWarn().setMessage("Device update failed")
+        try {
+            HttpResponse<String> response = httpClient.send(request, BodyHandlers.ofString());
+            final int responseCode = response.statusCode();
+            final String responseBody = response.body();
+            if (responseCode / 100 != 2) {
+                log.atWarn().setMessage("Device update failed")
+                    .addKeyValue("device_key", deviceKey)
+                    .addKeyValue("response_code", responseCode)
+                    .addKeyValue("response_body", responseBody)
+                    .addKeyValue("request_payload", deviceJson)
+                    .log();
+            }
+        } catch (IOException e) {
+            log.atWarn().setMessage("Cannot post device info to config server")
                 .addKeyValue("device_key", deviceKey)
-                .addKeyValue("response_code", responseCode)
-                .addKeyValue("response_body", responseBody)
-                .addKeyValue("request_payload", deviceJson)
+                .setCause(e)
+                .log();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.atWarn().setMessage("Interrupted while posting device info to config server")
+                .addKeyValue("device_key", deviceKey)
+                .setCause(e)
                 .log();
         }
     }
