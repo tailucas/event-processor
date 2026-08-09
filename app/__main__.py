@@ -114,13 +114,6 @@ flask_app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
     "connect_args": {"timeout": db_timeout}
 }
 db = SQLAlchemy(app=flask_app, model_class=Base)
-
-
-@event.listens_for(db.engine, "connect")
-def set_sqlite_pragma_sync(dbapi_connection, connection_record):
-    cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA journal_mode=WAL")
-    cursor.close()
 # set up flask application
 flask_app.jinja_env.add_extension("jinja2.ext.loopcontrols")
 
@@ -144,6 +137,13 @@ login_manager.init_app(flask_app)
 Compress().init_app(flask_app)
 flask_ctx = flask_app.app_context()
 flask_ctx.push()
+
+
+@event.listens_for(db.engine, "connect")
+def set_sqlite_pragma_sync(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.close()
 
 
 api_app = FastAPI()
