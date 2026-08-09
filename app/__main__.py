@@ -110,9 +110,7 @@ user_tz = timezone(app_config.get("app", "user_tz"))
 flask_app = Flask(APP_NAME)
 flask_app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_tablespace}"
 flask_app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-flask_app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-    "connect_args": {"timeout": db_timeout}
-}
+flask_app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"connect_args": {"timeout": db_timeout}}
 db = SQLAlchemy(app=flask_app, model_class=Base)
 # set up flask application
 flask_app.jinja_env.add_extension("jinja2.ext.loopcontrols")
@@ -545,8 +543,10 @@ class DeviceInfo(BaseModel):
 
 @api_app.post("/api/device_info")
 async def api_device_info(di: DeviceInfo):
-    log.info("Device info request received",
-        extra={"device_key": di.device_key, "is_input": di.is_input, "is_output": di.is_output})
+    log.debug(
+        "Device info request received",
+        extra={"device_key": di.device_key, "is_input": di.is_input, "is_output": di.is_output},
+    )
     try:
         with exception_handler(connect_url=URL_WORKER_APP, and_raise=False, shutdown_on_error=False) as zmq_socket:
             di_model = di.model_dump()
@@ -555,7 +555,11 @@ async def api_device_info(di: DeviceInfo):
             if di.is_output:
                 zmq_socket.send_pyobj({"device_info_output": di_model})
     except ZMQError as e:
-        log.warning("Cannot forward device info to event processor", extra={"device_key": di.device_key}, exc_info=e)
+        log.warning(
+            "Cannot forward device info to event processor",
+            extra={"device_key": di.device_key, "is_input": di.is_input, "is_output": di.is_output},
+            exc_info=e,
+        )
     return "OK"
 
 
@@ -2130,7 +2134,7 @@ class ApiServer(Thread):
             host="0.0.0.0",
             # host=app_config.get("api", "host"),
             port=int(app_config.get("flask", "http_port")),
-            log_level="info",
+            log_level="warning",
             timeout_graceful_shutdown=1,
         )
         self.server = uvicorn.Server(config)
