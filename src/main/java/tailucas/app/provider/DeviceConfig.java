@@ -310,30 +310,42 @@ public class DeviceConfig {
             .log();
         log.atDebug().setMessage("Request headers").addKeyValue("headers", request.headers().map()).log();
         log.atDebug().setMessage("Request body").addKeyValue("body", deviceJson).log();
-        try {
-            HttpResponse<String> response = httpClient.send(request, BodyHandlers.ofString());
-            final int responseCode = response.statusCode();
-            final String responseBody = response.body();
-            if (responseCode / 100 != 2) {
-                log.atWarn().setMessage("Device update failed")
+        IOException lastException = null;
+        for (int attempt = 0; attempt < 2; attempt++) {
+            try {
+                HttpResponse<String> response = httpClient.send(request, BodyHandlers.ofString());
+                final int responseCode = response.statusCode();
+                final String responseBody = response.body();
+                if (responseCode / 100 != 2) {
+                    log.atWarn().setMessage("Device update failed")
+                        .addKeyValue("device_key", deviceKey)
+                        .addKeyValue("response_code", responseCode)
+                        .addKeyValue("response_body", responseBody)
+                        .addKeyValue("request_payload", deviceJson)
+                        .log();
+                }
+                return;
+            } catch (IOException e) {
+                lastException = e;
+                if (attempt == 0) {
+                    log.atDebug().setMessage("Retrying device info post after IO error")
+                        .addKeyValue("device_key", deviceKey)
+                        .setCause(e)
+                        .log();
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.atWarn().setMessage("Interrupted while posting device info to config server")
                     .addKeyValue("device_key", deviceKey)
-                    .addKeyValue("response_code", responseCode)
-                    .addKeyValue("response_body", responseBody)
-                    .addKeyValue("request_payload", deviceJson)
+                    .setCause(e)
                     .log();
+                return;
             }
-        } catch (IOException e) {
-            log.atWarn().setMessage("Cannot post device info to config server")
-                .addKeyValue("device_key", deviceKey)
-                .setCause(e)
-                .log();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            log.atWarn().setMessage("Interrupted while posting device info to config server")
-                .addKeyValue("device_key", deviceKey)
-                .setCause(e)
-                .log();
         }
+        log.atWarn().setMessage("Cannot post device info to config server")
+            .addKeyValue("device_key", deviceKey)
+            .setCause(lastException)
+            .log();
     }
 
     private CollectionType getCollectionType(ConfigType api) {
