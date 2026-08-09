@@ -85,6 +85,7 @@ public class EventProcessor
     public static final int EXIT_CODE_RABBITMQ = 4;
     public static final int EXIT_CODE_CREDENTIALS = 8;
     public static final int EXIT_CODE_SENTRY = 16;
+    public static final int EXIT_CODE_CONFIG_SERVER = 32;
 
     public static final String FEATURE_FLAG_HA_DISCOVERY = "send-home-assistant-discovery";
     public static final String FEATURE_FLAG_PAGER_DUTY_TICKETS = "pager-duty-tickets";
@@ -317,8 +318,12 @@ public class EventProcessor
                 if (responseCode / 100 == 2) {
                     ready = Boolean.valueOf(responseBody).booleanValue();
                 }
+            } catch (IOException e) {
+                log.atDebug().setMessage("Startup: not ready").setCause(e).log();
             } catch (Exception e) {
-                log.atWarn().setMessage("Startup: not ready").setCause(e).log();
+                log.atError().setMessage("Problem reaching config server").setCause(e).log();
+                Sentry.captureException(e);
+                System.exit(EXIT_CODE_CONFIG_SERVER);
             } finally {
                 if (!ready) {
                     try {
