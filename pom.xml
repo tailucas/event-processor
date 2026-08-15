@@ -34,6 +34,9 @@
     <zeromq.version>0.6.0</zeromq.version>
     <opconnect-java.version>0.6.2</opconnect-java.version>
     <prometheus.version>1.8.0</prometheus.version>
+    <opentelemetry.version>1.51.0</opentelemetry.version>
+    <opentelemetry-instrumentation.version>2.16.0</opentelemetry-instrumentation.version>
+    <opentelemetry-instrumentation.alpha.version>2.16.0-alpha</opentelemetry-instrumentation.alpha.version>
 
     <!-- test dependencies -->
     <junit-jupiter.version>6.1.2</junit-jupiter.version>
@@ -186,6 +189,32 @@
       <artifactId>slf4j-api</artifactId>
     </dependency>
 
+    <!-- OpenTelemetry: SDK autoconfigure reads standard OTEL_* env vars -->
+    <dependency>
+      <groupId>io.opentelemetry</groupId>
+      <artifactId>opentelemetry-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.opentelemetry</groupId>
+      <artifactId>opentelemetry-sdk</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.opentelemetry</groupId>
+      <artifactId>opentelemetry-sdk-extension-autoconfigure</artifactId>
+    </dependency>
+    <!-- required at runtime by autoconfigure's metrics wiring (alpha) -->
+    <dependency>
+      <groupId>io.opentelemetry</groupId>
+      <artifactId>opentelemetry-api-incubator</artifactId>
+      <version>${opentelemetry.version}-alpha</version>
+    </dependency>
+    <!-- log4j2 bridge (alpha instrumentation artifact) -->
+    <dependency>
+      <groupId>io.opentelemetry.instrumentation</groupId>
+      <artifactId>opentelemetry-log4j-appender-2.17</artifactId>
+      <version>${opentelemetry-instrumentation.alpha.version}</version>
+    </dependency>
+
     <!-- https://mvnrepository.com/artifact/org.junit.jupiter/junit-jupiter -->
     <!-- the junit-jupiter.version property also overrides Spring Boot's junit-bom import -->
     <dependency>
@@ -217,6 +246,27 @@
   <!-- version overrides -->
   <dependencyManagement>
     <dependencies>
+      <dependency>
+        <groupId>io.opentelemetry</groupId>
+        <artifactId>opentelemetry-bom</artifactId>
+        <version>${opentelemetry.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>io.opentelemetry.instrumentation</groupId>
+        <artifactId>opentelemetry-instrumentation-bom</artifactId>
+        <version>${opentelemetry-instrumentation.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>io.opentelemetry.instrumentation</groupId>
+        <artifactId>opentelemetry-instrumentation-bom-alpha</artifactId>
+        <version>${opentelemetry-instrumentation.alpha.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
       <dependency>
         <groupId>com.fasterxml.jackson.core</groupId>
         <artifactId>jackson-annotations</artifactId>
@@ -275,13 +325,20 @@
               <goals>
                 <goal>analyze-only</goal>
               </goals>
-              <configuration>
-                <failOnWarning>true</failOnWarning>
-                <ignoreNonCompile>true</ignoreNonCompile>
-              </configuration>
-            </execution>
-          </executions>
-        </plugin>
+          <configuration>
+            <failOnWarning>true</failOnWarning>
+            <ignoreNonCompile>true</ignoreNonCompile>
+            <ignoredUnusedDeclaredDependencies>
+              <!-- runtime-wired by autoconfigure, not referenced at compile time -->
+              <ignoredUnusedDeclaredDependency>io.opentelemetry:opentelemetry-api-incubator</ignoredUnusedDeclaredDependency>
+              <ignoredUnusedDeclaredDependency>io.opentelemetry:opentelemetry-exporter-otlp</ignoredUnusedDeclaredDependency>
+              <ignoredUnusedDeclaredDependency>io.opentelemetry:opentelemetry-sdk-logs</ignoredUnusedDeclaredDependency>
+              <ignoredUnusedDeclaredDependency>io.opentelemetry:opentelemetry-sdk-extension-autoconfigure</ignoredUnusedDeclaredDependency>
+            </ignoredUnusedDeclaredDependencies>
+          </configuration>
+        </execution>
+      </executions>
+    </plugin>
         <!-- https://www.mojohaus.org/exec-maven-plugin/usage.html -->
         <plugin>
           <groupId>org.codehaus.mojo</groupId>

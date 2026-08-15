@@ -1,6 +1,7 @@
 package tailucas.app.device;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -36,7 +37,10 @@ import com.rabbitmq.client.BuiltinExchangeType;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 
+import io.opentelemetry.api.GlobalOpenTelemetry;
+
 import tailucas.app.EventProcessor;
+import tailucas.app.OtelSupport;
 import tailucas.app.TestStatics;
 import tailucas.app.device.config.InputConfig;
 import tailucas.app.device.config.OutputConfig;
@@ -334,5 +338,40 @@ class EventTest {
         assertEquals("raw update", TestStatics.getField(event, "deviceUpdateString"));
         event.run();
         verifyNoInteractions(deviceConfig);
+    }
+
+    @Test
+    void inboundTraceparentIsPropagatedToPublishHeaders() throws Exception {
+        // Hermetic OTEL: keep the SDK recording but stop it reaching for a collector.
+        System.setProperty("otel.traces.exporter", "none");
+        System.setProperty("otel.metrics.exporter", "none");
+        System.setProperty("otel.logs.exporter", "none");
+        try {
+            OtelSupport.init();
+            final String inbound = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+            final InputConfig config = inputConfig(inputConfigJson(""));
+            final List<OutputConfig> outputs = List.of(outputConfig(
+                "{\"device_key\": \"out-1\", \"device_type\": \"siren\", \"device_enabled\": true}"));
+            stubTriggeringSetup(config, outputs);
+
+            final Event event = new Event(connection, SOURCE, detectorInState("on"));
+            event.setTraceContext(inbound, null);
+            event.run();
+
+            final ArgumentCaptor<AMQP.BasicProperties> props = ArgumentCaptor.forClass(AMQP.BasicProperties.class);
+            verify(channel).basicPublish(eq("test_exchange"), anyString(), props.capture(), any(byte[].class));
+            final java.util.Map<String, Object> headers = props.getValue().getHeaders();
+            assertNotNull(headers, "publish headers must be present");
+            assertTrue(headers.containsKey("traceparent"), "publish headers must carry a traceparent");
+            final String outbound = String.valueOf(headers.get("traceparent"));
+            assertTrue(outbound.startsWith("00-4bf92f3577b34da6a3ce929d0e0e4736-"),
+                "outbound traceparent must continue the inbound trace id");
+        } finally {
+            OtelSupport.shutdown();
+            GlobalOpenTelemetry.resetForTest();
+            System.clearProperty("otel.traces.exporter");
+            System.clearProperty("otel.metrics.exporter");
+            System.clearProperty("otel.logs.exporter");
+        }
     }
 }

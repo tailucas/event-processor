@@ -9,8 +9,12 @@ paths:
 
 This project is the **reference for structured logging** across the
 application family. Both stacks log as structured JSON events: a static
-message plus key/value fields. Interpolated log messages are prohibited in
-both Java and Python.
+message plus key/value fields. Interpolation (string concatenation,
+`%`/`{}` placeholders, f-strings) should be avoided and used only for a
+descriptive scalar with no query value of its own (e.g. a count embedded
+for readability). Never interpolate secrets or untrusted data into a
+message. One logical event produces a single structured record with all
+context in its fields — **one event = one line**.
 
 ## Java: SLF4J Fluent API + Log4j2 JSON
 
@@ -34,17 +38,19 @@ log.atWarn().setMessage("Not updating PagerDuty status, disabled with feature fl
 
 Rules:
 
-1. `setMessage` takes a **static** string. Never interpolate:
-   no `"..." + var`, no `String.format`, no `{}` placeholder overloads
-   (`log.info("x {}", x)`), and never pass a bare variable as the message
-   (`log.debug(beanName)` is wrong).
+1. `setMessage` takes a **static** string. Prefer `addKeyValue` fields over
+   interpolation; interpolation is acceptable only for a descriptive scalar
+   (a count or an identifier already present elsewhere in the record).
+   Never interpolate secrets or untrusted input. Never pass a bare variable
+   as the message (`log.debug(beanName)` is wrong).
 2. One `addKeyValue("snake_case_key", value)` per field; keys are
    `snake_case`. Values may be strings, numbers, booleans, or collections.
 3. Exceptions attach with `.setCause(e)`; keep a static message describing
    what failed.
 4. Conditional/expensive logging: capture the builder, e.g.
    `final LoggingEventBuilder latchLog = enabled ? log.atInfo() : log.atDebug();`
-   then add fields and `.log()` once.
+   then add fields and `.log()` once. For expensive field assembly, guard
+   with `log.isEnabledForLevel(Level.DEBUG)`.
 5. Sentry structured logs mirror this style via
    `Sentry.logger().log(level, SentryLogParameters.create(SentryAttributes.of(...)), "message")`.
 
@@ -85,7 +91,9 @@ log.warning(msg="Telegram Bot Exception while handling an update:", exc_info=con
 Rules:
 
 1. Static message; all variables go into `extra` with `snake_case` keys.
-   Never `log.info(f"... {var}")`, `%`-args, `.format()`, or concatenation.
+   Interpolation is acceptable only for a descriptive scalar (a count or an
+   identifier already present elsewhere in the record). Data that belongs in
+   `extra` should not be inserted via f-strings, `%`-args, or `.format()`.
 2. Exceptions: `log.exception("Static message")` or `exc_info=...`.
 3. Reused message + fields: store `log_msg`/`log_fields` variables and pass
    `extra=log_fields` at each level.
@@ -94,10 +102,32 @@ Rules:
 
 ## Levels
 
+Choose the level by the *consequence* of the event, not by how interesting it
+is. Default to the lowest level that still tells the story.
+
 | Level | Use |
 |---|---|
-| DEBUG | per-event tracing, authz decisions, message contents |
-| INFO | lifecycle, state transitions, device triggers |
-| WARNING | recoverable faults, feature flags disabling behavior |
-| ERROR | failed operations (always `.setCause`/`exc_info` where possible) |
-| CRITICAL | reserved |
+| DEBUG | The default for routine, per-event detail: internal state, field values, message contents, authz decisions. Safe to drop in production. |
+| INFO | An action of consequence: lifecycle, state transitions, device triggers — something an operator would want to see in normal operation. |
+| WARNING | A non-error variation of normal logic or an ambiguous situation: recoverable faults, retries, fallbacks, feature flags disabling behavior. Execution continues. |
+| ERROR | A condition where normal execution cannot continue — e.g. returning after catching an exception, or abandoning a unit of work. Always `.setCause`/`exc_info` where possible. |
+| CRITICAL | The process is about to exit or is in an unrecoverable app-level state. Reserved for fatal failures. |
+
+> `TRACE` (below DEBUG) exists in Log4j2 and some facades but not in Python
+> stdlib or Go `log/slog`, so it is not portable across runtimes and should
+> not be relied on for cross-language code.
+
+### Exception handling
+
+- **Log once, at the boundary.** Do not log-and-rethrow the same exception at
+  every layer. Log where the error is handled (or where execution stops), and
+  let the trace carry the rest of the context.
+- **Non-recoverable errors must be captured in the trace.** For every ERROR
+  where execution cannot continue, record the exception on the active span —
+  `record_exception` in Python, `span.recordException(...)` + ERROR status in
+  Java (or Sentry `setThrowable(e)` + `setStatus(SpanStatus.INTERNAL_ERROR)`)
+  — so the failure is queryable in the trace, not only in the log. See
+  `observability.md` §1 "Errors are span data".
+- **Recoverable problems are WARNING, not ERROR.** A retry that succeeds is a
+  WARNING (or DEBUG if routine); escalate to ERROR only when the work is
+  abandoned.

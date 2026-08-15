@@ -211,6 +211,7 @@ public class EventProcessor
             creds.close();
         }
         log.atInfo().setMessage("Full shutdown complete").addKeyValue("exit_code", getExitCode()).log();
+        OtelSupport.shutdown();
     }
 
     public static boolean isFeatureEnabled(String featureName) {
@@ -286,6 +287,7 @@ public class EventProcessor
             .addKeyValue("sentry_enabled", Sentry.isEnabled())
             .addKeyValue("sentry_healthy", Sentry.isHealthy())
             .log();
+        OtelSupport.init();
         pagerDuty = PagerDutyEventsClient.create();
         pagerDutyRoutingKey = creds.getField("PagerDuty", "routing_key", appName);
         deviceName = envVars.get("DEVICE_NAME");

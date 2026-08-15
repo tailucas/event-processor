@@ -45,11 +45,28 @@ public class RabbitMq implements DeliverCallback {
         metrics.postMetric("message", Map.of("type", "rabbitmq"));
         final String source = message.getEnvelope().getRoutingKey();
         final byte[] msgBody = message.getBody();
+        // Optional W3C trace context carried in the AMQP message headers.
+        String traceparentValue = null;
+        String baggageValue = null;
+        final com.rabbitmq.client.AMQP.BasicProperties props = message.getProperties();
+        if (props != null && props.getHeaders() != null) {
+            final Object traceparentHeader = props.getHeaders().get("traceparent");
+            if (traceparentHeader != null) {
+                traceparentValue = String.valueOf(traceparentHeader);
+            }
+            final Object baggageHeader = props.getHeaders().get("baggage");
+            if (baggageHeader != null) {
+                baggageValue = String.valueOf(baggageHeader);
+            }
+        }
+        final String traceparent = traceparentValue;
+        final String baggage = baggageValue;
         try {
             final State deviceUpdate = mapper.readerFor(new StateTypeRef()).readValue(msgBody);
             log.atDebug().setMessage("RabbitMQ device state update")
                 .addKeyValue("source", source)
                 .addKeyValue("device_update", String.valueOf(deviceUpdate))
+                .addKeyValue("traceparent_present", traceparent != null)
                 .log();
             final List<Device> inputs = deviceUpdate.getInputs();
             if (inputs == null) {
@@ -57,7 +74,11 @@ public class RabbitMq implements DeliverCallback {
                 return;
             }
             inputs.forEach(device -> {
-                srv.execute(new Event(connection, source, device));
+                final Event event = new Event(connection, source, device);
+                if (traceparent != null || baggage != null) {
+                    event.setTraceContext(traceparent, baggage);
+                }
+                srv.execute(event);
             });
         } catch (Exception e) {
             metrics.postMetric("error", Map.of(

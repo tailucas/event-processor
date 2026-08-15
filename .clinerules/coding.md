@@ -19,10 +19,14 @@ for configuration and event log UI.
 - This project is functionally **ahead of base-app** (the reference template).
   Proven patterns here (structured logging via SLF4J fluent API + Log4j2 JSON,
   Sentry structured logs, feature flags) are the direction of travel for all
-  sibling apps.
+  sibling apps — **backport them to base-app** when they prove out, so every
+  fork inherits them.
 - Java is the event-processing core; Python serves the web/config surface.
   Keep the boundary clean: they communicate via the same RabbitMQ/ZMQ
   transports and shared configuration conventions, not shared code.
+- Sibling standards live in `build.md`, `config.md`, `container.md`, `mq.md`,
+  `observability.md`, and `logging.md` — defer to them, and refresh this file
+  as the templates evolve.
 
 ## 2. Java (`src/`, `pom.xml`)
 
@@ -78,3 +82,13 @@ for configuration and event log UI.
   (`/api/...`) mounted under the same server.
 - Authentication via Flask-Login; authorization checks must log outcomes in
   structured style (`extra={"user_email": ..., "action": ..., "resource": ...}`).
+
+## 7. Cross-cutting Rules
+
+- Every runtime logs in structured style (see `logging.md`): SLF4J fluent API +
+  Log4j2 JSON in Java, pylib `extra` in Python.
+- Graceful shutdown is mandatory everywhere: the JVM shutdown hook flushes OTEL
+  and Sentry on exit; Python tears down through `SignalHandler` + `thread_nanny`
+  + `die()`/`bye()`.
+- New integrations get a feature switch (`FEATURE_FLAG_*` / env var), never a
+  hard dependency, so the app stays runnable with zero external dependencies.
