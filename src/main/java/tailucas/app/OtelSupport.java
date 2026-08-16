@@ -78,6 +78,15 @@ public class OtelSupport {
                 scopeName = appName;
             }
             final String deviceName = System.getenv("DEVICE_NAME");
+            // Log the OTLP env vars so it is clear the JVM loaded them.
+            log.atInfo().setMessage("OTLP exporter configuration")
+                .addKeyValue("otel_exporter_otlp_protocol", System.getenv("OTEL_EXPORTER_OTLP_PROTOCOL"))
+                .addKeyValue("otel_exporter_otlp_endpoint", System.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
+                .log();
+            // Force HTTP/protobuf: autoconfigure reads the system property with
+            // highest precedence, so this deterministically selects the HTTP
+            // exporter regardless of env-var propagation into the JVM.
+            System.setProperty("otel.exporter.otlp.protocol", "http/protobuf");
             OpenTelemetrySdk built;
             try {
                 built = AutoConfiguredOpenTelemetrySdk.builder()
