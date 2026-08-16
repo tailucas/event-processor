@@ -3,6 +3,7 @@
 import asyncio
 from collections import OrderedDict, deque
 from contextlib import suppress
+from dataclasses import fields
 from functools import wraps
 from io import BytesIO
 from os import path
@@ -1708,13 +1709,16 @@ class EventProcessor(AppThread):
 
 
 def _device_from_dict(device_dict: dict) -> Device:
-    """Construct a Device from a dict, handling the type -> type_ field rename."""
+    """Construct a Device from a dict, handling field renames and unknown fields."""
     device_data = dict(device_dict)
     if "type" in device_data and "type_" not in device_data:
         device_data["type_"] = device_data.pop("type")
     if "device_type" not in device_data:
         # device_type is required; fall back to type_ if available
         device_data["device_type"] = device_data.get("type_", "unknown")
+    # filter to only valid Device dataclass fields
+    valid_fields = {f.name for f in fields(Device)}
+    device_data = {k: v for k, v in device_data.items() if k in valid_fields}
     return Device(**device_data)
 
 
