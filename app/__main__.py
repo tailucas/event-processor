@@ -2169,12 +2169,9 @@ class ApiServer(Thread):
 
 async def main():
     global creds
-    global sentry_dsn
     # sentry instrumentation
     log.debug("Loading Sentry.io instrumentation...")
-    sentry_dsn = creds.get_creds(app_config.get("creds", "sentry_dsn").replace("__APP_NAME__", APP_NAME))
     sentry_sdk.init(
-        dsn=sentry_dsn,
         enable_logs=True,
         integrations=[
             AsyncioIntegration(),

@@ -95,7 +95,7 @@ requires-dist = [
     { name = "schedule", specifier = ">=1.2.2" },
     { name = "sentry-sdk", extras = ["flask"], specifier = ">=2.37.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.43" },
-    { name = "tailucas-pylib", extras = ["aws", "creds", "dto", "monitoring", "mq"], specifier = ">=0.7.7" },
+    { name = "tailucas-pylib", extras = ["aws", "creds", "monitoring", "mq"], specifier = ">=0.7.7" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.35.0" },
 ]
 
@@ -1429,17 +1429,18 @@ wheels = [
 
 [[package]]
 name = "tailucas-pylib"
-version = "0.8.1"
+version = "0.8.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "python-dateutil" },
     { name = "python-json-logger" },
     { name = "pytz" },
     { name = "pyyaml" },
+    { name = "sentry-sdk" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/41/2a/b303249923d01dc26ed6e99f5520cdb0b5f1118c64734ea29a5431ed8c8e/tailucas_pylib-0.8.1.tar.gz", hash = "sha256:513da85ee446c1cc0ec709f2644e9c5adea2446e3f7978940f6b228a6f4baf6d", size = 22999, upload-time = "2026-08-15T07:32:02.653Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/49/11/72e3c90d7d0dc3b35606d5b41acf0c7113aef880b38221ab070c1364c8c4/tailucas_pylib-0.8.2.tar.gz", hash = "sha256:345945c39049396362dca196e9fbd21f8cf3ea790babcd58881e68e632c0b44d", size = 23146, upload-time = "2026-08-16T14:11:31.387Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ed/95/bdfb2cf6daa7187165c4e0eb4e0c288787e1260e2da3880ea72a94cd7031/tailucas_pylib-0.8.1-py3-none-any.whl", hash = "sha256:7da3ffaffef6fceef3eb0a86e7dec1115cec02c31ef190f471030e9f45ff65d9", size = 29141, upload-time = "2026-08-15T07:32:01.159Z" },
+    { url = "https://files.pythonhosted.org/packages/62/01/1812131735696fefb02ec59144bf42472fded911af6b05fa4d06735acd26/tailucas_pylib-0.8.2-py3-none-any.whl", hash = "sha256:0448e75d2aca0bdae1993ed20fb812aa2f6a0d2aaf21fee55a1a2bf28ca03653", size = 29272, upload-time = "2026-08-16T14:11:29.954Z" },
 ]
 
 [package.optional-dependencies]
