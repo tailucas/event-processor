@@ -1707,6 +1707,17 @@ class EventProcessor(AppThread):
         try_close(self.bot)
 
 
+def _device_from_dict(device_dict: dict) -> Device:
+    """Construct a Device from a dict, handling the type -> type_ field rename."""
+    device_data = dict(device_dict)
+    if "type" in device_data and "type_" not in device_data:
+        device_data["type_"] = device_data.pop("type")
+    if "device_type" not in device_data:
+        # device_type is required; fall back to type_ if available
+        device_data["device_type"] = device_data.get("type_", "unknown")
+    return Device(**device_data)
+
+
 class TBot(AppThread, Closable):
     def __init__(self, chat_id, sns_fallback=False):
         AppThread.__init__(self, name=self.__class__.__name__)
@@ -1772,10 +1783,10 @@ class TBot(AppThread, Closable):
                     message = None
                     try:
                         if "active_input" in event:
-                            input_device = Device(**event["active_input"])
+                            input_device = _device_from_dict(event["active_input"])
                             log.debug("Input device for message", extra={"input_device": str(input_device)})
                         elif "output_triggered" in event:
-                            output_device = Device(**event["output_triggered"])
+                            output_device = _device_from_dict(event["output_triggered"])
                             log.debug("Output device for message", extra={"output_device": str(output_device)})
                         else:
                             message = BotMessage(**event)
