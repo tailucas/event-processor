@@ -377,9 +377,15 @@ public class Event implements Runnable {
                         ObjectNode root = mapper.createObjectNode();
                         try (Scope outputScope = outputSpan.makeCurrent()) {
                             try {
+                                // inject W3C trace context into the payload body so
+                                // downstream consumers can continue this trace.
+                                final Map<String, String> propagationCarrier = new HashMap<>();
+                                OtelSupport.getOpenTelemetry().getPropagators().getTextMapPropagator()
+                                    .inject(Context.current(), propagationCarrier, PROPAGATION_SETTER);
                                 root.put("timestamp", unixTime);
                                 root.putPOJO("active_input", device);
                                 root.putPOJO("output_triggered", outputConfig);
+                                propagationCarrier.forEach(root::put);
                                 final byte[] wireCommand = mapper.writeValueAsBytes(root);
                                 final Matcher nameMatcher = namePattern.matcher(outputDeviceType.toLowerCase(Locale.ROOT));
                                 String responseTopic = outputConfig.getTriggerTopic();
@@ -407,15 +413,8 @@ public class Event implements Runnable {
                                 outputSpan.setAttribute("routing_key", responseTopic);
                                 outputSpan.setAttribute("payload_bytes", wireCommand.length);
 
-                                // inject W3C trace context into the AMQP headers so
-                                // downstream consumers can continue this trace.
-                                final Map<String, String> propagationCarrier = new HashMap<>();
-                                OtelSupport.getOpenTelemetry().getPropagators().getTextMapPropagator()
-                                    .inject(Context.current(), propagationCarrier, PROPAGATION_SETTER);
-                                final Map<String, Object> headers = new HashMap<>(propagationCarrier);
                                 final BasicProperties rabbitMqProperties = new AMQP.BasicProperties.Builder()
                                     .expiration(expiration)
-                                    .headers(headers)
                                     .build();
 
                                 log.atInfo().setMessage("Input triggers output")

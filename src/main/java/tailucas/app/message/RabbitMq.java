@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.DeliverCallback;
@@ -36,7 +37,8 @@ public class RabbitMq implements DeliverCallback {
     public RabbitMq(ExecutorService srv, Connection connection) {
         this.srv = srv;
         this.connection = connection;
-        this.mapper = new MessagePackMapper();
+        this.mapper = new MessagePackMapper()
+            .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
         this.metrics = Metrics.getInstance();
     }
 
@@ -45,7 +47,8 @@ public class RabbitMq implements DeliverCallback {
         metrics.postMetric("message", Map.of("type", "rabbitmq"));
         final String source = message.getEnvelope().getRoutingKey();
         final byte[] msgBody = message.getBody();
-        // Optional W3C trace context carried in the AMQP message headers.
+        // Optional W3C trace context. The body is the primary carrier; the AMQP
+        // headers are a fallback for producers that still use the header convention.
         String traceparentValue = null;
         String baggageValue = null;
         final com.rabbitmq.client.AMQP.BasicProperties props = message.getProperties();
@@ -59,10 +62,17 @@ public class RabbitMq implements DeliverCallback {
                 baggageValue = String.valueOf(baggageHeader);
             }
         }
-        final String traceparent = traceparentValue;
-        final String baggage = baggageValue;
         try {
             final State deviceUpdate = mapper.readerFor(new StateTypeRef()).readValue(msgBody);
+            // Body-level trace context takes precedence over the header fallback.
+            if (deviceUpdate.getTraceparent() != null) {
+                traceparentValue = deviceUpdate.getTraceparent();
+            }
+            if (deviceUpdate.getBaggage() != null) {
+                baggageValue = deviceUpdate.getBaggage();
+            }
+            final String traceparent = traceparentValue;
+            final String baggage = baggageValue;
             log.atDebug().setMessage("RabbitMQ device state update")
                 .addKeyValue("source", source)
                 .addKeyValue("device_update", String.valueOf(deviceUpdate))

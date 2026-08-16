@@ -16,6 +16,7 @@ import org.springframework.context.ApplicationContext;
 import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rabbitmq.client.Connection;
@@ -50,7 +51,8 @@ public class Mqtt implements MqttCallback {
         this.springApp = springApp;
         this.srv = srv;
         this.rabbitMqConnection = rabbitMqConnection;
-        this.mapper = new ObjectMapper();
+        this.mapper = new ObjectMapper()
+            .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
         this.metrics = Metrics.getInstance();
     }
 

@@ -101,6 +101,12 @@
       <artifactId>log4j-layout-template-json</artifactId>
     </dependency>
 
+    <!-- bridge java.util.logging (e.g. OTEL autoconfigure) into Log4j2 -->
+    <dependency>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-jul</artifactId>
+    </dependency>
+
     <dependency>
       <groupId>io.prometheus</groupId>
       <artifactId>prometheus-metrics-core</artifactId>

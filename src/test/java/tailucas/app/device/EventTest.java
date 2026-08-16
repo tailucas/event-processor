@@ -341,7 +341,7 @@ class EventTest {
     }
 
     @Test
-    void inboundTraceparentIsPropagatedToPublishHeaders() throws Exception {
+    void inboundTraceparentIsPropagatedToPublishBody() throws Exception {
         // Hermetic OTEL: keep the SDK recording but stop it reaching for a collector.
         System.setProperty("otel.traces.exporter", "none");
         System.setProperty("otel.metrics.exporter", "none");
@@ -358,12 +358,11 @@ class EventTest {
             event.setTraceContext(inbound, null);
             event.run();
 
-            final ArgumentCaptor<AMQP.BasicProperties> props = ArgumentCaptor.forClass(AMQP.BasicProperties.class);
-            verify(channel).basicPublish(eq("test_exchange"), anyString(), props.capture(), any(byte[].class));
-            final java.util.Map<String, Object> headers = props.getValue().getHeaders();
-            assertNotNull(headers, "publish headers must be present");
-            assertTrue(headers.containsKey("traceparent"), "publish headers must carry a traceparent");
-            final String outbound = String.valueOf(headers.get("traceparent"));
+            final ArgumentCaptor<byte[]> body = ArgumentCaptor.forClass(byte[].class);
+            verify(channel).basicPublish(eq("test_exchange"), anyString(), any(), body.capture());
+            final var tree = new MessagePackMapper().readTree(body.getValue());
+            assertTrue(tree.has("traceparent"), "publish body must carry a traceparent");
+            final String outbound = tree.get("traceparent").asText();
             assertTrue(outbound.startsWith("00-4bf92f3577b34da6a3ce929d0e0e4736-"),
                 "outbound traceparent must continue the inbound trace id");
         } finally {

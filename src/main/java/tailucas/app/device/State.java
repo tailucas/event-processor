@@ -23,6 +23,10 @@ public class State {
     protected List<Device> inputs;
     @JsonProperty
     protected List<Device> outputs;
+    @JsonProperty("traceparent")
+    protected String traceparent;
+    @JsonProperty("baggage")
+    protected String baggage;
 
     @JsonIgnore
     protected Instant createdTime;
@@ -41,6 +45,12 @@ public class State {
     }
     public List<Device> getOutputs() {
         return outputs == null ? null : List.copyOf(outputs);
+    }
+    public String getTraceparent() {
+        return traceparent;
+    }
+    public String getBaggage() {
+        return baggage;
     }
     public Instant getTimestamp() {
         if (createdTime != null) {

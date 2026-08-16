@@ -1,8 +1,12 @@
 package tailucas.app;
 
 import java.util.List;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.LogManager;
 
 import org.apache.logging.log4j.core.config.plugins.util.PluginManager;
+import org.apache.logging.log4j.jul.Log4jBridgeHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,6 +29,24 @@ public class OtelSupport {
         PluginManager.addPackages(List.of(
             "io.opentelemetry.instrumentation.log4j.appender.v2_17",
             "org.apache.logging.log4j.layout.template.json"));
+        // Bridge java.util.logging (used by OTEL autoconfigure and other libs)
+        // into Log4j2 so their messages render as structured JSON, not raw JUL.
+        installJulBridge();
+    }
+
+    private static void installJulBridge() {
+        try {
+            final java.util.logging.Logger rootLogger = LogManager.getLogManager().getLogger("");
+            final Handler[] handlers = rootLogger.getHandlers();
+            for (Handler handler : handlers) {
+                rootLogger.removeHandler(handler);
+            }
+            rootLogger.addHandler(new Log4jBridgeHandler());
+            rootLogger.setLevel(Level.ALL);
+        } catch (Throwable t) {
+            // Never let logging setup break application startup.
+            System.err.println("Cannot install JUL->Log4j2 bridge: " + t);
+        }
     }
 
     private static final Logger log = LoggerFactory.getLogger(OtelSupport.class);
@@ -56,18 +78,39 @@ public class OtelSupport {
                 scopeName = appName;
             }
             final String deviceName = System.getenv("DEVICE_NAME");
-            final OpenTelemetrySdk built = AutoConfiguredOpenTelemetrySdk.builder()
-                .setResultAsGlobal()
-                .addResourceCustomizer((resource, config) -> {
-                    if (deviceName == null || deviceName.isBlank()) {
-                        return resource;
-                    }
-                    return resource.toBuilder()
-                        .put(AttributeKey.stringKey("service.instance.id"), deviceName)
-                        .build();
-                })
-                .build()
-                .getOpenTelemetrySdk();
+            OpenTelemetrySdk built;
+            try {
+                built = AutoConfiguredOpenTelemetrySdk.builder()
+                    .addResourceCustomizer((resource, config) -> {
+                        if (deviceName == null || deviceName.isBlank()) {
+                            return resource;
+                        }
+                        return resource.toBuilder()
+                            .put(AttributeKey.stringKey("service.instance.id"), deviceName)
+                            .build();
+                    })
+                    .build()
+                    .getOpenTelemetrySdk();
+            } catch (RuntimeException e) {
+                // Surface the real cause: autoconfigure logs a generic
+                // "Error encountered during autoconfiguration" via JUL and
+                // hides the underlying failure. Fall back to a no-op SDK so the
+                // application keeps running without telemetry.
+                log.atError().setMessage("OpenTelemetry autoconfiguration failed; continuing with no-op SDK")
+                    .setCause(e)
+                    .log();
+                built = OpenTelemetrySdk.builder().build();
+            }
+            // Register as the global best-effort. Another component (e.g. Sentry)
+            // may have already locked the global via GlobalOpenTelemetry.get();
+            // the SDK remains fully usable through getOpenTelemetry() regardless.
+            try {
+                GlobalOpenTelemetry.set(built);
+            } catch (IllegalStateException e) {
+                log.atWarn().setMessage("OpenTelemetry global already set; using SDK via OtelSupport accessor")
+                    .setCause(e)
+                    .log();
+            }
             // Bridge log4j2: log records emitted inside an active span carry
             // trace_id/span_id, giving log<->trace correlation.
             OpenTelemetryAppender.install(built);

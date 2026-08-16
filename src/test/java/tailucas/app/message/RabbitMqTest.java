@@ -104,4 +104,19 @@ class RabbitMqTest {
         rabbitMq.handle("consumer", delivery(statePayload(List.of(devicePayload("Kitchen Smoke", "contact")))));
         verify(srv, times(1)).execute(any(Event.class));
     }
+
+    @Test
+    void bodyTraceparentIsPropagatedToEvent() throws Exception {
+        final String traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+        final Map<String, Object> payload = new HashMap<>();
+        payload.put("traceparent", traceparent);
+        payload.put("inputs", List.of(devicePayload("Kitchen Smoke", "contact")));
+        final byte[] body = mapper.writeValueAsBytes(payload);
+
+        rabbitMq.handle("consumer", delivery(body));
+
+        final ArgumentCaptor<Event> captor = ArgumentCaptor.forClass(Event.class);
+        verify(srv, times(1)).execute(captor.capture());
+        assertEquals(traceparent, TestStatics.getField(captor.getValue(), "traceparent"));
+    }
 }
