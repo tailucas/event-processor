@@ -214,6 +214,12 @@
       <artifactId>opentelemetry-api-incubator</artifactId>
       <version>${opentelemetry.version}-alpha</version>
     </dependency>
+    <!-- OTLP exporter: autoconfigure wires it at runtime from OTEL_* env vars.
+         Supports both gRPC and HTTP/protobuf via OTEL_EXPORTER_OTLP_PROTOCOL. -->
+    <dependency>
+      <groupId>io.opentelemetry</groupId>
+      <artifactId>opentelemetry-exporter-otlp</artifactId>
+    </dependency>
     <!-- log4j2 bridge (alpha instrumentation artifact) -->
     <dependency>
       <groupId>io.opentelemetry.instrumentation</groupId>
