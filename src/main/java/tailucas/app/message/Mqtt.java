@@ -38,7 +38,6 @@ public class Mqtt implements MqttCallback {
     private static final Logger log = LoggerFactory.getLogger(Mqtt.class);
 
     private static final class HATypeRef extends TypeReference<HAConfig> { }
-    private static final class RingTypeRef extends TypeReference<Ring> { }
 
     private final Metrics metrics;
 
@@ -92,13 +91,19 @@ public class Mqtt implements MqttCallback {
                 }
             } else if (topic.startsWith("ring/")) {
                 Ring ringDevice = null;
+                String traceparent = null;
+                String baggage = null;
                 log.atDebug().setMessage("Ring payload")
                     .addKeyValue("topic", topic)
                     .addKeyValue("payload", new String(payload))
                     .log();
                 if (payload[0] == '{') {
                     try {
-                        ringDevice = mapper.readerFor(new RingTypeRef()).readValue(payload);
+                        final JsonNode ringRoot = mapper.readTree(payload);
+                        final String[] traceContext = extractTraceContext(ringRoot);
+                        traceparent = traceContext[0];
+                        baggage = traceContext[1];
+                        ringDevice = mapper.treeToValue(ringRoot, Ring.class);
                         ringDevice.setMqttTopic(topic);
                     } catch (Throwable e) {
                         log.atWarn().setMessage("JSON issue")
@@ -113,11 +118,16 @@ public class Mqtt implements MqttCallback {
                 }
                 if (ringDevice != null) {
                     log.atDebug().setMessage("Ring state").addKeyValue("ring_state", String.valueOf(ringDevice)).log();
-                    srv.execute(new Event(rabbitMqConnection, topic, ringDevice));
+                    final Event event = new Event(rabbitMqConnection, topic, ringDevice);
+                    applyTraceContext(event, traceparent, baggage);
+                    srv.execute(event);
                 }
             } else if (topic.startsWith("meter/") || topic.startsWith("sensor/")) {
                 // attempt a JSON introspection
                 JsonNode root = mapper.readTree(payload);
+                final String[] traceContext = extractTraceContext(root);
+                final String traceparent = traceContext[0];
+                final String baggage = traceContext[1];
                 final String[] topicParts = topic.split("/", 3);
                 if (topicParts.length < 2) {
                     log.atError().setMessage("Topic not handled").addKeyValue("topic", topic).log();
@@ -144,7 +154,9 @@ public class Mqtt implements MqttCallback {
                                     final Sensor sensor = mapper.treeToValue(node, Sensor.class);
                                     sensor.updateFrom(common);
                                     log.atDebug().setMessage("Sensor state").addKeyValue("sensor_state", String.valueOf(sensor)).log();
-                                    srv.execute(new Event(rabbitMqConnection, topic, sensor));
+                                    final Event event = new Event(rabbitMqConnection, topic, sensor);
+                                    applyTraceContext(event, traceparent, baggage);
+                                    srv.execute(event);
                                 } catch (JsonProcessingException e) {
                                     log.atError().setMessage("Deserialization failure")
                                         .addKeyValue("topic", topic)
@@ -159,7 +171,9 @@ public class Mqtt implements MqttCallback {
                         final Meter meter = mapper.treeToValue(root, Meter.class);
                         meter.setLocation(location);
                         log.atDebug().setMessage("Meter state").addKeyValue("meter_state", String.valueOf(meter)).log();
-                        srv.execute(new Event(rabbitMqConnection, topic, meter));
+                        final Event event = new Event(rabbitMqConnection, topic, meter);
+                        applyTraceContext(event, traceparent, baggage);
+                        srv.execute(event);
                     } else {
                         log.atWarn().setMessage("Unknown inferred device type").addKeyValue("topic", topic).log();
                         return;
@@ -185,6 +199,34 @@ public class Mqtt implements MqttCallback {
                 .setCause(e)
                 .log();
             Sentry.captureException(e);
+        }
+    }
+
+    /**
+     * Reads optional W3C trace context fields from a JSON payload. The body is
+     * the propagation carrier for MQTT (Paho 1.x has no message properties), so
+     * the JSON document must carry {@code traceparent}/{@code baggage} itself.
+     * Both fields are optional: their absence simply means a fresh trace root.
+     */
+    private static String[] extractTraceContext(JsonNode root) {
+        String traceparent = null;
+        String baggage = null;
+        if (root != null) {
+            final JsonNode traceparentNode = root.get("traceparent");
+            if (traceparentNode != null && traceparentNode.isValueNode()) {
+                traceparent = traceparentNode.asText();
+            }
+            final JsonNode baggageNode = root.get("baggage");
+            if (baggageNode != null && baggageNode.isValueNode()) {
+                baggage = baggageNode.asText();
+            }
+        }
+        return new String[] {traceparent, baggage};
+    }
+
+    private static void applyTraceContext(Event event, String traceparent, String baggage) {
+        if (traceparent != null || baggage != null) {
+            event.setTraceContext(traceparent, baggage);
         }
     }
 

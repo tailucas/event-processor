@@ -122,6 +122,65 @@ class MqttTest {
     }
 
     @Test
+    void ringJsonPayloadPropagatesTraceContext() throws Exception {
+        final String traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+        final String baggage = "device.name=porch-camera";
+        mqtt.messageArrived(
+            "ring/component/alarm/device-123/motion/state",
+            message(String.format("{\"batteryLevel\": 80, \"traceparent\": \"%s\", \"baggage\": \"%s\"}", traceparent, baggage)));
+        final ArgumentCaptor<Event> captor = eventCaptor();
+        verify(srv).execute(captor.capture());
+        assertEquals(traceparent, TestStatics.getField(captor.getValue(), "traceparent"));
+        assertEquals(baggage, TestStatics.getField(captor.getValue(), "baggage"));
+    }
+
+    @Test
+    void ringJsonPayloadWithoutTraceContextHasNone() throws Exception {
+        mqtt.messageArrived("ring/component/alarm/device-123/motion/state", message("{\"batteryLevel\": 80}"));
+        final ArgumentCaptor<Event> captor = eventCaptor();
+        verify(srv).execute(captor.capture());
+        assertNull(TestStatics.getField(captor.getValue(), "traceparent"));
+        assertNull(TestStatics.getField(captor.getValue(), "baggage"));
+    }
+
+    @Test
+    void sensorTopicPropagatesTraceContextPerInput() throws Exception {
+        final String traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+        final String baggage = "device.name=kitchen-sensor";
+        final String payload = """
+            {"traceparent": "%s", "baggage": "%s",
+             "device_label": "multi", "timestamp": 1700000000, "uptime": 60,
+             "input_1": {"input_label": "temperature", "sample_value": 25.5, "normal_value": 20, "active": true},
+             "input_2": {"input_label": "humidity", "sample_value": 40.0, "normal_value": 50, "active": false}}
+            """.formatted(traceparent, baggage);
+        mqtt.messageArrived("sensor/kitchen/env", message(payload));
+        final ArgumentCaptor<Event> captor = eventCaptor();
+        verify(srv, times(2)).execute(captor.capture());
+        assertEquals(traceparent, TestStatics.getField(captor.getValue(), "traceparent"));
+        assertEquals(baggage, TestStatics.getField(captor.getValue(), "baggage"));
+    }
+
+    @Test
+    void meterTopicPropagatesTraceContext() throws Exception {
+        final String traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+        mqtt.messageArrived(
+            "meter/utility/water",
+            message(String.format("{\"register_reading\": 12345, \"traceparent\": \"%s\"}", traceparent)));
+        final ArgumentCaptor<Event> captor = eventCaptor();
+        verify(srv).execute(captor.capture());
+        assertEquals(traceparent, TestStatics.getField(captor.getValue(), "traceparent"));
+    }
+
+    @Test
+    void plainPayloadHasNoTraceContext() throws Exception {
+        mqtt.messageArrived("ring/component/alarm/device-123/motion/state", message("ON"));
+        final ArgumentCaptor<Event> captor = eventCaptor();
+        verify(srv).execute(captor.capture());
+        assertNull(TestStatics.getField(captor.getValue(), "traceparent"));
+        assertNull(TestStatics.getField(captor.getValue(), "baggage"));
+    }
+
+    @Test
     void ringPlainPayloadSubmitsEvent() throws Exception {
         mqtt.messageArrived("ring/component/alarm/device-123/motion/state", message("ON"));
         final ArgumentCaptor<Event> captor = eventCaptor();
