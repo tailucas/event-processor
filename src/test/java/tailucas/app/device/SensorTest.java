@@ -38,6 +38,22 @@ class SensorTest {
     }
 
     @Test
+    void updateFromPreservesMessageType() {
+        final Device device = new Device();
+        device.deviceId = "id-9";
+        device.location = "garage";
+        device.timestamp = Long.valueOf(1_700_000_000L);
+        device.uptime = Integer.valueOf(60);
+        device.type = "sensor";
+        device.messageType = Generic.MESSAGE_TYPE_HEARTBEAT;
+        final Sensor sensor = new Sensor();
+        sensor.inputLabel = "temperature";
+        sensor.updateFrom(device);
+        assertEquals(Generic.MESSAGE_TYPE_HEARTBEAT, sensor.getMessageType());
+        assertTrue(sensor.isHeartbeat());
+    }
+
+    @Test
     void updateFromFallsBackToInputLocation() {
         final Device device = new Device();
         device.inputLocation = "shed";

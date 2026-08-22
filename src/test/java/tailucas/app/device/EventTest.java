@@ -125,8 +125,8 @@ class EventTest {
     @Test
     void heartbeatPostsDeviceInfoOnly() throws Exception {
         final Detector detector = detectorInState("on");
-        new Event(connection, "device.heartbeat.update", detector).run();
-        // the Device-based constructor re-wraps the device by type, so capture rather than compare identities
+        detector.messageType = Generic.MESSAGE_TYPE_HEARTBEAT;
+        new Event(connection, SOURCE, detector).run();
         final ArgumentCaptor<Generic> captor = ArgumentCaptor.forClass(Generic.class);
         verify(deviceConfig).postDeviceInfo(captor.capture());
         assertEquals(DEVICE_KEY, captor.getValue().getDeviceLabel());

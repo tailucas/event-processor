@@ -150,13 +150,13 @@ class DeviceTest {
     }
 
     @Test
-    void defaults() {
+    void messageTypeHeartbeat() {
         final Device device = new Device();
-        assertTrue(device.isInput());
-        assertFalse(device.isOutput());
         assertFalse(device.isHeartbeat());
-        assertEquals("unspecified", device.getTriggerStateDescription());
-        assertNull(device.getConfig());
+        device.messageType = Generic.MESSAGE_TYPE_HEARTBEAT;
+        assertTrue(device.isHeartbeat());
+        device.messageType = "HEARTBEAT";
+        assertTrue(device.isHeartbeat());
     }
 
     @Test

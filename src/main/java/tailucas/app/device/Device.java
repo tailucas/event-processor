@@ -37,6 +37,8 @@ public class Device implements Generic {
     protected String deviceType;
     @JsonProperty("event_detail")
     protected String eventDetail;
+    @JsonProperty("message_type")
+    protected String messageType;
     @JsonProperty("state")
     protected String state;
     @JsonProperty("group_name")
@@ -74,6 +76,7 @@ public class Device implements Generic {
         this.deviceLabel = device.deviceLabel;
         this.deviceType = device.deviceType;
         this.eventDetail = device.eventDetail;
+        this.messageType = device.messageType;
         this.state = device.state;
         this.groupName = device.groupName;
         this.location = device.location;
@@ -123,6 +126,10 @@ public class Device implements Generic {
         return getDeviceKey();
     }
     @Override
+    public String getMessageType() {
+        return messageType;
+    }
+    @Override
     public String getDeviceType() {
         if (deviceType == null) {
             final String legacyType = getType().name();
@@ -162,7 +169,7 @@ public class Device implements Generic {
     }
     @Override
     public boolean isHeartbeat() {
-        return false;
+        return Generic.MESSAGE_TYPE_HEARTBEAT.equalsIgnoreCase(messageType);
     }
     @Override
     public boolean wouldTriggerOutput(InputConfig deviceConfig) {

@@ -144,6 +144,10 @@ public class Event implements Runnable {
         final var builder = OtelSupport.getTracer().spanBuilder("event.run")
             .setSpanKind(SpanKind.CONSUMER);
         builder.setAttribute("source", source);
+        if (device != null && Generic.MESSAGE_TYPE_HEARTBEAT.equalsIgnoreCase(device.getMessageType())) {
+            // Mark heartbeat spans so the SDK sampler can drop them from exports.
+            builder.setAttribute(OtelSupport.MESSAGE_TYPE_ATTRIBUTE, Generic.MESSAGE_TYPE_HEARTBEAT);
+        }
         if (traceparent != null) {
             final Map<String, String> carrier = new HashMap<>();
             carrier.put("traceparent", traceparent);
@@ -212,7 +216,9 @@ public class Event implements Runnable {
                 }
                 metricTags.put("input_label", deviceDescription);
                 metrics.postMetric("event", metricTags);
-                if (device.isHeartbeat() || source.contains(".heartbeat.")) {
+                if (device.isHeartbeat()
+                        || Generic.MESSAGE_TYPE_HEARTBEAT.equalsIgnoreCase(device.getMessageType())
+                        || source.contains(".heartbeat.")) {
                     log.atDebug().setMessage("Heartbeat")
                         .addKeyValue("source", source)
                         .addKeyValue("device_description", deviceDescription)

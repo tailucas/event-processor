@@ -112,6 +112,8 @@ public class Ring implements Generic {
     private HAConfig haConfig;
     @JsonIgnore
     private String triggerStateDescription;
+    @JsonProperty("message_type")
+    private String messageType;
 
     @JsonIgnore
     public String getMqttTopic() {
@@ -192,6 +194,10 @@ public class Ring implements Generic {
             return "ring";
         }
         return updateSubject;
+    }
+    @Override
+    public String getMessageType() {
+        return messageType;
     }
     @Override
     public String getGroupName() {

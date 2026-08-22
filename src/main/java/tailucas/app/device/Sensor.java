@@ -35,6 +35,7 @@ public class Sensor extends Device {
         timestamp = device.timestamp;
         uptime = device.uptime;
         type = device.type;
+        messageType = device.messageType;
     }
     @Override
     public String getDeviceType() {

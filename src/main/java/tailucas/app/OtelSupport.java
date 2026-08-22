@@ -13,11 +13,19 @@ import org.slf4j.LoggerFactory;
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.Meter;
+import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Context;
 import io.opentelemetry.instrumentation.log4j.appender.v2_17.OpenTelemetryAppender;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdk;
+import io.opentelemetry.sdk.trace.data.LinkData;
+import io.opentelemetry.sdk.trace.samplers.Sampler;
+import io.opentelemetry.sdk.trace.samplers.SamplingResult;
+
+import tailucas.app.device.Generic;
 
 public class OtelSupport {
 
@@ -50,6 +58,36 @@ public class OtelSupport {
     }
 
     private static final Logger log = LoggerFactory.getLogger(OtelSupport.class);
+
+    /**
+     * Span attribute key that marks a span as originating from a heartbeat
+     * message. The SDK sampler drops such spans so low-signal heartbeat traffic
+     * does not pollute the trace backend.
+     */
+    public static final AttributeKey<String> MESSAGE_TYPE_ATTRIBUTE = AttributeKey.stringKey("event.message_type");
+
+    private static final String HEARTBEAT_MESSAGE_TYPE = Generic.MESSAGE_TYPE_HEARTBEAT;
+
+    /**
+     * Drops spans whose attributes mark them as heartbeat messages. All other
+     * spans are recorded and sampled. Applied directly on the tracer provider;
+     * heartbeat lifetime is short and end-to-end visibility is not required.
+     */
+    private static final Sampler HEARTBEAT_SAMPLER = new Sampler() {
+        @Override
+        public SamplingResult shouldSample(Context parentContext, String traceId, String name, SpanKind spanKind,
+                Attributes attributes, List<LinkData> parentLinks) {
+            final String messageType = attributes.get(MESSAGE_TYPE_ATTRIBUTE);
+            if (HEARTBEAT_MESSAGE_TYPE.equalsIgnoreCase(messageType)) {
+                return SamplingResult.drop();
+            }
+            return SamplingResult.recordAndSample();
+        }
+        @Override
+        public String getDescription() {
+            return "ParentOrSelfSampler";
+        }
+    };
 
     private static final Object INIT_LOCK = new Object();
     private static volatile boolean initialized = false;
@@ -98,6 +136,8 @@ public class OtelSupport {
                             .put(AttributeKey.stringKey("service.instance.id"), deviceName)
                             .build();
                     })
+                    .addTracerProviderCustomizer((provider, config) -> provider
+                        .setSampler(HEARTBEAT_SAMPLER))
                     .build()
                     .getOpenTelemetrySdk();
             } catch (RuntimeException e) {

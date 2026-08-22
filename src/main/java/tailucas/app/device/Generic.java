@@ -10,6 +10,7 @@ import tailucas.app.device.config.Config;
 import tailucas.app.device.config.InputConfig;
 
 public interface Generic {
+    String MESSAGE_TYPE_HEARTBEAT = "heartbeat";
     @JsonProperty("device_key")
     public String getDeviceKey();
     @JsonProperty("device_label")
@@ -26,6 +27,8 @@ public interface Generic {
     public Boolean isOutput();
     @JsonProperty("event_detail")
     public String getEventDetail();
+    @JsonProperty("message_type")
+    public String getMessageType();
     @JsonIgnore
     public Config getConfig();
     @JsonIgnore

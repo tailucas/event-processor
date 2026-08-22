@@ -69,6 +69,12 @@ class RabbitMqTest {
         return device;
     }
 
+    private static Map<String, Object> heartbeatDevicePayload() {
+        final Map<String, Object> device = devicePayload("Kitchen Smoke", "contact");
+        device.put("message_type", "heartbeat");
+        return device;
+    }
+
     private byte[] statePayload(List<Map<String, Object>> inputs) throws Exception {
         if (inputs == null) {
             return mapper.writeValueAsBytes(Map.of());
@@ -103,6 +109,15 @@ class RabbitMqTest {
     void singleInputSubmitsSingleEvent() throws Exception {
         rabbitMq.handle("consumer", delivery(statePayload(List.of(devicePayload("Kitchen Smoke", "contact")))));
         verify(srv, times(1)).execute(any(Event.class));
+    }
+
+    @Test
+    void heartbeatMessageTypeIsInterpretedByDevice() throws Exception {
+        rabbitMq.handle("consumer", delivery(statePayload(List.of(heartbeatDevicePayload()))));
+        final ArgumentCaptor<Event> captor = ArgumentCaptor.forClass(Event.class);
+        verify(srv, times(1)).execute(captor.capture());
+        final Object device = TestStatics.getField(captor.getValue(), "device");
+        assertEquals("heartbeat", TestStatics.getField(device, "messageType"));
     }
 
     @Test

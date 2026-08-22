@@ -172,6 +172,17 @@ class MqttTest {
     }
 
     @Test
+    void meterHeartbeatMessageTypeIsInterpreted() throws Exception {
+        mqtt.messageArrived(
+            "meter/utility/water",
+            message("{\"register_reading\": 12345, \"message_type\": \"heartbeat\"}"));
+        final ArgumentCaptor<Event> captor = eventCaptor();
+        verify(srv).execute(captor.capture());
+        final Object device = TestStatics.getField(captor.getValue(), "device");
+        assertEquals("heartbeat", TestStatics.getField(device, "messageType"));
+    }
+
+    @Test
     void plainPayloadHasNoTraceContext() throws Exception {
         mqtt.messageArrived("ring/component/alarm/device-123/motion/state", message("ON"));
         final ArgumentCaptor<Event> captor = eventCaptor();
