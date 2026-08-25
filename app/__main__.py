@@ -1647,7 +1647,7 @@ class EventProcessor(AppThread):
                                         "Updating device state",
                                         extra={
                                             "device_key": dc.device_key,
-                                            "group_name": dc.group_name,
+                                            "group_name": getattr(dc, 'group_name', None),
                                             "state": state,
                                         },
                                     )
