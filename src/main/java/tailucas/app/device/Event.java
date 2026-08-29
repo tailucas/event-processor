@@ -260,20 +260,37 @@ public class Event implements Runnable {
                         log.atInfo().setMessage("Device no longer requires escalation")
                             .addKeyValue("device_description", deviceDescription)
                             .log();
-                        if (EventProcessor.isFeatureEnabled(EventProcessor.FEATURE_FLAG_PAGER_DUTY_TICKETS)) {
+                        runSpan.setAttribute("escalation_resolved", true);
+                        final boolean pagerDutyEnabled = EventProcessor.isFeatureEnabled(EventProcessor.FEATURE_FLAG_PAGER_DUTY_TICKETS);
+                        runSpan.setAttribute("pagerduty_enabled", pagerDutyEnabled);
+                        if (pagerDutyEnabled) {
                             final ResolveIncident resolve = ResolveIncident.ResolveIncidentBuilder
                                 .newBuilder(EventProcessor.getPagerDutyRoutingKey(), escalationKey)
                                 .build();
-                            try {
+                            final Span pdSpan = OtelSupport.getTracer().spanBuilder("pagerduty.resolve")
+                                .setSpanKind(SpanKind.CLIENT)
+                                .setAttribute("pagerduty.service", "PagerDuty Events API v2")
+                                .setAttribute("pagerduty.action", "resolve")
+                                .setAttribute("pagerduty.dedup_key", escalationKey)
+                                .startSpan();
+                            try (Scope pdScope = pdSpan.makeCurrent()) {
                                 final EventResult result = EventProcessor.getPagerDuty().resolve(resolve);
+                                pdSpan.setAttribute("pagerduty.status", result.getStatus());
+                                pdSpan.setAttribute("pagerduty.message", result.getMessage());
+                                pdSpan.setAttribute("pagerduty.errors", String.valueOf(result.getErrors()));
+                                pdSpan.setStatus(StatusCode.OK);
                                 log.atInfo().setMessage("Updated PagerDuty")
                                     .addKeyValue("pagerduty_status", result.getStatus())
                                     .addKeyValue("pagerduty_message", result.getMessage())
                                     .addKeyValue("pagerduty_errors", result.getErrors())
                                     .log();
                             } catch (NotifyEventException e) {
+                                pdSpan.recordException(e);
+                                pdSpan.setStatus(StatusCode.ERROR);
                                 log.atError().setMessage("Cannot update PagerDuty").setCause(e).log();
                                 Sentry.captureException(e);
+                            } finally {
+                                pdSpan.end();
                             }
                         }
                     }
@@ -524,15 +541,22 @@ public class Event implements Runnable {
                 }
                 // now escalate long-running triggers as configured
                 if (activationEscalation != null) {
+                    runSpan.setAttribute("activation_escalation", activationEscalation);
+                    runSpan.setAttribute("triggered_duration", triggeredDuration);
+                    runSpan.setAttribute("escalation_detail", escalationDetail);
                     if (triggerLatchHistory.isTriggeredFor(deviceKey, activationEscalation)) {
                         if (!recentEscalations.containsKey(deviceKey)) {
                             log.atWarn().setMessage("Device has been triggered beyond escalation threshold, requires escalation")
                                 .addKeyValue("device_description", deviceDescription)
                                 .addKeyValue("activation_escalation", activationEscalation)
                                 .log();
+                            runSpan.setAttribute("escalated", true);
+                            runSpan.addEvent("escalation.threshold_exceeded");
                             final String appName = EventProcessor.getAppName();
                             final String dupeKey = appName+"-"+deviceKey;
-                            if (EventProcessor.isFeatureEnabled(EventProcessor.FEATURE_FLAG_PAGER_DUTY_TICKETS)) {
+                            final boolean pagerDutyEnabled = EventProcessor.isFeatureEnabled(EventProcessor.FEATURE_FLAG_PAGER_DUTY_TICKETS);
+                            runSpan.setAttribute("pagerduty_enabled", pagerDutyEnabled);
+                            if (pagerDutyEnabled) {
                                 final Payload payload = Payload.Builder.newBuilder()
                                     .setSummary(String.format("%s escalation", deviceDescription))
                                     .setSource(EventProcessor.getDeviceName())
@@ -543,13 +567,33 @@ public class Event implements Runnable {
                                     .newBuilder(EventProcessor.getPagerDutyRoutingKey(), payload)
                                     .setDedupKey(dupeKey)
                                     .build();
-                                final EventResult result = EventProcessor.getPagerDuty().trigger(incident);
-                                log.atInfo().setMessage("Updated PagerDuty")
-                                    .addKeyValue("pagerduty_dedup_key", result.getDedupKey())
-                                    .addKeyValue("pagerduty_status", result.getStatus())
-                                    .addKeyValue("pagerduty_message", result.getMessage())
-                                    .addKeyValue("pagerduty_errors", result.getErrors())
-                                    .log();
+                                final Span pdSpan = OtelSupport.getTracer().spanBuilder("pagerduty.trigger")
+                                    .setSpanKind(SpanKind.CLIENT)
+                                    .setAttribute("pagerduty.service", "PagerDuty Events API v2")
+                                    .setAttribute("pagerduty.action", "trigger")
+                                    .setAttribute("pagerduty.dedup_key", dupeKey)
+                                    .setAttribute("pagerduty.severity", "critical")
+                                    .startSpan();
+                                try (Scope pdScope = pdSpan.makeCurrent()) {
+                                    final EventResult result = EventProcessor.getPagerDuty().trigger(incident);
+                                    pdSpan.setAttribute("pagerduty.status", result.getStatus());
+                                    pdSpan.setAttribute("pagerduty.message", result.getMessage());
+                                    pdSpan.setAttribute("pagerduty.errors", String.valueOf(result.getErrors()));
+                                    pdSpan.setStatus(StatusCode.OK);
+                                    log.atInfo().setMessage("Updated PagerDuty")
+                                        .addKeyValue("pagerduty_dedup_key", result.getDedupKey())
+                                        .addKeyValue("pagerduty_status", result.getStatus())
+                                        .addKeyValue("pagerduty_message", result.getMessage())
+                                        .addKeyValue("pagerduty_errors", result.getErrors())
+                                        .log();
+                                } catch (NotifyEventException e) {
+                                    pdSpan.recordException(e);
+                                    pdSpan.setStatus(StatusCode.ERROR);
+                                    log.atError().setMessage("Cannot update PagerDuty").setCause(e).log();
+                                    Sentry.captureException(e);
+                                } finally {
+                                    pdSpan.end();
+                                }
                             }
                             recentEscalations.put(deviceKey, dupeKey);
                         }
