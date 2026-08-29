@@ -140,14 +140,15 @@ public class Event implements Runnable {
         this(connection, source, null, deviceUpdate);
     }
 
+    private boolean isHeartbeatEvent() {
+        return device != null
+            && (device.isHeartbeat() || source.contains(".heartbeat."));
+    }
+
     private Span buildRunSpan() {
         final var builder = OtelSupport.getTracer().spanBuilder("event.run")
             .setSpanKind(SpanKind.CONSUMER);
         builder.setAttribute("source", source);
-        if (device != null && Generic.MESSAGE_TYPE_HEARTBEAT.equalsIgnoreCase(device.getMessageType())) {
-            // Mark heartbeat spans so the SDK sampler can drop them from exports.
-            builder.setAttribute(OtelSupport.MESSAGE_TYPE_ATTRIBUTE, Generic.MESSAGE_TYPE_HEARTBEAT);
-        }
         if (traceparent != null) {
             final Map<String, String> carrier = new HashMap<>();
             carrier.put("traceparent", traceparent);
@@ -167,66 +168,79 @@ public class Event implements Runnable {
         metrics.postMetric("event_queue_time", now - initTime);
         final double queueTimeSeconds = (now - initTime) / 1000.0;
         OtelMetrics.QUEUE_TIME.record(queueTimeSeconds, Attributes.empty());
+        if (device == null) {
+            log.atDebug().setMessage("Source posts no device details")
+                .addKeyValue("source", source)
+                .addKeyValue("device_update", deviceUpdateString)
+                .log();
+            return;
+        }
+        // Phase 1 – identity resolution (no span needed)
+        final DeviceConfig configProvider;
+        try {
+            configProvider = DeviceConfig.getInstance();
+        } catch (RuntimeException e) {
+            metrics.postMetric("error", Map.of(
+                "class", this.getClass().getSimpleName(),
+                "exception", e.getClass().getSimpleName()));
+            log.atError().setMessage("Cannot obtain device config provider")
+                .addKeyValue("source", source)
+                .setCause(e)
+                .log();
+            return;
+        }
+        log.atDebug().setMessage("Device")
+            .addKeyValue("source", source)
+            .addKeyValue("device", String.valueOf(device))
+            .log();
+        final String deviceKey = device.getDeviceKey();
+        if (deviceKey == null) {
+            log.atError().setMessage("No identifier for device").addKeyValue("device", String.valueOf(device)).log();
+            return;
+        }
+        final String deviceLabel = device.getDeviceLabel();
+        if (deviceLabel == null) {
+            log.atWarn().setMessage("No device label").addKeyValue("device_key", deviceKey).log();
+        }
+        final String deviceType = device.getDeviceType();
+        if (deviceType == null) {
+            log.atWarn().setMessage("No device type set").addKeyValue("device_key", deviceKey).log();
+        }
+        log.atDebug().setMessage("Device identity")
+            .addKeyValue("device_type", deviceType)
+            .addKeyValue("device_key", deviceKey)
+            .addKeyValue("device_label", deviceLabel)
+            .log();
+        final String deviceDescription;
+        if (deviceLabel != null) {
+            deviceDescription = deviceLabel;
+        } else {
+            deviceDescription = deviceKey;
+        }
+        final var metricTags = new HashMap<String, String>();
+        if (deviceType != null) {
+            metricTags.put("input_type", deviceType);
+        }
+        metricTags.put("input_label", deviceDescription);
+        metrics.postMetric("event", metricTags);
+        // Phase 2 – heartbeat check (no span needed)
+        if (isHeartbeatEvent()) {
+            log.atDebug().setMessage("Heartbeat")
+                .addKeyValue("source", source)
+                .addKeyValue("device_description", deviceDescription)
+                .log();
+            // post device info for side-car only upon heartbeats
+            configProvider.postDeviceInfo(device);
+            return;
+        }
+        // Phase 3 – only non-heartbeat events create a span and do real work
         final Span runSpan = buildRunSpan();
         try (Scope runScope = runSpan.makeCurrent()) {
             final long unixTime = now / 1000L;
-            if (device == null) {
-                log.atDebug().setMessage("Source posts no device details")
-                    .addKeyValue("source", source)
-                    .addKeyValue("device_update", deviceUpdateString)
-                    .log();
-                return;
-            }
+            runSpan.setAttribute("device_key", deviceKey);
+            runSpan.setAttribute("device_type", String.valueOf(deviceType));
+            runSpan.setAttribute("device_label", deviceDescription);
             try {
-                final DeviceConfig configProvider = DeviceConfig.getInstance();
-                log.atDebug().setMessage("Device")
-                    .addKeyValue("source", source)
-                    .addKeyValue("device", String.valueOf(device))
-                    .log();
-                final String deviceKey = device.getDeviceKey();
-                if (deviceKey == null) {
-                    log.atError().setMessage("No identifier for device").addKeyValue("device", String.valueOf(device)).log();
-                    return;
-                }
-                final String deviceLabel = device.getDeviceLabel();
-                if (deviceLabel == null) {
-                    log.atWarn().setMessage("No device label").addKeyValue("device_key", deviceKey).log();
-                }
-                final String deviceType = device.getDeviceType();
-                if (deviceType == null) {
-                    log.atWarn().setMessage("No device type set").addKeyValue("device_key", deviceKey).log();
-                }
-                log.atDebug().setMessage("Device identity")
-                    .addKeyValue("device_type", deviceType)
-                    .addKeyValue("device_key", deviceKey)
-                    .addKeyValue("device_label", deviceLabel)
-                    .log();
-                String deviceDescription;
-                if (deviceLabel != null) {
-                    deviceDescription = deviceLabel;
-                } else {
-                    deviceDescription = deviceKey;
-                }
-                runSpan.setAttribute("device_key", deviceKey);
-                runSpan.setAttribute("device_type", String.valueOf(deviceType));
-                runSpan.setAttribute("device_label", deviceDescription);
-                final var metricTags = new HashMap<String, String>();
-                if (deviceType != null) {
-                    metricTags.put("input_type", deviceType);
-                }
-                metricTags.put("input_label", deviceDescription);
-                metrics.postMetric("event", metricTags);
-                if (device.isHeartbeat()
-                        || Generic.MESSAGE_TYPE_HEARTBEAT.equalsIgnoreCase(device.getMessageType())
-                        || source.contains(".heartbeat.")) {
-                    log.atDebug().setMessage("Heartbeat")
-                        .addKeyValue("source", source)
-                        .addKeyValue("device_description", deviceDescription)
-                        .log();
-                    // post device info for side-car only upon heartbeats
-                    configProvider.postDeviceInfo(device);
-                    return;
-                }
                 log.atDebug().setMessage("Fetch configuration")
                     .addKeyValue("source", source)
                     .addKeyValue("device_key", deviceKey)
