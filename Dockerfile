@@ -1,7 +1,10 @@
 FROM tailucas/base-app:latest AS builder
-# prepare source
-COPY src ./src/
+# dependenty manifest first (rarely changes — cached unless pom.xml is touched)
 COPY java_setup.sh pom.xml rules.xml spotbugs-exclude.xml ./
+# pre-download all Maven dependencies (layer cached unless pom.xml changes)
+RUN mvn dependency:go-offline
+# source code (changes most frequently — only invalidates compile, not download)
+COPY src ./src/
 RUN "${APP_DIR}/java_setup.sh"
 
 ###############################################################################
@@ -33,23 +36,19 @@ RUN rm -f ./config/cron/base_job
 COPY config/cron/backup_db ./config/cron/
 # apply override
 RUN "${APP_DIR}/app_setup.sh"
-# add the project application
-COPY app/__main__.py ./app/
-# override configuration
-COPY config/app.conf ./config/app.conf
-COPY static ./static
-COPY templates ./templates
-# Python
-COPY app ./app
-COPY .python-version pyproject.toml uv.lock ./
-RUN chown app:app uv.lock
-# Java
-COPY --from=builder "${APP_DIR}/target/app-0.1.0.jar" ./app.jar
+# Python dependency files + source (grouped: uv sync builds from source, needs app/)
+COPY --chown=app:app .python-version pyproject.toml uv.lock ./
+COPY --chown=app:app app ./app
 # switch to run user now because uv does not use the environment to infer
 USER app
 RUN "${APP_DIR}/python_setup.sh"
+# Java fat jar (root-owned OK for read-only at runtime)
+COPY --from=builder "${APP_DIR}/target/app-0.1.0.jar" ./app.jar
+# fast assets: override configuration, templates, entrypoint (no RUN, cheap to invalidate)
+COPY --chown=app:app config/app.conf ./config/app.conf
+COPY --chown=app:app static ./static
+COPY --chown=app:app templates ./templates
+COPY --chown=app:app app_entrypoint.sh .
 # example HTTP backend
 # EXPOSE 8080
-# override entrypoint
-COPY app_entrypoint.sh .
 CMD ["/opt/app/entrypoint.sh"]
