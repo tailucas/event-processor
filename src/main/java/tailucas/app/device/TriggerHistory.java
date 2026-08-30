@@ -22,7 +22,7 @@ public class TriggerHistory {
         triggerHistory = new ConcurrentHashMap<>(100);
     }
 
-    public Instant lastTriggered(String deviceKey) {
+    public synchronized Instant lastTriggered(String deviceKey) {
         var history = triggerHistory.get(deviceKey);
         if (history == null) {
             return null;
@@ -30,7 +30,7 @@ public class TriggerHistory {
         return history.peek();
     }
 
-    public Long secondsSinceLastTriggered(String deviceKey) {
+    public synchronized Long secondsSinceLastTriggered(String deviceKey) {
         var lastTriggered = lastTriggered(deviceKey);
         if (lastTriggered == null) {
             return null;
@@ -39,7 +39,7 @@ public class TriggerHistory {
     }
 
     public synchronized void triggered(String deviceKey) {
-        var history = triggerHistory.computeIfAbsent(deviceKey, s -> new Stack<Instant>());
+        var history = triggerHistory.computeIfAbsent(deviceKey, s -> new Stack<>());
         if (history.size() >= maxTriggerHistory) {
             // remove from the head of the list
             final var oldest = history.removeFirst();
@@ -48,15 +48,35 @@ public class TriggerHistory {
                 .addKeyValue("oldest", oldest)
                 .log();
         }
-        history.push(Instant.now());
-        triggeredSince.computeIfAbsent(deviceKey, s -> Instant.now());
+        final Instant now = Instant.now();
+        // Staleness guard: if the time since the last trigger exceeds a
+        // threshold, reset the ongoing trigger episode. This catches
+        // scenarios where a device stops sending events without an explicit
+        // untrigger signal (e.g. heartbeats with active=false that bypass
+        // the trigger evaluation path, or an actual device offline event).
+        if (!history.isEmpty()) {
+            final Instant previous = history.peek();
+            final long secondsSinceLastEvent = Duration.between(previous, now).toSeconds();
+            if (secondsSinceLastEvent > 600) {
+                log.atDebug().setMessage("Resetting stale trigger duration start")
+                    .addKeyValue("device_key", deviceKey)
+                    .addKeyValue("seconds_since_last_event", secondsSinceLastEvent)
+                    .log();
+                triggeredSince.put(deviceKey, now);
+            } else {
+                triggeredSince.computeIfAbsent(deviceKey, s -> now);
+            }
+        } else {
+            triggeredSince.put(deviceKey, now);
+        }
+        history.push(now);
     }
 
-    public void unTriggered(String deviceKey) {
+    public synchronized void unTriggered(String deviceKey) {
         triggeredSince.remove(deviceKey);
     }
 
-    public Long getTriggeredDuration(String deviceKey) {
+    public synchronized Long getTriggeredDuration(String deviceKey) {
         final Instant moment = triggeredSince.get(deviceKey);
         if (moment == null) {
             return null;
@@ -65,7 +85,7 @@ public class TriggerHistory {
         return Long.valueOf(Duration.between(moment, now).toSeconds());
     }
 
-    public boolean isTriggeredFor(String deviceKey, int seconds) {
+    public synchronized boolean isTriggeredFor(String deviceKey, int seconds) {
         final Long interval = getTriggeredDuration(deviceKey);
         if (interval == null) {
             return false;
@@ -85,7 +105,7 @@ public class TriggerHistory {
         return isMultiTriggered(deviceKey, 1, seconds);
     }
 
-    public boolean isMultiTriggered(String deviceKey, int times, int seconds) {
+    public synchronized boolean isMultiTriggered(String deviceKey, int times, int seconds) {
         if (times <= 0 || seconds <= 0 || times > maxTriggerHistory) {
             throw new IllegalArgumentException(String.format("Invalid inputs for times %s and seconds %s.", times, seconds));
         }

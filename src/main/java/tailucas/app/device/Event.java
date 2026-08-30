@@ -231,6 +231,55 @@ public class Event implements Runnable {
                 .log();
             // post device info for side-car only upon heartbeats
             configProvider.postDeviceInfo(device);
+            // Heartbeats carry the current device state. If a Sensor-type
+            // device reports active=false and was previously in a triggered
+            // state, reset the trigger state and resolve any escalation.
+            if (device instanceof Sensor sensor) {
+                final boolean wasActivelyTriggering = triggerLatchHistory.getTriggeredDuration(deviceKey) != null;
+                if (wasActivelyTriggering && !sensor.isActive()) {
+                    log.atInfo().setMessage("Heartbeat indicates device is no longer active, resetting trigger state")
+                        .addKeyValue("device_description", deviceDescription)
+                        .log();
+                    triggerLatchHistory.unTriggered(deviceKey);
+                    final String escalationKey = recentEscalations.remove(deviceKey);
+                    if (escalationKey != null) {
+                        log.atInfo().setMessage("Device no longer requires escalation (inferred from heartbeat)")
+                            .addKeyValue("device_description", deviceDescription)
+                            .log();
+                        final boolean pagerDutyEnabled = EventProcessor.isFeatureEnabled(EventProcessor.FEATURE_FLAG_PAGER_DUTY_TICKETS);
+                        if (pagerDutyEnabled) {
+                            final ResolveIncident resolve = ResolveIncident.ResolveIncidentBuilder
+                                .newBuilder(EventProcessor.getPagerDutyRoutingKey(), escalationKey)
+                                .build();
+                            final Span pdSpan = OtelSupport.getTracer().spanBuilder("pagerduty.resolve")
+                                .setSpanKind(SpanKind.CLIENT)
+                                .setAttribute("pagerduty.service", "PagerDuty Events API v2")
+                                .setAttribute("pagerduty.action", "resolve")
+                                .setAttribute("pagerduty.dedup_key", escalationKey)
+                                .startSpan();
+                            try (Scope pdScope = pdSpan.makeCurrent()) {
+                                final EventResult result = EventProcessor.getPagerDuty().resolve(resolve);
+                                pdSpan.setAttribute("pagerduty.status", result.getStatus());
+                                pdSpan.setAttribute("pagerduty.message", result.getMessage());
+                                pdSpan.setAttribute("pagerduty.errors", String.valueOf(result.getErrors()));
+                                pdSpan.setStatus(StatusCode.OK);
+                                log.atInfo().setMessage("Updated PagerDuty")
+                                    .addKeyValue("pagerduty_status", result.getStatus())
+                                    .addKeyValue("pagerduty_message", result.getMessage())
+                                    .addKeyValue("pagerduty_errors", result.getErrors())
+                                    .log();
+                            } catch (NotifyEventException e) {
+                                pdSpan.recordException(e);
+                                pdSpan.setStatus(StatusCode.ERROR);
+                                log.atError().setMessage("Cannot resolve PagerDuty incident from heartbeat").setCause(e).log();
+                                Sentry.captureException(e);
+                            } finally {
+                                pdSpan.end();
+                            }
+                        }
+                    }
+                }
+            }
             return;
         }
         // Phase 3 – only non-heartbeat events create a span and do real work
