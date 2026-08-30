@@ -1,4 +1,6 @@
 FROM tailucas/base-app:latest AS builder
+# Maven is installed on disk but its bin dir is not on PATH in the published image
+ENV PATH="${PATH}:/opt/app/.sdkman/candidates/maven/current/bin"
 # dependenty manifest first (rarely changes — cached unless pom.xml is touched)
 COPY java_setup.sh pom.xml rules.xml spotbugs-exclude.xml ./
 # pre-download all Maven dependencies (layer cached unless pom.xml changes)
