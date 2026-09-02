@@ -2,7 +2,7 @@
 
 import asyncio
 from collections import OrderedDict, deque
-from contextlib import suppress
+from contextlib import nullcontext, suppress
 from dataclasses import fields
 from functools import wraps
 from io import BytesIO
@@ -1476,18 +1476,21 @@ class EventProcessor(AppThread):
                 db.session.commit()
                 # process the next event
                 event = app_socket.recv_pyobj()
-                parent_ctx = otel_context.get_current()
-                if isinstance(event, dict):
-                    parent_ctx = _extract_trace_context(event)
-                with otel_tracer().start_as_current_span(
-                    "event.receive",
-                    context=parent_ctx,
-                    kind=SpanKind.CONSUMER,
-                ) as receive_span:
+                has_trace_parent = isinstance(event, dict) and "traceparent" in event
+                parent_ctx = _extract_trace_context(event) if has_trace_parent else otel_context.get_current()
+                span_ctx = (
+                    otel_tracer().start_as_current_span(
+                        "event.receive",
+                        context=parent_ctx,
+                        kind=SpanKind.CONSUMER,
+                    ) if has_trace_parent else nullcontext(None)
+                )
+                with span_ctx as receive_span:
                     if not isinstance(event, dict):
                         log.debug("Malformed event; expecting dictionary.")
                         continue
-                    receive_span.set_attribute("event.has_trace_parent", "traceparent" in event)
+                    if has_trace_parent:
+                        receive_span.set_attribute("event.has_trace_parent", True)
                     if "sms" in event:
                         sms_message = event["sms"]
                         if is_flag_enabled("telegram-bot"):
