@@ -7,6 +7,7 @@ from dataclasses import fields
 from functools import wraps
 from io import BytesIO
 from os import path
+import sys
 import threading
 from threading import Thread
 import time
@@ -19,6 +20,10 @@ from flask_compress import Compress
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
 from flask_sqlalchemy import SQLAlchemy
 from httpx import ConnectError
+from opentelemetry import context as otel_context
+from opentelemetry import propagate
+from opentelemetry import trace as otel_trace
+from opentelemetry.trace import SpanKind, StatusCode
 from pydantic import BaseModel, ConfigDict
 from pylru import lrucache
 from pytz import timezone
@@ -81,6 +86,31 @@ from tailucas_pylib.zmq import URL_WORKER_APP, Closable, try_close, zmq_socket, 
 ignore_logger("telegram.ext.Updater")
 ignore_logger("telegram.ext._updater")
 ignore_logger("asyncio")
+
+
+def otel_tracer():
+    """Module-level tracer accessor; safe to call after tailucas_pylib's setup_otel() runs."""
+    return otel_trace.get_tracer(APP_NAME)
+
+
+def _extract_trace_context(event: dict) -> otel_context.Context:
+    """Extract W3C trace context from a ZMQ dict carrier (traceparent/baggage keys)."""
+    if "traceparent" not in event:
+        return otel_context.get_current()
+    carrier = {"traceparent": event["traceparent"]}
+    if "baggage" in event:
+        carrier["baggage"] = event["baggage"]
+    return propagate.extract(carrier)
+
+
+def _inject_trace_context(message: dict) -> None:
+    """Inject W3C trace context into a ZMQ dict carrier."""
+    carrier: dict[str, str] = {}
+    propagate.inject(carrier)
+    if "traceparent" in carrier:
+        message["traceparent"] = carrier["traceparent"]
+    if "baggage" in carrier:
+        message["baggage"] = carrier["baggage"]
 
 
 db_tablespace_path = app_config.get("sqlite", "tablespace_path")
@@ -1204,56 +1234,72 @@ def output_config():
 
 
 async def telegram_bot_echo(update: Update, context: TelegramContextTypes.DEFAULT_TYPE) -> None:
-    try:
-        authorized_users = app_config.get("telegram", "authorized_users").split(",")
-        if str(update.effective_user.id) not in authorized_users:
-            log.warning("Unauthorized message", extra={"update": str(update)})
-            return
+    with otel_tracer().start_as_current_span("telegram.echo") as span:
+        try:
+            authorized_users = app_config.get("telegram", "authorized_users").split(",")
+            if str(update.effective_user.id) not in authorized_users:
+                log.warning("Unauthorized message", extra={"update": str(update)})
+                return
 
-        log.info(
-            "Telegram bot message received",
-            extra={
-                "bot_username": context.bot.username,
-                "message_text": update.effective_message.text,
-                "chat_id": update.effective_message.chat_id,
-            },
-        )
+            span.set_attribute("telegram.chat_id", str(update.effective_message.chat_id))
+            span.set_attribute("telegram.user_id", str(update.effective_user.id))
 
-        group_info = await context.bot.get_chat(chat_id=app_config.getint("telegram", "chat_room_id"))
-        bot_response = f"I am in the [{group_info.title}]({group_info.invite_link}) group."
-        await update.message.reply_markdown(text=bot_response)
-    except NetworkError:
-        log.warning("bot handler", exc_info=True)
-    except Exception:
-        log.exception("bot handler")
-        capture_exception()
+            log.info(
+                "Telegram bot message received",
+                extra={
+                    "bot_username": context.bot.username,
+                    "message_text": update.effective_message.text,
+                    "chat_id": update.effective_message.chat_id,
+                },
+            )
+
+            group_info = await context.bot.get_chat(chat_id=app_config.getint("telegram", "chat_room_id"))
+            bot_response = f"I am in the [{group_info.title}]({group_info.invite_link}) group."
+            await update.message.reply_markdown(text=bot_response)
+            span.set_status(StatusCode.OK)
+        except NetworkError:
+            span.set_status(StatusCode.ERROR)
+            log.warning("bot handler", exc_info=True)
+        except Exception:
+            span.set_status(StatusCode.ERROR)
+            log.exception("bot handler")
+            capture_exception()
 
 
 async def telegram_bot_cmd(update: Update, context: TelegramContextTypes.DEFAULT_TYPE) -> None:
-    try:
-        authorized_users = app_config.get("telegram", "authorized_users").split(",")
-        if str(update.effective_user.id) not in authorized_users:
-            log.warning("Unauthorized message", extra={"update": str(update)})
-            return
+    with otel_tracer().start_as_current_span("telegram.command") as span:
+        try:
+            authorized_users = app_config.get("telegram", "authorized_users").split(",")
+            if str(update.effective_user.id) not in authorized_users:
+                log.warning("Unauthorized message", extra={"update": str(update)})
+                return
 
-        log.info(
-            "Telegram bot command received",
-            extra={
-                "bot_username": context.bot.username,
-                "command_text": update.effective_message.text,
-                "command_args": context.args,
-                "chat_id": update.effective_message.chat_id,
-            },
-        )
-        # status update
-        if update.effective_message.text.startswith("/"):
-            with exception_handler(connect_url=URL_WORKER_APP, and_raise=False) as zmq_socket:
-                zmq_socket.send_pyobj({"bot": {"command": update.effective_message.text}})
-    except NetworkError:
-        log.warning("bot handler", exc_info=True)
-    except Exception:
-        log.exception("bot handler")
-        capture_exception()
+            span.set_attribute("telegram.command", update.effective_message.text)
+            span.set_attribute("telegram.args", context.args)
+            span.set_attribute("telegram.chat_id", str(update.effective_message.chat_id))
+            span.set_attribute("telegram.user_id", str(update.effective_user.id))
+
+            log.info(
+                "Telegram bot command received",
+                extra={
+                    "bot_username": context.bot.username,
+                    "command_text": update.effective_message.text,
+                    "command_args": context.args,
+                    "chat_id": update.effective_message.chat_id,
+                },
+            )
+            # status update
+            if update.effective_message.text.startswith("/"):
+                with exception_handler(connect_url=URL_WORKER_APP, and_raise=False) as zmq_socket:
+                    zmq_socket.send_pyobj({"bot": {"command": update.effective_message.text}})
+            span.set_status(StatusCode.OK)
+        except NetworkError:
+            span.set_status(StatusCode.ERROR)
+            log.warning("bot handler", exc_info=True)
+        except Exception:
+            span.set_status(StatusCode.ERROR)
+            log.exception("bot handler")
+            capture_exception()
 
 
 async def telegram_error_handler(update: Update, context: TelegramContextTypes.DEFAULT_TYPE) -> None:
@@ -1430,281 +1476,299 @@ class EventProcessor(AppThread):
                 db.session.commit()
                 # process the next event
                 event = app_socket.recv_pyobj()
-                if not isinstance(event, dict):
-                    log.debug("Malformed event; expecting dictionary.")
-                    continue
-                if "sms" in event:
-                    sms_message = event["sms"]
-                    if is_flag_enabled("telegram-bot"):
-                        log.debug("Sending payload to bot", extra={"event_keys": list(event.keys())})
-                        self.bot.send_pyobj(sms_message)
-                        log.debug("Sent payload to bot...")
-                    else:
-                        log.warning(
-                            "Not sending message to Telegram bot, disabled with feature flag",
-                            extra={"sms_part_count": len(sms_message)},
-                        )
-                    continue
-                for event_origin, event_data in list(event.items()):
-                    if not isinstance(event_data, dict):
-                        log.warning(
-                            "Ignoring non-dict event format",
-                            extra={
-                                "event_origin": event_origin,
-                                "event_class": str(event_data.__class__),
-                                "event_data": str(event_data),
-                            },
-                        )
+                parent_ctx = otel_context.get_current()
+                if isinstance(event, dict):
+                    parent_ctx = _extract_trace_context(event)
+                with otel_tracer().start_as_current_span(
+                    "event.receive",
+                    context=parent_ctx,
+                    kind=SpanKind.CONSUMER,
+                ) as receive_span:
+                    if not isinstance(event, dict):
+                        log.debug("Malformed event; expecting dictionary.")
                         continue
-                    if "timestamp" in event_data:
-                        str_timestamp = event_data["timestamp"]
-                        log.debug(
-                            "Event timestamp",
-                            extra={"event_origin": event_origin, "event_timestamp": str_timestamp},
-                        )
-                        timestamp = make_timestamp(str_timestamp)
-                    else:
-                        timestamp = make_timestamp()
-                        log_msg = "Message has no 'timestamp' so it can't be filtered if stale; using current time"
-                        log_fields = {"event_origin": event_origin, "timestamp_used": make_iso_timestamp(timestamp)}
-                        if "active_devices" in event_data or "outputs_triggered" in event_data:
-                            log.warning(log_msg, extra=log_fields)
-                        else:
-                            log.debug(log_msg, extra=log_fields)
-                    if event_origin == "device_info_input":
-                        self._update_device(
-                            input_outputs=self.inputs,
-                            device_origin=self._input_origin,
-                            origin_devices=self._inputs_by_origin,
-                            event_origin=DEVICE_NAME,
-                            device=event_data,
-                        )
-                        di: DeviceInfo = DeviceInfo.model_validate(event_data)
-                        ic = InputConfig.query.filter_by(device_key=di.device_key).first()
-                        if ic is None:
-                            log.info(
-                                "Adding new input configuration",
-                                extra={"device_key": di.device_key, "device_label": di.device_label},
-                            )
-                            db.session.add(
-                                InputConfig(
-                                    device_key=di.device_key,
-                                    device_label=di.device_label,
-                                    device_type=di.device_type,
-                                    group_name=di.group_name,
-                                    customized=None,
-                                    auto_schedule=None,
-                                    auto_schedule_enable=None,
-                                    auto_schedule_disable=None,
-                                    device_enabled=None,
-                                    trigger_latch_duration=None,
-                                    multi_trigger_rate=None,
-                                    multi_trigger_interval=None,
-                                    activation_escalation=None,
-                                    info_notify=None,
-                                )
-                            )
-                            db.session.commit()
-                    elif event_origin == "device_info_output":
-                        self._update_device(
-                            input_outputs=self.outputs,
-                            device_origin=self._output_origin,
-                            origin_devices=self._outputs_by_origin,
-                            event_origin=DEVICE_NAME,
-                            device=event_data,
-                        )
-                        di: DeviceInfo = DeviceInfo.model_validate(event_data)
-                        oc = OutputConfig.query.filter_by(device_key=di.device_key).first()
-                        if oc is None:
-                            log.info(
-                                "Adding new output configuration",
-                                extra={"device_key": di.device_key, "device_label": di.device_label},
-                            )
-                            db.session.add(
-                                OutputConfig(
-                                    device_key=di.device_key,
-                                    device_label=di.device_label,
-                                    device_type=di.device_type,
-                                    device_params=None,
-                                    trigger_topic=None,
-                                    trigger_interval=None,
-                                    device_enabled=None,
-                                    auto_schedule=None,
-                                    auto_schedule_enable=None,
-                                    auto_schedule_disable=None,
-                                )
-                            )
-                            db.session.commit()
-                    elif event_origin == "auto-scheduler":
-                        device_key = event_data["device_key"]
-                        device_label = event_data["device_label"]
-                        device_enable = event_data["device_state"]
-                        log.info(
-                            "Auto-scheduler updating device",
-                            extra={"device_label": device_label, "enabled": device_enable},
-                        )
-                        device_config = InputConfig.query.filter_by(device_key=device_key).first()
-                        if device_config is None:
-                            device_config = OutputConfig.query.filter_by(device_key=device_key).first()
-                        device_config.device_enabled = device_enable
-                        db.session.add(device_config)
-                        db.session.commit()
-                        invalidate_remote_config(device_key=device_key)
-                        # skip further processing because of enable/disable
-                        continue
-                    elif event_origin == "bot":
-                        log.debug("Bot command received", extra={"event_data": str(event_data)})
-                        bot_command = event_data["command"].split()
-                        bot_command_base = bot_command[0]
-                        bot_command_args = None
-                        if len(bot_command) > 0:
-                            bot_command_args = bot_command[1:]
-                        input_enable = None
-                        output_enable = None
-                        if bot_command_base.startswith("/outputon"):
-                            output_enable = True
-                        elif bot_command_base.startswith("/outputoff"):
-                            output_enable = False
-                        elif bot_command_base.startswith("/inputon"):
-                            input_enable = True
-                        elif bot_command_base.startswith("/inputoff"):
-                            input_enable = False
-                        state = "enable"
-                        if not input_enable or not output_enable:
-                            state = "disable"
-                        bot_reply = f"No devices to {state}."
-                        device_configs = list()
-                        if bot_command_args:
-                            for bot_command_arg in bot_command_args:
-                                device_config = list()
-                                # https://stackoverflow.com/questions/3325467/sqlalchemy-equivalent-to-sql-like-statement
-                                sql_search = f"%{bot_command_arg}%"
-                                if input_enable is not None:
-                                    device_config = (
-                                        InputConfig.query.filter(
-                                            or_(
-                                                InputConfig.device_key.like(sql_search),
-                                                InputConfig.device_label.like(sql_search),
-                                                InputConfig.group_name.like(sql_search),
-                                            )
-                                        )
-                                        .order_by(InputConfig.device_key)
-                                        .all()
-                                    )
-                                elif output_enable is not None:
-                                    device_config = (
-                                        OutputConfig.query.filter(
-                                            or_(
-                                                OutputConfig.device_key.like(sql_search),
-                                                OutputConfig.device_label.like(sql_search),
-                                            )
-                                        )
-                                        .order_by(OutputConfig.device_key)
-                                        .all()
-                                    )
-                                # collect all configurations matched
-                                log.debug(
-                                    "Devices matched",
-                                    extra={
-                                        "match_count": len(device_config),
-                                        "search_term": bot_command_arg,
-                                        "state": state,
-                                    },
-                                )
-                                if device_config:
-                                    device_configs.extend(device_config)
-                        else:
-                            device_config = list()
-                            if input_enable is not None:
-                                # wildcard action is constrained to devices where auto-scheduling is enabled
-                                device_config = (
-                                    InputConfig.query.filter(InputConfig.auto_schedule.isnot(None))
-                                    .order_by(InputConfig.device_key)
-                                    .all()
-                                )
-                                log.debug(
-                                    "Devices with auto-schedule not null",
-                                    extra={"device_count": len(device_config), "state": state},
-                                )
-                            elif output_enable is not None:
-                                device_config = OutputConfig.query.order_by(OutputConfig.device_key).all()
-                            if len(device_config) > 0:
-                                log.debug(
-                                    "Devices selected",
-                                    extra={"device_count": len(device_config), "state": state},
-                                )
-                                device_configs.extend(device_config)
-                        # process all collected inputs
-                        devices_updated = []
-                        device_enable = input_enable
-                        if device_enable is None:
-                            device_enable = output_enable
-                        if len(device_configs) > 0:
-                            for dc in device_configs:
-                                if dc.device_enabled != device_enable:
-                                    devices_updated.append(dc.device_key)
-                                    log.debug(
-                                        "Updating device state",
-                                        extra={
-                                            "device_key": dc.device_key,
-                                            "group_name": getattr(dc, 'group_name', None),
-                                            "state": state,
-                                        },
-                                    )
-                                    dc.device_enabled = device_enable
-                                    # update the database
-                                    db.session.add(dc)
-                                    # update auto-scheduled inputs
-                                    if input_enable is not None and dc.auto_schedule is not None:
-                                        # update the auto-scheduler task
-                                        with exception_handler(
-                                            connect_url=URL_WORKER_AUTO_SCHEDULER,
-                                            and_raise=False,
-                                        ) as zmq_socket:
-                                            if device_enable:
-                                                # restore auto-schedule actions
-                                                zmq_socket.send_pyobj(
-                                                    (
-                                                        dc.device_key,
-                                                        str(dc),
-                                                        dc.auto_schedule,
-                                                        dc.auto_schedule_enable,
-                                                        dc.auto_schedule_disable,
-                                                    )
-                                                )
-                                            else:
-                                                # disable runtime auto-scheduling actions
-                                                zmq_socket.send_pyobj(
-                                                    (
-                                                        dc.device_key,
-                                                        str(dc),
-                                                        None,
-                                                        None,
-                                                        None,
-                                                    )
-                                                )
-                            if len(devices_updated) > 0:
-                                db.session.commit()
-                                for device_key in devices_updated:
-                                    invalidate_remote_config(device_key=device_key)
-                            bot_reply = f"{len(devices_updated)} devices changed to {state}."
-                        else:
-                            log.warning("No devices matched", extra={"state": state})
-                        log.debug(
-                            "Bot command result",
-                            extra={"devices_updated": len(devices_updated), "state": state},
-                        )
+                    receive_span.set_attribute("event.has_trace_parent", "traceparent" in event)
+                    if "sms" in event:
+                        sms_message = event["sms"]
                         if is_flag_enabled("telegram-bot"):
-                            self.bot.send_pyobj(BotMessage(device_label="notification", message=bot_reply).model_dump())
+                            log.debug("Sending payload to bot", extra={"event_keys": list(event.keys())})
+                            _inject_trace_context(event)
+                            self.bot.send_pyobj(sms_message)
+                            log.debug("Sent payload to bot...")
                         else:
                             log.warning(
                                 "Not sending message to Telegram bot, disabled with feature flag",
-                                extra={"reply_length": len(bot_reply)},
+                                extra={"sms_part_count": len(sms_message)},
                             )
-                        # stop processing
-                        if not bot_command_base.startswith("/report"):
-                            # no further processing needed after enable/disable
+                        continue
+                    if "output_triggered" in event:
+                        if is_flag_enabled("telegram-bot"):
+                            _inject_trace_context(event)
+                            self.bot.send_pyobj(event)
+                        continue
+                    for event_origin, event_data in list(event.items()):
+                        if not isinstance(event_data, dict):
+                            log.warning(
+                                "Ignoring non-dict event format",
+                                extra={
+                                    "event_origin": event_origin,
+                                    "event_class": str(event_data.__class__),
+                                    "event_data": str(event_data),
+                                },
+                            )
                             continue
+                        if "timestamp" in event_data:
+                            str_timestamp = event_data["timestamp"]
+                            log.debug(
+                                "Event timestamp",
+                                extra={"event_origin": event_origin, "event_timestamp": str_timestamp},
+                            )
+                            timestamp = make_timestamp(str_timestamp)
+                        else:
+                            timestamp = make_timestamp()
+                            log_msg = "Message has no 'timestamp' so it can't be filtered if stale; using current time"
+                            log_fields = {"event_origin": event_origin, "timestamp_used": make_iso_timestamp(timestamp)}
+                            if "active_devices" in event_data or "outputs_triggered" in event_data:
+                                log.warning(log_msg, extra=log_fields)
+                            else:
+                                log.debug(log_msg, extra=log_fields)
+                        if event_origin == "device_info_input":
+                            self._update_device(
+                                input_outputs=self.inputs,
+                                device_origin=self._input_origin,
+                                origin_devices=self._inputs_by_origin,
+                                event_origin=DEVICE_NAME,
+                                device=event_data,
+                            )
+                            di: DeviceInfo = DeviceInfo.model_validate(event_data)
+                            ic = InputConfig.query.filter_by(device_key=di.device_key).first()
+                            if ic is None:
+                                log.info(
+                                    "Adding new input configuration",
+                                    extra={"device_key": di.device_key, "device_label": di.device_label},
+                                )
+                                db.session.add(
+                                    InputConfig(
+                                        device_key=di.device_key,
+                                        device_label=di.device_label,
+                                        device_type=di.device_type,
+                                        group_name=di.group_name,
+                                        customized=None,
+                                        auto_schedule=None,
+                                        auto_schedule_enable=None,
+                                        auto_schedule_disable=None,
+                                        device_enabled=None,
+                                        trigger_latch_duration=None,
+                                        multi_trigger_rate=None,
+                                        multi_trigger_interval=None,
+                                        activation_escalation=None,
+                                        info_notify=None,
+                                    )
+                                )
+                                db.session.commit()
+                        elif event_origin == "device_info_output":
+                            self._update_device(
+                                input_outputs=self.outputs,
+                                device_origin=self._output_origin,
+                                origin_devices=self._outputs_by_origin,
+                                event_origin=DEVICE_NAME,
+                                device=event_data,
+                            )
+                            di: DeviceInfo = DeviceInfo.model_validate(event_data)
+                            oc = OutputConfig.query.filter_by(device_key=di.device_key).first()
+                            if oc is None:
+                                log.info(
+                                    "Adding new output configuration",
+                                    extra={"device_key": di.device_key, "device_label": di.device_label},
+                                )
+                                db.session.add(
+                                    OutputConfig(
+                                        device_key=di.device_key,
+                                        device_label=di.device_label,
+                                        device_type=di.device_type,
+                                        device_params=None,
+                                        trigger_topic=None,
+                                        trigger_interval=None,
+                                        device_enabled=None,
+                                        auto_schedule=None,
+                                        auto_schedule_enable=None,
+                                        auto_schedule_disable=None,
+                                    )
+                                )
+                                db.session.commit()
+                        elif event_origin == "auto-scheduler":
+                            device_key = event_data["device_key"]
+                            device_label = event_data["device_label"]
+                            device_enable = event_data["device_state"]
+                            log.info(
+                                "Auto-scheduler updating device",
+                                extra={"device_label": device_label, "enabled": device_enable},
+                            )
+                            device_config = InputConfig.query.filter_by(device_key=device_key).first()
+                            if device_config is None:
+                                device_config = OutputConfig.query.filter_by(device_key=device_key).first()
+                            device_config.device_enabled = device_enable
+                            db.session.add(device_config)
+                            db.session.commit()
+                            invalidate_remote_config(device_key=device_key)
+                            # skip further processing because of enable/disable
+                            continue
+                        elif event_origin == "bot":
+                            log.debug("Bot command received", extra={"event_data": str(event_data)})
+                            bot_command = event_data["command"].split()
+                            bot_command_base = bot_command[0]
+                            bot_command_args = None
+                            if len(bot_command) > 0:
+                                bot_command_args = bot_command[1:]
+                            input_enable = None
+                            output_enable = None
+                            if bot_command_base.startswith("/outputon"):
+                                output_enable = True
+                            elif bot_command_base.startswith("/outputoff"):
+                                output_enable = False
+                            elif bot_command_base.startswith("/inputon"):
+                                input_enable = True
+                            elif bot_command_base.startswith("/inputoff"):
+                                input_enable = False
+                            state = "enable"
+                            if not input_enable or not output_enable:
+                                state = "disable"
+                            bot_reply = f"No devices to {state}."
+                            device_configs = list()
+                            if bot_command_args:
+                                for bot_command_arg in bot_command_args:
+                                    device_config = list()
+                                    # https://stackoverflow.com/questions/3325467/sqlalchemy-equivalent-to-sql-like-statement
+                                    sql_search = f"%{bot_command_arg}%"
+                                    if input_enable is not None:
+                                        device_config = (
+                                            InputConfig.query.filter(
+                                                or_(
+                                                    InputConfig.device_key.like(sql_search),
+                                                    InputConfig.device_label.like(sql_search),
+                                                    InputConfig.group_name.like(sql_search),
+                                                )
+                                            )
+                                            .order_by(InputConfig.device_key)
+                                            .all()
+                                        )
+                                    elif output_enable is not None:
+                                        device_config = (
+                                            OutputConfig.query.filter(
+                                                or_(
+                                                    OutputConfig.device_key.like(sql_search),
+                                                    OutputConfig.device_label.like(sql_search),
+                                                )
+                                            )
+                                            .order_by(OutputConfig.device_key)
+                                            .all()
+                                        )
+                                    # collect all configurations matched
+                                    log.debug(
+                                        "Devices matched",
+                                        extra={
+                                            "match_count": len(device_config),
+                                            "search_term": bot_command_arg,
+                                            "state": state,
+                                        },
+                                    )
+                                    if device_config:
+                                        device_configs.extend(device_config)
+                            else:
+                                device_config = list()
+                                if input_enable is not None:
+                                    # wildcard action is constrained to devices where auto-scheduling is enabled
+                                    device_config = (
+                                        InputConfig.query.filter(InputConfig.auto_schedule.isnot(None))
+                                        .order_by(InputConfig.device_key)
+                                        .all()
+                                    )
+                                    log.debug(
+                                        "Devices with auto-schedule not null",
+                                        extra={"device_count": len(device_config), "state": state},
+                                    )
+                                elif output_enable is not None:
+                                    device_config = OutputConfig.query.order_by(OutputConfig.device_key).all()
+                                if len(device_config) > 0:
+                                    log.debug(
+                                        "Devices selected",
+                                        extra={"device_count": len(device_config), "state": state},
+                                    )
+                                    device_configs.extend(device_config)
+                            # process all collected inputs
+                            devices_updated = []
+                            device_enable = input_enable
+                            if device_enable is None:
+                                device_enable = output_enable
+                            if len(device_configs) > 0:
+                                for dc in device_configs:
+                                    if dc.device_enabled != device_enable:
+                                        devices_updated.append(dc.device_key)
+                                        log.debug(
+                                            "Updating device state",
+                                            extra={
+                                                "device_key": dc.device_key,
+                                                "group_name": getattr(dc, 'group_name', None),
+                                                "state": state,
+                                            },
+                                        )
+                                        dc.device_enabled = device_enable
+                                        # update the database
+                                        db.session.add(dc)
+                                        # update auto-scheduled inputs
+                                        if input_enable is not None and dc.auto_schedule is not None:
+                                            # update the auto-scheduler task
+                                            with exception_handler(
+                                                connect_url=URL_WORKER_AUTO_SCHEDULER,
+                                                and_raise=False,
+                                            ) as zmq_socket:
+                                                if device_enable:
+                                                    # restore auto-schedule actions
+                                                    zmq_socket.send_pyobj(
+                                                        (
+                                                            dc.device_key,
+                                                            str(dc),
+                                                            dc.auto_schedule,
+                                                            dc.auto_schedule_enable,
+                                                            dc.auto_schedule_disable,
+                                                        )
+                                                    )
+                                                else:
+                                                    # disable runtime auto-scheduling actions
+                                                    zmq_socket.send_pyobj(
+                                                        (
+                                                            dc.device_key,
+                                                            str(dc),
+                                                            None,
+                                                            None,
+                                                            None,
+                                                        )
+                                                    )
+                                if len(devices_updated) > 0:
+                                    db.session.commit()
+                                    for device_key in devices_updated:
+                                        invalidate_remote_config(device_key=device_key)
+                                bot_reply = f"{len(devices_updated)} devices changed to {state}."
+                            else:
+                                log.warning("No devices matched", extra={"state": state})
+                            log.debug(
+                                "Bot command result",
+                                extra={"devices_updated": len(devices_updated), "state": state},
+                            )
+                            if is_flag_enabled("telegram-bot"):
+                                bot_notification = BotMessage(
+                                    device_label="notification", message=bot_reply
+                                ).model_dump()
+                                self.bot.send_pyobj(bot_notification)
+                            else:
+                                log.warning(
+                                    "Not sending message to Telegram bot, disabled with feature flag",
+                                    extra={"reply_length": len(bot_reply)},
+                                )
+                            # stop processing
+                            if not bot_command_base.startswith("/report"):
+                                # no further processing needed after enable/disable
+                                continue
         try_close(self.bot)
 
 
@@ -1777,210 +1841,231 @@ class TBot(AppThread, Closable):
                 try:
                     event = await zmq_socket.recv_pyobj()
                 except ZMQError:
-                    log.exception("Cannot get message from ZMQ channel.")
+                        log.exception("Cannot get message from ZMQ channel.")
             if event is None and not pending_by_label:
                 continue
-            try:
-                if isinstance(event, dict):
-                    input_device: Device = None
-                    output_device: Device = None
-                    message = None
-                    try:
-                        if "active_input" in event:
-                            input_device = _device_from_dict(event["active_input"])
-                            log.debug("Input device for message", extra={"input_device": str(input_device)})
-                        elif "output_triggered" in event:
-                            output_device = _device_from_dict(event["output_triggered"])
-                            log.debug("Output device for message", extra={"output_device": str(output_device)})
-                        else:
-                            message = BotMessage(**event)
-                    except Exception:
-                        log.warning("Bot message unpack problem", exc_info=True)
-                        continue
-                    timestamp = None
-                    if "timestamp" in event:
-                        timestamp = make_timestamp(timestamp=event["timestamp"], as_tz=user_tz)
-                    else:
-                        log.warning('No timestamp included in event message; using "now"')
-                        timestamp = make_timestamp(as_tz=user_tz)
-                    log.debug(
-                        "Message context",
-                        extra={
-                            "input_device": str(input_device),
-                            "output_device": str(output_device),
-                            "message_timestamp": str(timestamp),
-                        },
-                    )
-                    # build the message
-                    if message is None and input_device is not None:
-                        message = TBot.build_device_message(timestamp=timestamp, input_device=input_device)
-                    # always queue the message
-                    message.timestamp = make_unix_timestamp(timestamp=timestamp)
-                    try:
-                        queued = pending_by_label[message.device_label]
-                    except KeyError:
-                        queued = deque()
-                        pending_by_label[message.device_label] = queued
-                    log.debug(
-                        "Queueing message",
-                        extra={
-                            "device_label": message.device_label,
-                            "message_timestamp": message.timestamp,
-                            "queued_count": len(queued),
-                        },
-                    )
-                    queued.append(message)
-                # rate-limit the send
-                # https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this
-                if now < call_again_timestamp:
-                    log.debug(
-                        "Enforced rate limiting of message queue",
-                        extra={
-                            "device_count": len(pending_by_label),
-                            "backoff_seconds": call_again_timestamp - now,
-                        },
-                    )
-                    continue
-                time_since_sent = now - last_sent
-                if time_since_sent < min_send_interval:
-                    log.debug(
-                        "Elective rate limiting of message queue",
-                        extra={
-                            "device_count": len(pending_by_label),
-                            "time_since_sent_seconds": time_since_sent,
-                            "min_send_interval_seconds": min_send_interval,
-                        },
-                    )
-                    continue
-                # dequeue the message
-                # since we favour brevity over temporal precision, access the event
-                # dictionary by rough order of entry and take the latest event for a
-                # label, except for images in which all images with features detected
-                # should be batched and sent.
-                pending = None
-                device_label = None
-                while not pending:
-                    try:
-                        device_label, pending = pending_by_label.popitem(last=False)
-                    except KeyError:
-                        break
-                if not pending:
-                    log.error("No queued messages for any device.")
-                    continue
-                message = pending.popleft()
-                image_batch = []
-                # other messages to dedupe
-                while True:
-                    log.debug(
-                        "Processing message",
-                        extra={
-                            "device_label": message.device_label,
-                            "message_timestamp": message.timestamp,
-                            "queued_count": len(pending),
-                        },
-                    )
-                    # keep all image data as configured
-                    if message.image:
-                        if TBot.include_image(message=str(message)):
-                            if len(image_batch) < MediaGroupLimit.MAX_MEDIA_LENGTH:
-                                caption_entities = None
-                                if message.url:
-                                    caption_entities = [
-                                        MessageEntity(
-                                            type=MessageEntity.TEXT_LINK,
-                                            offset=0,
-                                            length=len(device_label),
-                                            url=message.url,
-                                        )
-                                    ]
-                                log.debug(
-                                    "Batching image",
-                                    extra={
-                                        "device_label": device_label,
-                                        "message_timestamp": message.timestamp,
-                                        "image_timestamp": message.image_timestamp,
-                                        "chat_id": chat_id,
-                                        "caption": str(message),
-                                        "batch_size": len(image_batch),
-                                    },
-                                )
-                                image_batch.append(
-                                    InputMediaPhoto(
-                                        media=BytesIO(message.image),
-                                        caption=str(message),
-                                        caption_entities=caption_entities,
-                                    )
-                                )
+            parent_ctx = otel_context.get_current()
+            if isinstance(event, dict) and "traceparent" in event:
+                parent_ctx = _extract_trace_context(event)
+            with otel_tracer().start_as_current_span(
+                "tbot.message.receive", context=parent_ctx, kind=SpanKind.CONSUMER
+            ) as receive_span:
+                try:
+                    receive_span.set_attribute("pending_device_count", len(pending_by_label))
+                    if isinstance(event, dict):
+                        input_device: Device = None
+                        output_device: Device = None
+                        message = None
+                        try:
+                            if "active_input" in event:
+                                input_device = _device_from_dict(event["active_input"])
+                                dl = str(input_device.device_label) if input_device.device_label else "unknown"
+                                receive_span.set_attribute("device_label", dl)
+                                log.debug("Input device for message", extra={"input_device": str(input_device)})
+                            elif "output_triggered" in event:
+                                output_device = _device_from_dict(event["output_triggered"])
+                                dl = str(output_device.device_label) if output_device.device_label else "unknown"
+                                receive_span.set_attribute("device_label", dl)
+                                log.debug("Output device for message", extra={"output_device": str(output_device)})
                             else:
-                                # enough is enough, re-enqueue the remainder
+                                message = BotMessage(**event)
+                        except Exception:
+                            log.warning("Bot message unpack problem", exc_info=True)
+                            continue
+                        timestamp = None
+                        if "timestamp" in event:
+                            timestamp = make_timestamp(timestamp=event["timestamp"], as_tz=user_tz)
+                        else:
+                            log.warning('No timestamp included in event message; using "now"')
+                            timestamp = make_timestamp(as_tz=user_tz)
+                        log.debug(
+                            "Message context",
+                            extra={
+                                "input_device": str(input_device),
+                                "output_device": str(output_device),
+                                "message_timestamp": str(timestamp),
+                            },
+                        )
+                        if message is None and input_device is not None:
+                            message = TBot.build_device_message(timestamp=timestamp, input_device=input_device)
+                        message.timestamp = make_unix_timestamp(timestamp=timestamp)
+                        try:
+                            queued = pending_by_label[message.device_label]
+                        except KeyError:
+                            queued = deque()
+                            pending_by_label[message.device_label] = queued
+                        log.debug(
+                            "Queueing message",
+                            extra={
+                                "device_label": message.device_label,
+                                "message_timestamp": message.timestamp,
+                                "queued_count": len(queued),
+                            },
+                        )
+                        queued.append(message)
+                    if now < call_again_timestamp:
+                        receive_span.add_event(
+                            "rate_limit.backoff",
+                            {"retry_after_seconds": call_again_timestamp - now},
+                        )
+                        log.debug(
+                            "Enforced rate limiting of message queue",
+                            extra={
+                                "device_count": len(pending_by_label),
+                                "backoff_seconds": call_again_timestamp - now,
+                            },
+                        )
+                        continue
+                    time_since_sent = now - last_sent
+                    if time_since_sent < min_send_interval:
+                        log.debug(
+                            "Elective rate limiting of message queue",
+                            extra={
+                                "device_count": len(pending_by_label),
+                                "time_since_sent_seconds": time_since_sent,
+                                "min_send_interval_seconds": min_send_interval,
+                            },
+                        )
+                        continue
+                    pending = None
+                    device_label = None
+                    while not pending:
+                        try:
+                            device_label, pending = pending_by_label.popitem(last=False)
+                        except KeyError:
+                            break
+                    if not pending:
+                        log.error("No queued messages for any device.")
+                        continue
+                    message = pending.popleft()
+                    image_batch = []
+                    while True:
+                        log.debug(
+                            "Processing message",
+                            extra={
+                                "device_label": message.device_label,
+                                "message_timestamp": message.timestamp,
+                                "queued_count": len(pending),
+                            },
+                        )
+                        if message.image:
+                            if TBot.include_image(message=str(message)):
+                                if len(image_batch) < MediaGroupLimit.MAX_MEDIA_LENGTH:
+                                    caption_entities = None
+                                    if message.url:
+                                        caption_entities = [
+                                            MessageEntity(
+                                                type=MessageEntity.TEXT_LINK,
+                                                offset=0,
+                                                length=len(device_label),
+                                                url=message.url,
+                                            )
+                                        ]
+                                    log.debug(
+                                        "Batching image",
+                                        extra={
+                                            "device_label": device_label,
+                                            "message_timestamp": message.timestamp,
+                                            "image_timestamp": message.image_timestamp,
+                                            "chat_id": chat_id,
+                                            "caption": str(message),
+                                            "batch_size": len(image_batch),
+                                        },
+                                    )
+                                    image_batch.append(
+                                        InputMediaPhoto(
+                                            media=BytesIO(message.image),
+                                            caption=str(message),
+                                            caption_entities=caption_entities,
+                                        )
+                                    )
+                                else:
+                                    log.debug(
+                                        "Re-enqueueing events, image batch full",
+                                        extra={
+                                            "remaining_count": len(pending),
+                                            "device_label": device_label,
+                                            "batch_size": len(image_batch),
+                                        },
+                                    )
+                                    pending_by_label[device_label] = pending
+                                    break
+                            else:
                                 log.debug(
-                                    "Re-enqueueing events, image batch full",
+                                    "Filtering out image message",
                                     extra={
-                                        "remaining_count": len(pending),
-                                        "device_label": device_label,
-                                        "batch_size": len(image_batch),
+                                        "device_label": message.device_label,
+                                        "message_timestamp": message.timestamp,
+                                        "queued_count": len(pending),
                                     },
                                 )
-                                pending_by_label[device_label] = pending
-                                break
-                        else:
+                        try:
+                            message = pending.popleft()
                             log.debug(
-                                "Filtering out image message",
+                                "Fetched newer pending message",
                                 extra={
                                     "device_label": message.device_label,
                                     "message_timestamp": message.timestamp,
-                                    "queued_count": len(pending),
                                 },
                             )
-                    try:
-                        # attempt to fetch a newer image
-                        message = pending.popleft()
-                        log.debug(
-                            "Fetched newer pending message",
-                            extra={"device_label": message.device_label, "message_timestamp": message.timestamp},
-                        )
-                    except IndexError:
-                        # message remains set to the current
-                        break
-                # send the message
-                try:
-                    if len(image_batch) > 0:
-                        log.info("Sending image group", extra={"chat_id": chat_id, "image_count": len(image_batch)})
-                        await t_app.bot.send_media_group(
-                            chat_id=chat_id,
-                            media=image_batch,
-                            read_timeout=300,
-                            write_timeout=300,
-                            connect_timeout=300,
-                            pool_timeout=300,
-                        )
-                    if not message.image:
-                        log.info(
-                            "Sending non-image message",
-                            extra={
-                                "device_label": device_label,
-                                "message_timestamp": message.timestamp,
-                                "chat_id": chat_id,
-                                "caption": str(message),
-                            },
-                        )
-                        await t_app.bot.send_message(chat_id=chat_id, text=str(message), parse_mode="Markdown")
-                except RetryAfter as e:
-                    call_again_timestamp = now + e.retry_after
-                    log.debug(
-                        "Telegram rate limit, deferring calls",
-                        extra={"retry_after_seconds": e.retry_after, "call_again_timestamp": call_again_timestamp},
-                    )
-                    continue
-                except (TimedOut, ConnectError) as e:
-                    log.warning("Telegram send problem", exc_info=e)
-                    continue
-                # update send time
-                last_sent = now
-            except Exception:
-                capture_exception()
-                log.exception("General issue with bot message processing.")
-
+                        except IndexError:
+                            break
+                    with otel_tracer().start_as_current_span("telegram.send", kind=SpanKind.CLIENT) as send_span:
+                        send_span.set_attribute("messaging.system", "telegram")
+                        send_span.set_attribute("messaging.destination", str(chat_id))
+                        send_span.set_attribute("image_count", len(image_batch))
+                        send_span.set_attribute("device_label", str(device_label))
+                        try:
+                            if len(image_batch) > 0:
+                                log.info(
+                                    "Sending image group",
+                                    extra={
+                                        "chat_id": chat_id,
+                                        "image_count": len(image_batch),
+                                    },
+                                )
+                                await t_app.bot.send_media_group(
+                                    chat_id=chat_id,
+                                    media=image_batch,
+                                    read_timeout=300,
+                                    write_timeout=300,
+                                    connect_timeout=300,
+                                    pool_timeout=300,
+                                )
+                            if not message.image:
+                                log.info(
+                                    "Sending non-image message",
+                                    extra={
+                                        "device_label": device_label,
+                                        "message_timestamp": message.timestamp,
+                                        "chat_id": chat_id,
+                                        "caption": str(message),
+                                    },
+                                )
+                                await t_app.bot.send_message(chat_id=chat_id, text=str(message), parse_mode="Markdown")
+                            send_span.set_status(StatusCode.OK)
+                        except RetryAfter as e:
+                            send_span.record_exception(e)
+                            send_span.set_status(StatusCode.ERROR)
+                            call_again_timestamp = now + e.retry_after
+                            log.debug(
+                                "Telegram rate limit, deferring calls",
+                                extra={
+                                    "retry_after_seconds": e.retry_after,
+                                    "call_again_timestamp": call_again_timestamp,
+                                },
+                            )
+                            continue
+                        except (TimedOut, ConnectError) as e:
+                            send_span.record_exception(e)
+                            send_span.set_status(StatusCode.ERROR)
+                            log.warning("Telegram send problem", exc_info=e)
+                            continue
+                    last_sent = now
+                except Exception:
+                    receive_span.record_exception(sys.exc_info()[1])
+                    capture_exception()
+                    log.exception("General issue with bot message processing.")
     def run(self):
         log.debug("Creating asyncio event loop...")
         loop = asyncio.new_event_loop()
@@ -2238,6 +2323,13 @@ async def main():
             log.debug("Shutting down component", extra={"component": "Rabbit MQ listener bridge"})
             mq_listener_sms.stop()
             zmq_term()
+            # Force-flush OTEL trace provider on shutdown
+            try:
+                provider = otel_trace.get_tracer_provider()
+                if hasattr(provider, "force_flush"):
+                    provider.force_flush()
+            except Exception:
+                pass
         bye()
 
 
