@@ -7,7 +7,6 @@ from dataclasses import fields
 from functools import wraps
 from io import BytesIO
 from os import path
-import sys
 import threading
 from threading import Thread
 import time
@@ -101,6 +100,16 @@ def _extract_trace_context(event: dict) -> otel_context.Context:
     if "baggage" in event:
         carrier["baggage"] = event["baggage"]
     return propagate.extract(carrier)
+
+
+def _inject_trace_context(message: dict) -> None:
+    """Inject W3C trace context into a ZMQ dict carrier."""
+    carrier: dict[str, str] = {}
+    propagate.inject(carrier)
+    if "traceparent" in carrier:
+        message["traceparent"] = carrier["traceparent"]
+    if "baggage" in carrier:
+        message["baggage"] = carrier["baggage"]
 
 
 def _inject_trace_context(message: dict) -> None:
@@ -1847,14 +1856,7 @@ class TBot(AppThread, Closable):
                         log.exception("Cannot get message from ZMQ channel.")
             if event is None and not pending_by_label:
                 continue
-            parent_ctx = otel_context.get_current()
-            if isinstance(event, dict) and "traceparent" in event:
-                parent_ctx = _extract_trace_context(event)
-            with otel_tracer().start_as_current_span(
-                "tbot.message.receive", context=parent_ctx, kind=SpanKind.CONSUMER
-            ) as receive_span:
-                try:
-                    receive_span.set_attribute("pending_device_count", len(pending_by_label))
+            try:
                     if isinstance(event, dict):
                         input_device: Device = None
                         output_device: Device = None
@@ -1862,13 +1864,9 @@ class TBot(AppThread, Closable):
                         try:
                             if "active_input" in event:
                                 input_device = _device_from_dict(event["active_input"])
-                                dl = str(input_device.device_label) if input_device.device_label else "unknown"
-                                receive_span.set_attribute("device_label", dl)
                                 log.debug("Input device for message", extra={"input_device": str(input_device)})
                             elif "output_triggered" in event:
                                 output_device = _device_from_dict(event["output_triggered"])
-                                dl = str(output_device.device_label) if output_device.device_label else "unknown"
-                                receive_span.set_attribute("device_label", dl)
                                 log.debug("Output device for message", extra={"output_device": str(output_device)})
                             else:
                                 message = BotMessage(**event)
@@ -1907,18 +1905,14 @@ class TBot(AppThread, Closable):
                         )
                         queued.append(message)
                     if now < call_again_timestamp:
-                        receive_span.add_event(
-                            "rate_limit.backoff",
-                            {"retry_after_seconds": call_again_timestamp - now},
-                        )
-                        log.debug(
+                            log.debug(
                             "Enforced rate limiting of message queue",
                             extra={
                                 "device_count": len(pending_by_label),
                                 "backoff_seconds": call_again_timestamp - now,
                             },
                         )
-                        continue
+                            continue
                     time_since_sent = now - last_sent
                     if time_since_sent < min_send_interval:
                         log.debug(
@@ -2013,7 +2007,12 @@ class TBot(AppThread, Closable):
                             )
                         except IndexError:
                             break
-                    with otel_tracer().start_as_current_span("telegram.send", kind=SpanKind.CLIENT) as send_span:
+                    parent_ctx = otel_context.get_current()
+                    if isinstance(event, dict) and "traceparent" in event:
+                        parent_ctx = _extract_trace_context(event)
+                    with otel_tracer().start_as_current_span(
+                        "telegram.send", context=parent_ctx, kind=SpanKind.CLIENT
+                    ) as send_span:
                         send_span.set_attribute("messaging.system", "telegram")
                         send_span.set_attribute("messaging.destination", str(chat_id))
                         send_span.set_attribute("image_count", len(image_batch))
@@ -2065,10 +2064,9 @@ class TBot(AppThread, Closable):
                             log.warning("Telegram send problem", exc_info=e)
                             continue
                     last_sent = now
-                except Exception:
-                    receive_span.record_exception(sys.exc_info()[1])
-                    capture_exception()
-                    log.exception("General issue with bot message processing.")
+            except Exception:
+                capture_exception()
+                log.exception("General issue with bot message processing.")
     def run(self):
         log.debug("Creating asyncio event loop...")
         loop = asyncio.new_event_loop()
