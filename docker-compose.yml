@@ -10,6 +10,10 @@ services:
     image: "${CONTAINER_NAME}"
     restart: unless-stopped
     stop_grace_period: 45s
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     build:
       context: .
       args:

@@ -2,11 +2,14 @@
 
 import asyncio
 from collections import OrderedDict, deque
+from collections.abc import Iterable
 from contextlib import nullcontext, suppress
 from dataclasses import fields
 from functools import wraps
 from io import BytesIO
+import os
 from os import path
+import resource
 import threading
 from threading import Thread
 import time
@@ -20,8 +23,10 @@ from flask_login import LoginManager, UserMixin, current_user, login_required, l
 from flask_sqlalchemy import SQLAlchemy
 from httpx import ConnectError
 from opentelemetry import context as otel_context
+from opentelemetry import metrics as otel_metrics
 from opentelemetry import propagate
 from opentelemetry import trace as otel_trace
+from opentelemetry.metrics import Observation
 from opentelemetry.trace import SpanKind, StatusCode
 from pydantic import BaseModel, ConfigDict
 from pylru import lrucache
@@ -63,7 +68,7 @@ import uvicorn
 import zmq
 import zmq.asyncio
 from zmq.asyncio import Poller
-from zmq.error import ZMQError
+from zmq.error import Again, ZMQError
 
 from tailucas_pylib import APP_NAME, DEVICE_NAME, app_config, log, threads
 from tailucas_pylib.app import AppThread
@@ -79,7 +84,7 @@ from tailucas_pylib.handler import exception_handler
 from tailucas_pylib.process import SignalHandler
 from tailucas_pylib.rabbit import ZMQListener
 from tailucas_pylib.threads import bye, die, thread_nanny
-from tailucas_pylib.zmq import URL_WORKER_APP, Closable, try_close, zmq_socket, zmq_term
+from tailucas_pylib.zmq import URL_WORKER_APP, Closable, try_close, zmq_socket, zmq_sockets, zmq_term
 
 # Reduce Sentry noise
 ignore_logger("telegram.ext.Updater")
@@ -208,6 +213,72 @@ URL_WORKER_TELEGRAM_BOT = "inproc://telegram-bot"
 URL_WORKER_AUTO_SCHEDULER = "inproc://auto-scheduler"
 
 CONFIG_AUTO_SCHEDULER = "auto-scheduler"
+
+
+# Process file-descriptor observability. Every ZMQ socket (even inproc://)
+# consumes at least one FD in this process, and the container runs under a
+# fixed RLIMIT_NOFILE, so tracking FD usage is how we diagnose EMFILE
+# ("Too many open files") failures such as the one seen in api_device_info.
+
+_api_worker_push: zmq.Socket[bytes] | None = None
+
+
+def _open_fd_count() -> int:
+    """Number of open file descriptors for this process (Linux /proc)."""
+    try:
+        return len(os.listdir("/proc/self/fd"))
+    except OSError:
+        return -1
+
+
+def _fd_limit() -> int:
+    """Current soft RLIMIT_NOFILE for this process, or -1 if unavailable."""
+    try:
+        return resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+    except (OSError, ValueError):
+        return -1
+
+
+def _api_worker_push_socket() -> zmq.Socket[bytes]:
+    """Return a lazily-created, reused PUSH socket to the in-process event processor.
+
+    The FastAPI event loop is the only thread that calls this, so the socket is
+    never shared across threads (pyzmq sockets are not thread-safe). It is
+    registered with pylib's live socket registry so shutdown closes it.
+    """
+    global _api_worker_push
+    if _api_worker_push is None or _api_worker_push.closed:
+        _api_worker_push = zmq_socket(socket_type=zmq.PUSH)
+        _api_worker_push.connect(URL_WORKER_APP)
+    return _api_worker_push
+
+
+def _register_fd_gauges() -> None:
+    """Export process FD usage and live ZMQ socket count as OTEL gauges."""
+    try:
+        meter = otel_metrics.get_meter(APP_NAME)
+
+        def _observe_fds(_callback_options) -> Iterable[Observation]:
+            yield Observation(_open_fd_count(), {"resource": "process"})
+
+        meter.create_observable_gauge(
+            name="process.open_fds",
+            description="Number of open file descriptors in this process",
+            unit="{fd}",
+            callbacks=[_observe_fds],
+        )
+
+        def _observe_zmq_sockets(_callback_options) -> Iterable[Observation]:
+            yield Observation(len(zmq_sockets), {"resource": "process"})
+
+        meter.create_observable_gauge(
+            name="process.open_zmq_sockets",
+            description="Number of live ZMQ sockets in this process",
+            unit="{socket}",
+            callbacks=[_observe_zmq_sockets],
+        )
+    except Exception:
+        log.debug("Cannot register FD gauges", exc_info=True)
 
 
 class GeneralConfig(Base):
@@ -588,16 +659,35 @@ async def api_device_info(di: DeviceInfo):
         extra={"device_key": di.device_key, "is_input": di.is_input, "is_output": di.is_output},
     )
     try:
-        with exception_handler(connect_url=URL_WORKER_APP, and_raise=False, shutdown_on_error=False) as zmq_socket:
-            di_model = di.model_dump()
-            if di.is_input:
-                zmq_socket.send_pyobj({"device_info_input": di_model})
-            if di.is_output:
-                zmq_socket.send_pyobj({"device_info_output": di_model})
+        push_socket = _api_worker_push_socket()
+        di_model = di.model_dump()
+        if di.is_input:
+            push_socket.send_pyobj({"device_info_input": di_model}, flags=zmq.NOBLOCK)
+        if di.is_output:
+            push_socket.send_pyobj({"device_info_output": di_model}, flags=zmq.NOBLOCK)
+    except Again:
+        log.warning(
+            "Device info dropped, event processor queue full",
+            extra={
+                "device_key": di.device_key,
+                "is_input": di.is_input,
+                "is_output": di.is_output,
+                "open_fds": _open_fd_count(),
+                "fd_limit": _fd_limit(),
+                "open_zmq_sockets": len(zmq_sockets),
+            },
+        )
     except ZMQError as e:
         log.warning(
             "Cannot forward device info to event processor",
-            extra={"device_key": di.device_key, "is_input": di.is_input, "is_output": di.is_output},
+            extra={
+                "device_key": di.device_key,
+                "is_input": di.is_input,
+                "is_output": di.is_output,
+                "open_fds": _open_fd_count(),
+                "fd_limit": _fd_limit(),
+                "open_zmq_sockets": len(zmq_sockets),
+            },
             exc_info=e,
         )
     return "OK"
@@ -2267,6 +2357,8 @@ async def main():
         ],
         send_default_pii=True,
     )
+    # export process FD usage and live ZMQ socket count as OTEL gauges
+    _register_fd_gauges()
     # ensure proper signal handling; must be main thread
     log.debug("Installing signal handlers...")
     signal_handler = SignalHandler()

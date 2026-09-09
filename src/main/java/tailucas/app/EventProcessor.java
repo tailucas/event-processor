@@ -2,6 +2,8 @@ package tailucas.app;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
+import java.lang.management.OperatingSystemMXBean;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -17,7 +19,9 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.slf4j.Logger;
@@ -37,6 +41,7 @@ import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.impl.StrictExceptionHandler;
+import com.sun.management.UnixOperatingSystemMXBean;
 
 import io.prometheus.metrics.exporter.httpserver.HTTPServer;
 import io.prometheus.metrics.instrumentation.jvm.JvmMetrics;
@@ -104,6 +109,7 @@ public class EventProcessor
     private static String appName = null;
     private static String deviceName = null;
     private static HTTPServer metricsServer = null;
+    private static ScheduledExecutorService fdMetricsExecutor = null;
 
     @Bean
 	public CommandLineRunner commandLineRunner(ApplicationContext ctx) {
@@ -131,6 +137,9 @@ public class EventProcessor
 
     @PreDestroy
     private void shutdown() {
+        if (fdMetricsExecutor != null) {
+            fdMetricsExecutor.shutdownNow();
+        }
         if (zmqContext != null) {
             try {
                 zmqContext.close();
@@ -506,6 +515,28 @@ public class EventProcessor
             log.atError().setMessage("Cannot start metrics server").setCause(e).log();
             Sentry.captureException(e);
         }
+
+        // export process file descriptor usage as Prometheus gauges so EMFILE
+        // ("Too many open files") conditions are visible before they bite
+        fdMetricsExecutor = Executors.newSingleThreadScheduledExecutor(
+            Thread.ofVirtual().name("app-fd-metrics", 1).factory());
+        fdMetricsExecutor.scheduleAtFixedRate(() -> {
+            try {
+                final OperatingSystemMXBean osBean = ManagementFactory.getOperatingSystemMXBean();
+                if (osBean instanceof UnixOperatingSystemMXBean unixOsBean) {
+                    final double openFds = unixOsBean.getOpenFileDescriptorCount();
+                    final double maxFds = unixOsBean.getMaxFileDescriptorCount();
+                    Metrics.getInstance().postMetric("open_file_descriptors", openFds);
+                    Metrics.getInstance().postMetric("max_file_descriptors", maxFds);
+                    log.atDebug().setMessage("File descriptor metrics")
+                        .addKeyValue("open_fds", openFds)
+                        .addKeyValue("max_fds", maxFds)
+                        .log();
+                }
+            } catch (Exception e) {
+                log.atDebug().setMessage("Cannot post file descriptor metrics").setCause(e).log();
+            }
+        }, 0, 30, TimeUnit.SECONDS);
 
         log.atDebug().setMessage("Metrics server started").addKeyValue("metrics_port", metricsServerPort).log();
         log.atInfo().setMessage("Startup complete").addKeyValue("app_name", applicationName).log();
