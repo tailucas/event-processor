@@ -220,6 +220,14 @@
       <groupId>io.opentelemetry</groupId>
       <artifactId>opentelemetry-exporter-otlp</artifactId>
     </dependency>
+    <!-- Logs SDK: wired at runtime by autoconfigure to project the log4j2
+         appender's log records over OTLP. Present transitively via
+         opentelemetry-sdk, but declared explicitly (and whitelisted in
+         dependency:analyze) per observability.md convention. -->
+    <dependency>
+      <groupId>io.opentelemetry</groupId>
+      <artifactId>opentelemetry-sdk-logs</artifactId>
+    </dependency>
     <!-- log4j2 bridge (alpha instrumentation artifact) -->
     <dependency>
       <groupId>io.opentelemetry.instrumentation</groupId>
