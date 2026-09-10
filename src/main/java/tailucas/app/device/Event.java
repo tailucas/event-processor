@@ -30,11 +30,7 @@ import com.rabbitmq.client.AMQP.BasicProperties;
 import io.sentry.ISpan;
 import io.sentry.ITransaction;
 import io.sentry.Sentry;
-import io.sentry.SentryAttribute;
-import io.sentry.SentryAttributes;
-import io.sentry.SentryLogLevel;
 import io.sentry.SpanStatus;
-import io.sentry.logger.SentryLogParameters;
 
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
@@ -512,44 +508,6 @@ public class Event implements Runnable {
                                     .addKeyValue("routing_key", responseTopic)
                                     .addKeyValue("payload_bytes", wireCommand.length)
                                     .log();
-                                Sentry.logger().log(
-                                    SentryLogLevel.INFO,
-                                    SentryLogParameters.create(
-                                        SentryAttributes.of(
-                                            SentryAttribute.stringAttribute("source", source),
-                                            SentryAttribute.named("now", now),
-                                            SentryAttribute.named("unix_time", unixTime),
-                                            SentryAttribute.stringAttribute("device_key", deviceKey),
-                                            SentryAttribute.stringAttribute("device_label", String.valueOf(deviceLabel)),
-                                            SentryAttribute.stringAttribute("device_type", String.valueOf(deviceType)),
-                                            SentryAttribute.stringAttribute("device_description", deviceDescription),
-                                            SentryAttribute.stringAttribute("device_config", String.valueOf(deviceConfig)),
-                                            SentryAttribute.stringAttribute("metric_tags", String.valueOf(metricTags)),
-                                            SentryAttribute.named("triggered_duration", triggeredDuration),
-                                            SentryAttribute.stringAttribute("escalation_detail", escalationDetail),
-                                            SentryAttribute.stringAttribute("activation_escalation", String.valueOf(activationEscalation)),
-                                            SentryAttribute.integerAttribute("linked_output_count", linkedOutputs.size()),
-                                            SentryAttribute.stringAttribute("linked_outputs", String.valueOf(linkedOutputs)),
-                                            SentryAttribute.arrayAttribute("output_names", outputNames),
-                                            SentryAttribute.stringAttribute("rabbitmq_channel", String.valueOf(rabbitMqChannel)),
-                                            SentryAttribute.stringAttribute("rabbitmq_properties", String.valueOf(rabbitMqProperties)),
-                                            SentryAttribute.stringAttribute("exchange", exchangeName),
-                                            SentryAttribute.stringAttribute("expiration", String.valueOf(expiration)),
-                                            SentryAttribute.stringAttribute("config_provider", String.valueOf(configProvider)),
-                                            SentryAttribute.stringAttribute("sentry_transaction", String.valueOf(sentry)),
-                                            SentryAttribute.stringAttribute("sentry_span", String.valueOf(sentrySpan)),
-                                            SentryAttribute.stringAttribute("output_device_key", outputDeviceKey),
-                                            SentryAttribute.stringAttribute("output_device_label", String.valueOf(outputDeviceLabel)),
-                                            SentryAttribute.stringAttribute("output_device_description", String.valueOf(outputDeviceDescription)),
-                                            SentryAttribute.stringAttribute("output_type", outputDeviceType),
-                                            SentryAttribute.stringAttribute("output_trigger_interval", String.valueOf(outputDeviceTriggerInterval)),
-                                            SentryAttribute.stringAttribute("routing_key", responseTopic),
-                                            SentryAttribute.integerAttribute("payload_bytes", wireCommand.length),
-                                            SentryAttribute.stringAttribute("payload_json", String.valueOf(root)),
-                                            SentryAttribute.stringAttribute("name_matcher", String.valueOf(nameMatcher))
-                                        )
-                                    ),
-                                    "input triggers output");
                                 rabbitMqChannel.basicPublish(exchangeName, responseTopic, rabbitMqProperties, wireCommand);
                                 // record the trigger event
                                 triggerOutputHistory.triggered(outputDeviceKey);
