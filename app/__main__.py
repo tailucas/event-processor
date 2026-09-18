@@ -652,44 +652,122 @@ class DeviceInfo(BaseModel):
     is_output: bool
 
 
+# Producer-side queue health for the in-process event processor.
+#
+# URL_WORKER_APP is a many-producer/single-consumer PUSH/PULL fan-in. This
+# endpoint is the only producer that enqueues without blocking, so a failed
+# send is the earliest evidence the single PULL consumer (EventProcessor) is not
+# draining; every other producer blocks and applies back pressure instead. These
+# counters and timestamps let one drop record answer "how many, for how long, and
+# is the consumer still alive" instead of repeating an unqualified warning.
+_device_info_drop_count = 0
+_device_info_drop_streak_start: float | None = None
+_device_info_last_forwarded: float | None = None
+_event_processor_last_event: float | None = None
+_device_info_drop_counter: otel_metrics.Counter | None = None
+
+
+def _event_processor_lag_seconds() -> float | None:
+    """Age in seconds of the last event the EventProcessor consumer dequeued."""
+    if _event_processor_last_event is None:
+        return None
+    return round(time.monotonic() - _event_processor_last_event, 3)
+
+
+def _device_info_drop_metric() -> otel_metrics.Counter | None:
+    """Lazily-created drop counter; created on first use so it binds after setup_otel()."""
+    global _device_info_drop_counter
+    if _device_info_drop_counter is None:
+        try:
+            _device_info_drop_counter = otel_metrics.get_meter(APP_NAME).create_counter(
+                name="event_processor.device_info.dropped",
+                description="Device info messages dropped before reaching the event processor",
+                unit="{message}",
+            )
+        except Exception:
+            log.debug("Cannot create device info drop counter", exc_info=True)
+            return None
+    return _device_info_drop_counter
+
+
+def _mark_device_info_forwarded() -> None:
+    """Record that a device info message was enqueued, ending any drop streak."""
+    global _device_info_last_forwarded, _device_info_drop_streak_start
+    _device_info_last_forwarded = time.monotonic()
+    _device_info_drop_streak_start = None
+
+
+def _record_device_info_drop(di: DeviceInfo, dropped_directions: list[str], reason: str) -> dict:
+    """Count a dropped device info message and build its log fields.
+
+    The aggregate count and the queue-full duration are what separate a
+    momentary burst (small count, short duration) from a stalled consumer
+    (monotonic growth, growing consumer lag).
+    """
+    global _device_info_drop_count, _device_info_drop_streak_start
+    now = time.monotonic()
+    _device_info_drop_count += 1
+    if _device_info_drop_streak_start is None:
+        _device_info_drop_streak_start = now
+    fields = {
+        "queue": URL_WORKER_APP,
+        "reason": reason,
+        "send_failed_for": "+".join(dropped_directions),
+        "device_key": di.device_key,
+        "device_label": di.device_label,
+        "device_type": di.device_type,
+        "is_input": di.is_input,
+        "is_output": di.is_output,
+        "drop_count_total": _device_info_drop_count,
+        "queue_full_seconds": round(now - _device_info_drop_streak_start, 3),
+        "consumer_lag_seconds": _event_processor_lag_seconds(),
+        "open_fds": _open_fd_count(),
+        "fd_limit": _fd_limit(),
+        "open_zmq_sockets": len(zmq_sockets),
+    }
+    if _device_info_last_forwarded is not None:
+        fields["seconds_since_last_forwarded"] = round(now - _device_info_last_forwarded, 3)
+    metric = _device_info_drop_metric()
+    if metric is not None:
+        for direction in dropped_directions:
+            metric.add(1, {"direction": direction, "reason": reason})
+    return fields
+
+
 @api_app.post("/api/device_info")
 async def api_device_info(di: DeviceInfo):
     log.debug(
         "Device info request received",
         extra={"device_key": di.device_key, "is_input": di.is_input, "is_output": di.is_output},
     )
+    dropped_directions: list[str] = []
     try:
         push_socket = _api_worker_push_socket()
         di_model = di.model_dump()
         if di.is_input:
-            push_socket.send_pyobj({"device_info_input": di_model}, flags=zmq.NOBLOCK)
+            try:
+                push_socket.send_pyobj({"device_info_input": di_model}, flags=zmq.NOBLOCK)
+            except Again:
+                dropped_directions.append("input")
         if di.is_output:
-            push_socket.send_pyobj({"device_info_output": di_model}, flags=zmq.NOBLOCK)
-    except Again:
-        log.warning(
-            "Device info dropped, event processor queue full",
-            extra={
-                "device_key": di.device_key,
-                "is_input": di.is_input,
-                "is_output": di.is_output,
-                "open_fds": _open_fd_count(),
-                "fd_limit": _fd_limit(),
-                "open_zmq_sockets": len(zmq_sockets),
-            },
-        )
+            try:
+                push_socket.send_pyobj({"device_info_output": di_model}, flags=zmq.NOBLOCK)
+            except Again:
+                dropped_directions.append("output")
     except ZMQError as e:
         log.warning(
             "Cannot forward device info to event processor",
-            extra={
-                "device_key": di.device_key,
-                "is_input": di.is_input,
-                "is_output": di.is_output,
-                "open_fds": _open_fd_count(),
-                "fd_limit": _fd_limit(),
-                "open_zmq_sockets": len(zmq_sockets),
-            },
+            extra=_record_device_info_drop(di=di, dropped_directions=["input", "output"], reason="socket_error"),
             exc_info=e,
         )
+        return "OK"
+    if dropped_directions:
+        log.warning(
+            "Device info dropped, event processor queue full",
+            extra=_record_device_info_drop(di=di, dropped_directions=dropped_directions, reason="queue_full"),
+        )
+    else:
+        _mark_device_info_forwarded()
     return "OK"
 
 
@@ -1499,6 +1577,7 @@ class EventProcessor(AppThread):
 
     # noinspection PyBroadException
     def run(self):
+        global _event_processor_last_event
         # bot
         if is_flag_enabled("telegram-bot"):
             self.bot.connect(URL_WORKER_TELEGRAM_BOT)
@@ -1575,6 +1654,8 @@ class EventProcessor(AppThread):
                 db.session.commit()
                 # process the next event
                 event = app_socket.recv_pyobj()
+                # publish consumer progress so producers can report queue lag
+                _event_processor_last_event = time.monotonic()
                 has_trace_parent = isinstance(event, dict) and "traceparent" in event
                 parent_ctx = _extract_trace_context(event) if has_trace_parent else otel_context.get_current()
                 span_ctx = (
