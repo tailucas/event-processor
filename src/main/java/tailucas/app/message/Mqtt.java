@@ -187,7 +187,7 @@ public class Mqtt implements MqttCallback {
                     return;
                 }
             } else {
-                log.atWarn().setMessage("Topic ignored").addKeyValue("topic", topic).log();
+                log.atDebug().setMessage("Topic ignored").addKeyValue("topic", topic).log();
             }
         } catch (Exception e) {
             metrics.postMetric("error", Map.of(
