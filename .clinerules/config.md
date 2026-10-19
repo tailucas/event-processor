@@ -90,3 +90,27 @@ vault):
 Secrets (never in `base.env`): `OP_CONNECT_HOST`, `OP_CONNECT_TOKEN`,
 `OP_CONNECT_VAULT`, `HC_PING_URL`, `CRONITOR_MONITOR_KEY`, and the Sentry DSN
 (`Sentry/__APP_NAME__/dsn`).
+
+## 6. Hub API and Home Assistant configuration
+
+- **Hub token:** `HUB_API_TOKEN` env var, else `HUB_API_TOKEN_FILE` (default
+  `/data/hub_api_token`). The Python app generates a stable token if missing;
+  the Java container reads the same file. Print it with `make hub-token`.
+- **Connect host:** `OP_CONNECT_HOST` must point at port **8082**
+  (`http://host.docker.internal:8082` from a container, or
+  `http://acer.discus-universe.ts.net:8082`). Port 8080 is the snapshot
+  processor, not 1Password Connect.
+- **1Password mode:** the production compose uses 1Password Connect
+  (`OP_CONNECT_TOKEN` + `OP_VAULT`) and no longer requires the unused
+  `OP_SERVICE_ACCOUNT_TOKEN` secret. `deploy_hub.sh` loads the Connect exports
+  from `/home/tai/.bashrc`. If a future deployment uses a service-account
+  token, restore that secret deliberately and test the SDK path.
+- **HA config entry:** host `127.0.0.1`, port `8095` when HA uses host
+  networking; from another host use `http://192.168.0.6:8095`. The unique ID is
+  the hub `instance_id` in `general_config`, not the host/port.
+- **Secrets boundary:** camera `device_params`, hub tokens and broker topics
+  stay in 1Password/the hub. Do not put them in HA device metadata,
+  attributes, diagnostics or logs.
+- **HA config path:** `/home/tai/home-assistant/config` on `acer`; custom
+  component path `/config/custom_components/event_processor` in the container.
+- See `ha.md` for the full migration and token/deployment details.
