@@ -109,8 +109,11 @@ toolchain installs in these scripts rather than inlining them in the
 Dockerfile; `java_setup.sh` quietens Maven output under `GITHUB_ACTIONS` for
 CI builds.
 
-## 7. Home Assistant & deployment
+## 7. Optional Home Assistant experiment & deployment
 
+- **Optional, not part of the production build.** The HA component and deploy
+  targets exist only for the optional experiment; the production image and run
+  path do not depend on HA.
 - The HA component is **not** baked into the event-processor image. It is
   copied directly into the HA container by `deploy_ha.sh` (or `make ha-deploy`)
   because the configuration is private and not distributed via HACS/PyPI.
@@ -132,4 +135,4 @@ CI builds.
   (`pytest-homeassistant-custom-component`); do not mix it into the app venv
   because HA pins its own dependency versions.
 - Run `make lint`, `make ha-lint`, hub API tests and Java tests before
-  deployment. See `ha.md` for the live deployment facts.
+  optional deployment. See `ha.md` for optional research/live deployment facts.

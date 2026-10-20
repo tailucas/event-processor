@@ -7,44 +7,144 @@ paths:
   - "src/main/java/tailucas/app/provider/HubEventPublisher.java"
 ---
 
-# Home Assistant Integration & Migration Standard
+# Home Assistant Integration: Optional Research & Possible Plan
 
-This is the reference document for the Event Processor → Home Assistant
-migration. It records the HA research, the live deployment facts, the phase-1
-implementation, the discovered project behavior, the caveats, and the planned
-route from the Flask control surface to an end-state where Home Assistant is
-the primary runtime configuration surface.
+This document records optional research into a possible Home Assistant
+integration. It is **not** an approved roadmap, migration plan, or default
+architecture. The production architecture remains the existing
+Flask/FastAPI + SQLite hub and Java event processor. Do not start HA work,
+remove Flask, move links, or make HA a runtime dependency unless the user
+explicitly requests it.
 
-It is intentionally verbosity-heavy. Future agents should read this file
-before changing the HA component, the hub API, the Java event publisher, or
-any Flask dashboard behavior that is being migrated.
+> **Optional / not committed.** HA is an experiment. The hub/Java engine is
+> the runtime authority. The Flask/FastAPI app and SQLite are the production
+> configuration/control plane. Every HA design in this file is a possible
+> direction only.
+
+## 0. Read this first: primary possible plan (optional)
+
+If — and only if — the user explicitly asks to pursue HA integration, the
+primary possible plan is:
+
+1. **If pursued, HA would become the primary UI/configuration surface**, not
+   the runtime authority. The hub/Java engine continues to own detection, latching,
+   multi-trigger, escalation, meter thresholds and output rate limits.
+2. **SQLite remains a small runtime cache** for Java. HA edits/pushes config
+   through the hub API; the hub writes the cache. The cache is what keeps the
+   security system running if HA restarts.
+3. **Devices** are represented in the HA device registry; **settings** are
+   CONFIG entities and/or config subentries; **links** are automations or
+   blueprints; **schedules** are HA schedule helpers/automations.
+4. **Links are optional to migrate.** The safest first step is the 23
+   non-Ring camera links → 8 camera automations. Keep SMS, buzzer, l2ping and
+   Ring links in the hub until each migration is explicitly validated.
+5. **Flask UI removal is a later, optional step.** Keep the FastAPI machine
+   APIs, hub API, Python EventProcessor and TBot until Java/config parity is
+   proven.
+6. **Never move camera credentials, broker topics, or `device_params` into
+   HA.** Never move the Java detection filter chain into HA. Never make HA a
+   hard runtime dependency for security processing.
+7. **“Fully modelled in HA”** means devices + entities/subentries +
+   automations, not a relational input→output table. HA has no native link
+   entity; the link graph is a set of automations/blueprints.
+8. **SQLite cannot be removed** while Java remains the security engine. A
+   practical minimum is ~53–55 rows (`input_config`, `output_config`,
+   `meter_config`, `general_config`, optional `heartbeat`) plus one row per
+   hub-owned `output_link`; `event_log`, `input_link`, orphan links, CloudWatch
+   rows and legacy columns can be archived/dropped.
+
+### 0.1 SQLite target if HA is pursued (optional)
+
+Do not remove SQLite while Java remains the security engine. The practical
+target is a small runtime cache; HA is the editing surface, not the only store.
+
+| Table | Current | Keep? | Possible role |
+|---|---:|---|---|
+| `input_config` | 39 | **Yes** | Runtime cache for armed state, latch, multi-trigger, escalation |
+| `output_config` | 12 | **Yes** | Runtime cache for enabled/interval; `device_params` and `trigger_topic` stay internal |
+| `meter_config` | 1 | **Yes** | Meter thresholds and reset normalization |
+| `general_config` | 1–2 | **Yes** | `instance_id`; mode flags if DB-based |
+| `heartbeat` | 0–1 | Optional | Can move in-memory or to an HA diagnostic |
+| `output_link` | 0–71 valid | Only for hub-owned links | Drop after all links are HA and `Event.run()` emits `input_triggered` without link rows |
+| `event_log` | 56,347 | **No** | Archive; HA Logbook only if HA is used |
+| `input_link` | 3 | **No** | Drop; feature never implemented |
+| Orphan `output_link` | 7 | **No** | Clean |
+| CloudWatch `general_config` | 4 | **No** | Drop |
+| `customized`, legacy columns | — | **No** | Drop |
+| `auto_schedule` columns | — | Only until schedules move | Drop after HA schedule helpers are validated |
+| `group_name` | — | Only until labels/areas own groups | Drop after HA group mapping is validated |
+
+Row-count view:
+
+- **No hub-owned links:** ~53–55 rows.
+- **23 camera links moved to HA; 48 hub links remain:** ~101–103 rows.
+- **All 71 links still hub-owned:** ~124–126 rows.
+
+Important dependency: if you delete every `output_link` row, Java currently
+returns before publishing `input_triggered`. To drop the table entirely, move
+the `input_triggered` publish earlier in `Event.run()` (after the armed/filter
+checks) or keep `managed_by='ha'` marker rows. Otherwise keep the table.
+
+### 0.2 Config parity gaps if HA is pursued (optional)
+
+Current HA entities cover most controls, but full Flask parity would still
+need:
+
+- `info_notify` as a CONFIG switch or subentry field;
+- input/output `auto_schedule` and times, or HA `schedule` helpers/automations;
+- meter `meter_reset_value`, `meter_reset_additive`, `meter_reading_unit`,
+  `meter_reading_unit_factor` and `meter_reading_unit_precision`;
+- entities/defaults for settings that are currently null (the current number
+  platform only creates entities for non-null values);
+- group membership via labels/areas or a config subentry.
+
+A mixed model is likely best: CONFIG entities for frequently changed controls,
+config subentries for advanced per-device forms, and automations for links.
+
+Removing Flask pages is **not** removing the Python app. Java still calls
+`/api/input_config`, `/api/output_config`, `/api/meter_config` and
+`/api/output_link`; keep those endpoints or migrate Java to `/api/v1` before
+any Flask UI removal. Keep the Python EventProcessor and TBot as well.
+
+### Possible directions (all optional)
+
+| Direction | Scope | Status |
+|---|---|---|
+| **A. HA configuration UI** | HA as primary UI/config surface; hub runtime cache; links/schedules optional | **Primary possible plan**; only if requested |
+| **B. HA link orchestration** | HA automations own selected input→output links; hub emits events | Optional, higher risk; see §11 |
+| **C. HA canonical config** | Config subentries become source of truth; hub cache syncs | Optional, more custom work; not committed |
+| **D. Retire Java / zero SQLite** | HA owns detection and runtime | **Not recommended**; separate project |
+
+**Stop condition:** unless the user explicitly asks for HA work, do not start
+any direction above. This document is reference material, not a backlog.
 
 ---
 
-## 1. Status at a glance
+## 1. Status at a glance (optional HA experiment)
 
 | Item | State |
 |---|---|
-| Architecture | **Hybrid** (chosen): HA is the UI/control surface; the Java engine remains the real-time rule engine |
-| Flask dashboard | Still present and working (`/admin/`); phase-1 fallback |
+| Architecture | **Production:** Flask/FastAPI + SQLite + Java hub. **HA:** optional experiment; not the runtime authority |
+| Flask dashboard | Production UI; remains the source of configuration unless an optional HA plan is explicitly approved |
 | Hub API | Implemented at `/api/v1` (HTTP + WebSocket), bearer-token auth |
 | Java event publisher | Implemented; publishes processed lifecycle events to the hub API |
-| HA integration | Implemented as a **private, core-grade custom component** in `custom_components/event_processor` |
+| HA integration | **Optional experiment**; private custom component in `custom_components/event_processor`; can be removed without changing the production architecture |
 | Distribution | No HACS, no PyPI, no HA core PR (private configuration) |
-| Production HA | Home Assistant **2026.10.2** in a container on `acer` (192.168.0.6), host network |
-| Config entry | Created and loaded: `01M58D47AR49TRCHMG0K1VPNNE` |
+| HA experiment host | Home Assistant **2026.10.2** in a container on `acer` (192.168.0.6), host network; optional experiment |
+| HA experiment config entry | Created and loaded: `01M58D47AR49TRCHMG0K1VPNNE` (can be removed) |
 | Hub instance ID | `23b94fd5-d005-498d-b1d9-68c2af0787b6` |
 | Hub devices | 43 unique devices in the snapshot (39 inputs, 12 outputs; 8 cameras are dual-role) |
-| HA-owned Event Processor devices | 32 (26 managed child devices + 5 group devices + 1 hub device) |
-| HA-owned entities | 120 (5 alarm panels, 34 switches, 25 numbers, 20 binary sensors, 18 event entities, 13 buttons, 4 sensors, 1 notify) |
+| HA experiment devices | 32 (26 managed child devices + 5 group devices + 1 hub device); optional |
+| HA experiment entities | 120 (5 alarm panels, 34 switches, 25 numbers, 20 binary sensors, 18 event entities, 13 buttons, 4 sensors, 1 notify); optional |
 | Ring devices | Not duplicated; 17 `source=ring` devices skipped in HA |
-| Links | 71 valid links retained in the hub in phase 1; 7 orphan rows exist in SQLite |
-| Camera/link orchestration | Assessed; per-link HA ownership is the recommended next step for non-Ring camera links; see §11 |
-| Event history | 56,347 legacy rows; HA Logbook/History is the new event surface |
+| Links | 71 valid links retained in the hub; optional HA migration not started; 7 orphan rows exist in SQLite |
+| Camera/link orchestration | Optional direction only; see §11. Do not treat it as committed work |
+| Commitment | **None.** HA work is opt-in and requires an explicit user request; see §0 |
+| Event history | 56,347 legacy rows; HA Logbook/History only if the optional HA experiment is used |
 | Production DB | `/home/tai/event-processor/data/event-processor.db`, now owned `999:999` |
 | DB backup | `/data/event-processor.db.bak-20261018204347` |
 | Hub token | `/data/hub_api_token`, mode 600, owned `app`; print with `make hub-token` |
-| Hub address from HA | `http://127.0.0.1:8095` (HA uses host networking) |
+| Hub address from HA experiment | `http://127.0.0.1:8095` (HA uses host networking) |
 | Hub address from LAN | `http://192.168.0.6:8095` |
 
 ### Dependency and coverage at a glance
@@ -72,15 +172,15 @@ The Java engine remains authoritative for:
 - the actual output command publish to RabbitMQ
 - the existing motion → camera snapshot → Telegram linkage
 
-The Python app remains the config/control plane in phase 1. HA is the primary
-UI and device/entity registry, but the SQLite database is still the runtime
-source of truth. This is intentional: a security system must keep operating if
-HA is restarting or unavailable. See §7.8 for the quantified dependency,
-coverage and replacement assessment.
+The Python app remains the production config/control plane. In the optional HA
+experiment, HA is a secondary UI and device/entity registry; the SQLite
+database remains the runtime source of truth. This is intentional: a security
+system must keep operating if HA is restarting or unavailable. See §0 for the
+optional primary plan and §7.8 for the quantified assessment.
 
 ---
 
-## 2. Production environment facts
+## 2. Environment facts (hub and optional HA experiment)
 
 - HA version: **2026.10.2** (`/home/tai/home-assistant/config/.HA_VERSION`).
 - Installation: Docker container named `homeassistant`
@@ -94,8 +194,8 @@ coverage and replacement assessment.
   `go2rtc`, `backup`, `cast`, `shopping_list`, `radio_browser`,
   `google_translate`, `met`, `mobile_app`.
 - **No MQTT integration and no Ring integration were configured** at the time
-  of phase-1 deployment. `go2rtc` is present and is the intended live-camera
-  path.
+  of the optional experiment deployment. `go2rtc` is present and is the
+  intended live-camera path.
 - Event processor container: `event-processor-app-1`, bridge network
   `event-processor_default`, ports `8095:8080` (Python API), `8085:8085`
   (metrics), `9400:9400`, `4041:4040`.
@@ -133,34 +233,30 @@ failure will recur. See `container.md`.
 
 ---
 
-## 3. Why the hybrid architecture
+## 3. Why HA is optional, and why any HA design must be hybrid
 
-The project has two distinct responsibilities:
+The production architecture is the hub: devices publish over RabbitMQ/MQTT,
+the Java engine applies detection/filtering and publishes output commands, and
+the Flask/FastAPI + SQLite app provides configuration, discovery, schedules,
+the event log and the Telegram bot.
 
-1. **Real-time security processing** (Java): device events, latching,
-   multi-trigger, escalation, meter thresholds, output rate limits, output
-   commands. This must run even if HA is down.
-2. **Configuration and human control** (Python/Flask): device inventory,
-   arming, schedules, links, meter reset, event log, Telegram bot. This is the
-   part HA should replace.
+HA is an optional UI/configuration experiment. If someone explicitly asks to
+pursue it, the design must remain hybrid because:
 
-A full "move all links and schedules into HA automations" rewrite in phase 1
-would make HA part of the security path and risk changing behavior. The hybrid
-model instead:
+- real-time security processing must keep running if HA restarts;
+- the HA device registry is identity/topology, not a configuration database;
+- HA has no first-class input→output link object; links become automations;
+- HA cannot hold camera credentials or internal broker topics;
+- HA automation runs are not durable workflow runs.
 
-- makes HA the **primary UI and registry** immediately;
-- keeps the hub authoritative for runtime behavior;
-- exposes HA-native entities and services for every control;
-- migrates links/schedules to HA only after parity and with an explicit
-  `LINKS_SOURCE` cutover;
-- keeps Flask available as a rollback path until phase 3.
-
-This is the strangler-fig migration: build the HA surface alongside the old
-surface, move usage, then remove the old surface.
+A full "move detection and links into HA" rewrite is a separate, unapproved
+project. If HA is pursued, use a strangler-fig approach: build the HA surface
+alongside the existing UI, migrate one capability at a time, and keep rollback
+flags. Otherwise, do not start.
 
 ---
 
-## 4. Home Assistant concepts an agent must know
+## 4. HA concepts (only needed for optional HA work)
 
 ### 4.1 Integration types
 
@@ -406,7 +502,10 @@ Verified against the running 2026.10.2 container:
 
 ---
 
-## 5. Project discoveries (what the HA integration is replacing)
+## 5. Project discoveries (background for the optional HA work)
+
+This section records how the production system works. It does not imply HA is
+the target architecture.
 
 ### 5.1 Current architecture
 
@@ -441,8 +540,8 @@ Devices / sensors / ioboard / Ring
 `EventProcessor` consumes control messages on `inproc://app`
 (`device_info_input`, `device_info_output`, `auto-scheduler`, `bot`,
 `output_triggered`, `active_input`, SMS-related messages) and forwards
-notifications. This is why the HA integration must integrate with the Java
-engine's lifecycle, not just replace Flask forms.
+notifications. If an HA integration is pursued, it must integrate with the
+Java engine's lifecycle, not just replace Flask forms.
 
 ### 5.2 Java engine responsibilities
 
@@ -494,14 +593,15 @@ Problems with this as an HA discovery model:
 1. It only happens on heartbeat; event-only devices may never be discovered.
 2. New rows are disabled (`device_enabled=None`; Java treats null as false).
 3. The old insert did **not** invalidate the Java cache; a 404 could persist
-   for an hour. Phase 1 now calls `invalidate_remote_config` after insert.
+   for an hour. The current implementation calls `invalidate_remote_config`
+   after insert.
 4. Any unknown key creates a row; transient UUIDs/misconfigured topics can
    pollute the table.
 5. `/api/device_info` was unauthenticated and returned `"OK"` even when the ZMQ
    send failed; drops were only visible in OTEL/logs.
 6. Device type is not validated/normalized across sources.
 
-HA reconciliation: the hub should classify a stable device announcement and
+If HA is pursued, the hub should classify a stable device announcement and
 emit `device_added`; HA creates the device/entities without a reload. Unknown
 or transient keys should be diagnostic events, not registry rows. Do not
 auto-arm a discovered device; visibility is not the same as arming.
@@ -510,7 +610,7 @@ auto-arm a discovered device; visibility is not the same as arming.
 
 FastAPI endpoints (machine-facing):
 
-| Route / function | Lines | Purpose | HA replacement |
+| Route / function | Lines | Purpose | Possible HA replacement (optional) |
 |---|---|---|---|
 | `GET /` `api_root` | 628-630 | Redirect to `/admin/` | HA UI |
 | `GET /api/ping` `api_ping` | 633-635 | Liveness probe | Hub health |
@@ -524,7 +624,7 @@ FastAPI endpoints (machine-facing):
 
 Flask pages/routes (human-facing):
 
-| Route / function | Lines | Purpose | HA replacement |
+| Route / function | Lines | Purpose | Possible HA replacement (optional) |
 |---|---|---|---|
 | `GET/POST /` `index` | 892-993 | Control panel: list inputs, toggle `device_enabled`, group rollup, meter reset, panic, badges. **No auth decorator.** | Lovelace dashboard, alarm panels, switches, buttons |
 | `GET/POST /metrics` `show_metrics` | 996-998 | Redirect to Grafana | HA History/Energy + optional Grafana |
@@ -541,7 +641,7 @@ Flask pages/routes (human-facing):
 
 Support/background classes:
 
-| Function/class | Lines | Purpose | HA replacement |
+| Function/class | Lines | Purpose | Possible HA replacement (optional) |
 |---|---|---|---|
 | `SessionUser`, `auth_enabled`, `authz_required`, `load_user` | 774-870 | Auth/session/authorization stub (`permitted=True`) | HA auth |
 | `DeviceInfo`, `BotMessage` | 643-652, 1510-1519 | Pydantic payloads | Client models / notify |
@@ -557,19 +657,19 @@ Support/background classes:
 
 Templates: `layout.html`, `index.html`, `config.html`, `input_config.html`,
 `output_config.html`, `input_link.html`, `output_link.html`, `event_log.html`,
-`metrics.html`, `login.html`, `error.html`. All are replaced by HA UI/logbook
-or removed in phase 3.
+`metrics.html`, `login.html`, `error.html`. If the optional HA direction is pursued, these could be replaced by HA
+UI/logbook or removed; otherwise they remain the production surfaces.
 
 ### 5.5 SQLite profile and data-quality findings
 
-| Table | Rows | Purpose | Migration note |
+| Table | Rows | Purpose | Possible HA mapping (optional) |
 |---|---:|---|---|
 | `input_config` | 39 | Input identity, armed state, tuning, schedules | Identity → device registry; armed → switch; tuning → CONFIG entities/subentry |
 | `output_config` | 12 | Output identity, enabled, params, topic/interval | Identity → device registry; enabled/interval → CONFIG entities; `device_params` stays secret |
-| `output_link` | 78 | Input→output mapping | 71 valid; 7 orphan; keep in hub phase 1; later HA automations |
+| `output_link` | 78 | Input→output mapping | 71 valid; 7 orphan; remains hub unless optional HA link migration is approved |
 | `input_link` | 3 | Input↔input mapping | Feature not implemented; drop |
 | `meter_config` | 1 | Meter state/config | `sensor` energy + `number` limits + reset action |
-| `event_log` | 56,347 | Historical events, 2022–2024 | Archive; HA Logbook/History replaces it |
+| `event_log` | 56,347 | Historical events, 2022–2024 | Archive; HA Logbook/History only if HA is used |
 | `general_config` | 6 | `auto-scheduler`, 4 CloudWatch widgets, `instance_id` | Options/instance ID; drop widgets |
 | `heartbeat` | 1 | Hub liveness | Diagnostic sensor |
 
@@ -612,18 +712,19 @@ Key data facts:
 **Ring.** The Java `Mqtt` class listens to `ring/#`, and `Ring.getDeviceKey()`
 is the Ring UUID. `Ring.getDeviceLabel()` comes from `homeassistant/.../config`
 MQTT discovery data cached by `DeviceConfig`. This is the existing HA-adjacent
-discovery path. The user intends to move Ring ownership to the HA Ring
-integration. Therefore:
+discovery path. The user has considered moving Ring ownership to the HA Ring
+integration; no cutover is committed. Possible mapping:
 
-- phase 1: `RING_SOURCE=mqtt`, no duplicate Ring devices in HA;
-- phase 2: `RING_SOURCE=ha`, HA Ring owns the devices, EventProcessor accepts
-  Ring state through the hub API (planned `POST /api/v1/inputs/{key}/state` or
-  an `event_processor.process_input` action), and the Java `ring/#` parser is
-  disabled;
-- the `homeassistant/#` cache in Java becomes obsolete in `RING_SOURCE=ha`.
+- current: `RING_SOURCE=mqtt`, no duplicate Ring devices in HA;
+- possible later, only if explicitly approved: `RING_SOURCE=ha`, HA Ring owns
+  the devices, EventProcessor accepts Ring state through the hub API (planned
+  `POST /api/v1/inputs/{key}/state` or an `event_processor.process_input`
+  action), and the Java `ring/#` parser is disabled;
+- in that possible cutover the `homeassistant/#` cache in Java becomes
+  obsolete.
 
 **Cameras.** HA supports RTSP/ONVIF/generic camera and already has `go2rtc`.
-Use HA for live view; keep EventProcessor for snapshot + Telegram. The
+If HA live view is used, keep EventProcessor for snapshot + Telegram. The
 event_processor integration exposes a `button` “Snapshot” per camera (or a
 hub-level action), not a duplicate `camera` entity and not camera credentials.
 The motion → snapshot → Telegram linkage stays in EventProcessor.
@@ -636,20 +737,26 @@ the hub API and state changes propagate to HA over WebSocket. This preserves
 image filtering, SNS fallback, rate limiting and the existing notification
 path.
 
-**Schedules.** Phase 1/2a: expose `time` CONFIG entities (enable/disable) or
-use the hub's existing `auto_schedule` values. Phase 2b: use HA `schedule`
-helpers and automations. Do not programmatically create schedule helpers.
+**Schedules.** Current/optional: expose `time` CONFIG entities
+(enable/disable) or use the hub's existing `auto_schedule` values. A possible
+later step is HA `schedule` helpers and automations. Do not programmatically
+create schedule helpers.
 
-**Links.** HA has no first-class “link” object; use automations. Phase 1 keeps
-`LINKS_SOURCE=hub`. Phase 2 generates importable `automations.yaml` snippets
-from the 71 valid links for review; a global `LINKS_SOURCE=ha` flag prevents
-double triggers. In `ha` mode Java emits `input_triggered` but does not execute
-linked outputs; HA automations call `event_processor.trigger_output` so the
-hub's output rate limits still apply.
+**Links.** HA has no first-class “link” object; use automations. Current
+behavior keeps `LINKS_SOURCE=hub`. A possible later step generates importable
+`automations.yaml` snippets from the 71 valid links for review; a global
+`LINKS_SOURCE=ha` flag would prevent double triggers. In `ha` mode Java emits
+`input_triggered` but does not execute linked outputs; HA automations call
+`event_processor.trigger_output` so the hub's output rate limits still apply.
+This is optional and not committed.
 
 ---
 
-## 6. Phase-1 implementation (live)
+## 6. Optional HA experiment: initial implementation (live)
+
+This section records what was built for the optional HA experiment. It is not
+a production dependency and can be removed without changing the hub/Java
+runtime. Do not treat it as an approved phase of work.
 
 ### 6.1 Hub API
 
@@ -765,14 +872,14 @@ Device model:
 - `has_entity_name=True`; primary binary sensor uses `name=None`; switches use
   “Armed”/“Enabled”; tuning uses CONFIG numbers.
 
-### 6.4 Entity mapping in phase 1
+### 6.4 Entity mapping in the optional experiment
 
 | Hub concept | HA entity | Notes |
 |---|---|---|
 | motion / Motion Detector | `binary_sensor` `motion` | primary entity, `name=None` |
 | contact / Back Door / Main Door | `binary_sensor` `opening`/`door` | `opening` generic |
 | Smoke Detector / detector | `binary_sensor` `smoke` | |
-| siren | `binary_sensor` `sound` | state only in phase 1 |
+| siren | `binary_sensor` `sound` | state only in the optional experiment |
 | Camera input | `binary_sensor` `motion` + `event` detections | snapshot button also |
 | `info` | `binary_sensor` `connectivity` | Ring range extender |
 | `l2ping` output | `binary_sensor` `connectivity` + button | ping action |
@@ -793,7 +900,7 @@ Device model:
 | last triggered | diagnostic timestamp sensor | created on first value; disabled by default |
 | panic | `button.event_processor_panic` | hub-level |
 
-Live entity registry (after phase-1 verification):
+Live entity registry (after optional experiment verification):
 
 ```
 32 event_processor devices
@@ -837,7 +944,7 @@ Live end-to-end checks performed:
 - `GET /api/v1/diagnostics` reported `subscribers: 1`.
 - Legacy Flask `/admin/` and `/api/input_config` still return 200.
 
-### 6.6 Deployment and operations
+### 6.6 Optional HA deployment and operations
 
 | Target | Command | What it does |
 |---|---|---|
@@ -864,7 +971,7 @@ Deployment caveats:
 - HA host networking means the hub URL is `http://127.0.0.1:8095`; from another
   host use `http://192.168.0.6:8095`.
 
-### 6.7 Phase-1 caveats and known limitations
+### 6.7 Optional experiment caveats and known limitations
 
 - The HA integration is private and vendored; no PyPI client package.
 - `quality_scale.yaml` has `config-flow-test-coverage: todo`; HA-specific
@@ -884,100 +991,111 @@ Deployment caveats:
   account; extra HA refresh tokens may exist from those logins.
 - The `event_processor.db` root copy in the workspace is a reference snapshot;
   it is now gitignored.
-- `EventProcessor`/`AutoScheduler`/`TBot` still run in the Python app in phase
-  1; they are not removed.
-- The Flask dashboard remains available at `/admin/`; do not remove it until
-  phase 3 acceptance criteria are met.
+- `EventProcessor`/`AutoScheduler`/`TBot` still run in the Python app in the
+  optional experiment; they are not removed.
+- The Flask dashboard remains available at `/admin/`; do not remove it without
+  an explicit parity/retirement decision. No removal is currently committed.
 
 ---
 
-## 7. Migration from the Flask control surface to HA
+## 7. Possible direction A: HA as configuration UI (optional)
 
-### 7.1 Principles
+This is a possible direction, not a committed plan. Do not start it unless the
+user explicitly asks; see §0. The production UI and configuration path remain
+Flask/FastAPI + SQLite.
 
-1. **HA becomes the primary configuration surface; the hub remains the runtime
-   authority.** A security system must not stop because HA is restarting.
-2. **No double triggers.** Every migration step that moves behavior must have
-   an explicit source switch (`LINKS_SOURCE`, `managed_by`, `RING_SOURCE`) and a rollback.
-3. **HA owns identity and user intent** (device registry, names, areas, labels,
-   armed state, tuning). The hub owns real-time filtering and output rate
-   limits.
+### 7.1 Principles if this direction is pursued
+
+1. **If pursued, HA can become the primary configuration surface; the hub
+   remains the runtime authority.** A security system must not stop because HA
+   is restarting.
+2. **No double triggers.** Every optional migration step that moves behavior
+   must have an explicit source switch (`LINKS_SOURCE`, `managed_by`,
+   `RING_SOURCE`) and a rollback.
+3. **HA would own identity and user intent** (device registry, names, areas,
+   labels, armed state, tuning). The hub would still own real-time filtering
+   and output rate limits.
 4. **Secrets never move to HA device metadata.** Camera credentials and
    internal broker topics stay in 1Password/the hub.
 5. **Do not duplicate devices owned by another integration** (Ring, cameras).
    Use hub-level entities or separate action devices instead.
-6. **Migrate by parity, not by deletion.** Flask stays until every dashboard
-   function has an HA equivalent and the user has validated it.
-7. **The hub DB is a runtime store, not the long-term UI store.** After phase
-   3 it should hold only runtime state, credentials and a cache; HA config
-   subentries/entities are the editing surface.
+6. **Migrate by parity, not by deletion.** If pursued, Flask stays until every
+   dashboard function has an HA equivalent and the user has validated it.
+7. **The hub DB remains a runtime store.** In a possible later phase it could
+   hold only runtime state, credentials and a cache; HA config
+   subentries/entities would be the editing surface. This is not committed.
 
-### 7.2 Phase plan
+### 7.2 Possible phase outline (not a backlog)
 
-| Phase | State | Scope | Exit criteria |
+No phase below is committed. Do not start phase 2 or later without an explicit
+user request; see §0.
+
+| Phase | State | Scope | Exit criteria if pursued |
 |---|---|---|---|
-| 0 | done | Hub API, token, event bus, Java publisher, client, deployment scripts | API tests green; Flask still works |
-| 1 | done | HA config flow, snapshot/WebSocket, devices, entities, services, diagnostics, 5 alarm panels | 32 devices/120 entities; controls round-trip; Flask fallback intact |
-| 2 | next | Config parity: per-device subentries/CONFIG entities, schedules, link management, Ring cutover preparation, notification polish | Every Flask page has an HA equivalent; user can stop using Flask for day-to-day config |
-| 3 | later | HA-native links/schedules, Ring `RING_SOURCE=ha`, remove Flask pages/login/AutoScheduler/TBot dependency, archive event_log, reduce DB | HA is the primary config surface; hub runs headless |
+| 0 | experiment done | Hub API, token, event bus, Java publisher, client, deployment scripts | API tests green; Flask still works |
+| 1 | experiment done | HA config flow, snapshot/WebSocket, devices, entities, services, diagnostics, 5 alarm panels | 32 devices/120 entities; controls round-trip; Flask fallback intact |
+| 2 | optional, not started | Config parity: per-device subentries/CONFIG entities, schedules, link management, Ring cutover preparation, notification polish | Every Flask page has an HA equivalent; user can stop using Flask for day-to-day config |
+| 3 | optional, not committed | HA-native links/schedules, Ring `RING_SOURCE=ha`, potentially remove Flask pages/login/AutoScheduler/TBot dependency, archive event_log, reduce DB | HA would be the primary config surface; hub would run headless |
 | 4 | optional | Public distribution/core submission | Only if the project is open-sourced; not the private path |
 
-### 7.3 What moves where (extent of HA metadata migration)
+### 7.3 Possible mapping of config to HA (optional)
 
 HA device metadata cannot hold arbitrary behavior. The split is:
 
-| Bucket | Examples | Approx. share | Destination |
+| Bucket | Examples | Approx. share | Possible HA destination (optional) |
 |---|---|---:|---|
 | Identity/topology | `device_key`, `device_label`, `device_type`, `group_name` | ~35% | HA device registry: identifiers, name, model, labels, `via_device_id` |
 | Runtime state | `device_enabled`, meter reading, last triggered, output state, heartbeat | ~15–20% | HA entities: `switch`, `alarm_control_panel`, `sensor`, `binary_sensor` |
 | Behavioral config | latch, multi-trigger, escalation, `info_notify`, `trigger_interval`, meter limits, links | ~30–35% | Config subentries, options, CONFIG `number`/`time`/`select`; links as action/automation |
 | Hub-only / secrets / drop | camera `device_params`, `trigger_topic`, register internals, `event_log`, CloudWatch widgets, legacy columns, orphans | ~10–15% | 1Password/hub; archive or delete |
 
-So: **about one-third identity metadata, one-sixth runtime state, one-third
-HA-side behavior config, and the remainder stays in the hub or is dropped.**
-The 71 valid links and the latch/multi-trigger/escalation tuning are the
-largest behavior items.
+If this direction is pursued: **about one-third identity metadata, one-sixth
+runtime state, one-third HA-side behavior config, and the remainder stays in
+the hub or is dropped.** The 71 valid links and the
+latch/multi-trigger/escalation tuning are the largest behavior items.
 
-Table-by-table disposition:
+Possible table-by-table disposition (not committed):
 
-- `input_config`: keep in phase 1/2; identity → registry, armed → switch,
-  tuning → CONFIG/subentry. Phase 3 may make HA subentries the editing source,
-  with the hub keeping a runtime cache.
+- `input_config`: keep in the optional experiment; identity → registry,
+  armed → switch, tuning → CONFIG/subentry. A possible later phase may make HA
+  subentries the editing source, with the hub keeping a runtime cache.
 - `output_config`: identity → registry; enabled/interval → CONFIG;
   `device_params` → secrets; `trigger_topic` stays internal.
 - `meter_config`: `sensor` + `number` + reset action; runtime values can stay
   in the hub initially.
 - `input_link`: drop (feature never implemented).
-- `output_link`: keep 71 valid; clean 7 orphans; phase 2 action/attributes;
-  phase 3 HA automations.
+- `output_link`: keep 71 valid; clean 7 orphans; optional action/attributes;
+  possible later HA automations.
 - `general_config`: `auto-scheduler` → option; `instance_id` stays; CloudWatch
   widgets drop.
-- `event_log`: archive; HA Logbook/History replaces it.
+- `event_log`: archive; HA Logbook/History could replace it if HA is used.
 - `heartbeat`: keep for liveness; expose diagnostic sensor.
 
-### 7.4 Links and schedules migration
+### 7.4 Possible links and schedules mapping (optional)
 
 **Links (71 valid).** HA has no “link” object; automations are the native
-mechanism. Recommended sequence:
+mechanism. Current behavior remains hub-owned. If this direction is pursued,
+a possible sequence is:
 
-1. Keep `LINKS_SOURCE=hub` in phase 1.
-2. Add `LINKS_SOURCE=hub|ha` to the hub configuration. In `ha` mode Java emits
+1. Keep `LINKS_SOURCE=hub` as the current behavior.
+2. A possible later step adds `LINKS_SOURCE=hub|ha`. In `ha` mode Java emits
    `input_triggered` but does **not** execute linked outputs.
 3. Generate an importable `automations.yaml` snippet from `output_link`:
    - trigger: event/state of the input (post-filter)
    - action: `event_processor.trigger_output` for camera/buzzer/l2ping/SMS
    - preserve the current output rate limit by using the action, not direct
      `switch.turn_on` where possible.
-4. Review/import the automations; disable the hub links for the migrated
-   inputs; flip `LINKS_SOURCE=ha`.
+4. If pursued, review/import the automations; disable the hub links for the
+   migrated inputs; flip `LINKS_SOURCE=ha`.
 5. Keep the hub table as a fallback/export; do not delete it until the
-   automations are validated.
+   automations are validated. This is optional and reversible.
 
-**Refinement (2026-10-19):** prefer a per-link `managed_by` field
-(`hub` | `ha`) over a single global cutover. `LINKS_SOURCE=auto` executes
-`hub` links and skips `ha` links; `LINKS_SOURCE=hub` forces all links back to
-Java; `LINKS_SOURCE=ha` disables all Java links. See §11.6 for the camera-link
-migration design.
+**Refinement (2026-10-19):** if optional link migration is pursued, a
+possible refinement is a per-link `managed_by` field (`hub` | `ha`) instead of
+a single global cutover. `LINKS_SOURCE=auto` would execute `hub` links and skip
+`ha` links; `LINKS_SOURCE=hub` would force all links back to Java;
+`LINKS_SOURCE=ha` would disable all Java links. See §11.6 for the possible
+camera-link design.
 
 Do not generate automations programmatically from the integration; HA has no
 supported API for that. Ship the YAML + a blueprint and let the user own the
@@ -985,25 +1103,30 @@ automation objects.
 
 **Schedules.** The current `auto_schedule` data is mostly dormant: 0 input
 schedules active, 2 output schedules active; 16 inputs have time strings but
-`auto_schedule=0`. Do not activate them during migration. Options:
+`auto_schedule=0`. Do not activate them as part of optional HA work. Possible
+options if pursued:
 
-- phase 2a: `time` CONFIG entities (enable/disable) + a `switch` “Scheduled”;
-- phase 2b: HA `schedule` helpers + automations that call
+- optional: `time` CONFIG entities (enable/disable) + a `switch` “Scheduled”;
+- optional later: HA `schedule` helpers + automations that call
   `alarm_control_panel.*` / `event_processor.set_input_enabled`;
-- phase 3: remove the Python `AutoScheduler` and `auto_schedule` columns from
-  the runtime surface.
+- optional cleanup: remove the Python `AutoScheduler` and `auto_schedule`
+  columns from the runtime surface.
 
 The user can create a schedule helper per device/group; name it after the
 device and use labels for grouping. A `schedule` block can carry `data:` for
 per-block parameters.
 
-### 7.5 Ring, cameras, notifications, auth, event history
+### 7.5 Possible Ring, camera, notification, auth and history mapping (optional)
 
-**Ring cutover.** The user will move Ring devices to HA (previously they were
-“hacked into EventProcessor” before HA existed). The clean sequence:
+These are possible mappings, not commitments. The production behavior remains
+as described in §5.
 
-1. Keep `RING_SOURCE=mqtt` in phase 1; do not create Ring device entries in the
-   event_processor integration.
+**Ring cutover.** The user has considered moving Ring devices to HA
+(previously they were “hacked into EventProcessor” before HA existed). A
+possible sequence, only if explicitly approved:
+
+1. Keep `RING_SOURCE=mqtt` as the current behavior; do not create Ring device
+   entries in the event_processor integration.
 2. Configure the HA Ring integration (cloud) or `ring-mqtt` + HA MQTT. The Ring
    integration owns the Ring devices/entities.
 3. Add `RING_SOURCE=ha`. EventProcessor stops parsing `ring/#` and accepts Ring
@@ -1018,11 +1141,12 @@ per-block parameters.
 Do not attach event_processor entities to the Ring integration's device entries;
 device entries are domain-scoped and cannot be shared across integrations.
 
-**Cameras.** HA `go2rtc`/ONVIF/RTSP owns live view and recording. EventProcessor
-keeps snapshot + Telegram. Expose snapshot buttons/actions; do not copy
-credentials. Duplicate camera device entries are acceptable and can share an
-area. A `camera` entity is added only if the hub can return snapshot bytes via a
-stable URL (not in phase 1).
+**Cameras.** If HA live view is used, `go2rtc`/ONVIF/RTSP owns live view and
+recording. EventProcessor keeps snapshot + Telegram. Expose snapshot
+buttons/actions; do not copy credentials. Duplicate camera device entries are
+acceptable and can share an area. A `camera` entity is only worth adding if the
+hub can return snapshot bytes via a stable URL; this is not part of the current
+experiment.
 
 **Telegram.** One bot, one token. Keep TBot and commands. Add
 `notify.event_processor_telegram` backed by `POST /api/v1/notify`; HA
@@ -1031,20 +1155,25 @@ automations can notify through the existing bot. Do not add HA's
 HA, port the image filtering/SNS fallback/rate limiting first, then retire
 TBot.
 
-**Auth.** HA users replace Flask-Login. The hub API keeps a dedicated bearer
-token (not an HA long-lived token). Remove Flask `/login`, `/logout`,
-`auth_enabled`, `authz_required`, and the single-user 1Password credential
-after phase 3.
+**Auth.** If Flask is ever retired in a possible later step, HA users would
+replace Flask-Login. The hub API keeps a dedicated bearer token (not an HA
+long-lived token). Do not remove Flask `/login`, `/logout`, `auth_enabled`,
+`authz_required`, or the single-user 1Password credential without an explicit
+retirement decision.
 
-**Event history.** HA Logbook/History replaces `/event_log`. Archive the 56,347
-legacy rows; do not import them. Event entities show discrete occurrences in
-Logbook; state entities show history. Use labels/areas to filter.
+**Event history.** If HA is used, HA Logbook/History can replace `/event_log`.
+Archive the 56,347 legacy rows; do not import them. Event entities show
+discrete occurrences in Logbook; state entities show history. Use labels/areas
+to filter.
 
 **Panic.** Keep the virtual panic input and `button.event_processor_panic`.
 The current Flask panic path is partly a no-op in the Python EventProcessor; do
 not claim it is a fully wired engine path until verified.
 
-### 7.6 End-state target
+### 7.6 Possible end-state if direction A is pursued (not approved)
+
+This diagram is illustrative only. The production architecture remains the
+hub + Flask/FastAPI + SQLite; nothing below is committed.
 
 ```
 HA
@@ -1070,28 +1199,29 @@ Java EventProcessor
 └── no UI, no device registry
 ```
 
-The hub may keep SQLite for runtime state and credentials, but the editing
-surface is HA. Flask, Jinja templates, Flask-Login, the dashboard routes and
-the AutoScheduler are removed. The Telegram bot may remain as a bridge.
+In this possible end-state the hub would keep SQLite for runtime state and
+credentials, with HA as the editing surface. Flask pages/templates/login and
+the AutoScheduler could be removed only after an explicit parity decision; the
+Telegram bot may remain as a bridge. This is not a current plan.
 
-### 7.7 Acceptance criteria and rollback
+### 7.7 Possible acceptance criteria and rollback (only if pursued)
 
-Phase 2 acceptance:
+If phase 2 is ever approved:
 
 - Every Flask page/action has an HA equivalent:
   device list, arm/disarm, group arm, panic, meter reset, input tuning, output
   tuning, links, schedules, event history, metrics.
 - Editing a config value in HA reaches Java within the cache TTL.
 - Flask and HA do not fight over writes; the hub API is the single writer.
-- Ring devices are either absent (phase 1) or owned by the Ring integration
-  (phase 2), never duplicated.
+- Ring devices remain absent in the current experiment; if a Ring cutover is
+  ever approved, the Ring integration owns them and they are never duplicated.
 - Secrets are absent from HA attributes/diagnostics.
 - `make lint`, `make ha-lint`, hub API tests and Java tests are green.
 
-Phase 3 acceptance:
+If phase 3 is ever approved:
 
-- HA is the primary config surface; Flask can be stopped without losing
-  control.
+- HA would be the primary config surface; Flask could be stopped without
+  losing control.
 - `LINKS_SOURCE=ha` and `RING_SOURCE=ha` are validated; rollback flags exist.
 - Legacy event_log archived; orphan links cleaned; dead columns dropped.
 - The hub continues to run if HA is down, using its last-known-good config.
@@ -1105,6 +1235,8 @@ Rollback:
   been validated for a full operational cycle.
 
 ### 7.8 Dependency, coverage and replacement assessment
+
+This assessment supports an optional decision; it is not a mandate to migrate.
 
 This subsection records the quantitative assessment of how much of the project
 still depends on SQLite, how much of the schema is mirrored in HA, how much
@@ -1147,10 +1279,10 @@ Active-configuration view (production):
 The reference snapshot is one row smaller (125 meaningful / 139 non-event)
 because it predates `instance_id`.
 
-The conclusion is that SQLite **cannot be removed in phase 2 without replacing
-the Java engine’s config source**. If HA becomes the editing surface, the hub
-still needs a local runtime cache for resilience. The realistic end-state is a
-small SQLite/JSON cache, not zero local storage.
+The conclusion is that SQLite **cannot be removed in an initial HA migration
+without replacing the Java engine’s config source**. If HA were to become the
+editing surface, the hub would still need a local runtime cache for resilience.
+The possible end-state is a small SQLite/JSON cache, not zero local storage.
 
 #### 7.8.2 How much of the schema is mirrored in HA
 
@@ -1234,7 +1366,7 @@ inputs are human-readable keys. The 25/46 link split above uses that key form.
 
 So **100% of the actual input→output routing linkage is still in SQLite.**
 HA currently has **no link representation at all**. The 46 non-Ring links are
-the natural phase-2 migration target; the 25 Ring links should wait for the
+the natural optional migration target; the 25 Ring links should wait for the
 Ring cutover or move with the Ring automations.
 
 If only non-Ring links are migrated to HA automations, **46/71 = 65%** of the
@@ -1258,7 +1390,7 @@ and allows `output_link` to be dropped entirely.
 | HA users/auth | Flask-Login | Direct replacement for HA-side access |
 | Diagnostics/repairs | `/metrics` and health checks | Direct for health/version/drops |
 
-#### 7.8.5 Approximate replacements — require migration and validation
+#### 7.8.5 Approximate HA replacements (only if pursued)
 
 | Hub behavior | HA primitive | Why it is not drop-in |
 |---|---|---|
@@ -1302,11 +1434,12 @@ HA rule mapping in more detail:
 - **Ring device identity.** The Ring integration should own it; the event
   processor integration must not duplicate it.
 
-#### 7.8.7 Minimal end-state schema
+#### 7.8.7 Possible minimal schema if HA becomes the UI (optional)
 
-If phase 2/3 are completed, the realistic minimum SQLite schema is:
+If an optional HA migration is completed, the realistic minimum SQLite schema
+is:
 
-| Table | Rows | Role after HA becomes primary |
+| Table | Rows | Possible role if HA becomes the UI (optional) |
 |---|---:|---|
 | `input_config` | 39 | Runtime cache: armed state, latch/multi-trigger/escalation for Java |
 | `output_config` | 12 | Runtime cache: enabled, interval, `device_params`, `trigger_topic` |
@@ -1320,19 +1453,19 @@ If `LINKS_SOURCE=hub` remains, add back 78 `output_link` rows → ~132 rows
 
 Things that can be removed/archived:
 
-- `event_log` (56,347 rows) → HA Logbook/History; archive.
+- `event_log` (56,347 rows) → archive; HA Logbook/History only if HA is used.
 - `input_link` (3 rows) → no equivalent; drop.
 - 7 orphan `output_link` rows → clean.
 - 4 CloudWatch `general_config` rows → drop.
 - `customized` and legacy columns (`activation_interval`, `multi_trigger`,
   `trigger_window`, `trigger_latch`) → drop.
-- `output_link` once `LINKS_SOURCE=ha` → drop/archive.
-- `auto_schedule` columns once schedules move to HA → drop.
+- `output_link` if `LINKS_SOURCE=ha` is ever adopted → drop/archive.
+- `auto_schedule` columns if schedules move to HA → drop.
 - `heartbeat` if liveness moves to HA/in-memory → drop.
 
 Even then, SQLite remains the **local runtime cache** because Java must keep
-working if HA is restarting. The editing surface moves to HA; the runtime store
-does not disappear.
+working if HA is restarting. In that possible end-state the editing surface
+would move to HA; the runtime store would not disappear.
 
 #### 7.8.8 Bottom line
 
@@ -1351,23 +1484,28 @@ does not disappear.
 - **Not drop-in:** output links (automations), schedules (helpers/automations),
   latch/multi-trigger/escalation/output rate limits/meter thresholds (Java
   security semantics), credentials/topics, legacy event history.
-- **Recommended target:** keep a small SQLite runtime cache (~53–54 rows) for
-  Java resilience; move identity/UI/behavior editing to HA; retire `event_log`,
-  `input_link`, orphan links, CloudWatch widgets and dead columns; migrate the
-  23 non-Ring camera links first (8 HA automations), then the remaining 23
-  non-Ring links, then the 25 Ring links with the Ring cutover; see §11.6.
+- **If HA integration is pursued, the recommended target is:** keep a small
+  SQLite runtime cache (~53–54 rows) for Java resilience; move identity/UI/
+  behavior editing to HA; retire `event_log`, `input_link`, orphan links,
+  CloudWatch widgets and dead columns; migrate the 23 non-Ring camera links
+  first (8 HA automations), then the remaining 23 non-Ring links, then the 25
+  Ring links with the Ring cutover; see §11.6. This is optional.
 
 ---
 
-## 8. Risks and open questions
+## 8. Risks and open questions (only relevant if HA is pursued)
+
+These risks are reasons for caution, not a work order. They do not change the
+production architecture or authorize HA migration.
 
 ### Risks
 
 1. **HA outage vs security uptime.** Do not make HA the runtime dependency for
    arming/triggering. The hub must keep operating with its last config.
-2. **Double triggers.** The link cutover must be atomic per link via
-   `managed_by` plus a global `LINKS_SOURCE` override; otherwise an input can
-   trigger both the hub link and the HA automation. See §11.6.
+2. **Double triggers.** If optional HA link work is pursued, the cutover must
+   be atomic per link via `managed_by` plus a global `LINKS_SOURCE` override;
+   otherwise an input can trigger both the hub link and the HA automation. See
+   §11.6.
 3. **Duplicate Ring devices.** The Ring integration owns Ring; the event
    processor integration must not create duplicate device entries. The same
    applies to camera integrations.
@@ -1390,14 +1528,13 @@ does not disappear.
     be reachable at container start.
 11. **Premature SQLite removal.** About 90% of active config and 100% of the
     71 links are still SQLite-owned; HA mirrors only 26/43 devices. Do not
-    remove the DB/config tables until phase 3 acceptance and `LINKS_SOURCE=ha`
-    are validated (see §7.8).
+    remove the DB/config tables without an explicit parity decision; no HA
+    phase is committed (see §0 and §7.8).
 
-### Open questions
+### Open questions (only if HA is pursued)
 
-- Is the long-term goal to remove Flask entirely, or keep it as a break-glass
-  UI? The current plan removes it after phase 3; a read-only fallback could be
-  retained.
+- If HA is ever pursued, is the long-term goal to remove Flask entirely or keep
+  it as a break-glass UI? No removal is currently committed.
 - Should per-device settings live in config entry **subentries** or in CONFIG
   entities? Subentries give a form per device; entities are more automatable.
   A mixed model is likely best.
@@ -1408,9 +1545,10 @@ does not disappear.
   Both are viable; `ring-mqtt` is already running on `acer`.
 - Should the Telegram bot be kept indefinitely as the notification path, or
   migrated to HA `telegram_bot`/notify? Keeping one bot avoids token conflicts.
-- Should the hub DB remain the source of truth for tuning, with HA as a mirror,
-  or should HA subentries become authoritative in phase 3? The latter is the
-  stated end-state, but it requires a config-push path to Java.
+- If HA is pursued, should the hub DB remain the source of truth for tuning,
+  with HA as a mirror, or should HA subentries become authoritative in a
+  possible later phase? The latter is a possible end-state, not a commitment,
+  and requires a config-push path to Java.
 
 ---
 
@@ -1472,7 +1610,10 @@ no MQTT/Ring integration, and `go2rtc` present.
 
 ---
 
-## 10. Appendix: useful commands and payloads
+## 10. Appendix: useful commands and payloads (optional HA experiment)
+
+These commands are only relevant if the optional HA experiment is being
+tested. They are not part of the production runbook.
 
 ```bash
 # Hub token
@@ -1536,7 +1677,7 @@ button.event_processor_panic
 notify.event_processor_telegram
 ```
 
-Known live counts (phase 1):
+Known live counts (optional experiment):
 
 ```
 hub snapshot: 43 devices, 71 valid links, 39 inputs, 12 outputs
@@ -1559,17 +1700,23 @@ DB backup:      /home/tai/event-processor/data/event-processor.db.bak-2026101820
 
 ---
 
-## 11. HA-native camera/link orchestration assessment (2026-10-19)
+## 11. Possible direction B: HA-native camera/link orchestration (optional, higher risk)
 
-This section records the follow-up research across `event-processor`,
+This is an optional, higher-risk direction. It is **not** the default and not
+the primary possible plan; direction A (§0/§7) is. Do not implement it unless
+the user explicitly requests it. It makes HA part of the link path and carries
+the failure modes in §11.8.
+
+This section records follow-up research across `event-processor`,
 `/home/tai/dev/remote-monitor`, and `/home/tai/dev/snapshot-processor`, plus
-the HA 2026.10.2 automation/action model. It refines the link migration in
-§7.4 and the dependency assessment in §7.8. It does not change the phase-1
-boundary: the hub remains the security authority.
+the HA 2026.10.2 automation/action model. It refines the link discussion in
+§7.4 and the dependency assessment in §7.8. The hub remains the security
+authority.
 
 ### 11.1 Bottom line
 
-HA can coordinate this chain, but it cannot guarantee it. The correct split is:
+If direction B is pursued, HA can coordinate this chain, but it cannot
+guarantee it. The split would be:
 
 1. **Java hub** — detection/debounce, latch, multi-trigger, escalation, input
    armed state, output enabled/rate limits, and the actual RabbitMQ publish.
@@ -1580,6 +1727,8 @@ HA can coordinate this chain, but it cannot guarantee it. The correct split is:
 
 Do **not** move the detection filter chain into HA. Do **not** use
 `camera.snapshot` for this flow. Do **not** put camera credentials in HA.
+This direction is optional and higher risk; it is not the default production
+architecture.
 
 ### 11.2 Current flow and link map
 
@@ -1695,12 +1844,14 @@ HA behavior that matters for this migration:
 
 | Option | What HA owns | Verdict |
 |---|---|---|
-| **A. HA link orchestration, hub detection/media** | HA triggers on filtered events and presses camera snapshot buttons. Java keeps debounce/latching; snapshot-processor and TBot remain unchanged. | **Recommended.** Most HA-native without making HA the security engine. |
+| **A. HA link orchestration, hub detection/media** | HA triggers on filtered events and presses camera snapshot buttons. Java keeps debounce/latching; snapshot-processor and TBot remain unchanged. | **Preferred only within direction B.** Most HA-native without making HA the security engine; not the default project direction. |
 | **B. HA synchronous workflow** | HA calls `camera.snapshot` or a custom capture action, waits for recognition, then sends Telegram. | Brittle: HA restart loses the run; camera credentials/image handling get worse; the existing bot's filtering/batching/SNS behavior would be lost. |
 | **C. Full HA-native** | HA owns motion detection, camera capture, recognition orchestration and Telegram. | Most “native,” but makes HA part of the security path and requires reimplementing latch/multi-trigger/escalation/rate limits. |
-| **D. Hub-only with HA UI** | HA only shows dashboards, arm/disarm and manual snapshot buttons. | Lowest risk, but does not move link behavior into HA. |
+| **D. Hub-only with HA UI** | HA only shows dashboards, arm/disarm and manual snapshot buttons. | Production/default when direction B is not pursued; lowest risk, but does not move link behavior into HA. |
 
-### 11.5 Recommended target architecture
+### 11.5 Possible target architecture for direction B (optional)
+
+This diagram is illustrative only and is not committed.
 
 ```text
 remote-monitor / Ring
@@ -1739,16 +1890,17 @@ Python TBot → Telegram
 This keeps every existing security behavior and media behavior intact while
 moving only the **link decision** for selected camera links into HA.
 
-### 11.6 Per-link migration design
+### 11.6 Per-link design if direction B is pursued
 
 #### 11.6.1 Data model: `managed_by` on `output_link`
 
-Add a `managed_by` column to `output_link`:
+If direction B is pursued, a possible data model would add a `managed_by`
+column to `output_link`:
 
 - `hub` (default) — Java executes the link.
 - `ha` — Java skips the link; an HA automation owns it.
 
-Add a global override, `LINKS_SOURCE`:
+A possible optional global override would be `LINKS_SOURCE`:
 
 - `auto` (new default) — Java executes `hub` links and skips `ha` links.
 - `hub` — rollback; Java executes all links, ignoring `managed_by`.
@@ -1779,7 +1931,8 @@ must expose it. Invalidate the Java config cache for the input whenever
 
 #### 11.6.3 What moves first
 
-Set `managed_by='ha'` only for the **23 non-Ring camera links**. Keep:
+If direction B is pursued, set `managed_by='ha'` only for the **23 non-Ring
+camera links**. Keep:
 
 - all SMS links in the hub, including Camera → SMS image delivery;
 - all buzzer and l2ping links in the hub;
@@ -1905,7 +2058,9 @@ Before calling HA the owner of any security-critical link:
   latest one per coordinator update.
 - Increase the WebSocket queue if HA is expected to process bursts.
 
-### 11.7 Implementation plan
+### 11.7 Possible implementation plan (only if direction B is approved)
+
+This is not a backlog item. Do not start it without an explicit user request.
 
 #### Phase 0 — safety and data model
 
@@ -1966,7 +2121,9 @@ Before calling HA the owner of any security-critical link:
   person/vehicle.
 - Only then consider moving the final Telegram notification to HA.
 
-### 11.8 Critical findings and implementation traps
+### 11.8 Critical findings if direction B is considered
+
+These findings are cautionary. They do not authorize implementation.
 
 1. **`input_triggered` currently lacks `event_detail`.**
    `Event.java` publishes `device_label`, `device_type` and `trigger_state`.
@@ -2030,14 +2187,14 @@ Before calling HA the owner of any security-critical link:
     even though Java detection continues. Keep critical camera links in the
     hub until reliability and fallback are proven.
 
-### 11.9 Open decisions
+### 11.9 Open decisions (only if direction B is pursued)
 
-- **Availability posture.** Do you want HA to own only non-critical camera
-  links (recommended), all camera links, or should the hub automatically take
-  over when HA is offline? The last option needs a health/lease mechanism and
+- **Availability posture.** Within direction B, do you want HA to own only
+  non-critical camera links (preferred), all camera links, or should the hub
+  automatically take over when HA is offline? The last option needs a health/lease mechanism and
   duplicate-suppression design.
-- **Notification ownership.** Keep Camera→SMS→TBot (recommended) or move the
-  final Telegram send to HA? Moving it requires an image URL/shared media path
+- **Notification ownership.** Within direction B, keep Camera→SMS→TBot
+  (preferred) or move the final Telegram send to HA? Moving it requires an image URL/shared media path
   and a new notify implementation that preserves filtering/batching/rate
   limiting.
 - **Ring timing.** Keep the 8 Ring siren camera links in the hub until Ring is
@@ -2102,29 +2259,39 @@ Local code verified for this assessment:
 
 Live data used for the link counts: reference SQLite snapshot at
 `/home/tai/dev/event-processor/event-processor.db` (`immutable=1`), plus the
-production HA entity counts recorded in §1. Re-verify counts before executing
-a migration; they are snapshot-specific.
+optional HA experiment entity counts recorded in §1. Re-verify counts before
+executing any optional migration; they are snapshot-specific.
 
 ---
 
 ## 12. Instruction to future agents
 
-When asked to extend or migrate this project further:
+**Default posture: do not start HA work.** The production architecture is the
+existing hub + Flask/FastAPI + SQLite + Java engine. HA is optional research,
+not a roadmap, backlog, or committed target.
+
+When asked about HA:
 
 1. Read this file plus `coding.md`, `build.md`, `container.md`, `config.md`,
    `mq.md`, `logging.md`, and `observability.md` first.
-2. Never make HA the only runtime dependency for security processing. The hub
+2. State clearly that HA is optional and not committed. Do not present §7 or
+   §11 as an implementation plan unless the user explicitly asks for HA work.
+3. If the user asks for the possible HA plan, present §0 as the primary
+   possible plan; §7 is optional direction A, and §11 is optional higher-risk
+   direction B.
+4. Never make HA the only runtime dependency for security processing. The hub
    must run headless with its last-known-good config.
-3. Do not duplicate Ring or camera devices. Check `source` before creating a
+5. Do not duplicate Ring or camera devices. Check `source` before creating a
    device entry.
-4. Do not copy camera credentials, hub tokens or broker topics into HA
+6. Do not copy camera credentials, hub tokens or broker topics into HA
    attributes, diagnostics or logs.
-5. Keep the hub API as the single writer while Flask and HA coexist.
-6. Add an explicit source flag and a rollback for every behavior move
-   (`LINKS_SOURCE`, `managed_by`, `RING_SOURCE`).
-7. Run `make lint`, `make ha-lint`, the hub API tests and the Java tests before
-   deploying.
-8. Preserve UID/GID 999 ownership of `/data` files.
-9. Use the HA config-flow REST API for 2026.10, not the old WebSocket command.
-10. Update this file when a new HA behavior is verified or a new integration
-    constraint is discovered.
+7. If optional HA work is explicitly approved, keep the hub API as the single
+   writer while Flask and HA coexist, and add an explicit source flag and a
+   rollback for every behavior move (`LINKS_SOURCE`, `managed_by`,
+   `RING_SOURCE`).
+8. Run `make lint`, `make ha-lint`, the hub API tests and the Java tests before
+   any optional HA deployment.
+9. Preserve UID/GID 999 ownership of `/data` files.
+10. Use the HA config-flow REST API for 2026.10, not the old WebSocket command.
+11. Update this file when a new optional HA behavior is verified or a new
+    integration constraint is discovered.

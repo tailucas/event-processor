@@ -155,25 +155,29 @@ Note the Makefile builds with `mvn package`, so the strict
 the normal build path; keep `mvn test` hermetic (system properties +
 `GlobalOpenTelemetry.resetForTest()`).
 
-## 5. HA integration and hub event telemetry
+## 5. Optional HA integration and hub event telemetry
 
+- **Optional experiment.** The hub diagnostics and event bus exist
+  independently of HA; HA is only a consumer when the optional integration is
+  enabled.
 - The hub API exposes `/api/v1/diagnostics` with device/link counts, orphan
   links, heartbeat age, event-bus sequence/recent count and subscriber count.
-  HA diagnostics (`diagnostics.py`) returns a redacted subset plus recent
-  events.
+  If HA is used, HA diagnostics (`diagnostics.py`) returns a redacted subset
+  plus recent events.
 - The hub event bus is a 500-event in-memory ring buffer fanned out to
-  WebSocket subscribers. It is intentionally lossy for slow subscribers; the
-  HA safety poll repairs missed state.
+  WebSocket subscribers. It is intentionally lossy for slow subscribers; if HA
+  is used, its safety poll repairs missed state.
 - Java `HubEventPublisher` publishes processed lifecycle events
   (`input_state`, `input_triggered`, `output_triggered`, `escalation`,
   `meter_reading`) to the hub. It uses `HttpClient.sendAsync`; never block the
   virtual-thread event pipeline on the hub.
 - Useful live health signals:
-  - `GET /api/v1/diagnostics` → `event_bus.subscribers` should be 1 when HA is
-    connected; `heartbeat_age_s` should be small.
-  - HA `sensor.event_processor_heartbeat_age` (diagnostic).
-  - HA `sensor.event_processor_devices` / `sensor.event_processor_links`.
-  - Event entity state = last event timestamp; HA Logbook is the event history.
+  - `GET /api/v1/diagnostics` → `event_bus.subscribers` is typically 1 when
+    HA is connected and 0 when it is not; `heartbeat_age_s` should be small.
+  - If HA is used, `sensor.event_processor_heartbeat_age` (diagnostic),
+    `sensor.event_processor_devices` and `sensor.event_processor_links`.
+  - Event entity state = last event timestamp; HA Logbook is the event history
+    only when HA is used.
 - Never include hub tokens, camera `device_params`, broker topics or full
   device URLs in diagnostics or logs. `diagnostics.py` redacts them.
 - The legacy OTEL/Sentry pipeline remains for Java and Python; the HA

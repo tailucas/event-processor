@@ -132,8 +132,11 @@ Graceful shutdown is mandatory in every runtime — signal handling and
 resource teardown must be wired so a container stop does not drop in-flight
 work or telemetry.
 
-## 8. Home Assistant container and hub deployment
+## 8. Optional Home Assistant experiment and hub deployment
 
+- **Optional experiment.** The hub container runs independently of HA. This
+  section is only relevant if HA is being tested; it is not part of the
+  production deployment path.
 - HA runs as Docker container `homeassistant`
   (`ghcr.io/home-assistant/home-assistant:stable`) on `acer`, with
   **`network_mode: host`**. The config directory is the host bind mount
@@ -160,4 +163,4 @@ work or telemetry.
 - `deploy_hub.sh` copies the hub/Java changes to
   `acer:/home/tai/event-processor`, rebuilds the image and recreates the
   service. It loads 1Password Connect exports from `/home/tai/.bashrc`.
-- See `ha.md` for the HA deployment and migration details.
+- See `ha.md` for optional HA research and deployment details.

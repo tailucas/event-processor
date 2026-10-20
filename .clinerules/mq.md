@@ -181,8 +181,11 @@ should not be conflated.
 
 ---
 
-## 4. Home Assistant boundary (HTTP/WS, not a broker)
+## 4. Optional Home Assistant boundary (HTTP/WS, not a broker)
 
+- **Optional experiment.** The production message path is RabbitMQ/MQTT →
+  Java → outputs; HA is not a broker participant and is not required. The hub
+  API is only used if HA is being tested.
 - The HA integration does **not** connect to RabbitMQ, MQTT or the SQLite DB.
   It talks only to the hub API: REST snapshot/control plus a WebSocket event
   stream. This keeps broker/protocol concerns at the hub edge.
@@ -194,15 +197,17 @@ should not be conflated.
 - **Event flow:** Java → `HubEventPublisher` → `POST /api/v1/events` → hub
   event bus → HA WebSocket. Python discovery/config writes also publish
   `device_added`/`device_updated`/`config_changed`/`input_state`.
-- **Ring:** phase 1 keeps the Java `ring/#` MQTT ingestion
-  (`RING_SOURCE=mqtt`). Phase 2 flips to `RING_SOURCE=ha`; the HA Ring
-  integration owns the devices and EventProcessor accepts Ring state through
-  the hub API. Do not duplicate Ring devices in HA.
-- **Cameras:** live view is HA `go2rtc`/RTSP; EventProcessor keeps snapshot +
-  Telegram. Do not put camera credentials in HA or in MQTT discovery payloads.
+- **Ring:** current behavior keeps the Java `ring/#` MQTT ingestion
+  (`RING_SOURCE=mqtt`). A possible later, uncommitted direction flips to
+  `RING_SOURCE=ha`; the HA Ring integration would own the devices and
+  EventProcessor would accept Ring state through the hub API. Do not duplicate
+  Ring devices in HA.
+- **Cameras:** if HA live view is used, it is `go2rtc`/RTSP; EventProcessor
+  keeps snapshot + Telegram. Do not put camera credentials in HA or in MQTT
+  discovery payloads.
 - **MQTT discovery is not required** for this integration. The existing
-  `homeassistant/#` MQTT cache in Java is only for Ring discovery and becomes
-  obsolete in `RING_SOURCE=ha`.
+  `homeassistant/#` MQTT cache in Java is only for Ring discovery and would
+  become obsolete in an optional `RING_SOURCE=ha` cutover.
 - The user has Mosquitto/RabbitMQ on `acer`; the HA instance has no MQTT
   integration configured. A custom integration avoids adding that dependency.
 - Do not add a second Telegram bot token or a second broker consumer for HA.

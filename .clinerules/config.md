@@ -91,8 +91,11 @@ Secrets (never in `base.env`): `OP_CONNECT_HOST`, `OP_CONNECT_TOKEN`,
 `OP_CONNECT_VAULT`, `HC_PING_URL`, `CRONITOR_MONITOR_KEY`, and the Sentry DSN
 (`Sentry/__APP_NAME__/dsn`).
 
-## 6. Hub API and Home Assistant configuration
+## 6. Hub API and optional Home Assistant configuration
 
+- **Optional HA:** the hub API is production; the HA config entry and paths
+  below are only for the optional experiment. The production app does not
+  require HA.
 - **Hub token:** `HUB_API_TOKEN` env var, else `HUB_API_TOKEN_FILE` (default
   `/data/hub_api_token`). The Python app generates a stable token if missing;
   the Java container reads the same file. Print it with `make hub-token`.
@@ -113,4 +116,4 @@ Secrets (never in `base.env`): `OP_CONNECT_HOST`, `OP_CONNECT_TOKEN`,
   attributes, diagnostics or logs.
 - **HA config path:** `/home/tai/home-assistant/config` on `acer`; custom
   component path `/config/custom_components/event_processor` in the container.
-- See `ha.md` for the full migration and token/deployment details.
+- See `ha.md` for optional HA research and token/deployment details.

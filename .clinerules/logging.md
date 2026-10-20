@@ -132,8 +132,10 @@ is. Default to the lowest level that still tells the story.
   WARNING (or DEBUG if routine); escalate to ERROR only when the work is
   abandoned.
 
-## Home Assistant / hub logging
+## Optional Home Assistant / hub logging
 
+- **Optional component.** If the HA integration is not being used, ignore this
+  section; it does not change Java/Python production logging.
 - **HA component:** use `logging.getLogger(__name__)` or the HA
   `homeassistant` logger; let HA own the formatting. Do not add a second JSON
   formatter or OTEL SDK inside the component. One log per lifecycle transition,
@@ -149,8 +151,9 @@ is. Default to the lowest level that still tells the story.
 - **Never log:** hub tokens, HA tokens, camera `device_params`, full device
   URLs, raw notification images, or full state payloads containing credentials.
 - **HA diagnostics** (`diagnostics.py`) must redact `token`, `device_params`,
-  `trigger_topic`, image fields and host data. The HA log is not a substitute
-  for the hub event stream; use `/api/v1/events` and Logbook for event history.
+  `trigger_topic`, image fields and host data. When HA is used, the HA log is
+  not a substitute for the hub event stream; use `/api/v1/events` and Logbook
+  for event history.
 - **Event severity:** a `device_added`/`config_changed` event is INFO; a
   reconnect/retry is WARNING; a failed auth is ERROR; a hub outage that makes
   entities unavailable is WARNING plus a repair issue, not a crash.

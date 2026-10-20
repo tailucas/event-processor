@@ -93,11 +93,14 @@ for configuration and event log UI.
 - New integrations get a feature switch (`FEATURE_FLAG_*` / env var), never a
   hard dependency, so the app stays runnable with zero external dependencies.
 
-## 8. Home Assistant Integration
+## 8. Home Assistant Integration (optional experiment)
 
+- **Optional, not committed.** The production architecture is the Flask/FastAPI
+  + SQLite hub with the Java engine. Do not start or expand HA work unless the
+  user explicitly requests it; `ha.md` is research, not a roadmap.
 - The HA integration is a **private, core-grade custom component** in
   `custom_components/event_processor`; no HACS, no PyPI client, no HA core PR.
-  It is deployed directly into the HA container.
+  It is deployed directly into the HA container only for the optional experiment.
 - **Boundary:** HA talks only to the hub API (`/api/v1`, HTTP + WebSocket). It
   never opens SQLite, RabbitMQ or MQTT directly. The Python app is the single
   writer while Flask and HA coexist.
@@ -114,7 +117,8 @@ for configuration and event log UI.
   `HomeAssistantError` on hub failure. Diagnostics use redaction.
 - **Java publisher:** `HubEventPublisher` posts processed events to the hub;
   keep it non-blocking and never let a hub outage stall the event pipeline.
-- **Migration switches:** behavior moves must be reversible
-  (`LINKS_SOURCE=hub|ha`, `RING_SOURCE=mqtt|ha`). Do not remove Flask until
-  phase-3 acceptance is met.
-- See `ha.md` for the full research, live facts, entity map and migration plan.
+- **If optional HA work is approved:** behavior moves must be reversible
+  (`LINKS_SOURCE=hub|ha`, `RING_SOURCE=mqtt|ha`). Do not remove Flask without
+  an explicit parity/retirement decision; no removal is currently committed.
+- See `ha.md` for optional research, live facts, entity map and possible
+  directions. It is not a commitment or backlog.
