@@ -12,7 +12,7 @@ CHECK_USER := vscode
 JAVA_JAR := target/app-0.1.0.jar
 JAVA_SOURCES := $(shell find src -type f -name '*.java' 2>/dev/null)
 
-.PHONY: help check dev dev-build dev-up datadir python lint java test integration spotbugs configure build push run rund
+.PHONY: help check dev dev-build dev-up datadir python lint ha-lint java test integration spotbugs configure build push run rund ha-deploy hub-deploy hub-token
 
 # ---------- Dev container (host only) ----------
 
@@ -56,6 +56,19 @@ python: .venv ## Set up the Python virtual environment (alias)
 lint: .venv ## Run ruff and mypy on app/__main__.py
 	uv run ruff check app/__main__.py
 	uv run mypy app/__main__.py
+
+ha-lint: .venv ## Lint the hub API and the Home Assistant custom component
+	uv run ruff check app/hub_api.py app/__main__.py tests/test_hub_api.py custom_components/event_processor
+	uv run pytest tests/test_hub_api.py -q
+
+ha-deploy: ## Deploy the custom component to the HA container on acer
+	./deploy_ha.sh
+
+hub-deploy: ## Deploy hub API/Java changes, rebuild and restart event-processor
+	./deploy_hub.sh
+
+hub-token: ## Print the generated hub API token
+	ssh acer "docker exec -u app event-processor-app-1 cat /data/hub_api_token"
 
 $(JAVA_JAR): pom.xml $(JAVA_SOURCES)
 	@java -version

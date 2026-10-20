@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -53,6 +54,7 @@ import tailucas.app.OtelSupport;
 import tailucas.app.device.config.InputConfig;
 import tailucas.app.device.config.OutputConfig;
 import tailucas.app.provider.DeviceConfig;
+import tailucas.app.provider.HubEventPublisher;
 import tailucas.app.provider.Metrics;
 
 public class Event implements Runnable {
@@ -227,6 +229,12 @@ public class Event implements Runnable {
                 .log();
             // post device info for side-car only upon heartbeats
             configProvider.postDeviceInfo(device);
+            final Map<String, Object> hubHeartbeat = new HashMap<>();
+            hubHeartbeat.put("heartbeat", true);
+            if (device instanceof Sensor sensor) {
+                hubHeartbeat.put("active", sensor.isActive());
+            }
+            HubEventPublisher.publish("input_state", deviceKey, hubHeartbeat);
             // Heartbeats carry the current device state. If a Sensor-type
             // device reports active=false and was previously in a triggered
             // state, reset the trigger state and resolve any escalation.
@@ -292,6 +300,15 @@ public class Event implements Runnable {
                     .addKeyValue("device_description", deviceDescription)
                     .log();
                 InputConfig deviceConfig = configProvider.fetchInputDeviceConfig(deviceKey);
+                if (device instanceof Meter meter) {
+                    final Map<String, Object> hubMeter = new HashMap<>();
+                    hubMeter.put("register_reading", meter.getRegisterReading());
+                    hubMeter.put("last_minute_metered", meter.getLastMinuteMetered());
+                    hubMeter.put("last_metered_minute", meter.getLastMeteredMinute());
+                    hubMeter.put("last_sample_value", meter.getLastSampleValue());
+                    hubMeter.put("pulse_discards", meter.getPulseDiscards());
+                    HubEventPublisher.publish("meter_reading", deviceKey, hubMeter);
+                }
                 log.atDebug().setMessage("Configuration")
                     .addKeyValue("device_description", deviceDescription)
                     .addKeyValue("config", String.valueOf(deviceConfig))
@@ -342,6 +359,7 @@ public class Event implements Runnable {
                     log.atDebug().setMessage("Device does not trigger any outputs based on current configuration or state")
                         .addKeyValue("device_description", deviceDescription)
                         .log();
+                    HubEventPublisher.publish("input_state", deviceKey, Map.of("active", false));
                     return;
                 }
                 // record the trigger attempt
@@ -417,6 +435,11 @@ public class Event implements Runnable {
                 linkedOutputs.forEach(output -> {
                     outputNames.add(output.getDeviceLabel());
                 });
+                final Map<String, Object> hubTrigger = new HashMap<>();
+                hubTrigger.put("device_label", deviceDescription);
+                hubTrigger.put("device_type", Objects.toString(deviceType, ""));
+                hubTrigger.put("trigger_state", device.getTriggerStateDescription());
+                HubEventPublisher.publish("input_triggered", deviceKey, hubTrigger);
                 log.atInfo().setMessage("Device is linked to outputs")
                     .addKeyValue("device_description", deviceDescription)
                     .addKeyValue("output_count", linkedOutputs.size())
@@ -511,6 +534,12 @@ public class Event implements Runnable {
                                 rabbitMqChannel.basicPublish(exchangeName, responseTopic, rabbitMqProperties, wireCommand);
                                 // record the trigger event
                                 triggerOutputHistory.triggered(outputDeviceKey);
+                                final Map<String, Object> hubOutput = new HashMap<>();
+                                hubOutput.put("input_device", deviceKey);
+                                hubOutput.put("input_label", deviceDescription);
+                                hubOutput.put("output_type", Objects.toString(outputDeviceType, ""));
+                                hubOutput.put("routing_key", responseTopic);
+                                HubEventPublisher.publish("output_triggered", outputDeviceKey, hubOutput);
                                 final var outputMetricTags = new HashMap<String, String>();
                                 outputMetricTags.put("output_type", outputConfig.getDeviceType());
                                 outputMetricTags.put("output_label", outputDeviceDescription);
@@ -603,6 +632,11 @@ public class Event implements Runnable {
                                 }
                             }
                             recentEscalations.put(deviceKey, dupeKey);
+                            HubEventPublisher.publish(
+                                "escalation",
+                                deviceKey,
+                                Map.of("dedup_key", dupeKey, "triggered_duration", triggeredDuration)
+                            );
                         }
                     }
                 }

@@ -1,0 +1,84 @@
+trigger_output:
+  name: Trigger output
+  description: Ask the hub to trigger one output device.
+  fields:
+    device_key:
+      required: true
+      selector:
+        text:
+    payload:
+      selector:
+        object:
+
+set_input_enabled:
+  name: Arm or disarm input
+  description: Set the armed state of one input device.
+  fields:
+    device_key:
+      required: true
+      selector:
+        text:
+    enabled:
+      required: true
+      selector:
+        boolean:
+
+reset_meter:
+  name: Reset meter
+  description: Reset the meter register with an optional value.
+  fields:
+    device_key:
+      required: true
+      selector:
+        text:
+    value:
+      selector:
+        number:
+          min: 0
+          max: 100000000
+          mode: box
+
+set_output_links:
+  name: Set output links
+  description: Replace the output links for one input device.
+  fields:
+    device_key:
+      required: true
+      selector:
+        text:
+    outputs:
+      required: true
+      selector:
+        object:
+
+set_device_config:
+  name: Set device configuration
+  description: Update tuning fields for one device.
+  fields:
+    device_key:
+      required: true
+      selector:
+        text:
+    config:
+      required: true
+      selector:
+        object:
+
+panic:
+  name: Panic
+  description: Fire the panic input.
+
+notify:
+  name: Send notification
+  description: Send a message through the existing Event Processor Telegram bot.
+  fields:
+    message:
+      required: true
+      selector:
+        text:
+    image_url:
+      selector:
+        text:
+    chat_id:
+      selector:
+        text:

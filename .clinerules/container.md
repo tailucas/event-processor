@@ -131,3 +131,33 @@ Python is managed by `uv`; Rust via `rustup`; Go via a versioned tarball
 Graceful shutdown is mandatory in every runtime — signal handling and
 resource teardown must be wired so a container stop does not drop in-flight
 work or telemetry.
+
+## 8. Home Assistant container and hub deployment
+
+- HA runs as Docker container `homeassistant`
+  (`ghcr.io/home-assistant/home-assistant:stable`) on `acer`, with
+  **`network_mode: host`**. The config directory is the host bind mount
+  `/home/tai/home-assistant/config` → `/config`.
+- Custom component path:
+  `/home/tai/home-assistant/config/custom_components/event_processor`.
+  Install with `make ha-deploy`; restart with `docker restart homeassistant`.
+  A config-entry reload is not enough to pick up changed Python module code.
+- Because HA uses host networking, the hub is `http://127.0.0.1:8095` from HA.
+  From another host it is `http://192.168.0.6:8095`.
+- The event-processor container `event-processor-app-1` publishes
+  `8095:8080` (Python API), `8085:8085` (metrics), `9400:9400` and
+  `4041:4040`. It uses `host.docker.internal` for 1Password Connect,
+  RabbitMQ and MQTT.
+- **Data ownership is critical.** The container runs as `app` UID/GID 999.
+  `/data/event-processor.db`, its `-wal`/`-shm` files and
+  `/data/hub_api_token` must be owned `999:999` and writable. A DB restored
+  from a UID 1000 copy causes `attempt to write a readonly database`; the
+  Python nanny then shuts the app down. Fix with:
+  `docker exec -u root event-processor-app-1 chown 999:999 /data/...`.
+- The production DB backup is
+  `/data/event-processor.db.bak-20261018204347`; keep backups readable by UID
+  999.
+- `deploy_hub.sh` copies the hub/Java changes to
+  `acer:/home/tai/event-processor`, rebuilds the image and recreates the
+  service. It loads 1Password Connect exports from `/home/tai/.bashrc`.
+- See `ha.md` for the HA deployment and migration details.

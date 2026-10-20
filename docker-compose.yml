@@ -2,9 +2,8 @@ services:
   app:
     env_file: ".env"
     environment:
-      - OP_CONNECT_HOST=${OP_CONNECT_HOST:-http://host.docker.internal:8080}
+      - OP_CONNECT_HOST=${OP_CONNECT_HOST:-http://host.docker.internal:8082}
     secrets:
-      - op_service_account_token
       - op_connect_token
       - op_vault
     image: "${CONTAINER_NAME}"
@@ -36,8 +35,6 @@ services:
     extra_hosts:
         - "host.docker.internal:host-gateway"
 secrets:
-    op_service_account_token:
-        environment: OP_SERVICE_ACCOUNT_TOKEN
     op_connect_token:
         environment: OP_CONNECT_TOKEN
     op_vault:

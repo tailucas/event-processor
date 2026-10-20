@@ -70,6 +70,8 @@ import zmq.asyncio
 from zmq.asyncio import Poller
 from zmq.error import Again, ZMQError
 
+from app.hub_api import hub_events
+from app.hub_api import router as hub_api_router
 from tailucas_pylib import APP_NAME, DEVICE_NAME, app_config, log, threads
 from tailucas_pylib.app import AppThread
 from tailucas_pylib.creds import Creds
@@ -191,7 +193,15 @@ def set_sqlite_pragma_sync(dbapi_connection, connection_record):
 
 api_app = FastAPI()
 api_app.state.startup_complete = False
+api_app.include_router(hub_api_router)
 api_app.mount("/admin", WSGIMiddleware(flask_app))
+
+
+@api_app.on_event("startup")
+async def hub_api_startup():
+    """Bind the thread-safe hub event bus to the running ASGI loop."""
+    hub_events.bind_loop(asyncio.get_running_loop())
+    hub_events.publish({"type": "hub_started", "data": {"app": APP_NAME}})
 
 # Custom exception handler for validation errors
 from fastapi.exceptions import RequestValidationError  # noqa: E402
@@ -914,6 +924,9 @@ def index():
                         }
                     }
                 )
+            hub_events.publish_threadsafe(
+                {"type": "panic", "device_key": "App Panic Button", "data": {"source": "flask"}}
+            )
         elif "meter_reset" in request.form:
             device_key = request.form["meter_reset"]
             input_cfg = InputConfig.query.filter_by(device_label=device_key).first()
@@ -943,6 +956,17 @@ def index():
             # send IoT message
             # FIXME
             log.warning("No handler to send IOT message", extra={"iot_message": iot_message})
+            hub_events.publish_threadsafe(
+                {
+                    "type": "meter_reading",
+                    "device_key": device_key,
+                    "data": {
+                        "meter_value": meter_cfg.meter_value,
+                        "register_value": meter_cfg.register_value,
+                        "meter_reading": meter_cfg.meter_reading,
+                    },
+                }
+            )
         elif "device_key" in request.form:
             device_key = request.form["device_key"]
             input_cfg = inputs.input_config[device_key]
@@ -972,6 +996,13 @@ def index():
             db.session.commit()
             for input_cfg in input_cfgs:
                 invalidate_remote_config(device_key=input_cfg.device_key)
+                hub_events.publish_threadsafe(
+                    {
+                        "type": "input_state",
+                        "device_key": input_cfg.device_key,
+                        "data": {"enabled": bool(input_cfg.device_enabled)},
+                    }
+                )
         else:
             log.error("No action associated with this request", extra={"form": dict(request.form)})
     meters = dict()
@@ -1039,6 +1070,17 @@ def show_config():
             db.session.commit()
             # invalidate remote cache
             invalidate_remote_config(device_key=device_config.device_key)
+            hub_events.publish_threadsafe(
+                {
+                    "type": "device_updated",
+                    "device_key": device_config.device_key,
+                    "data": {
+                        "auto_schedule": bool(device_config.auto_schedule),
+                        "auto_schedule_enable": device_config.auto_schedule_enable,
+                        "auto_schedule_disable": device_config.auto_schedule_disable,
+                    },
+                }
+            )
             # open IPC
             with exception_handler(connect_url=URL_WORKER_AUTO_SCHEDULER, and_raise=False) as zmq_socket:
                 zmq_socket.send_pyobj(
@@ -1059,7 +1101,15 @@ def show_config():
                 config.config_value = autoscheduler_enabled
             db.session.add(config)
             db.session.commit()
+            hub_events.publish_threadsafe(
+                {
+                    "type": "config_changed",
+                    "device_key": None,
+                    "data": {"key": CONFIG_AUTO_SCHEDULER, "value": autoscheduler_enabled},
+                }
+            )
     devices = []
+
     devices.extend(InputConfig.query.order_by(InputConfig.device_key).all())
     devices.extend(OutputConfig.query.order_by(OutputConfig.device_key).all())
     config_autoscheduler = GeneralConfig.query.filter_by(config_key=CONFIG_AUTO_SCHEDULER).first()
@@ -1231,6 +1281,13 @@ def input_config():
         db.session.commit()
         # invalidate remote cache
         invalidate_remote_config(device_key=input_cfg.device_key)
+        hub_events.publish_threadsafe(
+            {
+                "type": "device_updated",
+                "device_key": input_cfg.device_key,
+                "data": {"device": input_cfg.as_dict()},
+            }
+        )
     inputs = InputConfig.query.order_by(InputConfig.device_key).all()
     meters = dict()
     meter_configs = MeterConfig.query.all()
@@ -1266,7 +1323,15 @@ def input_link():
         # invalidate remote cache
         db_input_config = InputConfig.query.filter_by(id=saved_device_id).first()
         invalidate_remote_config(device_key=db_input_config.device_key)
+        hub_events.publish_threadsafe(
+            {
+                "type": "config_changed",
+                "device_key": db_input_config.device_key,
+                "data": {"links": "input"},
+            }
+        )
     input_links = (
+
         InputConfig.query.add_entity(InputLink)
         .join(InputLink, InputConfig.id == InputLink.input_device_id, isouter=True)
         .order_by(InputConfig.device_key)
@@ -1329,6 +1394,13 @@ def output_link():
         # invalidate remote cache
         db_input_config = InputConfig.query.filter_by(id=saved_device_id).first()
         invalidate_remote_config(device_key=db_input_config.device_key)
+        hub_events.publish_threadsafe(
+            {
+                "type": "config_changed",
+                "device_key": db_input_config.device_key,
+                "data": {"links": "output"},
+            }
+        )
     output_links = (
         InputConfig.query.add_entity(OutputLink)
         .join(OutputLink, InputConfig.id == OutputLink.input_device_id, isouter=True)
@@ -1406,6 +1478,13 @@ def output_config():
         db.session.commit()
         # invalidate remote cache
         invalidate_remote_config(device_key=output_config.device_key)
+        hub_events.publish_threadsafe(
+            {
+                "type": "device_updated",
+                "device_key": output_config.device_key,
+                "data": {"device": output_config.as_dict()},
+            }
+        )
     outputs = OutputConfig.query.order_by(OutputConfig.device_key).all()
     return render_template("output_config.html", devices=outputs, saved_device_id=saved_device_id)
 
@@ -1749,6 +1828,19 @@ class EventProcessor(AppThread):
                                     )
                                 )
                                 db.session.commit()
+                                invalidate_remote_config(device_key=di.device_key)
+                                hub_events.publish_threadsafe(
+                                    {
+                                        "type": "device_added",
+                                        "device_key": di.device_key,
+                                        "data": {
+                                            "role": "input",
+                                            "device_label": di.device_label,
+                                            "device_type": di.device_type,
+                                            "group_name": di.group_name,
+                                        },
+                                    }
+                                )
                         elif event_origin == "device_info_output":
                             self._update_device(
                                 input_outputs=self.outputs,
@@ -1779,6 +1871,18 @@ class EventProcessor(AppThread):
                                     )
                                 )
                                 db.session.commit()
+                                invalidate_remote_config(device_key=di.device_key)
+                                hub_events.publish_threadsafe(
+                                    {
+                                        "type": "device_added",
+                                        "device_key": di.device_key,
+                                        "data": {
+                                            "role": "output",
+                                            "device_label": di.device_label,
+                                            "device_type": di.device_type,
+                                        },
+                                    }
+                                )
                         elif event_origin == "auto-scheduler":
                             device_key = event_data["device_key"]
                             device_label = event_data["device_label"]
@@ -1794,6 +1898,13 @@ class EventProcessor(AppThread):
                             db.session.add(device_config)
                             db.session.commit()
                             invalidate_remote_config(device_key=device_key)
+                            hub_events.publish_threadsafe(
+                                {
+                                    "type": "input_state",
+                                    "device_key": device_key,
+                                    "data": {"enabled": bool(device_enable)},
+                                }
+                            )
                             # skip further processing because of enable/disable
                             continue
                         elif event_origin == "bot":
@@ -1931,6 +2042,13 @@ class EventProcessor(AppThread):
                                     db.session.commit()
                                     for device_key in devices_updated:
                                         invalidate_remote_config(device_key=device_key)
+                                        hub_events.publish_threadsafe(
+                                            {
+                                                "type": "input_state",
+                                                "device_key": device_key,
+                                                "data": {"enabled": bool(device_enable)},
+                                            }
+                                        )
                                 bot_reply = f"{len(devices_updated)} devices changed to {state}."
                             else:
                                 log.warning("No devices matched", extra={"state": state})

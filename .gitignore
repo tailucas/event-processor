@@ -159,5 +159,8 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 data/
+event-processor.db
+event-processor.db-shm
+event-processor.db-wal
 pom.xml.versionsBackup
 

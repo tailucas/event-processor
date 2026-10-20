@@ -108,3 +108,28 @@ Each toolchain has a dedicated `*_setup.sh` run during the Docker build
 toolchain installs in these scripts rather than inlining them in the
 Dockerfile; `java_setup.sh` quietens Maven output under `GITHUB_ACTIONS` for
 CI builds.
+
+## 7. Home Assistant & deployment
+
+- The HA component is **not** baked into the event-processor image. It is
+  copied directly into the HA container by `deploy_ha.sh` (or `make ha-deploy`)
+  because the configuration is private and not distributed via HACS/PyPI.
+- `custom_components/event_processor` vendors its `aiohttp` client, so
+  `manifest.json` has `requirements: []`. A future public/core version would
+  need a PyPI client library.
+- Makefile targets:
+  - `make ha-lint` — ruff on the hub API/component + `pytest tests/test_hub_api.py`.
+  - `make ha-deploy` — copy the component to
+    `acer:/home/tai/home-assistant/config/custom_components/event_processor`
+    and restart `homeassistant`.
+  - `make hub-deploy` — copy hub/Java changes to `acer`, rebuild the image,
+    recreate the service.
+  - `make hub-token` — print `/data/hub_api_token`.
+- `deploy_hub.sh` loads `OP_CONNECT_HOST`, `OP_CONNECT_TOKEN` and `OP_VAULT`
+  from `/home/tai/.bashrc` for `docker compose up`; the Connect API is on
+  `8082`, not `8080`.
+- HA-specific pytest tests require a separate HA-compatible venv
+  (`pytest-homeassistant-custom-component`); do not mix it into the app venv
+  because HA pins its own dependency versions.
+- Run `make lint`, `make ha-lint`, hub API tests and Java tests before
+  deployment. See `ha.md` for the live deployment facts.

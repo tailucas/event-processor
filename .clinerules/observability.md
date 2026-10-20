@@ -154,3 +154,28 @@ Note the Makefile builds with `mvn package`, so the strict
 `dependency:analyze` (`failOnWarning`) bound to `verify` is not enforced on
 the normal build path; keep `mvn test` hermetic (system properties +
 `GlobalOpenTelemetry.resetForTest()`).
+
+## 5. HA integration and hub event telemetry
+
+- The hub API exposes `/api/v1/diagnostics` with device/link counts, orphan
+  links, heartbeat age, event-bus sequence/recent count and subscriber count.
+  HA diagnostics (`diagnostics.py`) returns a redacted subset plus recent
+  events.
+- The hub event bus is a 500-event in-memory ring buffer fanned out to
+  WebSocket subscribers. It is intentionally lossy for slow subscribers; the
+  HA safety poll repairs missed state.
+- Java `HubEventPublisher` publishes processed lifecycle events
+  (`input_state`, `input_triggered`, `output_triggered`, `escalation`,
+  `meter_reading`) to the hub. It uses `HttpClient.sendAsync`; never block the
+  virtual-thread event pipeline on the hub.
+- Useful live health signals:
+  - `GET /api/v1/diagnostics` → `event_bus.subscribers` should be 1 when HA is
+    connected; `heartbeat_age_s` should be small.
+  - HA `sensor.event_processor_heartbeat_age` (diagnostic).
+  - HA `sensor.event_processor_devices` / `sensor.event_processor_links`.
+  - Event entity state = last event timestamp; HA Logbook is the event history.
+- Never include hub tokens, camera `device_params`, broker topics or full
+  device URLs in diagnostics or logs. `diagnostics.py` redacts them.
+- The legacy OTEL/Sentry pipeline remains for Java and Python; the HA
+  integration itself relies on HA logs/diagnostics and the hub event stream.
+  Do not add a second OTEL SDK inside the HA component.

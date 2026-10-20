@@ -92,3 +92,29 @@ for configuration and event log UI.
   + `die()`/`bye()`.
 - New integrations get a feature switch (`FEATURE_FLAG_*` / env var), never a
   hard dependency, so the app stays runnable with zero external dependencies.
+
+## 8. Home Assistant Integration
+
+- The HA integration is a **private, core-grade custom component** in
+  `custom_components/event_processor`; no HACS, no PyPI client, no HA core PR.
+  It is deployed directly into the HA container.
+- **Boundary:** HA talks only to the hub API (`/api/v1`, HTTP + WebSocket). It
+  never opens SQLite, RabbitMQ or MQTT directly. The Python app is the single
+  writer while Flask and HA coexist.
+- **Device/entity rules:** one HA device per `device_key`, `via_device_id` to
+  the hub, `has_entity_name=True`, immutable device-scoped `unique_id`,
+  runtime arm/disarm as `switch`/`alarm_control_panel`, behavior as
+  `entity_category=CONFIG` entities or config subentries.
+- **No duplicate physical devices:** `source=ring` devices are skipped; camera
+  live entities belong to `go2rtc`/RTSP integrations. Use hub-level action
+  entities for snapshot/Telegram instead.
+- **No secrets in HA metadata:** camera `device_params`, hub tokens, broker
+  topics and IPs must never appear in attributes, diagnostics or logs.
+- **Services** are described in `services.yaml` and raise
+  `HomeAssistantError` on hub failure. Diagnostics use redaction.
+- **Java publisher:** `HubEventPublisher` posts processed events to the hub;
+  keep it non-blocking and never let a hub outage stall the event pipeline.
+- **Migration switches:** behavior moves must be reversible
+  (`LINKS_SOURCE=hub|ha`, `RING_SOURCE=mqtt|ha`). Do not remove Flask until
+  phase-3 acceptance is met.
+- See `ha.md` for the full research, live facts, entity map and migration plan.
