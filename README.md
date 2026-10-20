@@ -39,26 +39,6 @@ This project is a comprehensive **event hub for home automation** designed with 
   - Sentry error tracking integration
 * **High Availability**: Optional leader election for multi-instance deployments
 
-### Home Assistant Integration (Phase 1)
-
-The Flask dashboard remains the fallback control surface. A private,
-core-grade Home Assistant custom component now lives in
-`custom_components/event_processor` and talks to the hub control plane at
-`/api/v1` (HTTP + WebSocket).
-
-- `make hub-token` prints the generated hub API token.
-- `make ha-deploy` copies the component to the HA container and restarts HA.
-- `make hub-deploy` copies the hub changes to `acer`, rebuilds the image and
-  recreates the event-processor service.
-- `make ha-lint` runs ruff, the hub API tests and the component checks.
-
-In the HA UI, add the **Event Processor** integration with host
-`127.0.0.1` (HA uses host networking), port `8095`, and the token from
-`make hub-token`. Existing SQLite configuration is imported automatically;
-Ring devices are intentionally not duplicated, and the five security groups
-are exposed as alarm panels. The Java engine remains authoritative for
-latching, multi-trigger, escalation and output rate limits in this phase.
-
 ### Package Structure
 
 This application has grown to 2273 lines in `app/__main__.py`, demonstrating patterns for complex, multi-threaded Python applications. Significant functionality has been factored into the [pylib][pylib-url] shared library.

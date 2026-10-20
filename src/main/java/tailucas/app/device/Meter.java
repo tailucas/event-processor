@@ -24,21 +24,6 @@ public class Meter extends Device {
     public String getDeviceType() {
         return Type.METER.name().toLowerCase(Locale.ROOT);
     }
-    public Integer getRegisterReading() {
-        return registerReading;
-    }
-    public Integer getLastMinuteMetered() {
-        return lastMinuteMetered;
-    }
-    public Double getLastMeteredMinute() {
-        return lastMeteredMinute;
-    }
-    public Integer getLastSampleValue() {
-        return lastSampleValue;
-    }
-    public Integer getPulseDiscards() {
-        return pulseDiscards;
-    }
     @Override
     public boolean wouldTriggerOutput(InputConfig deviceConfig) {
         MeterConfig meterConfig = null;

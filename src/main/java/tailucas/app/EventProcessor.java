@@ -51,7 +51,6 @@ import tailucas.app.device.Event;
 import tailucas.app.message.Mqtt;
 import tailucas.app.message.RabbitMq;
 import tailucas.app.provider.DeviceConfig;
-import tailucas.app.provider.HubEventPublisher;
 import tailucas.app.provider.Metrics;
 import tailucas.app.provider.OnePassword;
 
@@ -179,7 +178,6 @@ public class EventProcessor
             srv.shutdown();
         }
         DeviceConfig.getInstance().close();
-        HubEventPublisher.close();
         if (metricsServer != null) {
             metricsServer.close();
         }
