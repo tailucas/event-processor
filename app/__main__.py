@@ -2395,6 +2395,14 @@ class AutoScheduler(AppThread):
                     threads.interruptable_sleep.wait(10)
 
 
+# Seconds an idle HTTP keep-alive connection is held open by the API server.
+# Clients must retire their pooled connections sooner than this (the Java event
+# processor sets jdk.httpclient.keepalive.timeout in app_entrypoint.sh); a client
+# that reuses a socket this server has already closed gets no response bytes at
+# all. Override with API_KEEP_ALIVE_SECONDS for slow/non-standard clients.
+API_KEEP_ALIVE_SECONDS = int(os.environ.get("API_KEEP_ALIVE_SECONDS", "60"))
+
+
 class ApiServer(Thread):
     def __init__(self):
         super().__init__(name=self.__class__.__name__)
@@ -2408,6 +2416,14 @@ class ApiServer(Thread):
             port=int(app_config.get("flask", "http_port")),
             log_level="warning",
             timeout_graceful_shutdown=1,
+            # Idle keep-alive lifetime advertised to clients. uvicorn closes an
+            # idle connection without sending a response; a client that reuses
+            # such a socket sees "HTTP/1.1 header parser received no bytes".
+            # uvicorn does not advertise this timeout, so the Java event
+            # processor retires its pooled sockets first (see
+            # JAVA_CLIENT_KEEPALIVE_SECONDS in app_entrypoint.sh). Keep this
+            # comfortably above that client-side value.
+            timeout_keep_alive=API_KEEP_ALIVE_SECONDS,
         )
         self.server = uvicorn.Server(config)
 

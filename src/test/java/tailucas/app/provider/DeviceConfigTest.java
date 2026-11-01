@@ -12,6 +12,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.io.IOException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -221,6 +222,28 @@ class DeviceConfigTest {
         // logged as a warning, but does not propagate
         deviceConfig.postDeviceInfo(new tailucas.app.device.Device());
         verify(httpClient, times(1))
+            .send(any(HttpRequest.class), ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
+    }
+
+    @Test
+    void postDeviceInfoRetriesAfterIoError() throws Exception {
+        when(httpClient.send(any(HttpRequest.class), ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
+            .thenThrow(new IOException("HTTP/1.1 header parser received no bytes"))
+            .thenReturn(httpResponse(200, "ok"));
+        // A pooled connection closed by the peer is retried once, then succeeds.
+        deviceConfig.postDeviceInfo(new tailucas.app.device.Device());
+        verify(httpClient, times(2))
+            .send(any(HttpRequest.class), ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
+    }
+
+    @Test
+    void postDeviceInfoGivesUpAfterRepeatedIoErrors() throws Exception {
+        when(httpClient.send(any(HttpRequest.class), ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
+            .thenThrow(new IOException("HTTP/1.1 header parser received no bytes"))
+            .thenThrow(new IOException("EOF reached while reading"));
+        // Logged as a warning, but never propagates to the caller.
+        deviceConfig.postDeviceInfo(new tailucas.app.device.Device());
+        verify(httpClient, times(2))
             .send(any(HttpRequest.class), ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
     }
 

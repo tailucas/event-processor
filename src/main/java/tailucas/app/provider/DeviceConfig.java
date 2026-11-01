@@ -28,6 +28,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.type.CollectionType;
 
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.metrics.LongCounter;
+
+import tailucas.app.OtelSupport;
 import tailucas.app.device.Generic;
 import tailucas.app.device.Ring;
 import tailucas.app.device.config.Config;
@@ -42,6 +47,30 @@ public class DeviceConfig {
     private static final Logger log = LoggerFactory.getLogger(DeviceConfig.class);
 
     private static final class StringMapTypeRef extends TypeReference<Map<String,String>> { }
+
+    /**
+     * Device info posts are idempotent (the config server replaces the row), so
+     * a failed post may safely be attempted a second time.
+     */
+    private static final int POST_ATTEMPTS = 2;
+
+    /**
+     * Delay between post attempts. The first attempt can fail on a pooled
+     * HTTP/1.1 socket the peer has already closed; backing off gives the
+     * connection pool time to drop that socket instead of handing it out again.
+     */
+    private static final Duration POST_RETRY_BACKOFF = Duration.ofMillis(250);
+
+    private static final AttributeKey<String> FAILURE_REASON = AttributeKey.stringKey("reason");
+
+    /** Lazily-bound OTEL instruments; no-op before OtelSupport.init(). */
+    private static final class OtelMetrics {
+        static final LongCounter POST_FAILURES = OtelSupport.getMeter()
+            .counterBuilder("device_config.post.failures")
+            .setUnit("{request}")
+            .setDescription("Device info posts that could not be delivered to the config server")
+            .build();
+    }
 
     private HttpClient httpClient = null;
     private ObjectMapper mapper = null;
@@ -311,12 +340,13 @@ public class DeviceConfig {
         log.atDebug().setMessage("Request headers").addKeyValue("headers", request.headers().map()).log();
         log.atDebug().setMessage("Request body").addKeyValue("body", deviceJson).log();
         IOException lastException = null;
-        for (int attempt = 0; attempt < 2; attempt++) {
+        for (int attempt = 1; attempt <= POST_ATTEMPTS; attempt++) {
             try {
                 HttpResponse<String> response = httpClient.send(request, BodyHandlers.ofString());
                 final int responseCode = response.statusCode();
                 final String responseBody = response.body();
                 if (responseCode / 100 != 2) {
+                    OtelMetrics.POST_FAILURES.add(1, Attributes.of(FAILURE_REASON, "http_status"));
                     log.atWarn().setMessage("Device update failed")
                         .addKeyValue("device_key", deviceKey)
                         .addKeyValue("response_code", responseCode)
@@ -327,23 +357,42 @@ public class DeviceConfig {
                 return;
             } catch (IOException e) {
                 lastException = e;
-                if (attempt == 0) {
+                if (attempt < POST_ATTEMPTS) {
                     log.atDebug().setMessage("Retrying device info post after IO error")
                         .addKeyValue("device_key", deviceKey)
+                        .addKeyValue("attempt", attempt)
+                        .addKeyValue("backoff_ms", POST_RETRY_BACKOFF.toMillis())
                         .setCause(e)
                         .log();
+                    try {
+                        Thread.sleep(POST_RETRY_BACKOFF.toMillis());
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        log.atWarn().setMessage("Interrupted while retrying device info post to config server")
+                            .addKeyValue("device_key", deviceKey)
+                            .addKeyValue("attempt", attempt)
+                            .setCause(interrupted)
+                            .log();
+                        return;
+                    }
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 log.atWarn().setMessage("Interrupted while posting device info to config server")
                     .addKeyValue("device_key", deviceKey)
+                    .addKeyValue("attempt", attempt)
                     .setCause(e)
                     .log();
                 return;
             }
         }
+        OtelMetrics.POST_FAILURES.add(1, Attributes.of(FAILURE_REASON, "io"));
         log.atWarn().setMessage("Cannot post device info to config server")
             .addKeyValue("device_key", deviceKey)
+            .addKeyValue("attempts", POST_ATTEMPTS)
+            .addKeyValue("uri", uriComponents.toUriString())
+            .addKeyValue("config_host", configHost)
+            .addKeyValue("config_host_port", configHostPort)
             .setCause(lastException)
             .log();
     }

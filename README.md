@@ -313,6 +313,34 @@ The Flask web application (`localhost:8080`) provides:
 - **Metrics**: Historical visualization of meter readings and system performance
 - **Administration**: User management, system settings, database maintenance
 
+## Config API (device info posts)
+
+The Java event processor uses this application as its configuration source
+(`CONFIG_HOST`/`CONFIG_HOST_PORT`, published as `8095:8080`). On every device
+heartbeat it posts the current device state to `POST /api/device_info`
+(`tailucas.app.provider.DeviceConfig`), which the FastAPI server forwards into
+the in-process ZeroMQ pipeline.
+
+That post travels over a pooled HTTP/1.1 connection, so both ends must agree on
+how long an idle connection may live:
+
+- **Server** - uvicorn's `timeout_keep_alive` is `API_KEEP_ALIVE_SECONDS`
+  (default `60`). uvicorn closes an idle connection **without sending a
+  response** and does not advertise that timeout to clients.
+- **Client** - the JVM exports `-Djdk.httpclient.keepalive.timeout`
+  (default `2` seconds, `JAVA_CLIENT_KEEPALIVE_SECONDS`) from
+  `app_entrypoint.sh`, so pooled sockets are retired long before the server
+  closes them.
+
+If the client value is ever raised above the server value, posts intermittently
+fail with `java.io.IOException: HTTP/1.1 header parser received no bytes` /
+`EOFException: EOF reached while reading` - the client wrote a request onto a
+socket the server had just closed. `DeviceConfig` retries once with a short
+backoff (the endpoint is idempotent), logs a WARN with `attempts`/`uri`/
+`config_host`/`config_host_port` fields when both attempts fail, and increments
+the `device_config.post.failures` counter (`reason=io|http_status`) so a real
+config-server outage is alertable.
+
 ## Build System
 
 ### Make CLI (Makefile)
