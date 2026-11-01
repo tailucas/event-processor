@@ -330,16 +330,32 @@ how long an idle connection may live:
 - **Client** - the JVM exports `-Djdk.httpclient.keepalive.timeout`
   (default `2` seconds, `JAVA_CLIENT_KEEPALIVE_SECONDS`) from
   `app_entrypoint.sh`, so pooled sockets are retired long before the server
-  closes them.
+  closes them (the JDK default is 1200 s, so it cannot infer the server's
+  timer without being told).
 
-If the client value is ever raised above the server value, posts intermittently
-fail with `java.io.IOException: HTTP/1.1 header parser received no bytes` /
-`EOFException: EOF reached while reading` - the client wrote a request onto a
-socket the server had just closed. `DeviceConfig` retries once with a short
-backoff (the endpoint is idempotent), logs a WARN with `attempts`/`uri`/
-`config_host`/`config_host_port` fields when both attempts fail, and increments
-the `device_config.post.failures` counter (`reason=io|http_status`) so a real
-config-server outage is alertable.
+The failure these settings prevent looks like this:
+
+```
+java.io.IOException: HTTP/1.1 header parser received no bytes
+Caused by: java.io.EOFException: EOF reached while reading
+```
+
+That is the client writing a request onto a socket the peer closed (or was
+closing) before writing a single response byte. The JDK retries a request that
+fails on a reused, peer-closed pooled socket, so an isolated occurrence is
+usually invisible; a WARN from `DeviceConfig` means *both* attempts failed,
+which in practice means the peer closed mid-request: uvicorn starting or
+stopping (the Python side needs several seconds to come up - 1Password, Sentry,
+database, MQTT discovery), the process being resource-starved (EMFILE), or an
+intermediary (Docker's userland proxy on `8095`, the tailnet) tearing the
+connection down.
+
+`DeviceConfig` therefore logs the WARN with `attempts`/`uri`/`config_host`/
+`config_host_port`, backs off between attempts (the endpoint is idempotent), and
+increments the `device_config.post.failures` counter (`reason=io|http_status`).
+Many WARNs in the same second across different `device_key`s indicate a
+server-wide outage; a lone WARN every few hours points at a keep-alive boundary
+race.
 
 ## Build System
 

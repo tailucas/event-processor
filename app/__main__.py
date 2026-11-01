@@ -2416,7 +2416,7 @@ class ApiServer(Thread):
             port=int(app_config.get("flask", "http_port")),
             log_level="warning",
             timeout_graceful_shutdown=1,
-            # Idle keep-alive lifetime advertised to clients. uvicorn closes an
+            # Idle keep-alive lifetime for client connections. uvicorn closes an
             # idle connection without sending a response; a client that reuses
             # such a socket sees "HTTP/1.1 header parser received no bytes".
             # uvicorn does not advertise this timeout, so the Java event
