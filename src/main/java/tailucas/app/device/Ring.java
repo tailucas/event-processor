@@ -22,6 +22,7 @@ import tailucas.app.device.config.InputConfig;
 import tailucas.app.provider.DeviceConfig;
 import tailucas.app.provider.DeviceState;
 import tailucas.app.provider.Metrics;
+import tailucas.app.provider.PayloadType;
 
 public class Ring implements Generic {
 
@@ -163,6 +164,12 @@ public class Ring implements Generic {
     private Integer wirelessSignal;
     /** Reported by cameras and chimes only. */
     private String wirelessNetwork;
+    /**
+     * Raw bytes of a summarised payload, i.e. a camera snapshot. Kept out of state,
+     * logs and metrics (it is a picture), but published to outputs as
+     * {@code image} so an input linked to an output can forward it.
+     */
+    private byte[] image;
     @JsonIgnore
     private String componentId;
     @JsonIgnore
@@ -272,6 +279,11 @@ public class Ring implements Generic {
         if ("status".equals(updateType)) {
             return !"online".equalsIgnoreCase(state);
         }
+        // a snapshot is an event in its own right: it carries the picture that
+        // linked outputs forward
+        if ("image".equals(updateType)) {
+            return true;
+        }
         return "state".equals(updateType) && updateSubject != null && triggers.containsKey(updateSubject);
     }
     /**
@@ -282,11 +294,19 @@ public class Ring implements Generic {
     @JsonIgnore
     public void reportEvent() {
         final Map<String, String> eventTags = getEventTags();
-        final LoggingEventBuilder eventLog = (isOperationalEvent() ? log.atInfo() : log.atDebug())
+        LoggingEventBuilder eventLog = (isOperationalEvent() ? log.atInfo() : log.atDebug())
             .setMessage("Ring event")
             .addKeyValue("ring_topic", tagValue(mqttTopic));
-        eventTags.forEach(eventLog::addKeyValue);
-        eventLog.log();
+        if (image != null) {
+            // say what the withheld blob is, so a snapshot is diagnosable from the
+            // log without logging the picture
+            eventLog = eventLog
+                .addKeyValue("ring_payload_type", PayloadType.detect(image))
+                .addKeyValue("ring_payload_bytes", image.length);
+        }
+        final LoggingEventBuilder sink = eventLog;
+        eventTags.forEach(sink::addKeyValue);
+        sink.log();
         metrics.postMetric(RING_EVENT_METRIC, eventTags);
         postHealthMetrics();
         // keep the per-device view current for GET /devices and the Telegram /ring
@@ -459,6 +479,13 @@ public class Ring implements Generic {
         updateSubjectDescription = WordUtils.capitalizeFully(updateSubjectDescription);
         return updateSubjectDescription;
     }
+    @Override
+    @JsonIgnore
+    public boolean carriesEvent() {
+        // an image update is the event; it mirrors wouldTriggerOutput so the standard
+        // output link forwards the snapshot even if the message is also a heartbeat
+        return "image".equals(updateType);
+    }
     @JsonIgnore
     public boolean isHeartbeat() {
         boolean statusUpdate = false;
@@ -560,6 +587,17 @@ public class Ring implements Generic {
                 break;
             case "status":
                 break;
+            case "image":
+                // a snapshot carries the picture itself, so forwarding it is the
+                // trigger: an input config plus a linked output is all it needs
+                log.atInfo().setMessage("Subject is in a trigger state")
+                    .addKeyValue("subject", updateSubjectDescription)
+                    .addKeyValue("ring_device_id", StringUtils.defaultString(deviceId))
+                    .addKeyValue("ring_update_type", updateType)
+                    .log();
+                triggerOutput = true;
+                triggerStateDescription = String.format("%s available", updateSubjectDescription);
+                break;
             case "state":
                 if (updateSubject == null) {
                     break;
@@ -613,8 +651,9 @@ public class Ring implements Generic {
     }
     @Override
     public String getEventDetail() {
-        // Nothing to add in text message
-        return null;
+        // a snapshot names the picture in the forwarded message, e.g. "Front Gate
+        // snapshot (14:02)"; everything else is already described by the label
+        return "image".equals(updateType) ? updateSubject : null;
     }
     @JsonIgnore
     @Override
@@ -661,6 +700,29 @@ public class Ring implements Generic {
     }
     public String getWirelessNetwork() {
         return wirelessNetwork;
+    }
+    /**
+     * Snapshot bytes for the output payload. Read-only: the setter is the only way
+     * in, and the array is copied on both sides so no caller can mutate it.
+     */
+    @JsonProperty("image")
+    public byte[] getImage() {
+        return image == null ? null : image.clone();
+    }
+    /**
+     * Records a message whose payload is a picture rather than a state value. The
+     * bytes are kept so a linked output can forward them, and {@code state} is
+     * summarised so nothing binary reaches a log, span or metric label.
+     *
+     * @param payload the raw payload; the array is copied because the MQTT client
+     *                owns the original buffer
+     */
+    @JsonIgnore
+    public void setBinaryPayload(byte[] payload) {
+        image = payload == null ? null : payload.clone();
+        if (payload != null) {
+            state = BINARY_PAYLOAD_STATE;
+        }
     }
     public Integer getBatteryLife() {
         return batteryLife;
@@ -774,7 +836,10 @@ public class Ring implements Generic {
                 + volume + ", wirelessSignal=" + wirelessSignal + ", wirelessNetwork=" + wirelessNetwork
                 + ", batteryLife=" + batteryLife + ", batteryLife2=" + batteryLife2
                 + ", componentId=" + componentId + ", componentName=" + componentName + ", deviceId="
-                + deviceId + ", mqttTopic=" + mqttTopic + ", state=" + state + ", updateType=" + updateType
+                + deviceId + ", mqttTopic=" + mqttTopic + ", state="
+                // never let an object dump carry a payload into a log
+                + StringUtils.abbreviate(state, MAX_PAYLOAD_TEXT_CHARS)
+                + ", updateType=" + updateType
                 + ", updateSubject=" + updateSubject + ", haConfig=" + haConfig + ", triggerStateDescription="
                 + triggerStateDescription + "]";
     }

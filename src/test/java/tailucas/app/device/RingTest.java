@@ -1,5 +1,6 @@
 package tailucas.app.device;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -24,10 +25,14 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
+import org.msgpack.jackson.dataformat.MessagePackMapper;
+
+import com.fasterxml.jackson.databind.JsonNode;
 
 import tailucas.app.TestStatics;
 import tailucas.app.device.config.HAConfig;
 import tailucas.app.provider.DeviceConfig;
+import tailucas.app.provider.PayloadType;
 
 class RingTest {
 
@@ -427,6 +432,71 @@ class RingTest {
     }
 
     @Test
+    void snapshotImageTriggersAndTravelsWithTheEvent() throws Exception {
+        // the picture is the payload: it must reach the output but never the logs,
+        // metrics or state
+        final byte[] jpeg = {(byte) 0xFF, (byte) 0xD8, 0x00, 0x10, 'L', 'a', 'v', 'c'};
+        final Ring ring = new Ring();
+        ring.setMqttTopic("ring/component/camera/54e0191a1d8d/snapshot/image", "x".repeat(4096));
+        ring.setBinaryPayload(jpeg);
+
+        assertEquals(Ring.BINARY_PAYLOAD_STATE, ring.getState());
+        assertTrue(ring.wouldTriggerOutput(null));
+        assertEquals("Snapshot available", ring.getTriggerStateDescription());
+        assertTrue(ring.isOperationalEvent());
+        assertEquals("snapshot", ring.getEventDetail());
+        assertArrayEquals(jpeg, ring.getImage());
+
+        // the serialised device is what the output carries to the bot
+        final MessagePackMapper mapper = new MessagePackMapper();
+        final JsonNode wire = mapper.readTree(mapper.writeValueAsBytes(ring));
+        assertNotNull(wire.get("image"));
+        assertArrayEquals(jpeg, wire.get("image").binaryValue());
+        // state is never serialised, and the detail names the picture for the chat text
+        assertNull(wire.get("state"));
+        assertEquals("snapshot", wire.get("event_detail").asText());
+    }
+
+    @Test
+    void snapshotIsIdentifiedByContentType() {
+        // the log says what the withheld blob is, not just that it was withheld
+        final Ring ring = new Ring();
+        ring.setMqttTopic("ring/component/camera/54e0191a1d8d/snapshot/image", "x".repeat(4096));
+        ring.setBinaryPayload(new byte[] {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xFE, 0x00, 0x10});
+        assertEquals("image/jpeg", PayloadType.detect(ring.getImage()));
+    }
+
+    @Test
+    void imageBytesAreCopiedInAndOut() {
+        final byte[] payload = {1, 2, 3};
+        final Ring ring = new Ring();
+        ring.setBinaryPayload(payload);
+        payload[0] = 9;
+        assertEquals(1, ring.getImage()[0]);
+        ring.getImage()[0] = 7;
+        assertEquals(1, ring.getImage()[0]);
+    }
+
+    @Test
+    void nonImageMessagesCarryNoImage() {
+        final Ring ring = new Ring();
+        ring.setMqttTopic("ring/component/alarm/device-1/contact/state", "OFF");
+        assertNull(ring.getImage());
+        assertFalse(ring.carriesEvent());
+        assertNull(ring.getEventDetail());
+    }
+
+    @Test
+    void objectDumpsCannotCarryAPayload() {
+        // a camera snapshot must never reach a log through Ring.toString()
+        final Ring ring = new Ring();
+        ring.setMqttTopic("ring/component/camera/54e0191a1d8d/snapshot/image", "x".repeat(4096));
+        assertTrue(ring.getState().length() <= Ring.MAX_PAYLOAD_TEXT_CHARS);
+        assertTrue(ring.toString().length() < 1_000);
+        assertFalse(ring.toString().contains("xxxx"));
+    }
+
+    @Test
     void repeatedBinaryPayloadsReuseOneMetricSeries() {
         // a size or checksum in the label would create a new series per snapshot
         final Ring first = new Ring();
@@ -444,13 +514,16 @@ class RingTest {
     }
 
     @Test
-    void imageUpdateTypeIsNotAnUnmappedWarning() {
+    void imageUpdateTypeIsAnEventNotAPayloadWarning() {
+        // a snapshot is a routine topic and an event in its own right, not an
+        // unmapped payload type
         final Ring ring = new Ring();
         ring.setMqttTopic("ring/component/camera/54e0191a1d8d/snapshot/image", "x".repeat(4096));
-        // neither heartbeat nor trigger logic maps this, but it is a routine topic
         assertFalse(ring.isHeartbeat());
-        assertFalse(ring.wouldTriggerOutput(null));
-        assertFalse(ring.isOperationalEvent());
+        assertTrue(ring.wouldTriggerOutput(null));
+        assertTrue(ring.carriesEvent());
+        assertTrue(ring.isOperationalEvent());
+        assertEquals("snapshot", ring.getEventDetail());
     }
 
     @Test

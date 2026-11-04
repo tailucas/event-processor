@@ -10,6 +10,11 @@ public class Camera extends Device {
         setFieldsFrom(device);
     }
     @Override
+    public boolean carriesEvent() {
+        // an image is the event, even when the message also reports a heartbeat
+        return image != null;
+    }
+    @Override
     public String getDeviceType() {
         return Type.CAMERA.name().toLowerCase(Locale.ROOT);
     }

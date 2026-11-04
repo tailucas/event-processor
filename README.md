@@ -410,7 +410,10 @@ Three payload rules keep one message from poisoning the log or the metric store:
   `MAX_PAYLOAD_TEXT_CHARS` (64 characters) becomes the constant
   `binary_payload` in `state`, which flows to logs, spans and labels. It is a
   constant rather than a size or digest so repeated snapshots reuse one metric
-  series instead of creating one per image.
+  series instead of creating one per image. The log record identifies what was
+  withheld — `ring_payload_type` (sniffed from the magic bytes, e.g. `image/jpeg`
+  or `video/mp4`) and `ring_payload_bytes` — and the raw-payload records render it
+  the same way (`payload=<image/jpeg, 15616 bytes>`).
 - **Label values are bounded** to the same length, whatever their source.
 - **Known non-event update types are quiet.** `image` (a snapshot) and `command`
   (an inbound instruction) are logged at `DEBUG`; any other unmapped update type
@@ -558,6 +561,50 @@ Unhealthy flags only appear when they are not `ok` (`tamper`, `comm`, `link`), a
 mailbox icon marks a device below 20% battery, and an offline device is shown with a
 warning icon. Message composition lives in `app/ring_report.py` so it is unit tested
 without booting the app; the rules are in `.clinerules/telegram.md`.
+
+### Forwarding camera snapshots
+
+`<camera>/snapshot/image` is the one Ring message that carries content rather than
+state: a complete JPEG (FFmpeg-encoded by the bridge) of a few tens of kilobytes. The
+processor treats it as a **trigger** and carries the bytes through the normal
+input→output path, so a snapshot can be forwarded to Telegram like any other event.
+
+**The device registers itself.** It needs no manual configuration: the first
+heartbeat the processor sees for a device (`status`, `info` or an `attributes` topic —
+the ones `Ring.isHeartbeat()` accepts) is posted to the web app's
+`POST /api/device_info`, which inserts the `input_config` row
+(`Adding new input configuration`). A camera appears with its topic device id as the
+key and its Home Assistant discovery name as the label, enabled, ready to wire:
+
+```
+id  device_key    device_type  device_label  group_name               device_enabled
+46  54e0191a1d8d  ring         Front Gate    House Security (Front)   1
+```
+
+`device_type` is whatever the registering heartbeat carried, so a device whose first
+heartbeat is the availability topic registers as `ring`; relabel it in the hub if you
+want it to read `camera`. Any device type works — inputs and outputs are wired by
+`device_key`.
+
+So the only steps are in the hub:
+
+1. **Link the camera to an output.** For Telegram, link it to the `SMS` output. Set
+   the output's `trigger_interval` if snapshots should not be forwarded every time.
+2. **Nothing else.** The bot's `image_send_only_with_people` filter gates *unattended*
+   camera frames (it exists for the snapshot processor's ML annotations), and a
+   filtered message is dropped whole — no photo and no text. An image an input
+   explicitly sent is exempt: `Ring.getEventDetail()` reports `snapshot` for these
+   messages, which travels to the bot as `event_detail` and bypasses the filter
+   (`app/telegram_filter.py`). The chat reads **"Front Gate snapshot (14:02)"** with
+   the JPEG attached.
+
+The payload is kept **only** on the output path: `state`, the `ring_event` metric,
+logs and the `GET /devices` view all report the constant `binary_payload`, and
+`Ring.toString()` abbreviates anything that could carry it. The serialised device
+published to the output carries the bytes as `image`, which
+`tailucas_pylib.device.Device` reads into `BotMessage.image` → `send_media_group`.
+With no `input_config` row the snapshot is recorded and counted like any other
+message, and nothing is forwarded.
 
 ## Build System
 

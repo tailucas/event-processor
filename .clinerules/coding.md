@@ -43,6 +43,12 @@ for configuration and event log UI.
   Boot integration test. Do not introduce new SpotBugs findings.
 - Tests: JUnit under `src/test/java`; test resources include
   `log4j2-test.xml` (pattern layout for test readability).
+- Event model: a message may be both a heartbeat and a device event
+  (`Generic.carriesEvent()`). A heartbeat registers the device
+  (`postDeviceInfo`) and otherwise stops there; when it carries an event it also
+  flows through the **standard input→output link** (`wouldTriggerOutput` →
+  `getLinkedOutputs` → publish). A camera snapshot is the reference case: the
+  image travels in the linked payload, never through a bespoke forwarding path.
 
 ## 3. Python (`app/`, `pyproject.toml`)
 

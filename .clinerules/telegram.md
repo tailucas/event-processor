@@ -180,3 +180,29 @@ bot is disabled, so the feature switch is honoured everywhere.
 Telegram errors are handled in flight: `RetryAfter` defers the send until its
 `retry_after` window; `TimedOut`/`ConnectError` log a WARNING and skip the message
 (the next event will follow).
+
+---
+
+## 5. Images (`BotMessage.image`)
+
+An event whose `active_input` carries `image` bytes is sent as a photo group, with
+the composed message as the caption (`send_media_group`). The processor puts the
+bytes there when a message's payload *is* a picture — a Ring
+`<camera>/snapshot/image` wired to the output.
+
+Which images reach the chat is decided by `app/telegram_filter.include_image()` (pure,
+tested in `tests/test_telegram_filter.py`):
+
+- `[telegram] image_send_only_with_people` (default **true**) gates *unattended*
+  camera frames: they are frequent and only interesting when the snapshot
+  processor's model annotated `person` or `face` in the text.
+- An image an input **explicitly sent** always passes. `Ring.getEventDetail()`
+  reports `snapshot` for those, it travels in the device payload as `event_detail`,
+  and `BotMessage.source` carries it. Do not weaken the flag for those — extend the
+  filter.
+- A suppressed message is dropped **whole**: no photo and no text. Never compose an
+  image message whose text is the only signal.
+
+Batching: messages are queued per `device_label` and the newest per label wins, so a
+burst of snapshots collapses into one send; `[telegram] min_send_interval` then
+rate-limits the queue.

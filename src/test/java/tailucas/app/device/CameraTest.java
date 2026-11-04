@@ -31,6 +31,14 @@ class CameraTest {
     }
 
     @Test
+    void carriesEventOnlyWhenAnImageIsPresent() {
+        // an image is the event, so the standard output link carries it even when the
+        // message also reports a heartbeat
+        assertTrue(cameraWithImage(new byte[16]).carriesEvent());
+        assertFalse(cameraWithImage(null).carriesEvent());
+    }
+
+    @Test
     void deviceCharacteristics() {
         final Camera camera = cameraWithImage(null);
         assertEquals("camera", camera.getDeviceType());

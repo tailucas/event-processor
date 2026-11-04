@@ -1,5 +1,6 @@
 package tailucas.app.device;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -120,6 +121,68 @@ class EventTest {
         assertTrue(TestStatics.unconfiguredDevices().contains(DEVICE_KEY));
         assertEquals(1, TestStatics.unconfiguredDevices().size());
         verifyNoInteractions(channel);
+    }
+
+    @Test
+    void snapshotFlowsToLinkedOutputWithTheImage() throws Exception {
+        // the standard input→output link carries the picture: no special path
+        final byte[] jpeg = {(byte) 0xFF, (byte) 0xD8, 0x01, 0x02, 0x03};
+        final String deviceKey = "54e0191a1d8d";
+        final InputConfig config = inputConfig(String.format(
+            "{\"device_key\": \"%s\", \"device_enabled\": true}", deviceKey));
+        final List<OutputConfig> outputs = List.of(outputConfig(
+            "{\"device_key\": \"out-sms\", \"device_type\": \"SMS\", \"device_enabled\": true}"));
+        when(deviceConfig.fetchInputDeviceConfig(deviceKey)).thenReturn(config);
+        when(deviceConfig.getLinkedOutputs(config)).thenReturn(outputs);
+
+        final Ring snapshot = new Ring();
+        final String topic = "ring/location/camera/" + deviceKey + "/snapshot/image";
+        snapshot.setMqttTopic(topic, "x".repeat(4096));
+        snapshot.setBinaryPayload(jpeg);
+
+        new Event(connection, topic, snapshot).run();
+
+        final ArgumentCaptor<String> routingKey = ArgumentCaptor.forClass(String.class);
+        final ArgumentCaptor<byte[]> body = ArgumentCaptor.forClass(byte[].class);
+        verify(channel).basicPublish(eq("test_exchange"), routingKey.capture(), any(), body.capture());
+        assertEquals("event.trigger.sms", routingKey.getValue());
+        final var wire = new MessagePackMapper().readTree(body.getValue());
+        assertArrayEquals(jpeg, wire.get("active_input").get("image").binaryValue());
+        assertEquals("snapshot", wire.get("active_input").get("event_detail").asText());
+    }
+
+    @Test
+    void heartbeatThatCarriesAnEventStillReachesTheOutputLink() throws Exception {
+        // one message can register the device and carry its event; registration must
+        // not stop the image from flowing to the linked output
+        final byte[] jpeg = {(byte) 0xFF, (byte) 0xD8, 0x04, 0x05};
+        final InputConfig config = inputConfig(inputConfigJson(""));
+        final List<OutputConfig> outputs = List.of(outputConfig(
+            "{\"device_key\": \"out-sms\", \"device_type\": \"SMS\", \"device_enabled\": true}"));
+        stubTriggeringSetup(config, outputs);
+
+        final Device source = new Device();
+        source.deviceLabel = DEVICE_KEY;
+        source.type = "CAMERA";
+        source.messageType = Generic.MESSAGE_TYPE_HEARTBEAT;
+        source.image = jpeg;
+        // the message is both a heartbeat and an event
+        final Camera typed = new Camera(source);
+        assertTrue(typed.isHeartbeat());
+        assertTrue(typed.carriesEvent());
+
+        // Event re-types the device from its type, as the MQTT path does
+        new Event(connection, SOURCE, source).run();
+
+        // it registers ...
+        verify(deviceConfig).postDeviceInfo(any());
+        // ... and still flows to the linked output
+        final ArgumentCaptor<String> routingKey = ArgumentCaptor.forClass(String.class);
+        final ArgumentCaptor<byte[]> body = ArgumentCaptor.forClass(byte[].class);
+        verify(channel).basicPublish(eq("test_exchange"), routingKey.capture(), any(), body.capture());
+        assertEquals("event.trigger.sms", routingKey.getValue());
+        final var wire = new MessagePackMapper().readTree(body.getValue());
+        assertArrayEquals(jpeg, wire.get("active_input").get("image").binaryValue());
     }
 
     @Test

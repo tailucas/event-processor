@@ -72,6 +72,7 @@ from zmq.asyncio import Poller
 from zmq.error import Again, ZMQError
 
 from app.ring_report import format_ring_devices, split_message
+from app.telegram_filter import include_image as include_image_message
 from tailucas_pylib import APP_NAME, DEVICE_NAME, app_config, log, threads
 from tailucas_pylib.app import AppThread
 from tailucas_pylib.creds import Creds
@@ -1594,6 +1595,8 @@ class BotMessage(BaseModel):
     image: bytes | None = None
     image_timestamp: str | None = None
     timestamp: int | None = None
+    #: why the input sent this message, e.g. "snapshot" when the payload was a picture
+    source: str | None = None
 
     def __str__(self):
         return self.message
@@ -2079,13 +2082,16 @@ class TBot(AppThread, Closable):
             url=input_device.storage_url,
             image=image_data,
             image_timestamp=image_timestamp,
+            source=input_device.event_detail,
         )
 
     @staticmethod
-    def include_image(message):
-        if not app_config.getboolean("telegram", "image_send_only_with_people"):
-            return True
-        return "person" in message or "face" in message
+    def include_image(message: BotMessage) -> bool:
+        return include_image_message(
+            source=message.source,
+            text=str(message),
+            only_with_people=app_config.getboolean("telegram", "image_send_only_with_people"),
+        )
 
     @staticmethod
     async def tbot_run(t_app: TelegramApp, zmq_socket, chat_id):
@@ -2197,7 +2203,7 @@ class TBot(AppThread, Closable):
                             },
                         )
                         if message.image:
-                            if TBot.include_image(message=str(message)):
+                            if TBot.include_image(message=message):
                                 if len(image_batch) < MediaGroupLimit.MAX_MEDIA_LENGTH:
                                     caption_entities = None
                                     if message.url:

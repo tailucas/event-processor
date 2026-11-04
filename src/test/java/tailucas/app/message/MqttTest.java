@@ -1,5 +1,6 @@
 package tailucas.app.message;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -308,13 +309,26 @@ class MqttTest {
     @Test
     void ringCameraSnapshotImageIsSummarised() throws Exception {
         // the bridge publishes a camera snapshot as raw image bytes on this topic
+        final byte[] payload = "\ufffd\ufffd\ufffd\ufffd\u0000\u0010Lavc61.19.101".getBytes(StandardCharsets.UTF_8);
         mqtt.messageArrived("ring/cfee52e0-fb85-46a7-868e-22436bef6123/camera/54e0191a1d8d/snapshot/image",
-            message("\ufffd".repeat(4096)));
+            new MqttMessage(payload));
         final ArgumentCaptor<Event> captor = eventCaptor();
         verify(srv).execute(captor.capture());
         final Object device = TestStatics.getField(captor.getValue(), "device");
         assertInstanceOf(Ring.class, device);
         assertEquals(Ring.BINARY_PAYLOAD_STATE, ((Ring) device).getState());
+        // the picture itself is carried for outputs, not for logs
+        assertArrayEquals(payload, ((Ring) device).getImage());
+    }
+
+    @Test
+    void ringTextPayloadsCarryNoImage() throws Exception {
+        mqtt.messageArrived("ring/component/alarm/device-123/contact/state", message("OFF"));
+        final ArgumentCaptor<Event> captor = eventCaptor();
+        verify(srv).execute(captor.capture());
+        final Ring ring = (Ring) TestStatics.getField(captor.getValue(), "device");
+        assertEquals("OFF", ring.getState());
+        assertNull(ring.getImage());
     }
 
     @Test

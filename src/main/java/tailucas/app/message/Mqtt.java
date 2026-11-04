@@ -1,5 +1,6 @@
 package tailucas.app.message;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -29,6 +30,7 @@ import tailucas.app.device.Device.Type;
 import tailucas.app.device.config.HAConfig;
 import tailucas.app.provider.DeviceConfig;
 import tailucas.app.provider.Metrics;
+import tailucas.app.provider.PayloadType;
 import tailucas.app.provider.RingDiscovery;
 import tailucas.app.device.Meter;
 import tailucas.app.device.Ring;
@@ -39,6 +41,34 @@ public class Mqtt implements MqttCallback {
     private static final Logger log = LoggerFactory.getLogger(Mqtt.class);
 
     private static final class HATypeRef extends TypeReference<HAConfig> { }
+
+    /** Longest payload text that may appear in a log record. */
+    private static final int MAX_LOGGED_PAYLOAD_CHARS = 256;
+
+    /**
+     * Payload text safe to log. Binary payloads (camera snapshots) and oversized
+     * documents are reported by content type and length instead of content, so a
+     * log record can say what arrived without carrying an image.
+     */
+    private static String payloadForLog(byte[] payload) {
+        if (payload == null) {
+            return null;
+        }
+        if (payload.length > MAX_LOGGED_PAYLOAD_CHARS || !isText(payload)) {
+            return String.format("<%s, %d bytes>", PayloadType.detect(payload), payload.length);
+        }
+        return new String(payload, StandardCharsets.UTF_8);
+    }
+
+    private static boolean isText(byte[] payload) {
+        for (byte value : payload) {
+            final int unsigned = value & 0xFF;
+            if ((unsigned < 0x09) || (unsigned > 0x0D && unsigned < 0x20) || unsigned == 0x7F) {
+                return false;
+            }
+        }
+        return true;
+    }
 
     private final Metrics metrics;
 
@@ -88,14 +118,14 @@ public class Mqtt implements MqttCallback {
                     } catch (Throwable e) {
                         log.atWarn().setMessage("JSON issue")
                             .addKeyValue("topic", topic)
-                            .addKeyValue("payload", new String(payload))
+                            .addKeyValue("payload", payloadForLog(payload))
                             .setCause(e)
                             .log();
                     }
                 } else {
                     log.atWarn().setMessage("Unassigned payload")
                         .addKeyValue("topic", topic)
-                        .addKeyValue("payload", new String(payload))
+                        .addKeyValue("payload", payloadForLog(payload))
                         .log();
                 }
             } else if (topic.startsWith("ring/")) {
@@ -108,7 +138,7 @@ public class Mqtt implements MqttCallback {
                 String baggage = null;
                 log.atDebug().setMessage("Ring payload")
                     .addKeyValue("topic", topic)
-                    .addKeyValue("payload", new String(payload))
+                    .addKeyValue("payload", payloadForLog(payload))
                     .log();
                 if (payload[0] == '{') {
                     try {
@@ -121,16 +151,21 @@ public class Mqtt implements MqttCallback {
                     } catch (Throwable e) {
                         log.atWarn().setMessage("JSON issue")
                             .addKeyValue("topic", topic)
-                            .addKeyValue("payload", new String(payload))
+                            .addKeyValue("payload", payloadForLog(payload))
                             .setCause(e)
                             .log();
                     }
                 } else {
                     ringDevice = new Ring();
                     ringDevice.setMqttTopic(topic, new String(payload));
+                    if (!isText(payload)) {
+                        // the payload is a picture (camera snapshot): keep it off the
+                        // log, span and metric path, but carry the bytes so a linked
+                        // output can forward it
+                        ringDevice.setBinaryPayload(payload);
+                    }
                 }
                 if (ringDevice != null) {
-                    log.atDebug().setMessage("Ring state").addKeyValue("ring_state", String.valueOf(ringDevice)).log();
                     // every Ring message is reported (INFO log + ring_event metric)
                     // so Ring behaviour is observable before any config or trigger
                     // rules are applied
@@ -198,7 +233,7 @@ public class Mqtt implements MqttCallback {
                 } catch (JsonParseException e) {
                     log.atWarn().setMessage("Unsupported JSON during payload processing")
                         .addKeyValue("topic", topic)
-                        .addKeyValue("payload", new String(payload))
+                        .addKeyValue("payload", payloadForLog(payload))
                         .setCause(e)
                         .log();
                     return;

@@ -35,6 +35,16 @@ public interface Generic {
     public Instant lastTriggered();
     @JsonIgnore
     public boolean isHeartbeat();
+    /**
+     * True when the message is also a device event rather than only a heartbeat, so
+     * the standard output link is still evaluated on the heartbeat path. A camera
+     * snapshot is the typical case: the message registers the device (heartbeat) and
+     * carries the picture an output should forward (event).
+     */
+    @JsonIgnore
+    default boolean carriesEvent() {
+        return false;
+    }
     @JsonIgnore
     public boolean wouldTriggerOutput(InputConfig config);
     @JsonIgnore

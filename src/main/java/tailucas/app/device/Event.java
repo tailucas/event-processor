@@ -188,13 +188,14 @@ public class Event implements Runnable {
                 .log();
             return;
         }
-        log.atDebug().setMessage("Device")
-            .addKeyValue("source", source)
-            .addKeyValue("device", String.valueOf(device))
-            .log();
         final String deviceKey = device.getDeviceKey();
         if (deviceKey == null) {
-            log.atError().setMessage("No identifier for device").addKeyValue("device", String.valueOf(device)).log();
+            // never log the device object: a Ring device carries the last payload,
+            // which for a camera snapshot is the whole image
+            log.atError().setMessage("No identifier for device")
+                .addKeyValue("source", source)
+                .addKeyValue("device_type", device.getDeviceType())
+                .log();
             return;
         }
         final String deviceLabel = device.getDeviceLabel();
@@ -279,7 +280,13 @@ public class Event implements Runnable {
                     }
                 }
             }
-            return;
+            // A message can be both a heartbeat and a device event: a camera snapshot
+            // registers the device and carries the picture an output should forward.
+            // Only a heartbeat with no event of its own stops here; an event still
+            // flows through the standard input→output link below.
+            if (!device.carriesEvent()) {
+                return;
+            }
         }
         // Phase 3 – only non-heartbeat events create a span and do real work
         final Span runSpan = buildRunSpan();
