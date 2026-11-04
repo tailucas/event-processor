@@ -31,7 +31,7 @@ This project is a comprehensive **event hub for home automation** designed with 
   - Database schema available in `config/db_schema.sql`
   - Automated backups to Amazon S3 via cron job (`backup_db.sh`)
 * **Message Processing**: Routes messages from inputs to configured outputs according to rules
-* **Telegram Bot Integration**: Built-in SMS output via Telegram bot with optional AWS SNS fallback
+* **Telegram Bot Integration**: Built-in SMS output via Telegram bot with optional AWS SNS fallback, plus a `/ring` device-status command
 * **MQTT Support**: Full [mDash][mdash-url] device discovery integration for MQTT message handling
 * **Metrics & Monitoring**:
   - Audit trail in local database
@@ -356,6 +356,208 @@ increments the `device_config.post.failures` counter (`reason=io|http_status`).
 Many WARNs in the same second across different `device_key`s indicate a
 server-wide outage; a lone WARN every few hours points at a keep-alive boundary
 race.
+
+## Ring events
+
+Ring devices reach the processor over MQTT (`ring2mqtt`/`ring-mqtt`). The HA
+discovery topic shape is:
+
+```
+ring/<location-id>/<entity>/<device-id>[/<subject>/<update-type>]
+```
+
+where `update-type` is `status` (availability), `attributes` (device data),
+`state` (the entity's state), `image` (a camera snapshot) or `command` (an
+inbound instruction), and `subject` names the entity. The three domains the
+bridge publishes all parse into the same model:
+
+| Domain | Example device | Subjects |
+|---|---|---|
+| `alarm` | alarm base station, keypads, contact/motion sensors, sirens | `alarm`, `contact`, `motion`, `fire`, `police`, `siren`, `battery`, `bypass_mode`, `chirp_tone`, `chirps`, `info`, `volume` |
+| `camera` | doorbell / camera | `motion`, `ding`, `stream`, `snapshot`, `battery`, `wireless`, `info`, `motion_detection`, `motion_duration`, `ding_duration`, `snapshot_mode`, `snapshot_interval`, `take_snapshot` |
+| `chime` | chime | `snooze`, `snooze_minutes`, `volume`, `nightlight_enabled`, `play_ding_sound`, `play_motion_sound`, `wireless`, `info` |
+
+Camera and chime device ids are twelve-character hex rather than UUIDs; both forms
+are used as `input_config.device_key` unchanged. Domains that are only expected to
+report (a camera or chime with no input configuration) produce a single
+`Device has no input configuration` warning per device rather than one per
+message.
+
+Every inbound Ring message is treated as an event, **before** any input
+configuration or trigger rules are applied, and reporting is tiered against the
+bridge's actual refresh cadence (every device sweeps its entities roughly every
+five minutes, ~250 messages per sweep in this installation):
+
+- **Operational events log at `INFO`** — one structured record with a static
+  message (`Ring event`) and the fields `ring_topic`, `ring_component_id`,
+  `ring_component_name`, `ring_device_id`, `ring_update_type`,
+  `ring_update_subject`, `ring_state` and `ring_message_type`. That means a
+  `state` change of a trigger-capable entity (`alarm`, `contact`, `ding`,
+  `motion`, `fire`, `police`, `siren`), or a device **losing** availability.
+- **Telemetry logs at `DEBUG`** — device data (`info`), `battery`, `wireless`,
+  `volume`, `brightness`, `chirp_tone`, `bypass_mode`, snapshot/stream settings
+  and every `attributes` dump carry no state change an operator acts on. The
+  same applies to the healthy `status online` heartbeat the bridge republishes
+  for every device on each sweep.
+- **Every message increments `ring_event`** with the same context as labels
+  (`ring_event_total{application,device,ring_*}` in Prometheus), so nothing is
+  lost from the metric side.
+
+Three payload rules keep one message from poisoning the log or the metric store:
+
+- **Oversized payloads are summarised.** Ring publishes camera snapshots as raw
+  image bytes on `<camera>/snapshot/image`; any payload longer than
+  `MAX_PAYLOAD_TEXT_CHARS` (64 characters) becomes the constant
+  `binary_payload` in `state`, which flows to logs, spans and labels. It is a
+  constant rather than a size or digest so repeated snapshots reuse one metric
+  series instead of creating one per image.
+- **Label values are bounded** to the same length, whatever their source.
+- **Known non-event update types are quiet.** `image` (a snapshot) and `command`
+  (an inbound instruction) are logged at `DEBUG`; any other unmapped update type
+  is still a `WARNING`.
+
+Two label rules matter:
+
+- **The label set is fixed.** A Prometheus counter's label names are pinned when
+  it first registers, so `Ring.getEventTags()` always emits all seven keys and
+  reports context a message does not carry as `unknown` (e.g. a `status`
+  message has no `ring_update_subject` or `ring_state`). Adding or dropping a
+  key per message shape would raise "invalid number of label values", and the
+  shared sanitizer rejects empty label values outright.
+- **`ring_update_type` separates signals from heartbeats.** `attributes` and
+  `status` messages are periodic device/availability updates, so filter on
+  `ring_update_type="state"` when counting real state changes:
+
+```
+sum by (ring_update_subject, ring_state) (
+  rate(ring_event_total{ring_update_type="state"}[15m])
+)
+```
+
+Trigger classification is logged afterwards by `Ring.wouldTriggerOutput()` -
+`Subject is in a trigger state` at `INFO` (an output will fire), and the
+non-triggering variations (`Subject is not a trigger`, `Subject is not in a
+trigger state`, `No state information`) at `DEBUG`, because a sweep produces one
+of them for every telemetry entity. A trigger-capable entity that is enabled yet
+never fires is therefore visible through `ring_event_total` and `triggered`,
+not through a stream of classification lines.
+
+If no `ring_event` series appear at all, the Ring bridge is not publishing:
+check the `ring-mqtt` container logs for `Refresh token is not valid` and
+generate a new token from its web UI before looking at this application.
+
+### Silent-failure guard (startup)
+
+A bridge that cannot authenticate publishes **nothing**, so the only symptom is
+absence: no events, no logs, no metrics. Startup therefore refuses to accept
+silence as normal. After the MQTT subscription and the Home Assistant discovery
+message, the processor waits for the first `ring/#` message:
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `app.ring-discovery-timeout-seconds` (`APP_RING_DISCOVERY_TIMEOUT_SECONDS`) | `120` | How long to wait; `0` disables the check |
+| `app.ring-discovery-required` (`APP_RING_DISCOVERY_REQUIRED`) | `false` | Exit instead of continuing when the check fails |
+
+Outcomes:
+
+- **Information arrives** - `Ring device information is available` at INFO, plus
+  `ring_discovery{result="received"}`. `retained_only=true` means only a broker
+  replay was seen, so the bridge itself may still be silent.
+- **Nothing arrives** - `No Ring device information after MQTT discovery` at
+  ERROR, `ring_discovery{result="missing"}`, and a PagerDuty incident with the
+  stable dedup key `<app>-ring-discovery` (deduplicated across restarts, so
+  repeated restarts update one incident instead of opening a new one). It is
+  gated by the `pager-duty-tickets` feature flag like every other incident.
+- **`app.ring-discovery-required=true`** - exits with
+  `EXIT_CODE_RING_DISCOVERY` (64) so the supervisor restart loop makes the
+  failure loud instead of running degraded.
+- **Late recovery** - a successful start that failed the check keeps watching
+  for up to 12 hours, then resolves the incident as soon as the bridge publishes
+  again.
+
+Startup is blocked for at most the configured timeout, and the wait happens after
+the Prometheus endpoint and HTTP API are up, so `/metrics` stays scrapeable
+while the check is pending. Because a failure here is *Ring-specific*, the
+default is to continue (cameras, detectors and meters keep working). Use
+`ring-discovery-required` only if a Ring outage should stop the whole processor.
+
+### Health metrics
+
+Device health is exported as gauges rather than only logged, so battery drain and
+link quality can be charted and alerted on. Values are posted for every message
+that carries them (`info/state` for all devices, `battery/attributes` on sensors,
+`wireless/attributes` on cameras and chimes), and only when present — a
+mains-powered device or a chime reports no `batteryLevel`, so it produces no
+battery series instead of a misleading `0`:
+
+| Metric | Meaning | Labels |
+|---|---|---|
+| `ring_battery_level` | charge percentage (0-100) | `input_label`, `ring_device_id`, `ring_component_name` |
+| `ring_battery_life` | battery health per slot (0-100); a slot reporting 0 has no battery fitted and is not published | `input_label`, `ring_device_id`, `ring_component_name`, `slot` |
+| `ring_wireless_signal` | wireless signal strength in dBm (negative) | `input_label`, `ring_device_id`, `ring_component_name` |
+
+`batteryLevel` is the charge, `batteryLife`/`batteryLife2` are the per-slot battery
+health the Ring API reports separately (`ring-mqtt` maps `battery_life` /
+`battery_life_2`); a dual-battery camera can report `batteryLevel: 58` against
+`batteryLife: 100`, `batteryLife2: 0`.
+
+`input_label` is the Home Assistant discovery name, the same label the `event`,
+`triggered` and `triggered_duration` counters use, so battery can be joined to
+device activity without a lookup table (the label reads `unknown` until the
+discovery config is cached):
+
+```
+ring_battery_level{input_label="Bedroom Motion"} * on(device) group_left() event_total{input_type="motion"}
+```
+
+### Device status (`GET /devices`)
+
+Each Ring message is also merged into a per-device snapshot
+(`tailucas.app.provider.DeviceState`), because a device spreads its availability,
+entity states and health over several topics. A message that carries only one field
+never erases the rest, so the snapshot is always the newest value seen for each
+field:
+
+```
+GET http://event-processor:8085/devices
+```
+
+```json
+[{"deviceKey":"2579f711-…","component":"alarm","label":"Home Alarm",
+  "model":"Ring Alarm Control Panel","availability":"online",
+  "batteryLevel":100,"batteryLife":100,"batteryStatus":"full",
+  "wirelessSignal":null,"wirelessNetwork":null,
+  "tamperStatus":"ok","commStatus":"ok","linkQuality":"ok",
+  "firmwareStatus":"up-to-date","deviceReportedAt":"2026-11-04T09:42:25Z",
+  "lastSeen":"2026-11-04T10:02:25Z",
+  "states":{"alarm":"disarmed","contact":"OFF","motion":"OFF","siren":"OFF"}}]
+```
+
+`deviceReportedAt` is when the device itself last reported to Ring (the staleness
+signal for a quiet sensor); `lastSeen` is when this application last received a
+message about it. Devices are ordered by label.
+
+### Telegram `/ring`
+
+`/ring` (allowlisted users only) fetches `GET /devices` from the Java processor and
+replies with every Ring device, its health and its current entity states:
+
+```
+🔔 *Ring devices* — 20 known, 20 online
+
+📷 *Front Gate* — Ring Camera
+`online` · battery `100%` full · signal `-67` dBm · reported 4m ago
+`motion` OFF · `ding` OFF
+
+🔔 *Garage Door* — Ring Contact Sensor
+`online` · battery `95%` full · reported 2h ago
+`contact` OFF
+```
+
+Unhealthy flags only appear when they are not `ok` (`tamper`, `comm`, `link`), a
+mailbox icon marks a device below 20% battery, and an offline device is shown with a
+warning icon. Message composition lives in `app/ring_report.py` so it is unit tested
+without booting the app; the rules are in `.clinerules/telegram.md`.
 
 ## Build System
 

@@ -14,6 +14,7 @@ import threading
 from threading import Thread
 import time
 
+import emoji
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.wsgi import WSGIMiddleware
 from fastapi.responses import RedirectResponse
@@ -47,7 +48,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engin
 from sqlalchemy.future import select
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from telegram import InputMediaPhoto, MessageEntity, Update
-from telegram.constants import MediaGroupLimit
+from telegram.constants import ChatAction, MediaGroupLimit, ParseMode
 from telegram.error import NetworkError, RetryAfter, TimedOut
 from telegram.ext import (
     Application as TelegramApp,
@@ -70,6 +71,7 @@ import zmq.asyncio
 from zmq.asyncio import Poller
 from zmq.error import Again, ZMQError
 
+from app.ring_report import format_ring_devices, split_message
 from tailucas_pylib import APP_NAME, DEVICE_NAME, app_config, log, threads
 from tailucas_pylib.app import AppThread
 from tailucas_pylib.creds import Creds
@@ -792,12 +794,24 @@ def auth_enabled(func):
     return decorated_view
 
 
-def authz_required(action, resource):
+def authz_required(resource):
+    """Authorize the current request against a resource.
+
+    The action follows the HTTP method: safe methods read, anything else updates.
+    Use one decorator per route - stacking one per action runs every check on every
+    request, and logs a separate skipped check for each when console login is
+    disabled.
+    """
+
     def authz_decorator(func):
         @wraps(func)
         def flask_wrapper(*args, **kwargs):
+            action = "read" if request.method in ("GET", "HEAD", "OPTIONS") else "update"
             if flask_app.config.get("LOGIN_DISABLED"):
-                log.warning("Login disabled. Skipping authorization check.")
+                log.debug(
+                    "Login disabled, skipping authorization check",
+                    extra={"action": action, "resource": resource},
+                )
                 return func(*args, **kwargs)
             user_details = "Unauthenticated user"
             user_fields = {"user_name": None, "user_key": None}
@@ -1009,8 +1023,7 @@ def event_log():
 @flask_app.route("/config", methods=["GET", "POST"])
 @auth_enabled
 @login_required
-@authz_required(action="read", resource="Configuration")
-@authz_required(action="update", resource="Configuration")
+@authz_required(resource="Configuration")
 def show_config():
     saved_device_id = None
     if request.method == "POST":
@@ -1130,8 +1143,7 @@ async def api_meter_config(device_key: str) -> list[dict]:
 @flask_app.route("/input_config", methods=["GET", "POST"])
 @auth_enabled
 @login_required
-@authz_required(action="read", resource="Configuration")
-@authz_required(action="update", resource="Configuration")
+@authz_required(resource="Configuration")
 def input_config():
     saved_device_id = None
     if request.method == "POST":
@@ -1247,8 +1259,7 @@ def input_config():
 @flask_app.route("/input_link", methods=["GET", "POST"])
 @auth_enabled
 @login_required
-@authz_required(action="read", resource="Configuration")
-@authz_required(action="update", resource="Configuration")
+@authz_required(resource="Configuration")
 def input_link():
     saved_device_id = None
     if request.method == "POST":
@@ -1310,8 +1321,7 @@ async def api_output_link(device_key: str) -> list[dict]:
 @flask_app.route("/output_link", methods=["GET", "POST"])
 @auth_enabled
 @login_required
-@authz_required(action="read", resource="Configuration")
-@authz_required(action="update", resource="Configuration")
+@authz_required(resource="Configuration")
 def output_link():
     saved_device_id = None
     if request.method == "POST":
@@ -1377,8 +1387,7 @@ async def api_output_config(device_key: str | None = None) -> list[dict]:
 @flask_app.route("/output_config", methods=["GET", "POST"])
 @auth_enabled
 @login_required
-@authz_required(action="read", resource="Configuration")
-@authz_required(action="update", resource="Configuration")
+@authz_required(resource="Configuration")
 def output_config():
     saved_device_id = None
     if request.method == "POST":
@@ -1477,6 +1486,77 @@ async def telegram_bot_cmd(update: Update, context: TelegramContextTypes.DEFAULT
             span.set_status(StatusCode.ERROR)
             log.exception("bot handler")
             capture_exception()
+
+
+def fetch_ring_devices() -> list[dict]:
+    """Read the latest per-device state from the Java event processor."""
+    api_server = app_config.get("app", "event_processor_address")
+    api_method = "devices"
+    response = requests.get(url=f"{api_server}/{api_method}", timeout=10)
+    response.raise_for_status()
+    devices = response.json()
+    if not isinstance(devices, list):
+        raise ValueError(f"Unexpected {api_method} payload")
+    log.info(
+        "Fetched Ring device state",
+        extra={
+            "api_server": api_server,
+            "api_method": api_method,
+            "device_count": len(devices),
+            "status_code": response.status_code,
+        },
+    )
+    return devices
+
+
+async def telegram_bot_ring(update: Update, context: TelegramContextTypes.DEFAULT_TYPE) -> None:
+    with otel_tracer().start_as_current_span("telegram.ring") as span:
+        message = update.effective_message
+        try:
+            authorized_users = app_config.get("telegram", "authorized_users").split(",")
+            if str(update.effective_user.id) not in authorized_users:
+                log.warning("Unauthorized message", extra={"update": str(update)})
+                return
+            if message is None:
+                return
+
+            span.set_attribute("telegram.command", "/ring")
+            span.set_attribute("telegram.chat_id", str(message.chat_id))
+            span.set_attribute("telegram.user_id", str(update.effective_user.id))
+            log.info(
+                "Telegram bot command received",
+                extra={
+                    "bot_username": context.bot.username,
+                    "command_text": message.text,
+                    "chat_id": message.chat_id,
+                },
+            )
+
+            await context.bot.send_chat_action(chat_id=message.chat_id, action=ChatAction.TYPING)
+            # the state lives in the Java processor; never block the bot's loop on it
+            devices = await asyncio.get_running_loop().run_in_executor(None, fetch_ring_devices)
+            span.set_attribute("ring.device_count", len(devices))
+            for chunk in split_message(format_ring_devices(devices)):
+                await message.reply_text(
+                    text=chunk,
+                    disable_web_page_preview=True,
+                    parse_mode=ParseMode.MARKDOWN,
+                )
+            span.set_status(StatusCode.OK)
+        except NetworkError:
+            span.set_status(StatusCode.ERROR)
+            log.warning("bot handler", exc_info=True)
+            if message is not None:
+                await message.reply_text(text=f"{emoji.emojize(':warning:')} Telegram network problem.")
+        except Exception as e:
+            span.record_exception(e)
+            span.set_status(StatusCode.ERROR)
+            log.exception("Cannot report Ring device state")
+            capture_exception()
+            if message is not None:
+                await message.reply_text(
+                    text=f"{emoji.emojize(':warning:')} Could not read Ring device state."
+                )
 
 
 async def telegram_error_handler(update: Update, context: TelegramContextTypes.DEFAULT_TYPE) -> None:
@@ -2244,6 +2324,7 @@ class TBot(AppThread, Closable):
         asyncio.set_event_loop(loop)
         log.debug("Creating Telegram application...")
         telegram_application = TelegramApp.builder().token(creds.get_creds(f"Telegram/{APP_NAME}/token")).build()
+        telegram_application.add_handler(TelegramCommandHandler(command="ring", callback=telegram_bot_ring))
         telegram_application.add_handler(TelegramCommandHandler(command="inputon", callback=telegram_bot_cmd))
         telegram_application.add_handler(TelegramCommandHandler(command="inputoff", callback=telegram_bot_cmd))
         telegram_application.add_handler(TelegramCommandHandler(command="outputon", callback=telegram_bot_cmd))

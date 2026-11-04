@@ -9,6 +9,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.Duration;
 import java.util.Arrays;
@@ -22,6 +23,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.slf4j.Logger;
@@ -53,6 +55,7 @@ import tailucas.app.message.RabbitMq;
 import tailucas.app.provider.DeviceConfig;
 import tailucas.app.provider.Metrics;
 import tailucas.app.provider.OnePassword;
+import tailucas.app.provider.RingDiscovery;
 
 import org.zeromq.ZContext;
 import org.zeromq.SocketType;
@@ -87,11 +90,18 @@ public class EventProcessor
     public static final int EXIT_CODE_CREDENTIALS = 8;
     public static final int EXIT_CODE_SENTRY = 16;
     public static final int EXIT_CODE_CONFIG_SERVER = 32;
+    public static final int EXIT_CODE_RING_DISCOVERY = 64;
 
     public static final String FEATURE_FLAG_HA_DISCOVERY = "send-home-assistant-discovery";
     public static final String FEATURE_FLAG_PAGER_DUTY_TICKETS = "pager-duty-tickets";
 
+    /** Counter for the outcome of the Ring discovery check (tag {@code result}). */
+    private static final String RING_DISCOVERY_METRIC = "ring_discovery";
+    /** How long a startup that failed the Ring check keeps watching for late information. */
+    private static final Duration LATE_RING_INFORMATION_TIMEOUT = Duration.ofHours(12);
+
     private static final Map<String, Boolean> featureFlagCache = new ConcurrentHashMap<>();
+    private static final AtomicBoolean ringDiscoveryIncidentRaised = new AtomicBoolean();
 
     private static final Logger log = LoggerFactory.getLogger(EventProcessor.class);
     private static ExecutorService srv = null;
@@ -452,6 +462,9 @@ public class EventProcessor
                         .addKeyValue("feature_flag", FEATURE_FLAG_HA_DISCOVERY)
                         .log();
                 }
+                // the subscription (and the discovery message above) is the point at
+                // which Ring device information is expected to start arriving
+                RingDiscovery.getInstance().markDiscoveryRequested();
                 // use inproc socket in ZMQ to serialize outbound messages for thread safety
                 socket = zmqContext.createSocket(SocketType.PULL);
                 socket.connect(ZMQ_MQTT_URL);
@@ -534,7 +547,153 @@ public class EventProcessor
         }, 0, 30, TimeUnit.SECONDS);
 
         log.atDebug().setMessage("Metrics server started").addKeyValue("metrics_port", metricsServerPort).log();
+        final AppProperties appProperties = springApp.getBean(AppProperties.class);
+        if (!awaitRingDeviceInformation(appProperties)) {
+            if (appProperties.isRingDiscoveryRequired()) {
+                log.atError().setMessage("Exiting, Ring device information is required")
+                    .addKeyValue("timeout_seconds", appProperties.getRingDiscoveryTimeoutSeconds())
+                    .log();
+                addExitCode(EXIT_CODE_RING_DISCOVERY);
+                System.exit(SpringApplication.exit(springApp));
+            }
+            // keep watching so the incident resolves when the bridge starts publishing
+            Thread.ofVirtual().name("ring-discovery-watch").start(EventProcessor::awaitLateRingDeviceInformation);
+        }
         log.atInfo().setMessage("Startup complete").addKeyValue("app_name", applicationName).log();
         exitCode.set(0);
+    }
+
+    /**
+     * Waits for Ring device information to arrive over MQTT after discovery has
+     * been requested, then raises a PagerDuty incident when the Ring bridge stays
+     * silent. A bridge that cannot reach the Ring API publishes nothing at all,
+     * so without this check the only symptom is an absence of Ring events.
+     *
+     * <p>A timeout of zero disables the check.
+     *
+     * @return true when Ring device information arrived, or the check is disabled
+     */
+    static boolean awaitRingDeviceInformation(AppProperties appProperties) {
+        final int timeoutSeconds = appProperties.getRingDiscoveryTimeoutSeconds();
+        if (timeoutSeconds <= 0) {
+            log.atWarn().setMessage("Not awaiting Ring device information, disabled by configuration")
+                .addKeyValue("setting", "app.ring-discovery-timeout-seconds")
+                .log();
+            return true;
+        }
+        final RingDiscovery ringDiscovery = RingDiscovery.getInstance();
+        final Instant waitStart = Instant.now();
+        final boolean informationSeen;
+        try {
+            informationSeen = ringDiscovery.awaitInformation(Duration.ofSeconds(timeoutSeconds));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.atWarn().setMessage("Interrupted while awaiting Ring device information").log();
+            return false;
+        }
+        final long waitedSeconds = Duration.between(waitStart, Instant.now()).toSeconds();
+        if (informationSeen) {
+            log.atInfo().setMessage("Ring device information is available")
+                .addKeyValue("topic", ringDiscovery.getInformationTopic())
+                .addKeyValue("retained_only", ringDiscovery.isRetainedInformationOnly())
+                .addKeyValue("waited_seconds", waitedSeconds)
+                .log();
+            Metrics.getInstance().postMetric(RING_DISCOVERY_METRIC, Map.of("result", "received"));
+            return true;
+        }
+        log.atError().setMessage("No Ring device information after MQTT discovery")
+            .addKeyValue("timeout_seconds", timeoutSeconds)
+            .addKeyValue("waited_seconds", waitedSeconds)
+            .log();
+        Metrics.getInstance().postMetric(RING_DISCOVERY_METRIC, Map.of("result", "missing"));
+        raiseRingDiscoveryIncident(timeoutSeconds);
+        return false;
+    }
+
+    private static void awaitLateRingDeviceInformation() {
+        try {
+            if (RingDiscovery.getInstance().awaitInformation(LATE_RING_INFORMATION_TIMEOUT)) {
+                log.atInfo().setMessage("Ring device information arrived after the startup check")
+                    .addKeyValue("topic", RingDiscovery.getInstance().getInformationTopic())
+                    .log();
+                resolveRingDiscoveryIncident();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * Raises the PagerDuty incident for a silent Ring bridge. The dedup key is
+     * stable, so repeated restarts update a single incident instead of opening a
+     * new one every time.
+     */
+    static void raiseRingDiscoveryIncident(int timeoutSeconds) {
+        if (!isFeatureEnabled(FEATURE_FLAG_PAGER_DUTY_TICKETS)) {
+            log.atWarn().setMessage("Not raising PagerDuty event for missing Ring device information, disabled with feature flag")
+                .addKeyValue("feature_flag", FEATURE_FLAG_PAGER_DUTY_TICKETS)
+                .log();
+            return;
+        }
+        if (!ringDiscoveryIncidentRaised.compareAndSet(false, true)) {
+            log.atDebug().setMessage("PagerDuty event for missing Ring device information was already raised")
+                .addKeyValue("pagerduty_dedup_key", getRingDiscoveryDedupKey())
+                .log();
+            return;
+        }
+        final Payload payload = Payload.Builder.newBuilder()
+            .setSummary(String.format("%s: no Ring device information after MQTT discovery", appName))
+            .setSource(deviceName)
+            .setSeverity(Severity.CRITICAL)
+            .setTimestamp(OffsetDateTime.now())
+            .build();
+        final TriggerIncident incident = TriggerIncident.TriggerIncidentBuilder
+            .newBuilder(pagerDutyRoutingKey, payload)
+            .setDedupKey(getRingDiscoveryDedupKey())
+            .build();
+        try {
+            final EventResult result = pagerDuty.trigger(incident);
+            log.atInfo().setMessage("Updated PagerDuty")
+                .addKeyValue("pagerduty_dedup_key", result.getDedupKey())
+                .addKeyValue("pagerduty_status", result.getStatus())
+                .addKeyValue("pagerduty_message", result.getMessage())
+                .addKeyValue("pagerduty_errors", result.getErrors())
+                .addKeyValue("timeout_seconds", timeoutSeconds)
+                .log();
+        } catch (NotifyEventException e) {
+            log.atError().setMessage("Cannot update PagerDuty").setCause(e).log();
+            Sentry.captureException(e);
+        }
+    }
+
+    static void resolveRingDiscoveryIncident() {
+        if (!ringDiscoveryIncidentRaised.compareAndSet(true, false)) {
+            return;
+        }
+        if (!isFeatureEnabled(FEATURE_FLAG_PAGER_DUTY_TICKETS)) {
+            log.atWarn().setMessage("Not resolving PagerDuty event for Ring device information, disabled with feature flag")
+                .addKeyValue("feature_flag", FEATURE_FLAG_PAGER_DUTY_TICKETS)
+                .log();
+            return;
+        }
+        final ResolveIncident resolve = ResolveIncident.ResolveIncidentBuilder
+            .newBuilder(pagerDutyRoutingKey, getRingDiscoveryDedupKey())
+            .build();
+        try {
+            final EventResult result = pagerDuty.resolve(resolve);
+            log.atInfo().setMessage("Updated PagerDuty")
+                .addKeyValue("pagerduty_dedup_key", result.getDedupKey())
+                .addKeyValue("pagerduty_status", result.getStatus())
+                .addKeyValue("pagerduty_message", result.getMessage())
+                .addKeyValue("pagerduty_errors", result.getErrors())
+                .log();
+        } catch (NotifyEventException e) {
+            log.atError().setMessage("Cannot update PagerDuty").setCause(e).log();
+            Sentry.captureException(e);
+        }
+    }
+
+    private static String getRingDiscoveryDedupKey() {
+        return String.format("%s-ring-discovery", appName);
     }
 }

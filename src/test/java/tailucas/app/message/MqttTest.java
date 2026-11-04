@@ -3,7 +3,9 @@ package tailucas.app.message;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
@@ -24,6 +26,8 @@ import org.springframework.context.ApplicationContext;
 import com.rabbitmq.client.Connection;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 
 import tailucas.app.TestStatics;
@@ -90,6 +94,15 @@ class MqttTest {
     void inverterTopicsAreIgnored() throws Exception {
         mqtt.messageArrived("inverter/grid/voltage", message("232.5"));
         verifyNoInteractions(srv);
+    }
+
+    @Test
+    void homeAssistantEmptyPayloadIsEntityRemoval() throws Exception {
+        // an empty discovery payload deletes the entity; ring-mqtt publishes one for
+        // every entity a device does not have
+        assertDoesNotThrow(() ->
+            mqtt.messageArrived("homeassistant/light/loc/device_audio/config", new MqttMessage(new byte[0])));
+        verifyNoInteractions(srv, deviceConfig);
     }
 
     @Test
@@ -209,7 +222,99 @@ class MqttTest {
         verify(srv).execute(captor.capture());
         final Object device = TestStatics.getField(captor.getValue(), "device");
         assertInstanceOf(Ring.class, device);
-        assertEquals(80, ((Ring) device).getBatteryLevel());
+        assertEquals(Integer.valueOf(80), ((Ring) device).getBatteryLevel());
+    }
+
+    @Test
+    void ringMessagePostsRingEventMetric() throws Exception {
+        mqtt.messageArrived("ring/component/alarm/device-123/motion/state", message("ON"));
+        final List<Map<String, String>> labelSets = TestStatics.metricLabelSets(Ring.RING_EVENT_METRIC);
+        assertTrue(labelSets.stream().anyMatch(labels ->
+            "device-123".equals(labels.get("ring_device_id"))
+                && "motion".equals(labels.get("ring_update_subject"))
+                && "ON".equals(labels.get("ring_state"))),
+            () -> String.format("No ring event metric for the MQTT message in %s", labelSets));
+    }
+
+    @Test
+    void cameraWirelessAttributesPostSignalGauge() throws Exception {
+        // exact topic and payload from the bridge
+        mqtt.messageArrived("ring/cfee52e0-fb85-46a7-868e-22436bef6123/camera/54e0191a1d8d/wireless/attributes",
+            message("{\"wirelessNetwork\":\"NotNo\",\"wirelessSignal\":-67}"));
+        final ArgumentCaptor<Event> captor = eventCaptor();
+        verify(srv).execute(captor.capture());
+        final Ring camera = (Ring) TestStatics.getField(captor.getValue(), "device");
+        assertEquals("NotNo", camera.getWirelessNetwork());
+        assertEquals(Integer.valueOf(-67), camera.getWirelessSignal());
+        final Double signal = TestStatics.metricValue(
+            Ring.RING_WIRELESS_SIGNAL_METRIC, "ring_device_id", "54e0191a1d8d");
+        assertNotNull(signal);
+        assertEquals(-67.0, signal.doubleValue());
+    }
+
+    @Test
+    void cameraBatteryAttributesPostBatteryGauges() throws Exception {
+        mqtt.messageArrived("ring/cfee52e0-fb85-46a7-868e-22436bef6123/camera/54e0191a1d8d/battery/attributes",
+            message("{\"batteryLevel\":100,\"batteryLife\":100}"));
+        final ArgumentCaptor<Event> captor = eventCaptor();
+        verify(srv).execute(captor.capture());
+        final Ring camera = (Ring) TestStatics.getField(captor.getValue(), "device");
+        assertEquals(Integer.valueOf(100), camera.getBatteryLevel());
+        assertEquals(Integer.valueOf(100), camera.getBatteryLife());
+        assertNotNull(TestStatics.metricValue(
+            Ring.RING_BATTERY_LEVEL_METRIC, "ring_device_id", "54e0191a1d8d"));
+        assertNotNull(TestStatics.metricValue(
+            Ring.RING_BATTERY_LIFE_METRIC, "ring_device_id", "54e0191a1d8d"));
+    }
+
+    @Test
+    void chimeInfoStateIsSubmitted() throws Exception {
+        // the chime domain routes through the same Ring device model
+        mqtt.messageArrived("ring/cfee52e0-fb85-46a7-868e-22436bef6123/chime/90486cbb3b2c/info/state",
+            message("{\"firmwareStatus\":\"Up To Date\",\"lastUpdate\":\"2026-11-04T06:11:01Z\","
+                + "\"wirelessNetwork\":\"No\",\"wirelessSignal\":-52}"));
+        final ArgumentCaptor<Event> captor = eventCaptor();
+        verify(srv).execute(captor.capture());
+        final Object device = TestStatics.getField(captor.getValue(), "device");
+        assertInstanceOf(Ring.class, device);
+        final Ring chime = (Ring) device;
+        assertEquals("chime", chime.getComponentName());
+        assertEquals("90486cbb3b2c", chime.getDeviceKey());
+        assertEquals("No", chime.getWirelessNetwork());
+        assertEquals(Integer.valueOf(-52), chime.getWirelessSignal());
+        final Double signal = TestStatics.metricValue(
+            Ring.RING_WIRELESS_SIGNAL_METRIC, "ring_device_id", "90486cbb3b2c");
+        assertNotNull(signal);
+        assertEquals(-52.0, signal.doubleValue());
+    }
+
+    @Test
+    void cameraInfoPostsHealthGauges() throws Exception {
+        // real payload shape from the bridge: cameras report battery level and
+        // wireless signal on info/state
+        mqtt.messageArrived("ring/cfee52e0-fb85-46a7-868e-22436bef6123/camera/54e0191a1d8d/info/state",
+            message("{\"batteryLevel\":100,\"batteryLife\":100,\"firmwareStatus\":\"Up to Date\","
+                + "\"lastUpdate\":\"2026-11-04T09:12:58Z\",\"wirelessNetwork\":\"NotNo\",\"wirelessSignal\":-67}"));
+        final Double batteryLevel = TestStatics.metricValue(
+            Ring.RING_BATTERY_LEVEL_METRIC, "ring_device_id", "54e0191a1d8d");
+        final Double wirelessSignal = TestStatics.metricValue(
+            Ring.RING_WIRELESS_SIGNAL_METRIC, "ring_device_id", "54e0191a1d8d");
+        assertNotNull(batteryLevel);
+        assertNotNull(wirelessSignal);
+        assertEquals(100.0, batteryLevel.doubleValue());
+        assertEquals(-67.0, wirelessSignal.doubleValue());
+    }
+
+    @Test
+    void ringCameraSnapshotImageIsSummarised() throws Exception {
+        // the bridge publishes a camera snapshot as raw image bytes on this topic
+        mqtt.messageArrived("ring/cfee52e0-fb85-46a7-868e-22436bef6123/camera/54e0191a1d8d/snapshot/image",
+            message("\ufffd".repeat(4096)));
+        final ArgumentCaptor<Event> captor = eventCaptor();
+        verify(srv).execute(captor.capture());
+        final Object device = TestStatics.getField(captor.getValue(), "device");
+        assertInstanceOf(Ring.class, device);
+        assertEquals(Ring.BINARY_PAYLOAD_STATE, ((Ring) device).getState());
     }
 
     @Test

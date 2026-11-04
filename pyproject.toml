@@ -11,6 +11,7 @@ requires-python = ">=3.14"
 dependencies = [
     "aiosqlite>=0.21.0",
     "awscli>=1.42.30",
+    "emoji>=2.16.0",
     "fastapi>=0.116.1",
     "flask>=3.1.2",
     "flask-compress>=1.18",

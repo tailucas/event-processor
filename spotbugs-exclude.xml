@@ -26,4 +26,10 @@
     <Bug pattern="EI_EXPOSE_REP"/>
     <Class name="tailucas.app.device.Ring"/>
   </Match>
+  <!-- Device snapshots are immutable records that carry an immutable states map
+       (Map.copyOf) for Jackson to serialise on GET /devices -->
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="tailucas.app.provider.DeviceState$DeviceSnapshot"/>
+  </Match>
 </FindBugsFilter>

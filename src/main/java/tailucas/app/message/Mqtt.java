@@ -29,6 +29,7 @@ import tailucas.app.device.Device.Type;
 import tailucas.app.device.config.HAConfig;
 import tailucas.app.provider.DeviceConfig;
 import tailucas.app.provider.Metrics;
+import tailucas.app.provider.RingDiscovery;
 import tailucas.app.device.Meter;
 import tailucas.app.device.Ring;
 import tailucas.app.device.Sensor;
@@ -61,7 +62,15 @@ public class Mqtt implements MqttCallback {
         final byte[] payload = message.getPayload();
         try {
             if (payload.length == 0) {
-                log.atWarn().setMessage("Message ignored, no payload").addKeyValue("topic", topic).log();
+                if (topic.startsWith("homeassistant/")) {
+                    // an empty discovery payload deletes the entity; ring-mqtt does
+                    // this for every entity a device does not have, on each sweep
+                    log.atDebug().setMessage("Discovery entity removed")
+                        .addKeyValue("topic", topic)
+                        .log();
+                } else {
+                    log.atWarn().setMessage("Message ignored, no payload").addKeyValue("topic", topic).log();
+                }
                 return;
             } else if (payload.length == 2 && new String(payload).equals("OK")) {
                 // catch heartbeat messages for topic matching
@@ -90,6 +99,10 @@ public class Mqtt implements MqttCallback {
                         .log();
                 }
             } else if (topic.startsWith("ring/")) {
+                // record first contact separately from event processing: a silent
+                // Ring bridge publishes nothing, which is otherwise indistinguishable
+                // from a quiet one
+                RingDiscovery.getInstance().markRingInformation(topic, message.isRetained());
                 Ring ringDevice = null;
                 String traceparent = null;
                 String baggage = null;
@@ -118,6 +131,10 @@ public class Mqtt implements MqttCallback {
                 }
                 if (ringDevice != null) {
                     log.atDebug().setMessage("Ring state").addKeyValue("ring_state", String.valueOf(ringDevice)).log();
+                    // every Ring message is reported (INFO log + ring_event metric)
+                    // so Ring behaviour is observable before any config or trigger
+                    // rules are applied
+                    ringDevice.reportEvent();
                     final Event event = new Event(rabbitMqConnection, topic, ringDevice);
                     applyTraceContext(event, traceparent, baggage);
                     srv.execute(event);

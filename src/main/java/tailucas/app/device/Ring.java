@@ -2,13 +2,17 @@ package tailucas.app.device;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.text.WordUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.spi.LoggingEventBuilder;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -16,12 +20,15 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import tailucas.app.device.config.HAConfig;
 import tailucas.app.device.config.InputConfig;
 import tailucas.app.provider.DeviceConfig;
+import tailucas.app.provider.DeviceState;
+import tailucas.app.provider.Metrics;
 
 public class Ring implements Generic {
 
     public enum TriggerSubjects {
         ALARM, // pending, disarmed
         CONTACT,
+        DING, // doorbell press, published by cameras
         MOTION,
         FIRE,
         POLICE,
@@ -32,6 +39,7 @@ public class Ring implements Generic {
     protected static final Map<String, TriggerSubjects> triggers = Map.of(
         TriggerSubjects.ALARM.name().toLowerCase(Locale.ROOT), TriggerSubjects.ALARM,
         TriggerSubjects.CONTACT.name().toLowerCase(Locale.ROOT), TriggerSubjects.CONTACT,
+        TriggerSubjects.DING.name().toLowerCase(Locale.ROOT), TriggerSubjects.DING,
         TriggerSubjects.MOTION.name().toLowerCase(Locale.ROOT), TriggerSubjects.MOTION,
         TriggerSubjects.FIRE.name().toLowerCase(Locale.ROOT), TriggerSubjects.FIRE,
         TriggerSubjects.POLICE.name().toLowerCase(Locale.ROOT), TriggerSubjects.POLICE,
@@ -58,6 +66,59 @@ public class Ring implements Generic {
     @JsonIgnore
     private static final Logger log = LoggerFactory.getLogger(Ring.class);
 
+    /** Prometheus counter incremented once per inbound Ring MQTT message. */
+    @JsonIgnore
+    public static final String RING_EVENT_METRIC = "ring_event";
+
+    /**
+     * Placeholder for context a message shape does not carry. The Prometheus
+     * sanitizer rejects empty label values, and a counter's label set is fixed
+     * when it registers, so every ring event uses this instead of an absent key.
+     */
+    @JsonIgnore
+    static final String UNKNOWN_TAG_VALUE = "unknown";
+
+    /**
+     * Longest payload text kept as state, and longest value accepted as a metric
+     * label or log field. Ring publishes camera snapshots as raw image bytes, and
+     * a single unbounded label would poison the metric store and the log.
+     */
+    @JsonIgnore
+    static final int MAX_PAYLOAD_TEXT_CHARS = 64;
+
+    /**
+     * State reported instead of an oversized payload. Constant so that repeated
+     * camera snapshots reuse one metric series instead of creating one per size.
+     */
+    @JsonIgnore
+    public static final String BINARY_PAYLOAD_STATE = "binary_payload";
+
+    /** Gauge for the battery percentage a device reports (0-100). */
+    @JsonIgnore
+    public static final String RING_BATTERY_LEVEL_METRIC = "ring_battery_level";
+
+    /** Gauge for the wireless signal strength a camera or chime reports (dBm). */
+    @JsonIgnore
+    public static final String RING_WIRELESS_SIGNAL_METRIC = "ring_wireless_signal";
+
+    /**
+     * Gauge for the battery health a battery-powered device reports per slot
+     * (0-100), labelled {@code slot}. Distinct from {@link #RING_BATTERY_LEVEL_METRIC},
+     * which is the charge percentage.
+     */
+    @JsonIgnore
+    public static final String RING_BATTERY_LIFE_METRIC = "ring_battery_life";
+
+    /**
+     * Update types that never describe device state: {@code image} carries a
+     * camera snapshot and {@code command} is an inbound instruction. Neither is
+     * an unmapped topic worth warning about.
+     */
+    @JsonIgnore
+    private static final Set<String> nonEventUpdateTypes = Set.of("image", "command");
+
+    private static final Metrics metrics = Metrics.getInstance();
+
     // inconsistent casing
     @JsonProperty("ArmedBy")
     private String armedBy;
@@ -73,8 +134,12 @@ public class Ring implements Generic {
     private String alarmClearedTime;
     private String auxBatteryLevel;
     private String auxBatteryStatus;
-    private int batteryLevel;
+    /** Absent for mains-powered devices, so it must not default to a percentage. */
+    private Integer batteryLevel;
     private String batteryStatus;
+    /** Battery health per slot; ring-mqtt also publishes this as batteryLife/batteryLife2. */
+    private Integer batteryLife;
+    private Integer batteryLife2;
     private float brightness;
     private String chirps;
     private String commStatus;
@@ -94,6 +159,10 @@ public class Ring implements Generic {
     private String tamperStatus;
     private String targetState;
     private float volume;
+    /** Reported by cameras and chimes only, in dBm (negative). */
+    private Integer wirelessSignal;
+    /** Reported by cameras and chimes only. */
+    private String wirelessNetwork;
     @JsonIgnore
     private String componentId;
     @JsonIgnore
@@ -155,7 +224,149 @@ public class Ring implements Generic {
         } else {
             throw new AssertionError(String.format("%s topic has unexpected elements.", mqttTopic));
         }
-        state = mqttPayload;
+        state = summarizePayload(mqttPayload);
+    }
+    /**
+     * Keeps a payload usable as state. Ring publishes camera snapshots as raw
+     * image bytes on {@code <camera>/snapshot/image}, which would otherwise be
+     * copied verbatim into logs, spans and metric labels. The replacement is a
+     * constant, not a size, so repeated snapshots cannot create new metric series.
+     */
+    @JsonIgnore
+    private static String summarizePayload(String mqttPayload) {
+        if (mqttPayload == null || mqttPayload.length() <= MAX_PAYLOAD_TEXT_CHARS) {
+            return mqttPayload;
+        }
+        return BINARY_PAYLOAD_STATE;
+    }
+    /**
+     * Event context as carried by the MQTT message stream: the topic parts that
+     * identify the Ring location, entity and device, plus the payload state.
+     * Every key is always present because a Prometheus counter's label set is
+     * fixed when it is registered; context a message does not carry is reported
+     * as {@link #UNKNOWN_TAG_VALUE}.
+     */
+    @JsonIgnore
+    public Map<String, String> getEventTags() {
+        final Map<String, String> eventTags = new LinkedHashMap<>();
+        eventTags.put("ring_component_id", tagValue(componentId));
+        eventTags.put("ring_component_name", tagValue(componentName));
+        eventTags.put("ring_device_id", tagValue(deviceId));
+        eventTags.put("ring_update_type", tagValue(updateType));
+        eventTags.put("ring_update_subject", tagValue(updateSubject));
+        eventTags.put("ring_state", tagValue(state));
+        eventTags.put("ring_message_type", tagValue(messageType));
+        return eventTags;
+    }
+    /**
+     * True when a message carries something worth seeing in normal operation: a
+     * state change of a trigger-capable entity, or a device becoming unavailable.
+     * Ring republishes {@code status online} for every device on each refresh
+     * sweep, so a healthy availability heartbeat is not an operational event;
+     * losing availability is. Device telemetry and attribute dumps repeat on the
+     * same sweeps, so they are logged at DEBUG while still counted by
+     * {@link #RING_EVENT_METRIC}.
+     */
+    @JsonIgnore
+    public boolean isOperationalEvent() {
+        if ("status".equals(updateType)) {
+            return !"online".equalsIgnoreCase(state);
+        }
+        return "state".equals(updateType) && updateSubject != null && triggers.containsKey(updateSubject);
+    }
+    /**
+     * Reports one inbound Ring MQTT message: a structured record plus a distinct
+     * increment of the {@code ring_event} counter, so every Ring event is visible
+     * whether or not it ends up triggering an output.
+     */
+    @JsonIgnore
+    public void reportEvent() {
+        final Map<String, String> eventTags = getEventTags();
+        final LoggingEventBuilder eventLog = (isOperationalEvent() ? log.atInfo() : log.atDebug())
+            .setMessage("Ring event")
+            .addKeyValue("ring_topic", tagValue(mqttTopic));
+        eventTags.forEach(eventLog::addKeyValue);
+        eventLog.log();
+        metrics.postMetric(RING_EVENT_METRIC, eventTags);
+        postHealthMetrics();
+        // keep the per-device view current for GET /devices and the Telegram /ring
+        // command; this is a single map merge on the MQTT callback thread
+        DeviceState.getInstance().record(this);
+    }
+    /**
+     * Posts the health values Ring reports alongside device data, so battery drain
+     * and link quality can be tracked and alerted on without parsing logs.
+     *
+     * <p>Ring spreads these across topics ({@code info/state} for every device,
+     * {@code battery/attributes} on sensors, {@code wireless/attributes} on
+     * cameras and chimes) and omits the fields a device does not have, so each
+     * value is posted on its own and only when the message carried it.
+     */
+    @JsonIgnore
+    private void postHealthMetrics() {
+        final Map<String, String> healthTags = getHealthTags();
+        if (batteryLevel != null) {
+            metrics.postMetric(RING_BATTERY_LEVEL_METRIC, Double.valueOf(batteryLevel.doubleValue()), healthTags);
+        }
+        postBatteryLife("1", batteryLife);
+        postBatteryLife("2", batteryLife2);
+        if (wirelessSignal != null) {
+            metrics.postMetric(RING_WIRELESS_SIGNAL_METRIC, Double.valueOf(wirelessSignal.doubleValue()), healthTags);
+        }
+    }
+    /**
+     * Publishes battery health for one slot. Ring reports 0 for a slot with no
+     * battery fitted, which must not look like a flat battery.
+     */
+    @JsonIgnore
+    private void postBatteryLife(String slot, Integer value) {
+        if (value == null || value.intValue() <= 0) {
+            return;
+        }
+        final Map<String, String> batteryLifeTags = getHealthTags();
+        batteryLifeTags.put("slot", slot);
+        metrics.postMetric(RING_BATTERY_LIFE_METRIC, Double.valueOf(value.doubleValue()), batteryLifeTags);
+    }
+    @JsonIgnore
+    private Map<String, String> getHealthTags() {
+        // input_label matches the event/triggered counters, so health joins to
+        // activity per device without a lookup table. Discovery is read without
+        // the "No discovery information" WARN, which would otherwise repeat for
+        // every message; the event path already reports a missing config once.
+        final Map<String, String> healthTags = new LinkedHashMap<>();
+        healthTags.put("input_label", tagValue(getDiscoveredDeviceLabel()));
+        healthTags.put("ring_device_id", tagValue(deviceId));
+        healthTags.put("ring_component_name", tagValue(componentName));
+        return healthTags;
+    }
+    /**
+     * Discovery information already cached for this device, or null when the device
+     * has not been discovered. Unlike {@link #getConfig()} this never logs: it is
+     * used on the per-message path, where a missing config must not repeat a
+     * warning for every message.
+     */
+    @JsonIgnore
+    public HAConfig getDiscoveredConfig() {
+        final HAConfig discovered = haConfig != null ? haConfig : DeviceConfig.getInstance().getHaConfig(this);
+        if (discovered == null || discovered.getDevice() == null) {
+            return null;
+        }
+        return discovered;
+    }
+    @JsonIgnore
+    private String getDiscoveredDeviceLabel() {
+        final HAConfig discovered = getDiscoveredConfig();
+        return discovered == null ? null : discovered.getDevice().getName();
+    }
+    @JsonIgnore
+    private static String tagValue(String value) {
+        if (StringUtils.isEmpty(value)) {
+            return UNKNOWN_TAG_VALUE;
+        }
+        if (value.length() > MAX_PAYLOAD_TEXT_CHARS) {
+            return value.substring(0, MAX_PAYLOAD_TEXT_CHARS);
+        }
+        return value;
     }
     @JsonIgnore
     public String getTopicDescription() {
@@ -262,8 +473,12 @@ public class Ring implements Generic {
                 break;
             case "status":
                 statusUpdate = true;
-                log.atInfo().setMessage("Status update")
+                // 'online' is republished for every device on each sweep, so only a
+                // change away from available is worth an operational record
+                final LoggingEventBuilder statusLog = isOperationalEvent() ? log.atInfo() : log.atDebug();
+                statusLog.setMessage("Status update")
                     .addKeyValue("subject", updateSubjectDescription)
+                    .addKeyValue("ring_device_id", StringUtils.defaultString(deviceId))
                     .addKeyValue("state", state)
                     .log();
                 break;
@@ -275,8 +490,14 @@ public class Ring implements Generic {
                     case "info":
                         statusUpdate = true;
                         StringBuilder sb = new StringBuilder();
-                        if (batteryStatus != null) {
-                            sb.append(String.format(" Battery Level is %s%% (%s).", getBatteryLevel(), getBatteryStatus()));
+                        // cameras report a charge level without a battery status
+                        if (batteryLevel != null || batteryStatus != null) {
+                            sb.append(String.format(" Battery Level is %s%% (%s).",
+                                getBatteryLevel() == null ? "unknown" : getBatteryLevel(),
+                                getBatteryStatus() == null ? "unknown" : getBatteryStatus()));
+                        }
+                        if (batteryLife != null) {
+                            sb.append(String.format(" Battery life is %s%%.", getBatteryLife()));
                         }
                         if (commStatus != null && linkQuality != null) {
                             sb.append(String.format(" Link quality is %s (%s).", getLinkQuality(), getCommStatus()));
@@ -284,9 +505,18 @@ public class Ring implements Generic {
                         if (tamperStatus != null) {
                             sb.append(String.format(" Tamper status is %s.", getTamperStatus()));
                         }
+                        // cameras and chimes report no battery, comm or tamper state,
+                        // so without these their health update would be empty
+                        if (wirelessNetwork != null) {
+                            sb.append(String.format(" Wireless network is %s.", getWirelessNetwork()));
+                        }
+                        if (wirelessSignal != null) {
+                            sb.append(String.format(" Wireless signal is %s dBm.", getWirelessSignal()));
+                        }
                         if (sb.length() > 0) {
-                            log.atInfo().setMessage("Health update")
+                            log.atDebug().setMessage("Health update")
                                 .addKeyValue("subject", updateSubjectDescription)
+                                .addKeyValue("ring_device_id", StringUtils.defaultString(deviceId))
                                 .addKeyValue("health", sb.toString())
                                 .log();
                         }
@@ -296,13 +526,24 @@ public class Ring implements Generic {
                 }
                 break;
             default:
-                log.atWarn().setMessage("Unmapped update type")
-                    .addKeyValue("update_type", updateType)
-                    .addKeyValue("device", toString())
-                    .log();
+                logUnmappedUpdateType();
                 break;
         }
         return statusUpdate;
+    }
+    /**
+     * Logs an update type that neither the trigger nor the heartbeat logic maps.
+     * Known non-event topics (camera snapshots, inbound commands) are routine, so
+     * they are logged at DEBUG and only an unrecognised type is a WARNING.
+     */
+    @JsonIgnore
+    private void logUnmappedUpdateType() {
+        final LoggingEventBuilder unmappedLog = nonEventUpdateTypes.contains(updateType) ? log.atDebug() : log.atWarn();
+        unmappedLog.setMessage("Unmapped update type")
+            .addKeyValue("update_type", StringUtils.defaultString(updateType))
+            .addKeyValue("ring_update_subject", StringUtils.defaultString(updateSubject))
+            .addKeyValue("ring_device_id", StringUtils.defaultString(deviceId))
+            .log();
     }
     @JsonIgnore
     @Override
@@ -328,26 +569,36 @@ public class Ring implements Generic {
                         break;
                     default:
                         if (state == null) {
-                            log.atWarn().setMessage("No state information").addKeyValue("subject", updateSubjectDescription).log();
+                            log.atDebug().setMessage("No state information")
+                                .addKeyValue("subject", updateSubjectDescription)
+                                .addKeyValue("ring_device_id", StringUtils.defaultString(deviceId))
+                                .addKeyValue("ring_update_type", updateType)
+                                .log();
                             break;
                         }
                         if (triggers.containsKey(updateSubject)) {
                             if (!nonTriggerStates.containsKey(state.toUpperCase(Locale.ROOT))) {
                                 log.atInfo().setMessage("Subject is in a trigger state")
                                     .addKeyValue("subject", updateSubjectDescription)
+                                    .addKeyValue("ring_device_id", StringUtils.defaultString(deviceId))
+                                    .addKeyValue("ring_update_type", updateType)
                                     .addKeyValue("state", state)
                                     .log();
                                 triggerOutput = true;
                                 triggerStateDescription = String.format("%s is %s", updateSubjectDescription, state);
                             } else {
-                                log.atWarn().setMessage("Subject is not in a trigger state")
+                                log.atDebug().setMessage("Subject is not in a trigger state")
                                     .addKeyValue("subject", updateSubjectDescription)
+                                    .addKeyValue("ring_device_id", StringUtils.defaultString(deviceId))
+                                    .addKeyValue("ring_update_type", updateType)
                                     .addKeyValue("state", state)
                                     .log();
                             }
                         } else {
-                            log.atWarn().setMessage("Subject is not a trigger")
+                            log.atDebug().setMessage("Subject is not a trigger")
                                 .addKeyValue("subject", updateSubjectDescription)
+                                .addKeyValue("ring_device_id", StringUtils.defaultString(deviceId))
+                                .addKeyValue("ring_update_type", updateType)
                                 .addKeyValue("state", state)
                                 .log();
                         }
@@ -355,10 +606,7 @@ public class Ring implements Generic {
                 }
                 break;
             default:
-                log.atWarn().setMessage("Unmapped update type")
-                    .addKeyValue("update_type", updateType)
-                    .addKeyValue("device", toString())
-                    .log();
+                logUnmappedUpdateType();
                 break;
         }
         return triggerOutput;
@@ -405,8 +653,20 @@ public class Ring implements Generic {
     public String getAuxBatteryStatus() {
         return auxBatteryStatus;
     }
-    public int getBatteryLevel() {
+    public Integer getBatteryLevel() {
         return batteryLevel;
+    }
+    public Integer getWirelessSignal() {
+        return wirelessSignal;
+    }
+    public String getWirelessNetwork() {
+        return wirelessNetwork;
+    }
+    public Integer getBatteryLife() {
+        return batteryLife;
+    }
+    public Integer getBatteryLife2() {
+        return batteryLife2;
     }
     public String getBatteryStatus() {
         return batteryStatus;
@@ -511,7 +771,9 @@ public class Ring implements Generic {
                 + lastDisarmedTime + ", lastCommTime=" + lastCommTime + ", lastUpdate=" + lastUpdate + ", linkQuality="
                 + linkQuality + ", maxVolume=" + maxVolume + ", powerSave=" + powerSave + ", serialNumber="
                 + serialNumber + ", tamperStatus=" + tamperStatus + ", targetState=" + targetState + ", volume="
-                + volume + ", componentId=" + componentId + ", componentName=" + componentName + ", deviceId="
+                + volume + ", wirelessSignal=" + wirelessSignal + ", wirelessNetwork=" + wirelessNetwork
+                + ", batteryLife=" + batteryLife + ", batteryLife2=" + batteryLife2
+                + ", componentId=" + componentId + ", componentName=" + componentName + ", deviceId="
                 + deviceId + ", mqttTopic=" + mqttTopic + ", state=" + state + ", updateType=" + updateType
                 + ", updateSubject=" + updateSubject + ", haConfig=" + haConfig + ", triggerStateDescription="
                 + triggerStateDescription + "]";

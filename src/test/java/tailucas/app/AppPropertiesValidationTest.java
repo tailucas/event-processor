@@ -65,6 +65,22 @@ class AppPropertiesValidationTest {
     }
 
     @Test
+    void ringDiscoveryCheckIsDisabledByDefault() {
+        contextRunner.withPropertyValues(VALID_PROPERTIES).run(context -> {
+            final AppProperties props = context.getBean(AppProperties.class);
+            assertEquals(0, props.getRingDiscoveryTimeoutSeconds());
+            assertThat(props.isRingDiscoveryRequired()).isFalse();
+        });
+    }
+
+    @Test
+    void ringDiscoveryTimeoutAboveMaximumFailsValidation() {
+        contextRunner.withPropertyValues(VALID_PROPERTIES)
+            .withPropertyValues("app.ring-discovery-timeout-seconds=3601")
+            .run(context -> assertNotNull(context.getStartupFailure()));
+    }
+
+    @Test
     void expiryBoundariesAreAccepted() {
         contextRunner.withPropertyValues(VALID_PROPERTIES)
             .withPropertyValues("app.message-control-expiry-ms=30000")

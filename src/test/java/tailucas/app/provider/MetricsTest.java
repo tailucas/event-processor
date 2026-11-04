@@ -1,5 +1,6 @@
 package tailucas.app.provider;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -72,6 +73,13 @@ class MetricsTest {
         // leaves these label values untouched)
         final Map<String, String> tags = metrics.postMetric("pass_through_metric", Map.of("weird/tag", "a.b"));
         assertEquals("a.b", tags.get("weird/tag"));
+    }
+
+    @Test
+    void invalidTagValueIsContained() {
+        // tag values are sanitized as label names, so a caller cannot express an
+        // empty value; that must not escape and break the caller's code path
+        assertDoesNotThrow(() -> metrics.postMetric("invalid_tag_value", Map.of("empty", "")));
     }
 
     @Test

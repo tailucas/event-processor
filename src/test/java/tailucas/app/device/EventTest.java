@@ -109,6 +109,20 @@ class EventTest {
     }
 
     @Test
+    void unconfiguredDeviceIsReportedOnceAndTriggersNothing() throws Exception {
+        // cameras and chimes publish without an input_config row; the device reports
+        // on every sweep, so the "no configuration" record must not repeat
+        when(deviceConfig.fetchInputDeviceConfig(DEVICE_KEY)).thenReturn(null);
+
+        new Event(connection, SOURCE, detectorInState("on")).run();
+        new Event(connection, SOURCE, detectorInState("on")).run();
+
+        assertTrue(TestStatics.unconfiguredDevices().contains(DEVICE_KEY));
+        assertEquals(1, TestStatics.unconfiguredDevices().size());
+        verifyNoInteractions(channel);
+    }
+
+    @Test
     void missingDeviceIsNoOp() {
         new Event(connection, SOURCE, "OK").run();
         verifyNoInteractions(deviceConfig);

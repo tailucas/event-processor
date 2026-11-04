@@ -2,10 +2,19 @@ package tailucas.app;
 
 import java.lang.reflect.Field;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.Stack;
 
+import io.prometheus.metrics.model.registry.PrometheusRegistry;
+import io.prometheus.metrics.model.snapshots.CounterSnapshot;
+import io.prometheus.metrics.model.snapshots.DataPointSnapshot;
+import io.prometheus.metrics.model.snapshots.GaugeSnapshot;
+import io.prometheus.metrics.model.snapshots.Labels;
+import io.prometheus.metrics.model.snapshots.MetricSnapshot;
 import tailucas.app.device.Event;
 import tailucas.app.device.TriggerHistory;
 import tailucas.app.device.config.HAConfig;
@@ -39,6 +48,12 @@ public final class TestStatics {
             clearTriggerHistory((TriggerHistory) getStaticField(Event.class, fieldName));
         }
         escalations().clear();
+        unconfiguredDevices().clear();
+    }
+
+    @SuppressWarnings("unchecked")
+    public static Set<String> unconfiguredDevices() {
+        return (Set<String>) getStaticField(Event.class, "unconfiguredDeviceKeys");
     }
 
     @SuppressWarnings("unchecked")
@@ -74,6 +89,57 @@ public final class TestStatics {
         setField(haDevice, "mdl", "Alarm");
         setField(haConfig, "device", haDevice);
         return haConfig;
+    }
+
+    /**
+     * Scrapes the shared Prometheus registry and returns the label set of every
+     * data point of the named metric, as label name/value pairs. This asserts on
+     * what actually leaves the process rather than on internal counter state.
+     */
+    public static List<Map<String, String>> metricLabelSets(String metricName) {
+        final List<Map<String, String>> labelSets = new ArrayList<>();
+        for (MetricSnapshot snapshot : PrometheusRegistry.defaultRegistry.scrape()) {
+            if (!snapshot.getMetadata().getName().equals(metricName)) {
+                continue;
+            }
+            for (DataPointSnapshot dataPoint : snapshot.getDataPoints()) {
+                labelSets.add(labelsOf(dataPoint));
+            }
+        }
+        return labelSets;
+    }
+
+    /**
+     * Returns the value of the named metric's data point carrying the given label,
+     * or null when no such series has been observed. Handles counters and gauges.
+     */
+    public static Double metricValue(String metricName, String labelName, String labelValue) {
+        for (MetricSnapshot snapshot : PrometheusRegistry.defaultRegistry.scrape()) {
+            if (!snapshot.getMetadata().getName().equals(metricName)) {
+                continue;
+            }
+            for (DataPointSnapshot dataPoint : snapshot.getDataPoints()) {
+                if (!labelValue.equals(dataPoint.getLabels().get(labelName))) {
+                    continue;
+                }
+                if (dataPoint instanceof CounterSnapshot.CounterDataPointSnapshot counter) {
+                    return counter.getValue();
+                }
+                if (dataPoint instanceof GaugeSnapshot.GaugeDataPointSnapshot gauge) {
+                    return gauge.getValue();
+                }
+            }
+        }
+        return null;
+    }
+
+    private static Map<String, String> labelsOf(DataPointSnapshot dataPoint) {
+        final Labels dataPointLabels = dataPoint.getLabels();
+        final Map<String, String> labels = new LinkedHashMap<>();
+        for (int i = 0; i < dataPointLabels.size(); i++) {
+            labels.put(dataPointLabels.getName(i), dataPointLabels.getValue(i));
+        }
+        return labels;
     }
 
     public static Object getStaticField(Class<?> clazz, String fieldName) {

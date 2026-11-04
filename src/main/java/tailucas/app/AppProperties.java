@@ -21,6 +21,12 @@ public class AppProperties {
     private String messageControlExchangeName;
     @NotBlank
     private String messageEventExchangeName;
+    /** Seconds to wait for Ring device information after MQTT discovery; zero disables the check. */
+    @Min(0)
+    @Max(3600)
+    private int ringDiscoveryTimeoutSeconds;
+    /** When true, the application exits if the Ring discovery check fails. */
+    private boolean ringDiscoveryRequired;
 
     public String getProjectName() {
         return projectName;
@@ -45,5 +51,17 @@ public class AppProperties {
     }
     public void setMessageEventExchangeName(String messageEventExchangeName) {
         this.messageEventExchangeName = messageEventExchangeName;
+    }
+    public int getRingDiscoveryTimeoutSeconds() {
+        return ringDiscoveryTimeoutSeconds;
+    }
+    public void setRingDiscoveryTimeoutSeconds(int ringDiscoveryTimeoutSeconds) {
+        this.ringDiscoveryTimeoutSeconds = ringDiscoveryTimeoutSeconds;
+    }
+    public boolean isRingDiscoveryRequired() {
+        return ringDiscoveryRequired;
+    }
+    public void setRingDiscoveryRequired(boolean ringDiscoveryRequired) {
+        this.ringDiscoveryRequired = ringDiscoveryRequired;
     }
 }

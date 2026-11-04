@@ -54,6 +54,8 @@
     <app.message-control-expiry-ms>60000</app.message-control-expiry-ms>
     <app.message-event-exchange-name>home_automation</app.message-event-exchange-name>
     <app.message-control-exchange-name>home_automation_control</app.message-control-exchange-name>
+    <app.ring-discovery-timeout-seconds>120</app.ring-discovery-timeout-seconds>
+    <app.ring-discovery-required>false</app.ring-discovery-required>
     <sentry.environment>java</sentry.environment>
     <spring.threads.virtual.enabled>true</spring.threads.virtual.enabled>
     <spring.main.keep-alive>true</spring.main.keep-alive>

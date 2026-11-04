@@ -25,8 +25,8 @@ for configuration and event log UI.
   Keep the boundary clean: they communicate via the same RabbitMQ/ZMQ
   transports and shared configuration conventions, not shared code.
 - Sibling standards live in `build.md`, `config.md`, `container.md`, `mq.md`,
-  `observability.md`, and `logging.md` — defer to them, and refresh this file
-  as the templates evolve.
+  `observability.md`, `logging.md` and `telegram.md` — defer to them, and refresh
+  this file as the templates evolve.
 
 ## 2. Java (`src/`, `pom.xml`)
 

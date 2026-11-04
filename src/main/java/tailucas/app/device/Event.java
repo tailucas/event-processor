@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -68,6 +69,8 @@ public class Event implements Runnable {
     private static final TriggerHistory triggerOutputHistory = new TriggerHistory();
     private static final Metrics metrics = Metrics.getInstance();
     private static final Map<String, String> recentEscalations = new ConcurrentHashMap<>();
+    /** Device keys already reported as having no input configuration. */
+    private static final Set<String> unconfiguredDeviceKeys = ConcurrentHashMap.newKeySet();
 
     private static final TextMapGetter<Map<String, String>> PROPAGATION_GETTER = new TextMapGetter<>() {
         @Override
@@ -296,6 +299,25 @@ public class Event implements Runnable {
                     .addKeyValue("device_description", deviceDescription)
                     .addKeyValue("config", String.valueOf(deviceConfig))
                     .log();
+                if (deviceConfig == null) {
+                    // a device that is not an input (a camera or chime, or one that was
+                    // just paired) reports before anyone configures it; the trigger rules
+                    // below assume a configuration exists. Warn once per device so an
+                    // intentionally unconfigured device cannot flood the log.
+                    if (unconfiguredDeviceKeys.add(deviceKey)) {
+                        log.atWarn().setMessage("Device has no input configuration")
+                            .addKeyValue("device_description", deviceDescription)
+                            .addKeyValue("device_key", deviceKey)
+                            .addKeyValue("source", source)
+                            .log();
+                    } else {
+                        log.atDebug().setMessage("Device has no input configuration")
+                            .addKeyValue("device_description", deviceDescription)
+                            .addKeyValue("device_key", deviceKey)
+                            .log();
+                    }
+                    return;
+                }
                 if (!device.wouldTriggerOutput(deviceConfig)) {
                     // reset any trigger history
                     triggerLatchHistory.unTriggered(deviceKey);

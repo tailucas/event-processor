@@ -33,6 +33,8 @@ import org.springframework.context.ConfigurableApplicationContext;
 
 import com.github.dikhan.pagerduty.client.events.PagerDutyEventsClient;
 
+import tailucas.app.device.Ring;
+import tailucas.app.provider.DeviceState;
 import tailucas.app.provider.OnePassword;
 
 /**
@@ -164,6 +166,20 @@ class EventProcessorIntegrationTest {
 
     @Test
     @Order(6)
+    void devicesEndpointServesTheLatestRingState() throws Exception {
+        // the web application's /ring command reads this endpoint
+        final Ring ring = new Ring();
+        ring.setMqttTopic("ring/location/alarm/device-abc/status", "online");
+        DeviceState.getInstance().record(ring);
+
+        final HttpResponse<String> response = get("/devices");
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).contains("device-abc");
+        assertThat(response.body()).contains("\"availability\":\"online\"");
+    }
+
+    @Test
+    @Order(7)
     void applicationStartsServesAndShutsDownGracefullyWithoutExternalServices() throws Exception {
         // boot a dedicated, self-managed context exactly as main() does, on a free port
         final ConfigurableApplicationContext appCtx =

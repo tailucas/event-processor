@@ -79,7 +79,19 @@ public class Metrics {
             throw new IllegalArgumentException("No metric name specified.");
         }
         final String metricName = PrometheusNaming.sanitizeMetricName(name);
-        final var metricTags = getNormalizedMetricTags(tags);
+        final Map<String, String> metricTags;
+        try {
+            // tag values are sanitized as label names, so a tag a caller cannot
+            // express must not escape and break the code path that posts it
+            metricTags = getNormalizedMetricTags(tags);
+        } catch (RuntimeException e) {
+            log.atError().setMessage("Cannot create metric object")
+                .addKeyValue("metric_name", metricName)
+                .setCause(e)
+                .log();
+            Sentry.captureException(e);
+            return Map.of();
+        }
         final String[] metricTagKeys = metricTags.keySet().toArray(new String[metricTags.size()]);
         final String[] metricTagValues = metricTags.values().toArray(new String[metricTags.size()]);
         try {

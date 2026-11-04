@@ -53,6 +53,7 @@ source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },
     { name = "awscli" },
+    { name = "emoji" },
     { name = "fastapi" },
     { name = "flask" },
     { name = "flask-compress" },
@@ -82,6 +83,7 @@ dev = [
 requires-dist = [
     { name = "aiosqlite", specifier = ">=0.21.0" },
     { name = "awscli", specifier = ">=1.42.30" },
+    { name = "emoji", specifier = ">=2.16.0" },
     { name = "fastapi", specifier = ">=0.116.1" },
     { name = "flask", specifier = ">=3.1.2" },
     { name = "flask-compress", specifier = ">=1.18" },
@@ -468,6 +470,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/6b/5c/330ea8d383eb2ce973df34d1239b3b21e91cd8c865d21ff82902d952f91f/docutils-0.19.tar.gz", hash = "sha256:33995a6753c30b7f577febfc2c50411fec6aac7f7ffeb7c4cfe5991072dcf9e6", size = 2056383, upload-time = "2022-07-05T20:17:31.045Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/93/69/e391bd51bc08ed9141ecd899a0ddb61ab6465309f1eb470905c0c8868081/docutils-0.19-py3-none-any.whl", hash = "sha256:5e1de4d849fee02c63b040a4a3fd567f4ab104defd8a5511fbbc24a8a017efbc", size = 570472, upload-time = "2022-07-05T20:17:26.388Z" },
+]
+
+[[package]]
+name = "emoji"
+version = "2.16.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/34/01/a25a9c13e2f8945d06b219e08e88a5dd8a504ad1a79f872f25d6814f498c/emoji-2.16.0.tar.gz", hash = "sha256:ff9e9b1c48389ef78ed1787e7693c555e84e6bb9bac16be1fd65e1616dbf80c8", size = 617905, upload-time = "2026-09-16T19:47:57.051Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fd/8a/75e3177f374877b19dd3112820b071836ad1100f9f58424630b4783519bc/emoji-2.16.0-py3-none-any.whl", hash = "sha256:c4230d80640def9071599ff56b1b5950fe13a2a94c0da98c5deab12431b24330", size = 610912, upload-time = "2026-09-16T19:47:55.507Z" },
 ]
 
 [[package]]

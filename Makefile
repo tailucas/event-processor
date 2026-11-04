@@ -53,9 +53,9 @@ datadir: data/ ## Set up ./data/ (alias)
 
 python: .venv ## Set up the Python virtual environment (alias)
 
-lint: .venv ## Run ruff and mypy on app/__main__.py
-	uv run ruff check app/__main__.py
-	uv run mypy app/__main__.py
+lint: .venv ## Run ruff and mypy on the app package
+	uv run ruff check app/
+	uv run mypy app/
 
 $(JAVA_JAR): pom.xml $(JAVA_SOURCES)
 	@java -version
