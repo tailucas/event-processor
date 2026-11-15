@@ -194,8 +194,13 @@ Which images reach the chat is decided by `app/telegram_filter.include_image()` 
 tested in `tests/test_telegram_filter.py`):
 
 - `[telegram] image_send_only_with_people` (default **true**) gates *unattended*
-  camera frames: they are frequent and only interesting when the snapshot
-  processor's model annotated `person` or `face` in the text.
+  camera frames: they are frequent and only interesting when someone is in them.
+  `PERSON_ANNOTATIONS` holds **both vocabularies** — the model's labels (`person`,
+  `face`) and the archive's class token (`human`) — and the match is a substring
+  search over the composed text, never a position in a file name. A still that
+  already passed detection elsewhere arrives as "<camera> <n> human(s)." (its class
+  is relayed by the snapshot processor, see its `config.md`), so filtering on the
+  model's labels alone silently dropped the photo *and* the caption.
 - An image an input **explicitly sent** always passes. `Ring.getEventDetail()`
   reports `snapshot` for those, it travels in the device payload as `event_detail`,
   and `BotMessage.source` carries it. Do not weaken the flag for those — extend the

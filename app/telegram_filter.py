@@ -10,8 +10,13 @@ Pure functions only, so the policy is unit tested without booting the applicatio
 #: "Front Gate snapshot (14:02)".
 SNAPSHOT_SOURCE = "snapshot"
 
-#: Annotations the mDash snapshot processor appends when its model sees someone.
-PERSON_ANNOTATIONS = ("person", "face")
+#: Annotations that mean "someone is in this image". Both vocabularies are accepted:
+#: the detectors' own labels (``person``, ``face``) and the archive's class token
+#: (``human``). The snapshot processor spells a person ``human`` in a detection
+#: artefact's file name and in a marker, and an image that already passed detection
+#: elsewhere (camera-checker uploads ``detect_human_*``) reaches the caption in that
+#: spelling — so accepting only the model's labels silently dropped every such image.
+PERSON_ANNOTATIONS = ("person", "human", "face")
 
 
 def is_explicit_snapshot(source: str | None) -> bool:
@@ -26,6 +31,13 @@ def include_image(source: str | None, text: str, only_with_people: bool) -> bool
     *unattended* camera frames: they are frequent and only interesting when someone
     is in them. An image an input explicitly sent — a Ring snapshot wired to this
     output — is a deliberate notification and always passes.
+
+    The annotation is looked for *anywhere* in the composed text, never at a fixed
+    position: the snapshot processor writes "<camera> <n> person(s).", while an image
+    that already passed detection elsewhere arrives as "<camera> <n> human(s)." (its
+    own class token survives into the caption). Both spellings are in
+    ``PERSON_ANNOTATIONS``, so neither the wording nor the position of the class in a
+    file name decides delivery.
 
     A suppressed message is dropped whole: no photo and no text.
     """

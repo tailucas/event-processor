@@ -592,7 +592,11 @@ So the only steps are in the hub:
    the output's `trigger_interval` if snapshots should not be forwarded every time.
 2. **Nothing else.** The bot's `image_send_only_with_people` filter gates *unattended*
    camera frames (it exists for the snapshot processor's ML annotations), and a
-   filtered message is dropped whole — no photo and no text. An image an input
+   filtered message is dropped whole — no photo and no text. The annotation is looked
+   for anywhere in the caption, in either vocabulary (`person`, `face` from a model,
+   `human` from a still that already passed detection elsewhere, e.g. a
+   camera-checker `detect_human_…` upload), so no class has to sit at a particular
+   position in a file name. An image an input
    explicitly sent is exempt: `Ring.getEventDetail()` reports `snapshot` for these
    messages, which travels to the bot as `event_detail` and bypasses the filter
    (`app/telegram_filter.py`). The chat reads **"Front Gate snapshot (14:02)"** with
