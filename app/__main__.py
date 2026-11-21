@@ -72,6 +72,7 @@ from zmq.asyncio import Poller
 from zmq.error import Again, ZMQError
 
 from app.ring_report import format_ring_devices, split_message
+from app.schedule_time import normalize_schedule_time
 from app.telegram_filter import include_image as include_image_message
 from tailucas_pylib import APP_NAME, DEVICE_NAME, app_config, log, threads
 from tailucas_pylib.app import AppThread
@@ -1035,8 +1036,26 @@ def show_config():
                 device_config = OutputConfig.query.filter_by(device_key=saved_device_id).first()
             # sync up the device model for page load
             auto_schedule_enabled = bool(request.form.get("auto_schedule"))
-            auto_schedule_enable = request.form["auto_schedule_enable"]
-            auto_schedule_disable = request.form["auto_schedule_disable"]
+            try:
+                # a blank time means "no transition at this time", not an error
+                auto_schedule_enable = normalize_schedule_time(request.form["auto_schedule_enable"])
+                auto_schedule_disable = normalize_schedule_time(request.form["auto_schedule_disable"])
+            except ValueError:
+                log.warning(
+                    "Rejected invalid auto-schedule times",
+                    extra={
+                        "device_key": saved_device_id,
+                        "enable_at": request.form["auto_schedule_enable"],
+                        "disable_at": request.form["auto_schedule_disable"],
+                    },
+                )
+                flash(
+                    message="Schedule times must be 24-hour HH:MM; leave a time blank to skip that transition.",
+                    category="danger",
+                )
+                # keep what is stored; the page re-renders it for correction
+                auto_schedule_enable = device_config.auto_schedule_enable
+                auto_schedule_disable = device_config.auto_schedule_disable
             log.info(
                 "Saving auto-schedule configuration",
                 extra={
@@ -2459,22 +2478,42 @@ class AutoScheduler(AppThread):
                                 "enable_at": auto_schedule_enable,
                             },
                         )
-                        try:
-                            # install a new scedule
-                            self._schedule(
-                                device_key=device_key,
-                                device_label=device_label,
-                                schedule_time=auto_schedule_disable,
-                                device_state=False,
+                        scheduled = 0
+                        for schedule_time, device_state in (
+                            (auto_schedule_disable, False),
+                            (auto_schedule_enable, True),
+                        ):
+                            log_fields = {
+                                "device_label": device_label,
+                                "enabled": device_state,
+                                "schedule_time": schedule_time,
+                            }
+                            try:
+                                schedule_time = normalize_schedule_time(schedule_time)
+                            except ValueError:
+                                # configuration-derived; never an application error
+                                log.warning("Ignoring invalid auto-schedule time", extra=log_fields)
+                                continue
+                            if schedule_time is None:
+                                log.debug("Auto-schedule time not set", extra=log_fields)
+                                continue
+                            try:
+                                # install a new schedule
+                                self._schedule(
+                                    device_key=device_key,
+                                    device_label=device_label,
+                                    schedule_time=schedule_time,
+                                    device_state=device_state,
+                                )
+                            except ScheduleValueError:
+                                log.exception("Unable to schedule.", extra=log_fields)
+                                continue
+                            scheduled += 1
+                        if not scheduled:
+                            log.warning(
+                                "Auto-schedule enabled without scheduled times",
+                                extra={"device_label": device_label},
                             )
-                            self._schedule(
-                                device_key=device_key,
-                                device_label=device_label,
-                                schedule_time=auto_schedule_enable,
-                                device_state=True,
-                            )
-                        except ScheduleValueError:
-                            log.exception("Unable to schedule.")
                     else:
                         log.warning("Disabled auto-schedule", extra={"device_label": device_label})
                 # don't spin
