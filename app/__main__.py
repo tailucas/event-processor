@@ -74,6 +74,7 @@ from zmq.error import Again, ZMQError
 from app.ring_report import format_ring_devices, split_message
 from app.schedule_time import normalize_schedule_time
 from app.telegram_filter import include_image as include_image_message
+from app.telemetry_filter import EXCLUDED_ROUTES, excluded_route
 from tailucas_pylib import APP_NAME, DEVICE_NAME, app_config, log, threads
 from tailucas_pylib.app import AppThread
 from tailucas_pylib.creds import Creds
@@ -193,9 +194,18 @@ def set_sqlite_pragma_sync(dbapi_connection, connection_record):
     cursor.close()
 
 
-api_app = FastAPI()
+# FastAPI's built-in telemetry spans every request; exclude the high-frequency
+# internal routes so their traces do not drown the interesting ones. The policy
+# lives in app.telemetry_filter (pure, unit tested).
+api_app = FastAPI(telemetry={"exclude": excluded_route})
 api_app.state.startup_complete = False
 api_app.mount("/admin", WSGIMiddleware(flask_app))
+# One record at startup, not one per excluded request: the absent trace is
+# intentional, and this is where an operator finds out why.
+log.info(
+    "FastAPI telemetry route exclusions active",
+    extra={"excluded_routes": sorted(f"{method} {path}" for method, path in EXCLUDED_ROUTES)},
+)
 
 # Custom exception handler for validation errors
 from fastapi.exceptions import RequestValidationError  # noqa: E402

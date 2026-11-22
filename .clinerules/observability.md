@@ -60,6 +60,17 @@ and `src/main/java/tailucas/app/` (Java) are the canonical examples.
   Since `inject()` serializes the current context, baggage must be merged
   onto it explicitly before injecting — see `_inject_with_baggage()`.
   Verify propagation on the wire, not by reading the API signatures.
+- **Route-level noise control.** FastAPI auto-instruments every request (a
+  server span plus `fastapi.dependencies`/`endpoint`/`serialization` operation
+  spans), so one high-frequency internal route can dominate trace volume.
+  Filter it with `FastAPI(telemetry={"exclude": predicate})`, where the
+  predicate takes the ASGI scope and must match the method **and** the exact
+  path — matching the `/api` prefix would lose every other route. Keep the
+  policy in a pure module (`app/telemetry_filter.py`) so it is unit tested
+  without importing `app/__main__.py`. The exclusion is all-or-nothing for that
+  scope: no spans, no request metrics/logs, and no inbound `traceparent`
+  extraction, so reserve it for routes whose trace carries no diagnostic value
+  (`POST /api/device_info`, the device heartbeat).
 - **`Resource.create()` precedence (SDK ≥1.44):** explicitly passed
   attributes win over `OTEL_SERVICE_NAME`. Pass only
   `service.instance.id`; let the SDK's env detector supply `service.name`.
