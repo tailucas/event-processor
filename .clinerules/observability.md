@@ -70,7 +70,8 @@ and `src/main/java/tailucas/app/` (Java) are the canonical examples.
   without importing `app/__main__.py`. The exclusion is all-or-nothing for that
   scope: no spans, no request metrics/logs, and no inbound `traceparent`
   extraction, so reserve it for routes whose trace carries no diagnostic value
-  (`POST /api/device_info`, the device heartbeat).
+  (`POST /api/device_info`, the device heartbeat, and the `GET /api/*_config` /
+  `/api/output_link` / `/api/input_configs` device-config pulls).
 - **`Resource.create()` precedence (SDK ≥1.44):** explicitly passed
   attributes win over `OTEL_SERVICE_NAME`. Pass only
   `service.instance.id`; let the SDK's env detector supply `service.name`.
