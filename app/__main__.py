@@ -23,9 +23,7 @@ from flask_compress import Compress
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
 from flask_sqlalchemy import SQLAlchemy
 from httpx import ConnectError
-from opentelemetry import context as otel_context
 from opentelemetry import metrics as otel_metrics
-from opentelemetry import propagate
 from opentelemetry import trace as otel_trace
 from opentelemetry.metrics import Observation
 from opentelemetry.trace import SpanKind, StatusCode
@@ -87,8 +85,15 @@ from tailucas_pylib.device import Device
 from tailucas_pylib.flags import is_flag_enabled
 from tailucas_pylib.handler import exception_handler
 from tailucas_pylib.process import SignalHandler
-from tailucas_pylib.rabbit import ZMQListener
+from tailucas_pylib.rabbit import TracingZMQListener
 from tailucas_pylib.threads import bye, die, thread_nanny
+from tailucas_pylib.tracing import (
+    carrier_from_message,
+    extract_context,
+    has_remote_parent,
+    inject_into,
+    split_zmq_message,
+)
 from tailucas_pylib.zmq import URL_WORKER_APP, Closable, try_close, zmq_socket, zmq_sockets, zmq_term
 
 # Reduce Sentry noise
@@ -98,38 +103,8 @@ ignore_logger("asyncio")
 
 
 def otel_tracer():
-    """Module-level tracer accessor; safe to call after tailucas_pylib's setup_otel() runs."""
+    """Module-level tracer accessor; safe to call after tailucas_pylib's import-time provider setup."""
     return otel_trace.get_tracer(APP_NAME)
-
-
-def _extract_trace_context(event: dict) -> otel_context.Context:
-    """Extract W3C trace context from a ZMQ dict carrier (traceparent/baggage keys)."""
-    if "traceparent" not in event:
-        return otel_context.get_current()
-    carrier = {"traceparent": event["traceparent"]}
-    if "baggage" in event:
-        carrier["baggage"] = event["baggage"]
-    return propagate.extract(carrier)
-
-
-def _inject_trace_context(message: dict) -> None:
-    """Inject W3C trace context into a ZMQ dict carrier."""
-    carrier: dict[str, str] = {}
-    propagate.inject(carrier)
-    if "traceparent" in carrier:
-        message["traceparent"] = carrier["traceparent"]
-    if "baggage" in carrier:
-        message["baggage"] = carrier["baggage"]
-
-
-def _inject_trace_context(message: dict) -> None:
-    """Inject W3C trace context into a ZMQ dict carrier."""
-    carrier: dict[str, str] = {}
-    propagate.inject(carrier)
-    if "traceparent" in carrier:
-        message["traceparent"] = carrier["traceparent"]
-    if "baggage" in carrier:
-        message["baggage"] = carrier["baggage"]
 
 
 db_tablespace_path = app_config.get("sqlite", "tablespace_path")
@@ -689,7 +664,7 @@ def _event_processor_lag_seconds() -> float | None:
 
 
 def _device_info_drop_metric() -> otel_metrics.Counter | None:
-    """Lazily-created drop counter; created on first use so it binds after setup_otel()."""
+    """Lazily-created drop counter; created on first use so it binds after the provider is registered."""
     global _device_info_drop_counter
     if _device_info_drop_counter is None:
         try:
@@ -1626,6 +1601,11 @@ class BotMessage(BaseModel):
     timestamp: int | None = None
     #: why the input sent this message, e.g. "snapshot" when the payload was a picture
     source: str | None = None
+    #: W3C carrier of the event that produced this message. A send can be
+    #: deferred by ``min_send_interval`` until long after that event was
+    #: consumed, so the context has to travel with the queued message rather
+    #: than be read from whatever happens to be the newest event at send time.
+    trace_context: dict[str, str] | None = None
 
     def __str__(self):
         return self.message
@@ -1765,11 +1745,14 @@ class EventProcessor(AppThread):
                 db.session.add(heartbeat)
                 db.session.commit()
                 # process the next event
-                event = app_socket.recv_pyobj()
+                received = app_socket.recv_pyobj()
                 # publish consumer progress so producers can report queue lag
                 _event_processor_last_event = time.monotonic()
-                has_trace_parent = isinstance(event, dict) and "traceparent" in event
-                parent_ctx = _extract_trace_context(event) if has_trace_parent else otel_context.get_current()
+                # the carrier is a sibling of the payload: the listener removes it
+                # from the body so nothing inside the body can re-parent this hop
+                event, carrier = split_zmq_message(received)
+                parent_ctx = extract_context(carrier)
+                has_trace_parent = bool(carrier) and has_remote_parent(parent_ctx)
                 span_ctx = (
                     otel_tracer().start_as_current_span(
                         "event.receive",
@@ -1787,7 +1770,12 @@ class EventProcessor(AppThread):
                         sms_message = event["sms"]
                         if is_flag_enabled("telegram-bot"):
                             log.debug("Sending payload to bot", extra={"event_keys": list(event.keys())})
-                            _inject_trace_context(event)
+                            # the bot reads the carrier from the payload it is
+                            # given, so refresh that payload (not the envelope)
+                            # with this hop's span: telegram.send then continues
+                            # this trace instead of the Java producer's
+                            if isinstance(sms_message, dict):
+                                inject_into(sms_message)
                             self.bot.send_pyobj(sms_message)
                             log.debug("Sent payload to bot...")
                         else:
@@ -1798,7 +1786,7 @@ class EventProcessor(AppThread):
                         continue
                     if "output_triggered" in event:
                         if is_flag_enabled("telegram-bot"):
-                            _inject_trace_context(event)
+                            inject_into(event)
                             self.bot.send_pyobj(event)
                         continue
                     for event_origin, event_data in list(event.items()):
@@ -2176,6 +2164,10 @@ class TBot(AppThread, Closable):
                         if message is None and input_device is not None:
                             message = TBot.build_device_message(timestamp=timestamp, input_device=input_device)
                         message.timestamp = make_unix_timestamp(timestamp=timestamp)
+                        # the send can be deferred by min_send_interval until
+                        # long after this event was consumed; keep its carrier
+                        # on the message so the trace is not restarted then
+                        message.trace_context = carrier_from_message(event)
                         try:
                             queued = pending_by_label[message.device_label]
                         except KeyError:
@@ -2221,6 +2213,10 @@ class TBot(AppThread, Closable):
                         log.error("No queued messages for any device.")
                         continue
                     message = pending.popleft()
+                    # the oldest queued message names the trace this batch
+                    # belongs to; a rate-limited flush must continue it rather
+                    # than parent on whatever event happens to be newest now
+                    batch_trace_context = carrier_from_message(message.trace_context)
                     image_batch = []
                     while True:
                         log.debug(
@@ -2293,9 +2289,7 @@ class TBot(AppThread, Closable):
                             )
                         except IndexError:
                             break
-                    parent_ctx = otel_context.get_current()
-                    if isinstance(event, dict) and "traceparent" in event:
-                        parent_ctx = _extract_trace_context(event)
+                    parent_ctx = extract_context(batch_trace_context)
                     with otel_tracer().start_as_current_span(
                         "telegram.send", context=parent_ctx, kind=SpanKind.CLIENT
                     ) as send_span:
@@ -2600,7 +2594,7 @@ async def main():
         # bind listeners first
         mq_server_address = app_config.get("rabbitmq", "server_address").split(",")
         mq_exchange_name = app_config.get("rabbitmq", "mq_exchange")
-        mq_listener_sms = ZMQListener(
+        mq_listener_sms = TracingZMQListener(
             zmq_url=URL_WORKER_APP,
             mq_server_address=mq_server_address,
             mq_exchange_name=f"{mq_exchange_name}_control",

@@ -91,6 +91,19 @@ and `src/main/java/tailucas/app/` (Java) are the canonical examples.
   dataclass (`PipelineMessage.trace_context`) is the propagation carrier —
   plain strings pickle cleanly and accept both `traceparent` and `baggage`
   entries with no schema change.
+- **Broker→ZMQ bridges:** `tailucas_pylib`'s `ZMQListener` forwards
+  `{<topic>: <body>}`, so a carrier at the body's top level ends up one level
+  deep and a consumer that looks for a top-level `traceparent` loses the trace
+  (it never creates its receive span). Use the trace-aware bridge instead —
+  `tailucas_pylib.rabbit.TracingZMQListener` sends `({<topic>: <payload>},
+  carrier)` and `TracingRabbitMQRelay` re-injects on publish — and split the
+  hop with `tailucas_pylib.tracing.split_zmq_message`. The carrier helpers in
+  `tailucas_pylib.tracing` are the only implementation; do not re-derive them in
+  an application.
+  A queue that can defer work must carry the context too: `BotMessage`
+  keeps `trace_context` because `min_send_interval` can push a Telegram send
+  past the event that produced it, and re-reading whatever event is newest at
+  send time restarts (or mis-parents) the trace.
 
 ## 3. Java-specific (`src/`, opentelemetry-java)
 
