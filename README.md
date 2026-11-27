@@ -89,7 +89,6 @@ The application demonstrates professional integration patterns:
 - **Telegram Bot Framework**: Async command handling and media support
 - **1Password Secrets Automation**: Encrypted credential and configuration management
 - **Sentry SDK**: Production error tracking with integrations for Flask, async, threading
-- **Permit.io**: Role-based access control (RBAC) for web UI
 - **InfluxDB**: Time-series storage for meter/sensor readings
 - **AWS Services**: S3 for database backups, SNS for SMS fallback
 - **ngrok/Tailscale**: Network tunneling for remote access
@@ -660,7 +659,6 @@ Multi-stage build process:
 - `uvicorn[standard]>=0.35.0` - ASGI web server
 - `schedule>=1.2.2` - Job scheduling library
 - `pytz>=2025.2` - Timezone support
-- `permit>=2.8.1` - Authorization/RBAC
 - `pydantic>=2.11.9` - Data validation
 - `sentry-sdk[flask]>=2.37.0` - Error tracking
 - `tailucas-pylib>=0.5.2` - Shared utilities

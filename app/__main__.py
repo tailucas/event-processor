@@ -808,7 +808,7 @@ def authz_required(resource):
                 user_details = f"User {current_user.name} ({current_user.key})"
                 user_fields = {"user_name": current_user.name, "user_key": current_user.key}
                 log.debug("User is authenticated", extra=user_fields)
-                # FIXME: use permit.io or other AuthN/Z here
+                # FIXME: no authorization provider is wired up, so every authenticated user is permitted
                 permitted = True
                 if permitted:
                     log.debug("User is authorized", extra={**user_fields, "action": action, "resource": resource})
