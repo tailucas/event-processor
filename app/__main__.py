@@ -3,6 +3,7 @@
 import asyncio
 from collections import OrderedDict, deque
 from collections.abc import Iterable
+from concurrent.futures import Future
 from contextlib import nullcontext, suppress
 from dataclasses import fields
 from functools import wraps
@@ -2069,6 +2070,61 @@ def _device_from_dict(device_dict: dict) -> Device:
     return Device(**device_data)
 
 
+#: Seconds a resolved `telegram-bot` feature flag is trusted. The check is a
+#: blocking 1Password Connect request, so it is made off the event loop and not
+#: once per receive-loop iteration.
+BOT_FLAG_TTL_SECONDS = 5.0
+#: How often a receive loop that saw the flag disabled re-checks it.
+BOT_FLAG_DISABLED_POLL_SECONDS = 30.0
+#: Restart policy for the ZMQ -> Telegram receive coroutine. It is the only
+#: consumer of the in-process bot queue, so when it stops every notification
+#: stops too, while the Telegram polling loop keeps running.
+BOT_RESTART_MIN_SECONDS = 2.0
+BOT_RESTART_MAX_SECONDS = 60.0
+BOT_RESTART_RESET_SECONDS = 60.0
+
+_bot_flag_value: bool | None = None
+_bot_flag_checked_at = 0.0
+_bot_flag_failure_reported = False
+
+
+async def telegram_bot_flag_enabled() -> bool:
+    """Return whether the bot should keep receiving, without blocking the loop.
+
+    ``is_flag_enabled`` performs a blocking 1Password Connect request. Called
+    directly from the receive loop it made every iteration a network call, and a
+    transient failure ended the loop for good: the Telegram application kept
+    polling, nothing logged, nothing restarted it, and every later notification
+    was silently dropped. The value is therefore cached briefly (a disable still
+    takes effect within seconds) and refreshed in a worker thread; a failed
+    refresh keeps the last known value instead of raising.
+    """
+    global _bot_flag_value, _bot_flag_checked_at, _bot_flag_failure_reported
+    now = time.monotonic()
+    if _bot_flag_value is not None and now - _bot_flag_checked_at < BOT_FLAG_TTL_SECONDS:
+        return _bot_flag_value
+    try:
+        value = bool(await asyncio.to_thread(is_flag_enabled, "telegram-bot"))
+    except Exception:
+        if not _bot_flag_failure_reported:
+            capture_exception()
+            log.warning(
+                "Cannot evaluate the telegram-bot feature flag; keeping the last known value",
+                exc_info=True,
+            )
+            _bot_flag_failure_reported = True
+        _bot_flag_checked_at = now
+        # The bot thread is only started when the flag was enabled, so an
+        # unknown value must not stop delivery.
+        if _bot_flag_value is None:
+            _bot_flag_value = True
+        return _bot_flag_value
+    _bot_flag_failure_reported = False
+    _bot_flag_value = value
+    _bot_flag_checked_at = now
+    return value
+
+
 class TBot(AppThread, Closable):
     def __init__(self, chat_id, sns_fallback=False):
         AppThread.__init__(self, name=self.__class__.__name__)
@@ -2119,15 +2175,29 @@ class TBot(AppThread, Closable):
         call_again_timestamp = 0
         min_send_interval = app_config.getint("telegram", "min_send_interval")
         last_sent = 0
-        while not threads.shutting_down and is_flag_enabled("telegram-bot"):
+        while not threads.shutting_down:
+            if not await telegram_bot_flag_enabled():
+                log.info(
+                    "Telegram bot disabled by feature flag; pausing the receive loop",
+                    extra={"chat_id": chat_id},
+                )
+                return
             now = round(time.time())
             event = None
-            events = await poller.poll(timeout=1000)
+            try:
+                events = await poller.poll(timeout=1000)
+            except ZMQError:
+                # A failed poll is transient; letting it escape ended the loop
+                # for good and stopped every later notification.
+                capture_exception()
+                log.exception("Cannot poll the ZMQ channel for Telegram messages.")
+                await asyncio.sleep(1)
+                continue
             if zmq_socket in dict(events):
                 try:
                     event = await zmq_socket.recv_pyobj()
                 except ZMQError:
-                        log.exception("Cannot get message from ZMQ channel.")
+                    log.exception("Cannot get message from ZMQ channel.")
             if event is None and not pending_by_label:
                 continue
             try:
@@ -2347,6 +2417,65 @@ class TBot(AppThread, Closable):
             except Exception:
                 capture_exception()
                 log.exception("General issue with bot message processing.")
+
+    @staticmethod
+    async def tbot_supervise(t_app: TelegramApp, zmq_socket, chat_id):
+        """Keep ``tbot_run`` alive for the life of the Telegram application.
+
+        ``tbot_run`` owns the ZMQ -> Telegram hand-off, so when it returns or
+        raises every notification stops while ``run_polling`` carries on. Until
+        this wrapper existed the failure was invisible: the coroutine's future
+        was only inspected after polling returned, which it never does. A
+        failure is now logged, sent to Sentry, and retried with a bounded
+        backoff; a long healthy stretch resets the backoff so a crash loop
+        cannot hammer the chat.
+        """
+        backoff = BOT_RESTART_MIN_SECONDS
+        while not threads.shutting_down:
+            started = time.monotonic()
+            try:
+                await TBot.tbot_run(t_app=t_app, zmq_socket=zmq_socket, chat_id=chat_id)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                capture_exception()
+                log.exception(
+                    "Telegram bot receive loop failed; restarting",
+                    extra={"backoff_seconds": backoff},
+                )
+            else:
+                if threads.shutting_down:
+                    return
+                if not await telegram_bot_flag_enabled():
+                    log.info(
+                        "Telegram bot is disabled by feature flag; waiting for it to be enabled",
+                        extra={"chat_id": chat_id, "poll_seconds": BOT_FLAG_DISABLED_POLL_SECONDS},
+                    )
+                    while not threads.shutting_down and not await telegram_bot_flag_enabled():
+                        await asyncio.sleep(BOT_FLAG_DISABLED_POLL_SECONDS)
+                    backoff = BOT_RESTART_MIN_SECONDS
+                    continue
+                # A return with the flag still enabled is unexpected; treat it
+                # as a failure rather than letting delivery stop.
+                log.warning(
+                    "Telegram bot receive loop returned unexpectedly; restarting",
+                    extra={"backoff_seconds": backoff},
+                )
+            if time.monotonic() - started > BOT_RESTART_RESET_SECONDS:
+                backoff = BOT_RESTART_MIN_SECONDS
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, BOT_RESTART_MAX_SECONDS)
+
+    @staticmethod
+    def _log_outcome(outcome: Future) -> None:
+        """Report a receive supervisor that ended while Telegram keeps polling."""
+        if outcome.cancelled():
+            return
+        exc = outcome.exception()
+        if exc is not None:
+            capture_exception(error=exc)
+            log.error("Telegram bot receive loop stopped with an exception.", exc_info=exc)
+
     def run(self):
         log.debug("Creating asyncio event loop...")
         loop = asyncio.new_event_loop()
@@ -2364,9 +2493,12 @@ class TBot(AppThread, Closable):
         log.debug("Registering coroutine for ZMQ-Telegram messages...")
         self.get_socket()
         outcome = asyncio.run_coroutine_threadsafe(
-            TBot.tbot_run(t_app=self.t_app, zmq_socket=self.socket, chat_id=self.chat_id),
+            TBot.tbot_supervise(t_app=self.t_app, zmq_socket=self.socket, chat_id=self.chat_id),
             loop,
         )
+        # The receive loop is the only consumer of the bot queue, so its failure
+        # must be reported even though run_polling never returns to read it.
+        outcome.add_done_callback(TBot._log_outcome)
         log.debug("Starting Telegram application...")
         self.t_app.run_polling(stop_signals=None)
         log.debug("Waiting for coroutine exceptions...")
