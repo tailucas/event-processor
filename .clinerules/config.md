@@ -2,7 +2,7 @@
 paths:
   - "config/**"
   - "base.env"
-  - "dot_env_setup.sh"
+  - "Makefile"
   - "docker-compose.yml"
 ---
 
@@ -19,10 +19,12 @@ conventions a fork must preserve when it adapts the secret store.
 1Password vault (ENV.<project>)  →  .env  →  container env  →  config_interpol  →  runtime config
 ```
 
-1. **`.env` generation** (`make configure`): `base.env` (static defaults) is
-   copied, then `dot_env_setup.sh` runs inside the container and appends
-   secrets pulled from 1Password via `cred_tool`. The result is sanity-checked
-   with a minimum line count.
+1. **`.env` generation** (`make configure`; `make .env` when the file is
+   missing): `dot_env` from `tailucas-pylib` copies `base.env`, then merges the
+   `build` and project sections of the `ENV.<project>` item over those
+   defaults. It runs straight from the `uv` tool cache -- no image build, no
+   container and no application checkout -- writes atomically at 0600, refuses
+   duplicate keys, and re-parses its own output before replacing the file.
 2. **Container env**: `docker-compose.yml` reads `env_file: .env` and mounts
    the 1Password service-account/connect tokens as Docker secrets.
 3. **Config interpolation**: `base_entrypoint.sh` runs
@@ -33,20 +35,23 @@ conventions a fork must preserve when it adapts the secret store.
 
 ## 2. 1Password Secrets Automation
 
-- The source of truth is a 1Password vault entry named `ENV.<project>`
-  (e.g. `ENV.base_app`). `dot_env_setup.sh` calls
-  `uv run --frozen --no-sync cred_tool "ENV.${PROJECT_NAME}" "${PROJECT_NAME}" build`.
-- The Connect server is expected to already be running; the container reaches
-  it via `OP_CONNECT_HOST` (default `http://host.docker.internal:8080`) and
-  the `op_service_account_token`/`op_connect_token`/`op_vault` Docker secrets.
+- The source of truth is a 1Password vault entry named `ENV.<project>` (e.g.
+  `ENV.event-processor`). `make configure` runs `dot_env` from `tailucas-pylib`,
+  pinned at `==0.10.0`, with `--item ENV.<project> --base base.env --out
+  .env`. `dot_env --check --out .env` reports drift by key name only, never
+  by value, so it is safe to run in CI.
+- The Connect server is expected to already be running. The app reaches it
+  via `OP_CONNECT_HOST` (default `http://host.docker.internal:8082`),
+  `OP_CONNECT_TOKEN` and `OP_VAULT`, all delivered through `.env`.
+  `docker-compose.yml` is host-owned: keep the credentials out of it.
 - The Python app validates credentials at startup via
   `Creds().validate_creds()` (pylib) before initializing Sentry.
 
 **Rule:** never hardcode or commit secrets. `.env` values are development
 defaults only; the real values live in 1Password. If a fork replaces
 1Password (e.g. with Bitwarden), it must preserve the same boundary — a
-`dot_env_setup.sh` that emits `KEY=value` lines and a `cred_tool`-equivalent
-entry point — so the rest of the flow is unchanged.
+`dot_env`-equivalent command that emits `KEY=value` lines and a
+`cred_tool`-equivalent entry point — so the rest of the flow is unchanged.
 
 ## 3. Config interpolation
 

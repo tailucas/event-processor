@@ -28,8 +28,10 @@ preserve when adding or removing a runtime.
   same line. Add a `##` comment to every new target.
 - **Incremental builds via real file targets.** Generated artifacts are file
   targets that rebuild only when missing or when their inputs change:
-  - `.env` depends on `base.env` and `docker-compose.yml`, and is
-    sanity-checked with a minimum line count.
+  - `.env` depends on `base.env` only, and is produced by `dot_env` (from
+    `tailucas-pylib`, via `uvx`): it merges the 1Password item over those
+    defaults, refuses duplicate keys, and writes atomically at `0600`. A
+    failure leaves the previous file untouched.
   - `.venv` depends on `pyproject.toml` and `uv.lock`.
   - `target/app-0.1.0-jar-with-dependencies.jar` depends on `pom.xml` and all
     `*.java` under `src/` (`JAVA_SOURCES`).

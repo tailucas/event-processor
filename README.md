@@ -676,7 +676,7 @@ Primary build and deployment orchestration (run `make help` for all targets):
 - `make build` - Build Docker image with Java compilation, Python dependencies, and asset bundling
 - `make run` - Run container in foreground with full log output
 - `make rund` - Run container detached (persists after terminal close)
-- `make configure` - Generate .env and docker-compose.yml from 1Password secrets
+- `make configure` - Regenerate `.env` from 1Password via `dot_env` (no image build; `docker-compose.yml` is host-owned)
 - `make datadir` - Create data directory with proper permissions
 - `make java` - Compile Java artifacts with Maven (standalone Java build)
 - `make python` - Setup Python virtual environment with uv
