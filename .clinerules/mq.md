@@ -237,6 +237,13 @@ Facts worth not rediscovering:
   processor keeps it out of logs, spans and metric labels (`PayloadType.detect`,
   `Ring.setBinaryPayload`) and forwards it only as the trigger's payload. Never log
   or label a device with an image body.
+- **The snapshot entity is republished, not re-captured.** The bridge republishes its
+  cached image on every device poll (~20–30s), carrying the same `timestamp` in
+  `snapshot/attributes`, so one capture yields several identical frames on
+  `snapshot/image`. Anything reacting to that topic must expect repeats: the
+  processor forwards each one to the linked outputs, and `/snapshot`'s delivery
+  window sends each one it sees. Do not read a repeat as a new capture — check the
+  attributes' `timestamp`.
 - **The image topic is also a heartbeat**, so output links are evaluated for it like
   any other event: a bot-requested snapshot also reaches every other linked output
   (which is why a `/snapshot` in the chat can produce an SMS as well). Keep delivery
