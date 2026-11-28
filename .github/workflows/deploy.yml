@@ -1,0 +1,114 @@
+# Deployment for event-processor.
+#
+# Same shape as the reference project (tailucas/simple-app): ci builds and
+# publishes; this workflow pulls one immutable tag and recreates exactly one
+# stack. It never builds, never fetches secrets and never edits
+# docker-compose.yml or .env -- both are host-owned.
+#
+# Image mapping: CI publishes to GHCR (no extra secret), while the host's
+# compose uses the Docker Hub name from `.env` (CONTAINER_NAME). This job pulls
+# the GHCR image and retags it onto that name, so `.env`, the home-lab catalog
+# and Compose all stay untouched and in agreement. Verify by image id/digest,
+# never by the tag name.
+#
+# Trigger branch is `master` for this project, not `main`.
+name: deploy
+
+on:
+  workflow_run:
+    workflows: ["ci"]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy (a git sha from ci, or 'latest')"
+        required: true
+        default: latest
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: [self-hosted, linux, x64, acer]
+    timeout-minutes: 20
+    environment: production
+    concurrency:
+      group: deploy-acer-event-processor
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    env:
+      STACK_DIR: /home/tai/event-processor
+      CI_IMAGE: ghcr.io/${{ github.repository }}
+      TAG: ${{ github.event.inputs.image_tag || github.event.workflow_run.head_sha }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Preflight
+        run: |
+          set -euo pipefail
+          test -d "${STACK_DIR}" || { echo "::error::${STACK_DIR} is missing"; exit 1; }
+          test -f "${STACK_DIR}/.env" || { echo "::error::${STACK_DIR}/.env is missing"; exit 1; }
+          docker compose version
+
+          # 1Password Connect is a runtime dependency of this app.
+          curl -fsS -o /dev/null --max-time 10 http://127.0.0.1:8082/health \
+            || { echo "::error::1Password Connect is not healthy on :8082"; exit 1; }
+
+      - name: Log in to GHCR
+        run: |
+          set -euo pipefail
+          printf '%s' "${GH_TOKEN}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Fetch the image and pin it under the host's image name
+        run: |
+          set -euo pipefail
+          image_host="$(sed -n 's/^CONTAINER_NAME="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' "${STACK_DIR}/.env" | head -1)"
+          test -n "${image_host}" || { echo "::error::CONTAINER_NAME missing from .env"; exit 1; }
+
+          docker pull "${CI_IMAGE}:${TAG}"
+          docker tag "${CI_IMAGE}:${TAG}" "${image_host}:latest"
+          echo "deployed ${CI_IMAGE}:${TAG} as ${image_host}:latest"
+          docker image inspect "${image_host}:latest" --format 'digest={{index .RepoDigests 0}}'
+
+      - name: Recreate the stack
+        working-directory: ${{ env.STACK_DIR }}
+        run: |
+          set -euo pipefail
+          docker compose up -d --remove-orphans
+          docker compose ps
+
+      - name: Verify
+        working-directory: ${{ env.STACK_DIR }}
+        run: |
+          set -euo pipefail
+          cid="$(docker compose ps -q app)"
+          test -n "${cid}" || { echo "::error::no container for service 'app'"; exit 1; }
+
+          # The FastAPI app sets app.state.startup_complete only after its thread
+          # nanny is running; /api/running exposes it. Container 8080 -> host 8095.
+          # (Host 8085 is the Java/Spring app, which answers a 404 JSON on /.)
+          for _ in $(seq 1 20); do
+            if [ "$(curl -fsS --max-time 5 http://127.0.0.1:8095/api/running 2>/dev/null)" = "true" ]; then
+              echo "FastAPI app reports startup complete"
+              printf 'api/ping: '; curl -fsS http://127.0.0.1:8095/api/ping; echo
+              docker logs --tail 5 "${cid}"
+              exit 0
+            fi
+            sleep 3
+          done
+
+          echo "::error::/api/running never returned true within 60s"
+          docker logs --tail 60 "${cid}"
+          exit 1
+
+      - name: Log out of GHCR
+        if: always()
+        run: docker logout ghcr.io || true

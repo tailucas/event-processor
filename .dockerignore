@@ -1,0 +1,22 @@
+# Keep the build context small. data/ holds the live SQLite database and must
+# never be uploaded to a CI runner; target/ is the Maven output and is rebuilt.
+.git
+.github
+.clinerules
+.devcontainer
+.venv
+data
+target
+__pycache__
+*.py[cod]
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.vscode
+tests
+tests.log
+*.versionsBackup
+# never ship local credentials into a build context
+.env
+*.db
+*.db-*
