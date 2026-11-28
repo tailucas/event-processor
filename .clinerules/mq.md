@@ -254,3 +254,7 @@ Facts worth not rediscovering:
   **same `device_key`** but its configured `location` as the label (`Pool Camera` in,
   `Pool` out). Anything matching a request to its answer must use the device key —
   `Event` links the delivery span on it, and the Telegram window is keyed on it.
+  Payload `timestamp` is **epoch seconds**, here as on every other control message:
+  the processor feeds it straight to `fromtimestamp`, so milliseconds raise
+  `ValueError: year must be in 1..9999` inside `process_message` and take the service
+  down. A hand-built trigger must match the link path's `now / 1000L`.
