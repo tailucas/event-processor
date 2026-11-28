@@ -37,7 +37,7 @@ conventions a fork must preserve when it adapts the secret store.
 
 - The source of truth is a 1Password vault entry named `ENV.<project>` (e.g.
   `ENV.event-processor`). `make configure` runs `dot_env` from `tailucas-pylib`,
-  pinned at `==0.10.0`, with `--item ENV.<project> --base base.env --out
+  pinned at `==0.10.1`, with `--item ENV.<project> --base base.env --out
   .env`. `dot_env --check --out .env` reports drift by key name only, never
   by value, so it is safe to run in CI.
 - The Connect server is expected to already be running. The app reaches it
