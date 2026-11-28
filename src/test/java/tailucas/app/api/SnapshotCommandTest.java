@@ -1,5 +1,6 @@
 package tailucas.app.api;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
@@ -21,6 +22,10 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import tailucas.app.EventProcessor;
+import tailucas.app.TestStatics;
+import tailucas.app.device.Event;
+import tailucas.app.device.config.OutputConfig;
+import tailucas.app.provider.DeviceConfig;
 import tailucas.app.provider.DeviceState;
 
 /**
@@ -47,6 +52,17 @@ class SnapshotCommandTest {
             Integer.valueOf(87), Integer.valueOf(87), "full", Integer.valueOf(-68), "wifi",
             "ok", "ok", "ok", "up-to-date",
             "2026-11-28T05:00:00Z", "2026-11-28T05:00:00Z", Map.of());
+    }
+
+    /** An output configuration as the panel stores one: enabled, with a trigger topic. */
+    private static OutputConfig outputConfig(String deviceKey, String deviceType, boolean enabled) {
+        final OutputConfig config = new OutputConfig();
+        TestStatics.setField(config, "deviceKey", deviceKey);
+        TestStatics.setField(config, "deviceType", deviceType);
+        TestStatics.setField(config, "deviceLabel", deviceKey);
+        TestStatics.setField(config, "triggerTopic", "event.trigger.snapshot");
+        TestStatics.setField(config, "device_enabled", Boolean.valueOf(enabled));
+        return config;
     }
 
     @Test
@@ -188,6 +204,69 @@ class SnapshotCommandTest {
             mvc.perform(post("/snapshot"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.skipped[0].reason").value("publish_failed"));
+        }
+    }
+
+    @Test
+    void aNamedCameraOutputIsTriggeredOverTheControlExchange() throws Exception {
+        // snapshot-processor cameras are output configurations, not MQTT devices
+        final DeviceState state = mock(DeviceState.class);
+        when(state.getDevices()).thenReturn(List.of());
+        final DeviceConfig configs = mock(DeviceConfig.class);
+        when(configs.fetchOutputDeviceConfig("Pool Camera"))
+            .thenReturn(outputConfig("Pool Camera", "Camera", true));
+        try (MockedStatic<DeviceState> mockedState = mockStatic(DeviceState.class);
+             MockedStatic<DeviceConfig> mockedConfig = mockStatic(DeviceConfig.class);
+             MockedStatic<Event> mockedEvent = mockStatic(Event.class)) {
+            mockedState.when(DeviceState::getInstance).thenReturn(state);
+            mockedConfig.when(DeviceConfig::getInstance).thenReturn(configs);
+            mockedEvent.when(() -> Event.publishRequestedTrigger(any(), any(), anyString())).thenReturn(true);
+
+            mvc.perform(post("/snapshot").param("camera_key", "Pool Camera"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.requested[0].device_key").value("Pool Camera"))
+                .andExpect(jsonPath("$.skipped.length()").value(0));
+        }
+    }
+
+    @Test
+    void aDisabledCameraIsReportedRatherThanTriggered() throws Exception {
+        final DeviceState state = mock(DeviceState.class);
+        when(state.getDevices()).thenReturn(List.of());
+        final DeviceConfig configs = mock(DeviceConfig.class);
+        when(configs.fetchOutputDeviceConfig("Test Camera"))
+            .thenReturn(outputConfig("Test Camera", "camera", false));
+        try (MockedStatic<DeviceState> mockedState = mockStatic(DeviceState.class);
+             MockedStatic<DeviceConfig> mockedConfig = mockStatic(DeviceConfig.class);
+             MockedStatic<Event> mockedEvent = mockStatic(Event.class)) {
+            mockedState.when(DeviceState::getInstance).thenReturn(state);
+            mockedConfig.when(DeviceConfig::getInstance).thenReturn(configs);
+
+            mvc.perform(post("/snapshot").param("camera_key", "Test Camera"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.skipped[0].reason").value("disabled"));
+
+            mockedEvent.verifyNoInteractions();
+        }
+    }
+
+    @Test
+    void anUnknownCameraKeyIsReported() throws Exception {
+        final DeviceState state = mock(DeviceState.class);
+        when(state.getDevices()).thenReturn(List.of());
+        final DeviceConfig configs = mock(DeviceConfig.class);
+        when(configs.fetchOutputDeviceConfig("Nowhere Camera")).thenReturn(null);
+        try (MockedStatic<DeviceState> mockedState = mockStatic(DeviceState.class);
+             MockedStatic<DeviceConfig> mockedConfig = mockStatic(DeviceConfig.class);
+             MockedStatic<Event> mockedEvent = mockStatic(Event.class)) {
+            mockedState.when(DeviceState::getInstance).thenReturn(state);
+            mockedConfig.when(DeviceConfig::getInstance).thenReturn(configs);
+
+            mvc.perform(post("/snapshot").param("camera_key", "Nowhere Camera"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.skipped[0].reason").value("unknown_camera"));
+
+            mockedEvent.verifyNoInteractions();
         }
     }
 }

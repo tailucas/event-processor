@@ -145,6 +145,15 @@ public class EventProcessor
         return exitCode.get();
     }
 
+    /**
+     * The RabbitMQ connection owned by the event processor, for a caller that must
+     * publish on the control exchange without an input event of its own (the
+     * snapshot command's camera triggers).
+     */
+    public static Connection getRabbitMqConnection() {
+        return rabbitMqConnection;
+    }
+
     public static void addExitCode(int code) {
         exitCode.accumulateAndGet(code, (current, update) -> current | update);
     }

@@ -91,6 +91,12 @@ def _skip_reason(skip: dict) -> str:
         return f"retry in {retry_after}s" if isinstance(retry_after, int) else "already requested"
     if reason == "not_a_camera":
         return "not a camera"
+    if reason == "disabled":
+        return "disabled"
+    if reason == "unknown_camera":
+        return "unknown camera"
+    if reason == "config_unavailable":
+        return "configuration unavailable"
     if reason == "unknown_location":
         return "location unknown"
     if reason == "publish_failed":

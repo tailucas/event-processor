@@ -255,8 +255,17 @@ rate-limits the queue.
 `component == "camera"` (`app/snapshot_command.select_cameras`): exact label, then
 case-insensitive substring, then the Ring device id. No match, or several matches,
 is refused with the candidate list — never guess, and never wake a camera the
-operator did not name. A blank argument means every camera that is not `offline`;
-an offline camera is skipped and *reported*, not silently dropped.
+operator did not name. A blank argument means every camera: the Ring cameras the
+processor knows that are not `offline`, **and** every camera output the snapshot
+processor captures from. An offline camera is skipped and *reported*, not silently
+dropped.
+
+**Two kinds of camera, one command.** Ring cameras are MQTT devices, addressed by
+publishing `PRESS` to the bridge. The others are *output* configurations that the
+snapshot processor captures from on trigger; they never appear in `GET /devices`,
+so the bot enumerates them itself (`snapshot_camera_outputs`, read under its own
+Flask app context) and passes their keys to the processor, which publishes the
+normal output trigger for each. The same window and the same trace cover both.
 
 **Transport.** One `POST {event_processor_address}/snapshot` in an executor
 (`device_key` only when one was named). The processor publishes the bridge's
@@ -265,10 +274,13 @@ an offline camera is skipped and *reported*, not silently dropped.
 `unknown_location`, `publish_failed`). The reply states a partial result honestly;
 never claim a camera the processor skipped.
 
-**Delivery.** The handler opens a `SnapshotWindows` window for every label in
+**Delivery.** The handler opens a `SnapshotWindows` window for every camera in
 `requested` — that is what lets the images past the detector (§5). Key it on the
-**canonical label from `/devices`**, never on the typed argument, because the
-window is matched against `BotMessage.device_label`. The window is
+**device key from the processor's reply**, never on the label or the typed argument:
+a Ring picture carries the Ring device id, while a snapshot-processor picture comes
+back under the camera's friendly label (`Pool`) although the request named its key
+(`Pool Camera`). `BotMessage` therefore carries `device_key` as well as
+`device_label`, and the queue-time check tries the key first. The window is
 `[telegram] snapshot_window_seconds` (default 60s) and is stamped when a message is
 queued, so a rate-limited send still counts.
 

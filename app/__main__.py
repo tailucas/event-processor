@@ -1529,13 +1529,36 @@ def fetch_ring_devices(headers: dict[str, str] | None = None) -> list[dict]:
     return devices
 
 
-def request_camera_snapshots(device_key: str | None = None, headers: dict[str, str] | None = None) -> dict:
-    """Ask the Java event processor for an on-demand camera snapshot.
+def snapshot_camera_outputs() -> list[dict]:
+    """The cameras the snapshot processor owns, i.e. the outputs it captures from.
 
-    With no ``device_key`` every camera is requested, which is what a bare
-    ``/snapshot`` means. The processor owns the Ring bridge (it publishes the
-    ``PRESS`` the bridge expects) and replies with what it asked for and what it
-    skipped, so the bot can report honestly instead of claiming success.
+    They are output configurations, not MQTT devices, so they never appear in
+    ``GET /devices``; the panel database is where this application keeps them. Read in
+    a worker thread with its own application context, because the bot's event loop must
+    not touch the panel's session.
+    """
+    with flask_app.app_context():
+        cameras = [
+            {"device_key": row.device_key, "device_label": row.device_label}
+            for row in OutputConfig.query.all()
+            if (row.device_type or "").lower() == "camera"
+        ]
+    log.debug("Resolved snapshot cameras", extra={"camera_count": len(cameras)})
+    return cameras
+
+
+def request_camera_snapshots(
+    device_key: str | None = None,
+    camera_keys: list[str] | None = None,
+    headers: dict[str, str] | None = None,
+) -> dict:
+    """Ask the Java event processor for on-demand camera snapshots.
+
+    ``device_key`` addresses a Ring camera; ``camera_keys`` address the cameras the
+    snapshot processor captures from, which are triggered over the control exchange.
+    With neither, the processor addresses every Ring camera, which is what a bare
+    ``/snapshot`` means. The reply says what was asked for and what was skipped, so the
+    bot can report honestly instead of claiming success.
 
     ``headers`` carries this command's W3C trace context; the caller builds it on the
     event loop, because ``run_in_executor`` does not propagate the active context
@@ -1543,8 +1566,17 @@ def request_camera_snapshots(device_key: str | None = None, headers: dict[str, s
     """
     api_server = app_config.get("app", "event_processor_address")
     api_method = "snapshot"
-    params = {"device_key": device_key} if device_key else None
-    response = requests.post(url=f"{api_server}/{api_method}", params=params, headers=headers, timeout=30)
+    params: list[tuple[str, str]] = []
+    if device_key:
+        params.append(("device_key", device_key))
+    for camera_key in camera_keys or []:
+        params.append(("camera_key", camera_key))
+    response = requests.post(
+        url=f"{api_server}/{api_method}",
+        params=params or None,
+        headers=headers,
+        timeout=30,
+    )
     response.raise_for_status()
     result = response.json()
     if not isinstance(result, dict):
@@ -1648,7 +1680,7 @@ async def telegram_bot_snapshot(update: Update, context: TelegramContextTypes.DE
                 None, fetch_ring_devices, _trace_headers()
             )
             matches, selection_error = select_cameras(devices, argument or None)
-            if selection_error is not None:
+            if selection_error is not None and argument:
                 span.set_attribute("snapshot.outcome", "rejected")
                 await message.reply_text(
                     text=selection_error,
@@ -1656,24 +1688,39 @@ async def telegram_bot_snapshot(update: Update, context: TelegramContextTypes.DE
                     parse_mode=ParseMode.MARKDOWN,
                 )
                 return
+            if selection_error is not None:
+                # a bare command may have no Ring camera to address and still have
+                # snapshot-processor cameras to ask, so this is not fatal
+                log.info(
+                    "No Ring camera available for snapshot",
+                    extra={"device_count": len(devices)},
+                )
 
             device_key = matches[0]["deviceKey"] if argument else None
+            # a bare command also asks the cameras the snapshot processor captures from;
+            # they are output configurations, so they have to be named explicitly
+            camera_keys: list[str] = []
+            if not argument:
+                cameras = await asyncio.get_running_loop().run_in_executor(None, snapshot_camera_outputs)
+                camera_keys = [camera["device_key"] for camera in cameras]
             span.set_attribute("snapshot.device_key", str(device_key))
+            span.set_attribute("snapshot.camera_keys", len(camera_keys))
             result = await asyncio.get_running_loop().run_in_executor(
-                None, request_camera_snapshots, device_key, _trace_headers()
+                None, request_camera_snapshots, device_key, camera_keys, _trace_headers()
             )
             requested = result.get("requested") or []
             skipped = result.get("skipped") or []
             span.set_attribute("snapshot.requested_count", len(requested))
             span.set_attribute("snapshot.skipped_count", len(skipped))
-            # the window keys on the label a queued message will carry, never on
-            # what the operator typed: that is what makes the images unfiltered
+            # the device key survives the snapshot round trip; a snapshot-processor
+            # picture returns under the camera's friendly label, not its key
             for camera in requested:
-                snapshot_windows().open(camera.get("label"))
+                snapshot_windows().open(camera.get("device_key") or camera.get("label"))
             log.info(
                 "Snapshot request result",
                 extra={
                     "device_key": device_key,
+                    "camera_count": len(camera_keys),
                     "requested": [camera.get("label") for camera in requested],
                     "skipped": [camera.get("label") for camera in skipped],
                     "window_seconds": snapshot_windows().window_seconds,
@@ -1731,6 +1778,10 @@ def invalidate_remote_config(device_key):
 
 class BotMessage(BaseModel):
     device_label: str
+    #: the device key the event carried. Stable across a snapshot round trip — the
+    #: snapshot processor republishes a camera's picture under a friendly label, so a
+    #: delivery window keyed on the label would miss it.
+    device_key: str | None = None
     message: str
     url: str | None = None
     image: bytes | None = None
@@ -2312,6 +2363,7 @@ class TBot(AppThread, Closable):
             image_timestamp = input_device.image_timestamp
         return BotMessage(
             device_label=device_label,
+            device_key=input_device.device_key,
             message=message,
             url=input_device.storage_url,
             image=image_data,
@@ -2401,8 +2453,12 @@ class TBot(AppThread, Closable):
                         # on the message so the trace is not restarted then
                         message.trace_context = carrier_from_message(event)
                         # the filter runs at send time, which min_send_interval can
-                        # defer past the request's window, so decide while queueing
-                        message.snapshot_requested = snapshot_windows().is_open(message.device_label)
+                        # defer past the request's window, so decide while queueing.
+                        # The device key is checked first: a snapshot processor picture
+                        # returns under the camera's label, which a request never used.
+                        message.snapshot_requested = snapshot_windows().is_open(
+                            message.device_key
+                        ) or snapshot_windows().is_open(message.device_label)
                         try:
                             queued = pending_by_label[message.device_label]
                         except KeyError:

@@ -1,6 +1,7 @@
 package tailucas.app.device;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -12,6 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.function.Failable;
 import org.msgpack.jackson.dataformat.MessagePackMapper;
 import org.slf4j.Logger;
@@ -77,6 +79,13 @@ public class Event implements Runnable {
     /** The kind of Ring topic that carries a camera picture rather than state. */
     private static final String SNAPSHOT_IMAGE_TOPIC_SUFFIX = "/snapshot/image";
 
+    /**
+     * The snapshot processor's image notification, on the control exchange. Its
+     * capture was triggered by this application, so its picture is the answer to a
+     * request made here rather than an unsolicited frame.
+     */
+    private static final String SNAPSHOT_PROCESSOR_IMAGE_SUFFIX = ".snapshot-processor.image";
+
     private static final TextMapGetter<Map<String, String>> PROPAGATION_GETTER = new TextMapGetter<>() {
         @Override
         public Iterable<String> keys(Map<String, String> carrier) {
@@ -124,6 +133,99 @@ public class Event implements Runnable {
         Event.expiration = expiration;
     }
 
+    /** Source recorded on a trigger that an operator asked for, not an input event. */
+    public static final String SNAPSHOT_COMMAND_SOURCE = "telegram.snapshot";
+
+    /**
+     * Publishes a trigger for one output on behalf of a request that has no input
+     * event behind it — the Telegram {@code /snapshot} command asking a camera for a
+     * picture.
+     *
+     * <p>A camera output is capture-on-trigger: the snapshot processor reads
+     * {@code output_triggered.device_key} and takes the picture. This therefore emits
+     * the same message the link path emits, on the same exchange, with the same W3C
+     * carrier, so the consumer needs no special case and the command's trace continues
+     * into it.
+     *
+     * @param connection   the RabbitMQ connection owned by the event processor
+     * @param outputConfig the camera output to trigger
+     * @param requestedBy  what asked for it, for the payload and the log
+     * @return false when the trigger could not be published
+     */
+    public static boolean publishRequestedTrigger(
+            Connection connection, OutputConfig outputConfig, String requestedBy) {
+        if (connection == null || outputConfig == null || exchangeName == null) {
+            log.atWarn().setMessage("Cannot trigger camera, the event pipeline is not running")
+                .addKeyValue("output_device", outputConfig == null ? null : outputConfig.getDeviceKey())
+                .log();
+            return false;
+        }
+        final String outputDeviceKey = outputConfig.getDeviceKey();
+        final String outputDeviceLabel = StringUtils.defaultIfBlank(outputConfig.getDeviceLabel(), outputDeviceKey);
+        String routingKey = outputConfig.getTriggerTopic();
+        if (routingKey == null) {
+            routingKey = String.format("event.trigger.%s",
+                namePattern.matcher(outputConfig.getDeviceType().toLowerCase(Locale.ROOT)).replaceAll("_"));
+        }
+        routingKey = routingKey.toLowerCase(Locale.ROOT);
+        final Span span = OtelSupport.getTracer().spanBuilder("event.trigger.output")
+            .setSpanKind(SpanKind.PRODUCER)
+            .setAttribute("source", SNAPSHOT_COMMAND_SOURCE)
+            .setAttribute("output_device", outputDeviceLabel)
+            .setAttribute("output_type", outputConfig.getDeviceType())
+            .setAttribute("exchange", exchangeName)
+            .setAttribute("routing_key", routingKey)
+            .startSpan();
+        Channel channel = null;
+        try (Scope scope = span.makeCurrent()) {
+            final ObjectNode root = mapper.createObjectNode();
+            if (StringUtils.isNotBlank(requestedBy)) {
+                final ObjectNode requestor = mapper.createObjectNode();
+                requestor.put("device_key", SNAPSHOT_COMMAND_SOURCE);
+                requestor.put("device_label", requestedBy);
+                requestor.put("type", "command");
+                root.set("active_input", requestor);
+            }
+            root.put("timestamp", Instant.now().toEpochMilli());
+            root.putPOJO("output_triggered", outputConfig);
+            final Map<String, String> carrier = new HashMap<>();
+            OtelSupport.getOpenTelemetry().getPropagators().getTextMapPropagator()
+                .inject(Context.current(), carrier, PROPAGATION_SETTER);
+            carrier.forEach(root::put);
+            final byte[] wireCommand = mapper.writeValueAsBytes(root);
+            span.setAttribute("payload_bytes", wireCommand.length);
+            channel = connection.createChannel();
+            channel.exchangeDeclare(exchangeName, BuiltinExchangeType.DIRECT);
+            channel.basicPublish(exchangeName, routingKey,
+                new BasicProperties.Builder().expiration(expiration).build(), wireCommand);
+            log.atInfo().setMessage("Published requested camera trigger")
+                .addKeyValue("output_device", outputDeviceLabel)
+                .addKeyValue("routing_key", routingKey)
+                .addKeyValue("payload_bytes", wireCommand.length)
+                .log();
+            span.setStatus(StatusCode.OK);
+            return true;
+        } catch (Exception e) {
+            span.recordException(e);
+            span.setStatus(StatusCode.ERROR);
+            log.atError().setMessage("Cannot publish a requested camera trigger")
+                .addKeyValue("output_device", outputDeviceLabel)
+                .setCause(e)
+                .log();
+            Sentry.captureException(e);
+            return false;
+        } finally {
+            span.end();
+            if (channel != null) {
+                try {
+                    channel.close();
+                } catch (Exception e) {
+                    log.atWarn().setMessage("During closing of the trigger channel").setCause(e).log();
+                }
+            }
+        }
+    }
+
     public Event(Connection connection, String source, Generic device, String deviceUpdateString) {
         this.initTime = System.currentTimeMillis();
         this.connection = connection;
@@ -168,7 +270,7 @@ public class Event implements Runnable {
         // to the request that caused it — two traces, one causal chain, which is exactly
         // what a span link is for. Reading the registration consumes it, so only the
         // first frame of a request links.
-        if (device != null && source != null && source.endsWith(SNAPSHOT_IMAGE_TOPIC_SUFFIX)) {
+        if (device != null && carriesPicture(source)) {
             final Context requested = SnapshotRequests.poll(device.getDeviceKey());
             if (requested != null) {
                 final SpanContext requestedSpan = Span.fromContext(requested).getSpanContext();
@@ -178,6 +280,16 @@ public class Event implements Runnable {
             }
         }
         return builder.startSpan();
+    }
+
+    /**
+     * True for the sources that carry a picture rather than state: the Ring bridge's
+     * snapshot topic and the snapshot processor's capture notification.
+     */
+    private static boolean carriesPicture(String eventSource) {
+        return eventSource != null
+            && (eventSource.endsWith(SNAPSHOT_IMAGE_TOPIC_SUFFIX)
+                || eventSource.endsWith(SNAPSHOT_PROCESSOR_IMAGE_SUFFIX));
     }
 
     @Override

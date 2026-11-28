@@ -248,3 +248,9 @@ Facts worth not rediscovering:
   any other event: a bot-requested snapshot also reaches every other linked output
   (which is why a `/snapshot` in the chat can produce an SMS as well). Keep delivery
   a link decision; do not special-case the bot path in `Event`.
+- **A camera output is capture-on-trigger.** `event.trigger.snapshot` with
+  `output_triggered.device_key` tells the snapshot processor to take a picture; it
+  republishes the result on `event.notify.snapshot.<service>.image` carrying the
+  **same `device_key`** but its configured `location` as the label (`Pool Camera` in,
+  `Pool` out). Anything matching a request to its answer must use the device key —
+  `Event` links the delivery span on it, and the Telegram window is keyed on it.

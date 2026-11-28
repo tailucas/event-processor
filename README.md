@@ -557,15 +557,35 @@ POST http://event-processor:8085/snapshot?device_key=54e0191a1d8d
  "skipped":[{"device_key":"aa11","label":"Pool Camera","reason":"offline"}]}
 ```
 
-The endpoint publishes `PRESS` to
-`ring/<locationId>/camera/<device_key>/take_snapshot/command` and returns `202` when
-at least one camera was asked, `200` when none were. A request with no `device_key`
-considers cameras only: other device types are not asked and are not reported as
-skips. `reason` is one of `offline`, `recently_requested` (with
+Asks cameras for a fresh picture. With no parameters every Ring camera is requested;
+each `camera_key` additionally triggers one of the snapshot processor's cameras:
+
+```
+POST http://event-processor:8085/snapshot
+POST http://event-processor:8085/snapshot?device_key=54e0191a1d8d
+POST http://event-processor:8085/snapshot?camera_key=Pool+Camera&camera_key=Patio+Camera
+```
+
+```json
+{"requested":[{"device_key":"54e0191a1d8d","label":"Front Gate"},
+              {"device_key":"Pool Camera","label":"Pool Camera"}],
+ "skipped":[{"device_key":"Test Camera","label":"Test Camera","reason":"disabled"}]}
+```
+
+Ring cameras are MQTT devices: the endpoint publishes `PRESS` to
+`ring/<locationId>/camera/<device_key>/take_snapshot/command`. A `camera_key` names an
+*output* configuration the snapshot processor captures from, so the endpoint publishes
+the normal control trigger for it (`event.trigger.snapshot`) and the processor takes
+the picture from that camera's own URL. Both kinds answer on the normal event path.
+
+It returns `202` when at least one camera was asked, `200` when none were. A request
+with no `device_key` considers Ring cameras only: other device types are not asked and
+are not reported as skips. `reason` is one of `offline`, `recently_requested` (with
 `retry_after_seconds` — the bridge ignores a second on-demand snapshot within ten
-seconds), `not_a_camera` (only when that device was named explicitly),
+seconds), `not_a_camera` (only when that device was named explicitly), `disabled`
+(the output is switched off), `unknown_camera`, `config_unavailable`,
 `unknown_location` or `publish_failed`. An unknown `device_key` is `404`. The picture
-itself is not returned here: it arrives on `.../snapshot/image` as a normal event.
+itself is not returned here: it arrives on the normal event path.
 
 ### Telegram `/ring`
 
@@ -592,8 +612,9 @@ without booting the app; the rules are in `.clinerules/telegram.md`.
 ### Telegram `/snapshot`
 
 `/snapshot` (allowlisted users only) asks cameras for a fresh picture. With no
-argument every online camera is requested; naming one (`/snapshot front gate`, or a
-Ring device id) targets just that camera:
+argument every camera is requested — both the Ring cameras the processor knows and the
+cameras the snapshot processor captures from. Naming one (`/snapshot front gate`, or a
+Ring device id) targets just that Ring camera:
 
 ```
 📷 *Snapshot requested* — `Front Gate`

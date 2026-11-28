@@ -1,5 +1,6 @@
 package tailucas.app.api;
 
+import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -25,6 +26,9 @@ import io.opentelemetry.context.Scope;
 import jakarta.servlet.http.HttpServletRequest;
 import tailucas.app.EventProcessor;
 import tailucas.app.OtelSupport;
+import tailucas.app.device.Event;
+import tailucas.app.device.config.OutputConfig;
+import tailucas.app.provider.DeviceConfig;
 import tailucas.app.provider.DeviceState;
 import tailucas.app.provider.SnapshotRequests;
 
@@ -71,6 +75,7 @@ public class SnapshotCommand {
     @PostMapping("/snapshot")
     public ResponseEntity<Map<String, Object>> snapshot(
             @RequestParam(name = "device_key", required = false) String deviceKey,
+            @RequestParam(name = "camera_key", required = false) List<String> cameraKeys,
             HttpServletRequest request) {
         // The web application injects its W3C carrier. Nothing instruments an inbound
         // servlet request here, so this span is the server span: extracting the carrier
@@ -104,6 +109,8 @@ public class SnapshotCommand {
                 }
                 requestSnapshot(device, requested, skipped);
             }
+            final int cameraCount = requestCameraSnapshots(cameraKeys, requested, skipped);
+            span.setAttribute("snapshot.camera_count", cameraCount);
             span.setAttribute("snapshot.requested_count", requested.size());
             span.setAttribute("snapshot.skipped_count", skipped.size());
             log.atInfo().setMessage("Requested camera snapshot")
@@ -206,6 +213,80 @@ public class SnapshotCommand {
         requested.add(entry(device));
     }
 
+    /**
+     * Triggers the cameras the snapshot processor owns — the capture side of the
+     * control exchange rather than the Ring bridge.
+     *
+     * <p>The caller names them because they are output configurations, not MQTT
+     * devices: they never appear in {@code GET /devices}. Each is triggered with the
+     * normal output message, so the processor needs no special case and the command's
+     * trace continues into it.
+     *
+     * @return how many cameras were successfully triggered
+     */
+    private int requestCameraSnapshots(
+            List<String> cameraKeys, List<Map<String, Object>> requested, List<Map<String, Object>> skipped) {
+        if (cameraKeys == null || cameraKeys.isEmpty()) {
+            return 0;
+        }
+        int triggered = 0;
+        for (final String cameraKey : cameraKeys) {
+            if (StringUtils.isBlank(cameraKey)) {
+                continue;
+            }
+            if (requestCameraSnapshot(cameraKey, requested, skipped)) {
+                triggered++;
+            }
+        }
+        return triggered;
+    }
+
+    private boolean requestCameraSnapshot(
+            String cameraKey, List<Map<String, Object>> requested, List<Map<String, Object>> skipped) {
+        final OutputConfig camera;
+        try {
+            camera = DeviceConfig.getInstance().fetchOutputDeviceConfig(cameraKey);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.atError().setMessage("Interrupted reading camera configuration")
+                .addKeyValue("device_key", cameraKey).setCause(e).log();
+            skipped.add(skip(cameraKey, cameraKey, "config_unavailable", null));
+            return false;
+        } catch (IOException e) {
+            log.atError().setMessage("Cannot read camera configuration")
+                .addKeyValue("device_key", cameraKey).setCause(e).log();
+            skipped.add(skip(cameraKey, cameraKey, "config_unavailable", null));
+            return false;
+        }
+        if (camera == null) {
+            skipped.add(skip(cameraKey, cameraKey, "unknown_camera", null));
+            return false;
+        }
+        if (!CAMERA_COMPONENT.equalsIgnoreCase(StringUtils.defaultString(camera.getDeviceType()))) {
+            skipped.add(skip(camera.getDeviceKey(), camera.getDeviceLabel(), "not_a_camera", null));
+            return false;
+        }
+        if (!camera.isDeviceEnabled()) {
+            skipped.add(skip(camera.getDeviceKey(), camera.getDeviceLabel(), "disabled", null));
+            return false;
+        }
+        if (!Event.publishRequestedTrigger(
+                EventProcessor.getRabbitMqConnection(), camera, "Telegram /snapshot")) {
+            skipped.add(skip(camera.getDeviceKey(), camera.getDeviceLabel(), "publish_failed", null));
+            return false;
+        }
+        // the picture returns on the control exchange carrying this device key, which is
+        // what the delivery window and the span link are keyed on
+        SnapshotRequests.remember(camera.getDeviceKey(), Context.current());
+        log.atInfo().setMessage("Requested camera snapshot")
+            .addKeyValue("device_key", camera.getDeviceKey())
+            .addKeyValue("device_label", camera.getDeviceLabel())
+            .addKeyValue("routing_key", camera.getTriggerTopic())
+            .log();
+        requested.add(entry(camera.getDeviceKey(), camera.getDeviceLabel()));
+        return true;
+    }
+
     private static boolean isCamera(DeviceState.DeviceSnapshot device) {
         return CAMERA_COMPONENT.equalsIgnoreCase(StringUtils.defaultString(device.component()));
     }
@@ -220,15 +301,24 @@ public class SnapshotCommand {
     }
 
     private static Map<String, Object> entry(DeviceState.DeviceSnapshot device) {
+        return entry(device.deviceKey(), device.label());
+    }
+
+    private static Map<String, Object> entry(String deviceKey, String label) {
         final Map<String, Object> entry = new LinkedHashMap<>();
-        entry.put("device_key", device.deviceKey());
-        entry.put("label", device.label());
+        entry.put("device_key", deviceKey);
+        entry.put("label", label);
         return entry;
     }
 
     private static Map<String, Object> skip(
             DeviceState.DeviceSnapshot device, String reason, Long retryAfterSeconds) {
-        final Map<String, Object> entry = entry(device);
+        return skip(device.deviceKey(), device.label(), reason, retryAfterSeconds);
+    }
+
+    private static Map<String, Object> skip(
+            String deviceKey, String label, String reason, Long retryAfterSeconds) {
+        final Map<String, Object> entry = entry(deviceKey, label);
         entry.put("reason", reason);
         if (retryAfterSeconds != null) {
             entry.put("retry_after_seconds", retryAfterSeconds);
