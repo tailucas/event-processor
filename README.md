@@ -525,7 +525,8 @@ GET http://event-processor:8085/devices
 ```
 
 ```json
-[{"deviceKey":"2579f711-…","component":"alarm","label":"Home Alarm",
+[{"deviceKey":"2579f711-…","component":"alarm","locationId":"cfee52e0-…",
+  "label":"Home Alarm",
   "model":"Ring Alarm Control Panel","availability":"online",
   "batteryLevel":100,"batteryLife":100,"batteryStatus":"full",
   "wirelessSignal":null,"wirelessNetwork":null,
@@ -537,7 +538,32 @@ GET http://event-processor:8085/devices
 
 `deviceReportedAt` is when the device itself last reported to Ring (the staleness
 signal for a quiet sensor); `lastSeen` is when this application last received a
-message about it. Devices are ordered by label.
+message about it. `locationId` is the bridge's per-location topic segment, which is
+what makes a device addressable for commands (`POST /snapshot`) rather than only
+readable. Devices are ordered by label.
+
+### Camera snapshot (`POST /snapshot`)
+
+Asks a camera for a fresh picture through the Ring bridge. With no `device_key`
+every camera is requested:
+
+```
+POST http://event-processor:8085/snapshot
+POST http://event-processor:8085/snapshot?device_key=54e0191a1d8d
+```
+
+```json
+{"requested":[{"device_key":"54e0191a1d8d","label":"Front Gate"}],
+ "skipped":[{"device_key":"aa11","label":"Pool Camera","reason":"offline"}]}
+```
+
+The endpoint publishes `PRESS` to
+`ring/<locationId>/camera/<device_key>/take_snapshot/command` and returns `202` when
+at least one camera was asked, `200` when none were. `reason` is one of `offline`,
+`recently_requested` (with `retry_after_seconds` — the bridge ignores a second
+on-demand snapshot within ten seconds), `not_a_camera`, `unknown_location` or
+`publish_failed`. An unknown `device_key` is `404`. The picture itself is not
+returned here: it arrives on `.../snapshot/image` as a normal event.
 
 ### Telegram `/ring`
 
@@ -560,6 +586,38 @@ Unhealthy flags only appear when they are not `ok` (`tamper`, `comm`, `link`), a
 mailbox icon marks a device below 20% battery, and an offline device is shown with a
 warning icon. Message composition lives in `app/ring_report.py` so it is unit tested
 without booting the app; the rules are in `.clinerules/telegram.md`.
+
+### Telegram `/snapshot`
+
+`/snapshot` (allowlisted users only) asks cameras for a fresh picture. With no
+argument every online camera is requested; naming one (`/snapshot front gate`, or a
+Ring device id) targets just that camera:
+
+```
+📷 *Snapshot requested* — `Front Gate`
+```
+
+```
+📷 *Snapshot requested* — `Front Gate`, `Patio Camera`
+Requested 2 of 3: skipped `Pool Camera` (offline).
+```
+
+The web app resolves the argument against `GET /devices` and calls the processor's
+`POST /snapshot` endpoint (no `device_key` means every camera). The processor
+publishes `PRESS` to `ring/<location>/camera/<device>/take_snapshot/command` — the
+bridge's on-demand snapshot trigger — and the picture comes back on
+`.../snapshot/image` as a normal event. Selection and reply composition live in
+`app/snapshot_command.py` so they are unit tested without booting the app.
+
+**Requested images bypass the detection filter.** Every camera the request addressed
+is given a delivery window in the web app (`[telegram] snapshot_window_seconds`,
+default 60s); any image for that camera arriving inside it is forwarded *as taken*,
+including the annotated copy the snapshot processor republishes. Nothing is judged by
+the object-detection filter, because the request is the operator's intent. A window
+is a window, not a footnote to `image_send_only_with_people`: frames outside one are
+still dropped whole. The bridge rate-limits on-demand snapshots to one per camera
+every 10s, so a repeat is reported as `retry in Ns` instead of silently doing
+nothing.
 
 ### Forwarding camera snapshots
 

@@ -20,12 +20,19 @@ new bot code must comply.
 
 ## 1. Where bot code lives
 
-- `app/__main__.py` — handlers, allowlist checks, the `TBot` thread, the ZMQ fan-out,
-  and `main()` wiring.
-- `app/ring_report.py` — **pure** message composition (formatting only). Anything
-  that turns data into chat text belongs here, because it can then be tested
-  without booting the application (see `tests/test_ring_report.py`).
-- `tests/` — pytest coverage for the pure modules.
+- `app/__main__.py` — handlers, allowlist checks, `TBot` (the queue, batching and
+  image filter in `tbot_run`), and `main()` wiring.
+- **Pure siblings** — no `tailucas_pylib`, no I/O, no global state, each with tests,
+  so `pytest` imports them without booting the application:
+  - `app/ring_report.py` — `/ring` composition (formatting only;
+    `tests/test_ring_report.py`).
+  - `app/snapshot_command.py` — `/snapshot` camera selection and reply text
+    (`tests/test_snapshot_command.py`).
+  - `app/snapshot_window.py` — the requested-image delivery window
+    (`tests/test_snapshot_window.py`).
+  - `app/telegram_filter.py` — the image-forwarding policy
+    (`tests/test_telegram_filter.py`).
+- `tests/` — pytest coverage for those modules.
 
 **Rule:** a formatter must have no imports from `tailucas_pylib`, no I/O, and no
 global state, so `pytest` can import it directly. `import app.__main__` in a test is
@@ -83,14 +90,24 @@ Handlers are registered in `TBot.run()` **before** `run_polling`:
 
 ```python
 telegram_application.add_handler(TelegramCommandHandler(command="ring", callback=telegram_bot_ring))
+telegram_application.add_handler(TelegramCommandHandler(command="snapshot", callback=telegram_bot_snapshot))
 ```
 
+A command's *effect* decides its transport; there are three, and only one is the
+generic path:
+
+| Need | Path | Example |
+|---|---|---|
+| Read device state | `GET` the Java REST API in an executor | `/ring` → `GET /devices` |
+| Change an input/output's enabled state | ZMQ to the Python `EventProcessor` (`{"bot": {"command": ...}}` → `URL_WORKER_APP`, replies pushed back to `URL_WORKER_TELEGRAM_BOT`) | `/inputon`, `/outputoff` |
+| Ask for something only the Java side can do | `POST` the Java REST API in an executor | `/snapshot` → `POST /snapshot` |
+
 The generic `/inputon`, `/inputoff`, `/outputon`, `/outputoff` commands share
-`telegram_bot_cmd`, which forwards to the `EventProcessor` thread over ZeroMQ
-(`{"bot": {"command": ...}}` → `URL_WORKER_APP`, replies pushed back to
-`URL_WORKER_TELEGRAM_BOT`). **A new command that only reads data does not use that
-path** — do the work in the async handler so the event processor is never blocked.
-A global error handler (`telegram_error_handler`) is always registered.
+`telegram_bot_cmd` and use the middle path. **A new command that only reads does
+not use it**, and a command that makes hardware act belongs on the Java side
+(because Java owns MQTT — see `mq.md` §3) — never publish from the web app, and
+never block the event loop on either call. A global error handler
+(`telegram_error_handler`) is always registered.
 
 ### Configuration and credentials
 
@@ -205,9 +222,60 @@ tested in `tests/test_telegram_filter.py`):
   reports `snapshot` for those, it travels in the device payload as `event_detail`,
   and `BotMessage.source` carries it. Do not weaken the flag for those — extend the
   filter.
+- **A requested image always passes, unconditionally.** `/snapshot` opens a
+  time-bounded delivery window for each camera it addressed
+  (`app/snapshot_window.py`, `[telegram] snapshot_window_seconds`, default 60s), and
+  `BotMessage.snapshot_requested` is stamped when the message is **queued** — not
+  when it is sent, because `min_send_interval` can defer the send past the window.
+  Inside the window every image for that camera is forwarded *as taken*, including
+  the detected copy whose `event_detail` became "0 dog(s)"; the request is the
+  operator's intent, so the detector cannot veto it. This is deliberately **not** a
+  relaxation of `image_send_only_with_people` for unattended frames — those stay
+  filtered.
 - A suppressed message is dropped **whole**: no photo and no text. Never compose an
   image message whose text is the only signal.
+
+The window is a window, not consume-once: one request can yield the raw frame *and*
+the snapshot processor's annotated copy for the same label, and both must be sent.
 
 Batching: messages are queued per `device_label` and the newest per label wins, so a
 burst of snapshots collapses into one send; `[telegram] min_send_interval` then
 rate-limits the queue.
+
+---
+
+## 6. `/snapshot` — requesting a camera picture
+
+```
+/snapshot                  # every camera that is online
+/snapshot front gate       # one camera: label, partial label, or Ring device id
+```
+
+**Resolution.** The argument is matched against `GET /devices` where
+`component == "camera"` (`app/snapshot_command.select_cameras`): exact label, then
+case-insensitive substring, then the Ring device id. No match, or several matches,
+is refused with the candidate list — never guess, and never wake a camera the
+operator did not name. A blank argument means every camera that is not `offline`;
+an offline camera is skipped and *reported*, not silently dropped.
+
+**Transport.** One `POST {event_processor_address}/snapshot` in an executor
+(`device_key` only when one was named). The processor publishes the bridge's
+`PRESS` and answers with `requested` and `skipped`, each skip naming a reason
+(`offline`, `recently_requested` with `retry_after_seconds`, `not_a_camera`,
+`unknown_location`, `publish_failed`). The reply states a partial result honestly;
+never claim a camera the processor skipped.
+
+**Delivery.** The handler opens a `SnapshotWindows` window for every label in
+`requested` — that is what lets the images past the detector (§5). Key it on the
+**canonical label from `/devices`**, never on the typed argument, because the
+window is matched against `BotMessage.device_label`. The window is
+`[telegram] snapshot_window_seconds` (default 60s) and is stamped when a message is
+queued, so a rate-limited send still counts.
+
+**The picture is not the reply.** The command answers in text only. The image
+arrives on the normal event path (`.../snapshot/image` → output link → chat) and may
+also reach that camera's other links, e.g. an SMS. A handler must never fetch or
+re-send the image itself — that duplicates the event path and sends it twice.
+
+**Widening to other camera types** is a change to `is_camera()` plus a trigger for
+that type; the window, the filter and the command contract are camera-agnostic.

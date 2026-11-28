@@ -9,6 +9,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.Duration;
@@ -26,6 +27,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -85,6 +87,12 @@ public class EventProcessor
     public static final String ZMQ_MQTT_URL = "inproc://mqtt-send";
     private static final AtomicInteger exitCode = new AtomicInteger(1);
 
+    /**
+     * How long a caller waits to hand a message to the MQTT thread before giving
+     * up. Without it a publisher would block indefinitely if that thread died.
+     */
+    private static final int PUBLISH_QUEUE_TIMEOUT_MS = 2000;
+
     public static final int EXIT_CODE_MQTT = 2;
     public static final int EXIT_CODE_RABBITMQ = 4;
     public static final int EXIT_CODE_CREDENTIALS = 8;
@@ -139,6 +147,74 @@ public class EventProcessor
 
     public static void addExitCode(int code) {
         exitCode.accumulateAndGet(code, (current, update) -> current | update);
+    }
+
+    /**
+     * Queues one MQTT publish for the MQTT thread, which is the only thread allowed
+     * to touch the client. Callers (a REST handler, for instance) hand the message
+     * over rather than publishing it themselves; the inproc hop serialises them.
+     *
+     * @return false when the pipeline is not running or the message could not be queued
+     */
+    public static boolean publishMqtt(String topic, String payload) {
+        if (StringUtils.isBlank(topic) || payload == null) {
+            return false;
+        }
+        final ZContext context = zmqContext;
+        if (context == null || context.isClosed()) {
+            log.atWarn().setMessage("Cannot queue MQTT message, the MQTT pipeline is not running")
+                .addKeyValue("topic", topic)
+                .log();
+            return false;
+        }
+        ZMQ.Socket socket = null;
+        try {
+            socket = context.createSocket(SocketType.PUSH);
+            // never block a request handler on a dead pipeline
+            socket.setSendTimeOut(PUBLISH_QUEUE_TIMEOUT_MS);
+            socket.connect(ZMQ_MQTT_URL);
+            final boolean queued = socket.send(topic + '\n' + payload, 0);
+            if (!queued) {
+                log.atWarn().setMessage("MQTT message was not queued")
+                    .addKeyValue("topic", topic)
+                    .log();
+            }
+            return queued;
+        } catch (Exception e) {
+            log.atError().setMessage("Cannot queue MQTT message").addKeyValue("topic", topic).setCause(e).log();
+            Sentry.captureException(e);
+            return false;
+        } finally {
+            if (socket != null) {
+                socket.close();
+            }
+        }
+    }
+
+    /**
+     * Publishes one {@code <topic>\n<payload>} frame received from the outbound
+     * queue. A malformed frame is logged and dropped: one bad message must not take
+     * the MQTT thread (and with it the whole event pipeline) down.
+     */
+    private static void publishOutbound(byte[] frame) throws MqttException {
+        if (frame == null || frame.length == 0) {
+            return;
+        }
+        final String outbound = new String(frame, StandardCharsets.UTF_8);
+        final int separator = outbound.indexOf('\n');
+        if (separator <= 0) {
+            log.atWarn().setMessage("Ignoring malformed outbound MQTT message")
+                .addKeyValue("message_bytes", frame.length)
+                .log();
+            return;
+        }
+        final String topic = outbound.substring(0, separator);
+        final String payload = outbound.substring(separator + 1);
+        log.atDebug().setMessage("Publishing outbound MQTT message")
+            .addKeyValue("topic", topic)
+            .addKeyValue("payload_bytes", payload.length())
+            .log();
+        mqttClient.publish(topic, new MqttMessage(payload.getBytes(StandardCharsets.UTF_8)));
     }
 
     @PreDestroy
@@ -465,13 +541,15 @@ public class EventProcessor
                 // the subscription (and the discovery message above) is the point at
                 // which Ring device information is expected to start arriving
                 RingDiscovery.getInstance().markDiscoveryRequested();
-                // use inproc socket in ZMQ to serialize outbound messages for thread safety
+                // use inproc socket in ZMQ to serialize outbound messages for thread safety.
+                // this side binds: inproc requires the endpoint to exist before a publisher
+                // can connect, and this thread is started during application startup, so the
+                // endpoint is up before any request can queue a message.
                 socket = zmqContext.createSocket(SocketType.PULL);
-                socket.connect(ZMQ_MQTT_URL);
+                socket.bind(ZMQ_MQTT_URL);
                 while (!zmqContext.isClosed()) {
                     try {
-                        final byte[] zmqData = socket.recv();
-                        log.atDebug().setMessage("ZMQ data received").addKeyValue("zmq_data", new String(zmqData)).log();
+                        publishOutbound(socket.recv());
                     } catch (Exception e) {
                         if (!zmqContext.isClosed()) {
                             throw e;

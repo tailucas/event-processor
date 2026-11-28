@@ -71,7 +71,11 @@ and `src/main/java/tailucas/app/` (Java) are the canonical examples.
   scope: no spans, no request metrics/logs, and no inbound `traceparent`
   extraction, so reserve it for routes whose trace carries no diagnostic value
   (`POST /api/device_info`, the device heartbeat, and the `GET /api/*_config` /
-  `/api/output_link` / `/api/input_configs` device-config pulls).
+  `/api/output_link` / `/api/input_configs` device-config pulls). Operator
+  actions are the opposite case and stay traced: `POST /snapshot` is rare, has a
+  `telegram.snapshot` parent span, and its outcome (`snapshot.requested_count`,
+  `snapshot.skipped_count`) is worth following — do not add it to the exclusions
+  to "reduce noise".
 - **`Resource.create()` precedence (SDK ≥1.44):** explicitly passed
   attributes win over `OTEL_SERVICE_NAME`. Pass only
   `service.instance.id`; let the SDK's env detector supply `service.name`.

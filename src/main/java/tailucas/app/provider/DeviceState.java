@@ -32,6 +32,9 @@ public final class DeviceState {
      *
      * @param deviceKey        the Ring device id from the topic
      * @param component        the Ring domain: {@code alarm}, {@code camera} or {@code chime}
+     * @param locationId       the Ring location id from the topic, needed to address a
+     *                         device's command topics (the bridge scopes every topic by
+     *                         location)
      * @param label            the Home Assistant discovery name, e.g. "Front Gate"
      * @param model            manufacturer and model from discovery
      * @param availability     {@code online} or {@code offline} from the availability topic
@@ -42,6 +45,7 @@ public final class DeviceState {
     public record DeviceSnapshot(
             String deviceKey,
             String component,
+            String locationId,
             String label,
             String model,
             String availability,
@@ -121,6 +125,7 @@ public final class DeviceState {
         return new DeviceSnapshot(
             deviceKey,
             pick(device.getComponentName(), base.component()),
+            pick(device.getComponentId(), base.locationId()),
             pick(discoveredLabel, base.label() != null ? base.label() : deviceKey),
             pick(discoveredModel, base.model()),
             pick("status".equals(device.getUpdateType()) ? device.getState() : null, base.availability()),
@@ -140,7 +145,7 @@ public final class DeviceState {
 
     private static DeviceSnapshot empty(String deviceKey) {
         return new DeviceSnapshot(deviceKey, null, null, null, null, null, null, null, null, null,
-            null, null, null, null, null, null, Map.of());
+            null, null, null, null, null, null, null, Map.of());
     }
 
     private static <T> T pick(T reported, T previous) {

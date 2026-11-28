@@ -45,3 +45,44 @@ def test_snapshot_detection_tolerates_case_and_whitespace():
     assert is_explicit_snapshot("Snapshot")
     assert not is_explicit_snapshot(None)
     assert not is_explicit_snapshot("snapshots")
+
+
+def test_a_requested_snapshot_is_sent_as_taken():
+    """``/snapshot`` asks for the picture: the detector's verdict cannot veto it."""
+    assert include_image(
+        source=None,
+        text="Front Gate (14:02)",
+        only_with_people=True,
+        snapshot_requested=True,
+    )
+
+
+def test_a_requested_snapshot_is_sent_even_when_detection_found_nothing_of_interest():
+    """The annotated copy the snapshot processor republishes must survive too.
+
+    It replaces ``event_detail`` with a class summary, so the message reads
+    "0 dog(s)" — outside the window that would be dropped whole, which is the
+    regression this pins.
+    """
+    assert include_image(
+        source="0 dog(s)",
+        text="Front Gate (upload): 0 dog(s). (14:02)",
+        only_with_people=True,
+        snapshot_requested=True,
+    )
+
+
+def test_an_unrequested_frame_with_no_person_is_still_filtered():
+    """The window is the exception, not a general disabling of the filter."""
+    assert not include_image(
+        source="0 dog(s)",
+        text="Front Gate (upload): 0 dog(s). (14:02)",
+        only_with_people=True,
+        snapshot_requested=False,
+    )
+    assert not include_image(
+        source=None,
+        text="Front Gate (14:02)",
+        only_with_people=True,
+    )
+

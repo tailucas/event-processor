@@ -72,6 +72,8 @@ from zmq.error import Again, ZMQError
 
 from app.ring_report import format_ring_devices, split_message
 from app.schedule_time import normalize_schedule_time
+from app.snapshot_command import format_snapshot_result, select_cameras
+from app.snapshot_window import DEFAULT_WINDOW_SECONDS, SnapshotWindows
 from app.telegram_filter import include_image as include_image_message
 from app.telemetry_filter import EXCLUDED_ROUTES, excluded_route
 from tailucas_pylib import APP_NAME, DEVICE_NAME, app_config, log, threads
@@ -1515,6 +1517,36 @@ def fetch_ring_devices() -> list[dict]:
     return devices
 
 
+def request_camera_snapshots(device_key: str | None = None) -> dict:
+    """Ask the Java event processor for an on-demand camera snapshot.
+
+    With no ``device_key`` every camera is requested, which is what a bare
+    ``/snapshot`` means. The processor owns the Ring bridge (it publishes the
+    ``PRESS`` the bridge expects) and replies with what it asked for and what it
+    skipped, so the bot can report honestly instead of claiming success.
+    """
+    api_server = app_config.get("app", "event_processor_address")
+    api_method = "snapshot"
+    params = {"device_key": device_key} if device_key else None
+    response = requests.post(url=f"{api_server}/{api_method}", params=params, timeout=30)
+    response.raise_for_status()
+    result = response.json()
+    if not isinstance(result, dict):
+        raise ValueError(f"Unexpected {api_method} payload")
+    log.info(
+        "Snapshot request accepted",
+        extra={
+            "api_server": api_server,
+            "api_method": api_method,
+            "device_key": device_key,
+            "requested_count": len(result.get("requested") or []),
+            "skipped_count": len(result.get("skipped") or []),
+            "status_code": response.status_code,
+        },
+    )
+    return result
+
+
 async def telegram_bot_ring(update: Update, context: TelegramContextTypes.DEFAULT_TYPE) -> None:
     with otel_tracer().start_as_current_span("telegram.ring") as span:
         message = update.effective_message
@@ -1565,6 +1597,90 @@ async def telegram_bot_ring(update: Update, context: TelegramContextTypes.DEFAUL
                 )
 
 
+async def telegram_bot_snapshot(update: Update, context: TelegramContextTypes.DEFAULT_TYPE) -> None:
+    with otel_tracer().start_as_current_span("telegram.snapshot") as span:
+        message = update.effective_message
+        try:
+            authorized_users = app_config.get("telegram", "authorized_users").split(",")
+            if str(update.effective_user.id) not in authorized_users:
+                log.warning("Unauthorized message", extra={"update": str(update)})
+                return
+            if message is None:
+                return
+
+            # no argument means "every camera"; the processor decides the set
+            argument = " ".join(context.args).strip() if context.args else ""
+            span.set_attribute("telegram.command", "/snapshot")
+            span.set_attribute("telegram.chat_id", str(message.chat_id))
+            span.set_attribute("telegram.user_id", str(update.effective_user.id))
+            span.set_attribute("snapshot.argument", argument)
+            log.info(
+                "Telegram bot command received",
+                extra={
+                    "bot_username": context.bot.username,
+                    "command_text": message.text,
+                    "command_args": context.args,
+                    "chat_id": message.chat_id,
+                },
+            )
+
+            await context.bot.send_chat_action(chat_id=message.chat_id, action=ChatAction.TYPING)
+            # the device inventory lives in the Java processor; never block the loop on it
+            devices = await asyncio.get_running_loop().run_in_executor(None, fetch_ring_devices)
+            matches, selection_error = select_cameras(devices, argument or None)
+            if selection_error is not None:
+                span.set_attribute("snapshot.outcome", "rejected")
+                await message.reply_text(
+                    text=selection_error,
+                    disable_web_page_preview=True,
+                    parse_mode=ParseMode.MARKDOWN,
+                )
+                return
+
+            device_key = matches[0]["deviceKey"] if argument else None
+            span.set_attribute("snapshot.device_key", str(device_key))
+            result = await asyncio.get_running_loop().run_in_executor(
+                None, request_camera_snapshots, device_key
+            )
+            requested = result.get("requested") or []
+            skipped = result.get("skipped") or []
+            span.set_attribute("snapshot.requested_count", len(requested))
+            span.set_attribute("snapshot.skipped_count", len(skipped))
+            # the window keys on the label a queued message will carry, never on
+            # what the operator typed: that is what makes the images unfiltered
+            for camera in requested:
+                snapshot_windows().open(camera.get("label"))
+            log.info(
+                "Snapshot request result",
+                extra={
+                    "device_key": device_key,
+                    "requested": [camera.get("label") for camera in requested],
+                    "skipped": [camera.get("label") for camera in skipped],
+                    "window_seconds": snapshot_windows().window_seconds,
+                },
+            )
+            await message.reply_text(
+                text=format_snapshot_result(requested, skipped),
+                disable_web_page_preview=True,
+                parse_mode=ParseMode.MARKDOWN,
+            )
+            span.set_status(StatusCode.OK)
+        except NetworkError:
+            span.set_status(StatusCode.ERROR)
+            log.warning("bot handler", exc_info=True)
+            if message is not None:
+                await message.reply_text(text=f"{emoji.emojize(':warning:')} Telegram network problem.")
+        except Exception as e:
+            span.record_exception(e)
+            span.set_status(StatusCode.ERROR)
+            log.exception("Cannot request a camera snapshot")
+            capture_exception()
+            if message is not None:
+                await message.reply_text(
+                    text=f"{emoji.emojize(':warning:')} Could not request a camera snapshot."
+                )
+
+
 async def telegram_error_handler(update: Update, context: TelegramContextTypes.DEFAULT_TYPE) -> None:
     # do not capture because there's nothing to handle
     log.warning(msg="Telegram Bot Exception while handling an update:", exc_info=context.error)
@@ -1602,6 +1718,12 @@ class BotMessage(BaseModel):
     timestamp: int | None = None
     #: why the input sent this message, e.g. "snapshot" when the payload was a picture
     source: str | None = None
+    #: True when this message answered a ``/snapshot`` request for its camera, so
+    #: the image is forwarded as taken instead of being judged by the
+    #: object-detection filter. Decided when the message is queued, because the
+    #: filter runs at send time and ``min_send_interval`` can defer the send
+    #: beyond the request's window.
+    snapshot_requested: bool | None = None
     #: W3C carrier of the event that produced this message. A send can be
     #: deferred by ``min_send_interval`` until long after that event was
     #: consumed, so the context has to travel with the queued message rather
@@ -2070,6 +2192,25 @@ def _device_from_dict(device_dict: dict) -> Device:
     return Device(**device_data)
 
 
+_snapshot_windows: SnapshotWindows | None = None
+
+
+def snapshot_windows() -> SnapshotWindows:
+    """The ``/snapshot`` delivery windows, shared by the command and the send loop.
+
+    The command handler opens a window; ``tbot_run`` is what applies the image
+    filter, so the registry has to be process wide rather than per handler.
+    """
+    global _snapshot_windows
+    if _snapshot_windows is None:
+        window_seconds = app_config.getfloat(
+            "telegram", "snapshot_window_seconds", fallback=DEFAULT_WINDOW_SECONDS
+        )
+        _snapshot_windows = SnapshotWindows(window_seconds=window_seconds)
+    return _snapshot_windows
+
+
+
 #: Seconds a resolved `telegram-bot` feature flag is trusted. The check is a
 #: blocking 1Password Connect request, so it is made off the event loop and not
 #: once per receive-loop iteration.
@@ -2164,6 +2305,7 @@ class TBot(AppThread, Closable):
             source=message.source,
             text=str(message),
             only_with_people=app_config.getboolean("telegram", "image_send_only_with_people"),
+            snapshot_requested=message.snapshot_requested,
         )
 
     @staticmethod
@@ -2238,6 +2380,9 @@ class TBot(AppThread, Closable):
                         # long after this event was consumed; keep its carrier
                         # on the message so the trace is not restarted then
                         message.trace_context = carrier_from_message(event)
+                        # the filter runs at send time, which min_send_interval can
+                        # defer past the request's window, so decide while queueing
+                        message.snapshot_requested = snapshot_windows().is_open(message.device_label)
                         try:
                             queued = pending_by_label[message.device_label]
                         except KeyError:
@@ -2483,6 +2628,7 @@ class TBot(AppThread, Closable):
         log.debug("Creating Telegram application...")
         telegram_application = TelegramApp.builder().token(creds.get_creds(f"Telegram/{APP_NAME}/token")).build()
         telegram_application.add_handler(TelegramCommandHandler(command="ring", callback=telegram_bot_ring))
+        telegram_application.add_handler(TelegramCommandHandler(command="snapshot", callback=telegram_bot_snapshot))
         telegram_application.add_handler(TelegramCommandHandler(command="inputon", callback=telegram_bot_cmd))
         telegram_application.add_handler(TelegramCommandHandler(command="inputoff", callback=telegram_bot_cmd))
         telegram_application.add_handler(TelegramCommandHandler(command="outputon", callback=telegram_bot_cmd))

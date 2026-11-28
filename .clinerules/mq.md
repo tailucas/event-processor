@@ -24,6 +24,12 @@ The Python implementations live in `app/__main__.py` and the shared
 `tailucas_pylib` dependency (`zmq.py`, `app.py`, `rabbit.py`). The `mq` extra
 in `pyproject.toml` pulls `pika` (RabbitMQ) and `pyzmq` (ZeroMQ).
 
+In **this** project MQTT is not hypothetical: the Java event processor is the
+MQTT edge (§3), RabbitMQ carries events between the Java core and the Python web
+app, and ZeroMQ is in-process on both sides. The Python patterns below are the
+reference; §1 also documents the Java in-process queue that serialises outbound
+MQTT publishes.
+
 ---
 
 ## 1. ZeroMQ — in-process pipeline, relay, and RPC
@@ -82,6 +88,30 @@ client blocks until the reply arrives, and the worker must reply before it
 can receive again. Use it for in-process command/query style interactions
 where a return value is required, not for fire-and-forget data flow.
 
+### The Java outbound queue (`inproc://mqtt-send`)
+
+The Java side uses the same pattern for the opposite direction: a `PUSH` socket
+feeds a `PULL` socket that owns a resource. `EventProcessor.publishMqtt(topic,
+payload)` is the only public way to publish MQTT — the MQTT client is not thread
+safe, so the MQTT thread consumes the queue and performs every
+`mqttClient.publish` itself.
+
+- **The consumer binds.** `inproc` requires the endpoint to exist before a
+  publisher connects, so the long-lived MQTT thread binds the `PULL` at startup
+  and request-time publishers connect a short-lived `PUSH`. (This matches the
+  Python convention in `exception_handler`, where `PULL`/`PUB`/`REP` bind.)
+- **Framing is `topic\npayload`**, split on the *first* newline only, so a payload
+  may contain newlines. An empty topic or a frame without a separator is logged
+  and dropped rather than throwing: one bad message must not kill the thread that
+  also carries every device event.
+- **A publisher never blocks a request.** The `PUSH` sets a send timeout, so a dead
+  pipeline returns `false` (reported to the caller as "publish failed") instead of
+  hanging the HTTP request.
+- **Symptom to remember:** an `inproc` endpoint that is only ever *connected* to,
+  never bound, accepts sends silently and delivers nothing. That is what
+  `inproc://mqtt-send` did before the snapshot command needed it — the socket
+  existed and logged nothing, which looked like "no messages" rather than a bug.
+
 ### Trace context travels with the message
 
 Because ZeroMQ has no broker to carry metadata, any cross-cutting context
@@ -139,10 +169,13 @@ with MessagePack (`umsgpack`) for compact, cross-language-safe transport.
 
 ## 3. MQTT — lightweight pub/sub for constrained devices
 
-MQTT is **not currently used** in base-app — there is no `paho-mqtt`,
-`mosquitto`, or MQTT configuration anywhere in the project, and the `mq` extra
-does not install an MQTT client. It is documented here as a *possible* use,
-distinct from the two above.
+MQTT is the **device-facing** transport, and in this project it is real: the Java
+event processor runs a paho `MqttClient` and subscribes to everything (`#`),
+while the Ring bridge publishes device state and images onto the same broker. The
+Python web app never speaks MQTT — it reaches the broker only through the Java
+REST surface, so there is one client, one topic vocabulary, and one place where
+MQTT quirks live. (base-app itself does not use MQTT; do not add a second client
+to the Python side.)
 
 MQTT is a **publish/subscribe** protocol designed for constrained
 environments: small code footprint, low bandwidth, and tolerance for
@@ -169,12 +202,42 @@ durable queues, acknowledgements, or integration with an existing AMQP
 ecosystem. Prefer ZeroMQ when the communication is **in-process** and you
 want no broker at all.
 
-### How it would fit this project
+### How it is used here — the Ring bridge contract
 
-If MQTT were introduced, it would follow the same **bridge-at-the-edge**
-pattern as RabbitMQ: a dedicated thread (or pair of threads) would translate
-between MQTT topics and the internal ZeroMQ pipeline, keeping MQTT-specific
-concerns (QoS, retained flags, topic structure) confined to that boundary.
-The internal pipeline would remain unchanged, because the in-process
-transport and the device-facing transport solve different problems and
-should not be conflated.
+The bridge (`tsightler/ring-mqtt`) publishes every device under a location-scoped
+topic:
+
+```
+ring/<location_id>/<category>/<device_id>/<subject>/<kind>
+```
+
+`<category>` is `camera`, `alarm`, `chime` or `lighting`; `<kind>` is `state`,
+`attributes` (JSON), `image` (raw bytes) or `command` (the control path).
+`Ring.setMqttTopic()` parses parts 1/2/3 as location, category and device, and
+`DeviceState` merges the newest value per device — that is what `GET /devices` and
+the Telegram `/ring` report read.
+
+Commands belong to the bridge: write to `<subject>/command` and it acts.
+
+| Command | Payload | Effect |
+|---|---|---|
+| `<camera>/take_snapshot/command` | `PRESS` (exact) | publishes `<camera>/snapshot/image` (raw JPEG), then `<camera>/snapshot/attributes` with `{"type":"on-demand"}` |
+
+Facts worth not rediscovering:
+
+- **`PRESS` is the only accepted payload**, and a second request within **10s per
+  camera** is ignored silently (debug log only). `POST /snapshot` therefore tracks
+  the last request per device and reports `recently_requested` with a
+  `retry_after_seconds`, instead of claiming a snapshot that will never arrive.
+- **On-demand is independent of `snapshot_mode`** (`Auto` is the usual setting).
+  The bridge only refuses when `snapshotsAreBlocked` (motion capture disabled).
+  `snapshot_mode` governs the *unattended* snapshots — interval, motion, ding —
+  not the button.
+- **A snapshot carries bytes, not state.** `snapshot/image` is a whole JPEG, so the
+  processor keeps it out of logs, spans and metric labels (`PayloadType.detect`,
+  `Ring.setBinaryPayload`) and forwards it only as the trigger's payload. Never log
+  or label a device with an image body.
+- **The image topic is also a heartbeat**, so output links are evaluated for it like
+  any other event: a bot-requested snapshot also reaches every other linked output
+  (which is why a `/snapshot` in the chat can produce an SMS as well). Keep delivery
+  a link decision; do not special-case the bot path in `Event`.

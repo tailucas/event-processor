@@ -34,7 +34,7 @@ for configuration and event log UI.
   (`AppProperties`). Java release pinned via `maven.compiler.release`.
 - Packages: `tailucas.app.api` (HTTP/WS handlers), `tailucas.app.device`
   (device models and event logic), `tailucas.app.message` (MQTT/RabbitMQ),
-  `tailucas.app.provider` (DeviceConfig, Metrics, OnePassword).
+  `tailucas.app.provider` (DeviceConfig, DeviceState, Metrics, OnePassword).
 - Loggers are injected via `AppConfig.produceLogger` (SLF4J
   `LoggerFactory.getLogger(classOnWired)`); keep that pattern, one logger per
   class.
@@ -49,6 +49,23 @@ for configuration and event log UI.
   flows through the **standard input→output link** (`wouldTriggerOutput` →
   `getLinkedOutputs` → publish). A camera snapshot is the reference case: the
   image travels in the linked payload, never through a bespoke forwarding path.
+- **HTTP surface**: `GET /` (liveness), `GET /devices`, `POST /invalidate_config`,
+  `POST /snapshot`. Controllers live in `tailucas.app.api` and are tested with
+  `@WebMvcTest` slices, mocking static collaborators (`DeviceState`,
+  `EventProcessor`) via `mockStatic`.
+- **Outbound MQTT has exactly one owner.** `mqttClient` is not thread-safe and
+  belongs to the MQTT thread. Anything else (a REST handler, for instance)
+  publishes with `EventProcessor.publishMqtt(topic, payload)`, which hands the
+  message to that thread over the `inproc://mqtt-send` queue (see `mq.md` §1).
+  Never call `mqttClient.publish` from another thread.
+- **Addressing a device needs its location.** `DeviceState.DeviceSnapshot` carries
+  `locationId` (topic part 1) as well as `deviceKey`, because every Ring command
+  topic is scoped `ring/<locationId>/<category>/<deviceId>/…`. A command cannot be
+  built from the device id alone.
+- **Commands are requested, not awaited.** `POST /snapshot` publishes the bridge's
+  trigger and returns what it asked for and skipped; the picture arrives later as a
+  normal event (see `telegram.md` §6). Do not make an endpoint wait for the image —
+  that duplicates the event path and makes the chat a second arbiter of delivery.
 
 ## 3. Python (`app/`, `pyproject.toml`)
 
@@ -58,8 +75,12 @@ for configuration and event log UI.
   threading). Follow pylib's coding/logging standards.
 - Bot handlers follow the shared Telegram bot conventions (see net-tool's
   standards for the handler skeleton).
-- Lint gate: `make lint` (ruff check + mypy on `app/__main__.py`). Keep it
-  green.
+- Anything that can be decided without I/O belongs in a **pure sibling module**
+  (`ring_report.py`, `telegram_filter.py`, `snapshot_command.py`,
+  `snapshot_window.py`, `schedule_time.py`, `telemetry_filter.py`), so `pytest`
+  imports it without booting the app — see `telegram.md` §1.
+- Lint gate: `make lint` (`ruff check app/` + `mypy app/` — the whole package, so
+  a new module is gated too). Keep it green.
 
 ## 4. Configuration & Secrets
 
@@ -75,7 +96,8 @@ for configuration and event log UI.
 ## 5. Messaging & Observability
 
 - RabbitMQ for control/event exchanges; MQTT for device state; ZeroMQ inproc
-  for intra-process relays.
+  for intra-process relays and for serialising outbound MQTT publishes
+  (`EventProcessor.publishMqtt`, see `mq.md` §1).
 - Prometheus metrics server (port from `metrics.port`); post lifecycle
   metrics via the Metrics provider.
 - Sentry for both stacks: Java via `Sentry.captureException` +

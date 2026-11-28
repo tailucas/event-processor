@@ -24,13 +24,29 @@ def is_explicit_snapshot(source: str | None) -> bool:
     return isinstance(source, str) and source.strip().lower() == SNAPSHOT_SOURCE
 
 
-def include_image(source: str | None, text: str, only_with_people: bool) -> bool:
+def include_image(
+    source: str | None,
+    text: str,
+    only_with_people: bool,
+    snapshot_requested: bool | None = None,
+) -> bool:
     """Decide whether an image-bearing message reaches the chat.
 
     ``only_with_people`` is ``[telegram] image_send_only_with_people``, which gates
     *unattended* camera frames: they are frequent and only interesting when someone
-    is in them. An image an input explicitly sent — a Ring snapshot wired to this
-    output — is a deliberate notification and always passes.
+    is in them.
+
+    Two kinds of image are deliberate notifications and pass before the setting and
+    before any annotation is considered:
+
+    * ``snapshot_requested`` — the operator asked this camera for a picture with
+      ``/snapshot`` and the image arrived inside that request's window
+      (:mod:`app.snapshot_window`). Everything a camera returns is sent *as taken*,
+      because the request is the intent and a detector cannot override it. The
+      decision is stamped on the message when it is queued, not when it is sent, so
+      Telegram's rate limiting cannot outlive the window.
+    * ``is_explicit_snapshot(source)`` — an input device sent the picture itself
+      (a Ring snapshot wired to this output) rather than a camera frame.
 
     The annotation is looked for *anywhere* in the composed text, never at a fixed
     position: the snapshot processor writes "<camera> <n> person(s).", while an image
@@ -41,6 +57,8 @@ def include_image(source: str | None, text: str, only_with_people: bool) -> bool
 
     A suppressed message is dropped whole: no photo and no text.
     """
+    if snapshot_requested:
+        return True
     if is_explicit_snapshot(source):
         return True
     if not only_with_people:

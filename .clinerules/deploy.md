@@ -97,6 +97,11 @@ Everything in the generic checklist applies; these are the deltas.
    build (its tests are mock-based; `OnePasswordTest` mocks the Connect client).
 7. **Build output is large** (`target/`, the fat jar) — `.dockerignore` excludes
    `target/`, which otherwise doubles the context and invalidates cache.
+8. **`POST /snapshot` is the one verb that makes hardware act.** It publishes the
+   Ring bridge's on-demand snapshot trigger (`mq.md` §3), so every camera it names
+   wakes up, and the resulting image flows through the normal output links (an SMS
+   can follow). Treat it as an operational action, never as a probe. `GET /devices`
+   is the read-only check that the Java half and the bridge are talking.
 
 ## 6. Verifying a deploy
 
@@ -121,6 +126,12 @@ Host 8085 is the Java app (Spring), which answers a 404 JSON body on `/`.
 
 Do **not** use `ss -ltn` as evidence: every published port is accepted by
 `docker-proxy` whether or not anything is behind it.
+
+Do **not** probe with `POST http://127.0.0.1:8085/snapshot` either: it wakes every
+camera and sends an SMS through the existing links. To exercise the snapshot path
+deliberately, name one camera (`?device_key=…` from `GET /devices`) and expect `202`
+with that device in `requested`, plus a `Ring event`/`image` line within a few
+seconds — or a `skipped` reason explaining why not.
 
 ## 7. Before the first deploy — ordering matters
 
