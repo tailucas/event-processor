@@ -105,15 +105,36 @@ class SnapshotCommandTest {
     }
 
     @Test
-    void anAlarmDeviceIsNotSnapshottable() throws Exception {
+    void aBareCommandDoesNotReportNonCamerasAsSkips() throws Exception {
+        // the house is mostly sensors: reporting them as "not a camera" buries the
+        // outcome behind one line per device and reads like a failure
         final DeviceState state = mock(DeviceState.class);
         when(state.getDevices()).thenReturn(List.of(
-            device("alarm-d", "alarm", "Back Door", "online", "loc-1")));
+            device("alarm-g", "alarm", "Back Door", "online", "loc-1"),
+            device("cam-g", "camera", "Front Gate", "online", "loc-1")));
+        try (MockedStatic<DeviceState> mockedState = mockStatic(DeviceState.class);
+             MockedStatic<EventProcessor> mockedMqtt = mockStatic(EventProcessor.class)) {
+            mockedState.when(DeviceState::getInstance).thenReturn(state);
+            mockedMqtt.when(() -> EventProcessor.publishMqtt(anyString(), anyString())).thenReturn(true);
+
+            mvc.perform(post("/snapshot"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.requested.length()").value(1))
+                .andExpect(jsonPath("$.skipped.length()").value(0));
+        }
+    }
+
+    @Test
+    void anExplicitlyNamedNonCameraIsReported() throws Exception {
+        // naming a sensor is a mistake worth explaining, unlike walking every device
+        final DeviceState state = mock(DeviceState.class);
+        when(state.getDevices()).thenReturn(List.of(
+            device("alarm-h", "alarm", "Back Door", "online", "loc-1")));
         try (MockedStatic<DeviceState> mockedState = mockStatic(DeviceState.class);
              MockedStatic<EventProcessor> mockedMqtt = mockStatic(EventProcessor.class)) {
             mockedState.when(DeviceState::getInstance).thenReturn(state);
 
-            mvc.perform(post("/snapshot"))
+            mvc.perform(post("/snapshot").param("device_key", "alarm-h"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.skipped[0].reason").value("not_a_camera"));
 

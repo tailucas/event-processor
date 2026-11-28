@@ -279,3 +279,14 @@ re-send the image itself — that duplicates the event path and sends it twice.
 
 **Widening to other camera types** is a change to `is_camera()` plus a trigger for
 that type; the window, the filter and the command contract are camera-agnostic.
+Only Ring cameras are selectable today, because only the Ring bridge exposes an
+on-demand trigger — a bare `/snapshot` therefore addresses the Ring camera(s) and
+says nothing about any other camera, and it must not list non-cameras as skips
+(one "not a camera" line per sensor buries the outcome).
+
+**Trace.** The command's span is `telegram.snapshot`. The carrier is injected on
+the event loop and sent with both Java calls (`_trace_headers()`), the processor
+continues that trace in its `snapshot.request` span, and the picture — which comes
+back through the bridge with no context — starts its own trace whose span *links*
+to that request. Expect two traces joined by a link, not one long trace; see
+`observability.md` §2–3.

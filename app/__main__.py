@@ -1496,11 +1496,23 @@ async def telegram_bot_cmd(update: Update, context: TelegramContextTypes.DEFAULT
             capture_exception()
 
 
-def fetch_ring_devices() -> list[dict]:
+def _trace_headers() -> dict[str, str]:
+    """W3C headers for an outbound request, built while the command's span is current.
+
+    ``run_in_executor`` does not copy the active context into the worker thread, so a
+    request made from there would look untraced and start a new trace in the event
+    processor. Build the carrier on the event loop and pass it in.
+    """
+    headers: dict[str, str] = {}
+    inject_into(headers)
+    return headers
+
+
+def fetch_ring_devices(headers: dict[str, str] | None = None) -> list[dict]:
     """Read the latest per-device state from the Java event processor."""
     api_server = app_config.get("app", "event_processor_address")
     api_method = "devices"
-    response = requests.get(url=f"{api_server}/{api_method}", timeout=10)
+    response = requests.get(url=f"{api_server}/{api_method}", headers=headers, timeout=10)
     response.raise_for_status()
     devices = response.json()
     if not isinstance(devices, list):
@@ -1517,18 +1529,22 @@ def fetch_ring_devices() -> list[dict]:
     return devices
 
 
-def request_camera_snapshots(device_key: str | None = None) -> dict:
+def request_camera_snapshots(device_key: str | None = None, headers: dict[str, str] | None = None) -> dict:
     """Ask the Java event processor for an on-demand camera snapshot.
 
     With no ``device_key`` every camera is requested, which is what a bare
     ``/snapshot`` means. The processor owns the Ring bridge (it publishes the
     ``PRESS`` the bridge expects) and replies with what it asked for and what it
     skipped, so the bot can report honestly instead of claiming success.
+
+    ``headers`` carries this command's W3C trace context; the caller builds it on the
+    event loop, because ``run_in_executor`` does not propagate the active context
+    into the worker thread.
     """
     api_server = app_config.get("app", "event_processor_address")
     api_method = "snapshot"
     params = {"device_key": device_key} if device_key else None
-    response = requests.post(url=f"{api_server}/{api_method}", params=params, timeout=30)
+    response = requests.post(url=f"{api_server}/{api_method}", params=params, headers=headers, timeout=30)
     response.raise_for_status()
     result = response.json()
     if not isinstance(result, dict):
@@ -1572,7 +1588,9 @@ async def telegram_bot_ring(update: Update, context: TelegramContextTypes.DEFAUL
 
             await context.bot.send_chat_action(chat_id=message.chat_id, action=ChatAction.TYPING)
             # the state lives in the Java processor; never block the bot's loop on it
-            devices = await asyncio.get_running_loop().run_in_executor(None, fetch_ring_devices)
+            devices = await asyncio.get_running_loop().run_in_executor(
+                None, fetch_ring_devices, _trace_headers()
+            )
             span.set_attribute("ring.device_count", len(devices))
             for chunk in split_message(format_ring_devices(devices)):
                 await message.reply_text(
@@ -1626,7 +1644,9 @@ async def telegram_bot_snapshot(update: Update, context: TelegramContextTypes.DE
 
             await context.bot.send_chat_action(chat_id=message.chat_id, action=ChatAction.TYPING)
             # the device inventory lives in the Java processor; never block the loop on it
-            devices = await asyncio.get_running_loop().run_in_executor(None, fetch_ring_devices)
+            devices = await asyncio.get_running_loop().run_in_executor(
+                None, fetch_ring_devices, _trace_headers()
+            )
             matches, selection_error = select_cameras(devices, argument or None)
             if selection_error is not None:
                 span.set_attribute("snapshot.outcome", "rejected")
@@ -1640,7 +1660,7 @@ async def telegram_bot_snapshot(update: Update, context: TelegramContextTypes.DE
             device_key = matches[0]["deviceKey"] if argument else None
             span.set_attribute("snapshot.device_key", str(device_key))
             result = await asyncio.get_running_loop().run_in_executor(
-                None, request_camera_snapshots, device_key
+                None, request_camera_snapshots, device_key, _trace_headers()
             )
             requested = result.get("requested") or []
             skipped = result.get("skipped") or []

@@ -76,6 +76,12 @@ and `src/main/java/tailucas/app/` (Java) are the canonical examples.
   `telegram.snapshot` parent span, and its outcome (`snapshot.requested_count`,
   `snapshot.skipped_count`) is worth following — do not add it to the exclusions
   to "reduce noise".
+- **Outbound HTTP from the bot needs an explicit carrier.** No `requests`
+  instrumentation is installed, and `run_in_executor` does **not** copy the active
+  context into the worker thread, so a request made there would look untraced and
+  start a new trace in the event processor. Build the carrier on the event loop
+  (`_trace_headers()` in `app/__main__.py` calls `inject_into`) and pass it into the
+  callable.
 - **`Resource.create()` precedence (SDK ≥1.44):** explicitly passed
   attributes win over `OTEL_SERVICE_NAME`. Pass only
   `service.instance.id`; let the SDK's env detector supply `service.name`.
@@ -111,6 +117,18 @@ and `src/main/java/tailucas/app/` (Java) are the canonical examples.
 
 ## 3. Java-specific (`src/`, opentelemetry-java)
 
+- **There is no servlet instrumentation on the classpath.** The autoconfigured SDK
+  *exports* telemetry but does not *instrument* Spring MVC, so an inbound HTTP
+  request has no server span and an inbound `traceparent` would be dropped. A
+  controller that wants the caller's trace extracts the carrier itself
+  (`OtelSupport.extractParent`) and parents its span on the result — that span *is*
+  the server span. See `SnapshotCommand`.
+- **Async causal hops use span links, not parenting.** A Ring snapshot returns
+  through the bridge, which carries no W3C context, so it legitimately starts its
+  own trace. `Event.buildRunSpan` adds a link to the request that caused it
+  (`SnapshotRequests`, one-shot, TTL-bound). Never fake parentage across a
+  black-box hop; a link records "caused by" without pretending the spans share a
+  trace.
 - **Use SDK autoconfigure** (`opentelemetry-sdk-extension-autoconfigure`):
   it reads the standard `OTEL_*` env vars and gives both protocols for
   free. Register with `setResultAsGlobal()` (a no-arg method that calls

@@ -38,6 +38,7 @@ import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.context.Context;
@@ -55,6 +56,7 @@ import tailucas.app.device.config.InputConfig;
 import tailucas.app.device.config.OutputConfig;
 import tailucas.app.provider.DeviceConfig;
 import tailucas.app.provider.Metrics;
+import tailucas.app.provider.SnapshotRequests;
 
 public class Event implements Runnable {
 
@@ -71,6 +73,9 @@ public class Event implements Runnable {
     private static final Map<String, String> recentEscalations = new ConcurrentHashMap<>();
     /** Device keys already reported as having no input configuration. */
     private static final Set<String> unconfiguredDeviceKeys = ConcurrentHashMap.newKeySet();
+
+    /** The kind of Ring topic that carries a camera picture rather than state. */
+    private static final String SNAPSHOT_IMAGE_TOPIC_SUFFIX = "/snapshot/image";
 
     private static final TextMapGetter<Map<String, String>> PROPAGATION_GETTER = new TextMapGetter<>() {
         @Override
@@ -157,6 +162,20 @@ public class Event implements Runnable {
             final Context parentContext = OtelSupport.getOpenTelemetry().getPropagators()
                 .getTextMapPropagator().extract(Context.current(), carrier, PROPAGATION_GETTER);
             builder.setParent(parentContext);
+        }
+        // A camera snapshot answers an on-demand request but returns through the bridge,
+        // which carries no W3C context, so it starts a trace of its own. Link that trace
+        // to the request that caused it — two traces, one causal chain, which is exactly
+        // what a span link is for. Reading the registration consumes it, so only the
+        // first frame of a request links.
+        if (device != null && source != null && source.endsWith(SNAPSHOT_IMAGE_TOPIC_SUFFIX)) {
+            final Context requested = SnapshotRequests.poll(device.getDeviceKey());
+            if (requested != null) {
+                final SpanContext requestedSpan = Span.fromContext(requested).getSpanContext();
+                if (requestedSpan.isValid()) {
+                    builder.addLink(requestedSpan);
+                }
+            }
         }
         return builder.startSpan();
     }

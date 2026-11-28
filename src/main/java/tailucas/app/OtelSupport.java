@@ -1,6 +1,7 @@
 package tailucas.app;
 
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.LogManager;
@@ -15,6 +16,8 @@ import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.metrics.Meter;
 import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.context.propagation.TextMapGetter;
 import io.opentelemetry.instrumentation.log4j.appender.v2_17.OpenTelemetryAppender;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdk;
@@ -137,6 +140,44 @@ public class OtelSupport {
     public static OpenTelemetry getOpenTelemetry() {
         final OpenTelemetrySdk active = sdk;
         return active != null ? active : OpenTelemetry.noop();
+    }
+
+    /** Reads a W3C carrier out of a plain string map (HTTP headers, a message body). */
+    private static final TextMapGetter<Map<String, String>> CARRIER_GETTER = new TextMapGetter<>() {
+        @Override
+        public Iterable<String> keys(Map<String, String> carrier) {
+            return carrier.keySet();
+        }
+
+        @Override
+        public String get(Map<String, String> carrier, String key) {
+            return carrier == null ? null : carrier.get(key);
+        }
+    };
+
+    /**
+     * The parent context an inbound W3C carrier names, for a request this application
+     * serves itself.
+     *
+     * <p>No servlet instrumentation is on the classpath — the autoconfigured SDK
+     * exports telemetry but does not instrument Spring MVC — so an inbound
+     * {@code traceparent} would otherwise be dropped and the server span would start a
+     * new trace. A handler that wants to continue the caller's trace extracts it here
+     * and parents its span on the result.
+     *
+     * @return the caller's context, or {@link Context#root()} when the carrier names
+     *     none (an untraced request legitimately starts a root span)
+     */
+    public static Context extractParent(OpenTelemetry otel, Map<String, String> carrier) {
+        if (carrier == null || carrier.isEmpty()) {
+            return Context.root();
+        }
+        return otel.getPropagators().getTextMapPropagator().extract(Context.current(), carrier, CARRIER_GETTER);
+    }
+
+    /** {@link #extractParent(OpenTelemetry, Map)} against the running SDK. */
+    public static Context extractParent(Map<String, String> carrier) {
+        return extractParent(getOpenTelemetry(), carrier);
     }
 
     public static Tracer getTracer() {

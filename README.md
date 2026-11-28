@@ -559,11 +559,13 @@ POST http://event-processor:8085/snapshot?device_key=54e0191a1d8d
 
 The endpoint publishes `PRESS` to
 `ring/<locationId>/camera/<device_key>/take_snapshot/command` and returns `202` when
-at least one camera was asked, `200` when none were. `reason` is one of `offline`,
-`recently_requested` (with `retry_after_seconds` — the bridge ignores a second
-on-demand snapshot within ten seconds), `not_a_camera`, `unknown_location` or
-`publish_failed`. An unknown `device_key` is `404`. The picture itself is not
-returned here: it arrives on `.../snapshot/image` as a normal event.
+at least one camera was asked, `200` when none were. A request with no `device_key`
+considers cameras only: other device types are not asked and are not reported as
+skips. `reason` is one of `offline`, `recently_requested` (with
+`retry_after_seconds` — the bridge ignores a second on-demand snapshot within ten
+seconds), `not_a_camera` (only when that device was named explicitly),
+`unknown_location` or `publish_failed`. An unknown `device_key` is `404`. The picture
+itself is not returned here: it arrives on `.../snapshot/image` as a normal event.
 
 ### Telegram `/ring`
 
