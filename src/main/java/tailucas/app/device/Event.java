@@ -186,7 +186,9 @@ public class Event implements Runnable {
                 requestor.put("type", "command");
                 root.set("active_input", requestor);
             }
-            root.put("timestamp", Instant.now().toEpochMilli());
+            // epoch seconds, like every other event on this exchange: consumers convert
+            // this straight to a datetime, and milliseconds put the year out of range
+            root.put("timestamp", Instant.now().getEpochSecond());
             root.putPOJO("output_triggered", outputConfig);
             final Map<String, String> carrier = new HashMap<>();
             OtelSupport.getOpenTelemetry().getPropagators().getTextMapPropagator()
